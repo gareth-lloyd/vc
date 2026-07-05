@@ -502,12 +502,13 @@ always does a full reload (see "Rate rule overlap resolution" above).
 `VillaBookingDetails` has no `UpdatedAt`, and the removal sweep needs the
 full row set to detect deletions.
 
-## 6b. (Optional) Room-attribute backfill from prose (GAP-064)
+## 6b. (Optional) Room-attribute backfill from prose (GAP-064/GAP-065)
 
-Room amenity facts live only in `website_description` prose in the legacy
-book (loaded byte-for-byte by `RoomLoader`). After the rooms load, an
-optional positives-only keyword pass can enrich the structured GAP-064
-columns:
+Room amenity facts live in `website_description` prose in the legacy book
+(loaded byte-for-byte by `RoomLoader`) and crammed into the free-text
+placement string preserved as `placement_note` (GAP-065 — e.g. "First floor -
+King, hairdryer"). After the rooms load, an optional positives-only keyword
+pass over both sources can enrich the structured GAP-064 columns:
 
 ```bash
 uv run python manage.py backfill_room_attrs --dry-run   # inspect counts first
@@ -519,10 +520,11 @@ fills `ensuite_type` from explicit "en-suite shower/bath" phrasing (only when
 currently unknown), and first re-invokes `sync_room_attributes()` so the
 catalog's `implies_property_feature` links attach now that Features exist.
 It never infers absence, never removes assignments, never overwrites curator
-data — safe to re-run any time (re-run it after GAP-065 lands its preserved
-placement text). There is no `reconcile_legacy` row for this: no legacy table
-exists to compare against; the command's per-slug counts are the reconcile
-signal.
+data — safe to re-run any time (e.g. after a delta load). There is no
+`reconcile_legacy` row for this: no legacy table exists to compare against;
+the command's per-slug counts are the reconcile signal. (Placement itself
+DOES have a reconcile row — "Room placement (GAP-065)" gates that every
+legacy `PlacementId` landed with a preserved `placement_note`.)
 
 ## 7. England → GB merge
 

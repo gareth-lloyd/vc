@@ -15,7 +15,7 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-05, recounted from files): **119 done** (114 resolved + 5 dropped), **42 open**
+Scoreboard (2026-07-05, recounted from files): **121 done** (116 resolved + 5 dropped), **41 open**
 (incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
@@ -142,7 +142,7 @@ workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` re
 | [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md) | No frontend↔backend contract check — 20 hand-maintained Zod schemas drift silently from DRF (`currency`/`country` typed number in some features, string in others) | ⬜ from 2026-07-02 frontend complexity audit; add a fixtures contract test or OpenAPI type-gen |
 | [GAP-063](done/gap-063-frontend-feature-coupling-and-cycles.md) | Frontend feature boundaries leak — cross-feature imports (rate-workbench→properties ×26) + schema-level cycles (enquiries⇄quotations, properties⇄availability); no import boundary rule | ✅ resolved (2026-07-05) — `eslint-plugin-boundaries` shrink-only ratchet (`boundaries.allowlist.js`, 32→27 pairs) + staleness vitest; rate-workbench folded into `properties/`; all four 2-cycles broken via `src/lib/domain/` + logout-cleanup registry; remaining edge pay-down → GAP-072 |
 | [GAP-064](done/gap-064-structured-room-attributes.md) | Structured room attributes — enum-column facets (ensuite type, access) + an admin-editable `RoomAttribute` catalog for open-ended amenities | ✅ resolved (2026-07-05) — shipped with ticket-default A1 vocabulary (all admin-editable data; owner confirmation pending, see `design/decisions.md`); backfill re-run + placement source → GAP-065; derivation → GAP-067 |
-| [GAP-065](gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ⬜ supersedes Q-019 (floor); data-loss bug on cutover; needs A2 owner steer (floor ladder) |
+| [GAP-065](done/gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ✅ resolved (2026-07-05) — two blank-able axes + `placement_note` no-loss preserve + parsing loader + reconcile row + grouped rooms list; shipped on ticket-default A2 ladder (owner confirmation pending, see `design/decisions.md`); ambiguous rungs stay `""`+raw note |
 | [GAP-066](gap-066-room-bed-size.md) | Bed **size** fidelity (King/Super-king/Emperor) + bed-type vocabulary | ⬜ surfaced from the legacy exhibit form + crammed free-text; needs owner steer (advertised or internal?) |
 | [GAP-067](gap-067-room-feature-taxonomy-cleanup.md) | Feature taxonomy cleanup + derive property features from room attributes (data-driven bridge) | ⬜ supersedes the taxonomy half of Q-021; de-dupe the ~300-row `VillaFeatures` list (5× aircon, junk rows) with link-remap |
 | [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⏸ superseded-pending **GAP-070** (which drops groups) — its defaults set/values carry into the global `PropertyDefaults` singleton, its features-starter half → GAP-067; drop when GAP-070 lands |
@@ -168,8 +168,12 @@ workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` re
 
 Highest-leverage unanswered questions (each blocks a slice of downstream work):
 
-- **GAP-065** — Building/floor placement (owner vocabulary A2). GAP-064 shipped 2026-07-05 with the ticket-default A1 vocabulary — the seed catalog + implies-feature links are admin-editable data, so the pending A1 confirmation no longer blocks code (see `design/decisions.md`)
 - **Q-024** — Signals vs explicit orchestration for cross-app money side-effects (architecture; blocks SMELL-020, BUG-015, GAP-061)
+
+(GAP-064 A1 + GAP-065 A2 owner-vocabulary confirmations are pending but no
+longer block code — both shipped on ticket defaults with everything
+vocabulary-shaped either admin-editable data or re-parseable from the
+preserved `placement_note`; see `design/decisions.md` Open follow-ups.)
 
 ---
 

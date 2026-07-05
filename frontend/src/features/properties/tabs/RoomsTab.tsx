@@ -24,11 +24,55 @@ import { FeatureIcon } from "@/components/data/FeatureIcon";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { cn } from "@/lib/cn";
 import { useDeletePropertyRoom, usePropertyRooms, useReorderPropertyRooms } from "../hooks";
+import { ROOM_FLOORS, ROOM_PLACEMENTS } from "../schemas";
 import type { PropertyDetail, PropertyRoom, RoomBeds } from "../schemas";
 import { RoomFormDialog } from "../components/RoomFormDialog";
 
 interface RoomsContext {
   property: PropertyDetail;
+}
+
+// GAP-065 grouped display. Group key = (placement, floor); building order is
+// the ROOM_PLACEMENTS tuple, floor order is the ladder, blanks sort LAST
+// within each axis. Room order inside a group follows the flat display order
+// (`localOrder ?? serverRooms`), which stays the single source of truth.
+interface RoomGroup {
+  key: string;
+  placement: PropertyRoom["placement"];
+  floor: PropertyRoom["floor"];
+  rooms: PropertyRoom[];
+}
+
+function axisRank(value: string, order: readonly string[]): number {
+  const idx = order.indexOf(value);
+  return idx === -1 ? order.length : idx;
+}
+
+function groupRooms(rooms: PropertyRoom[]): RoomGroup[] {
+  const byKey = new Map<string, RoomGroup>();
+  for (const room of rooms) {
+    const key = `${room.placement}|${room.floor}`;
+    let group = byKey.get(key);
+    if (!group) {
+      group = { key, placement: room.placement, floor: room.floor, rooms: [] };
+      byKey.set(key, group);
+    }
+    group.rooms.push(room);
+  }
+  return [...byKey.values()].sort(
+    (a, b) =>
+      axisRank(a.placement, ROOM_PLACEMENTS) - axisRank(b.placement, ROOM_PLACEMENTS) ||
+      axisRank(a.floor, ROOM_FLOORS) - axisRank(b.floor, ROOM_FLOORS),
+  );
+}
+
+function groupLabel(group: RoomGroup, t: TFunction<"properties">): string {
+  const building = group.placement ? t(`rooms.placements.${group.placement}`) : "";
+  const floor = group.floor ? t(`rooms.floors.${group.floor}`) : "";
+  // Both axes → interpolated key (never concatenate); a single axis IS the
+  // label; neither → the unassigned bucket.
+  if (building && floor) return t("rooms.groups.label", { building, floor });
+  return building || floor || t("rooms.groups.unassigned");
 }
 
 function bedSummary(beds: RoomBeds | undefined, t: TFunction<"properties">): string {
@@ -48,11 +92,15 @@ function bedSummary(beds: RoomBeds | undefined, t: TFunction<"properties">): str
 interface RoomRowProps {
   room: PropertyRoom;
   canWrite: boolean;
+  // Placement/floor badges are hidden when the list is grouped (the header
+  // already says both) and a blank axis never renders a badge (no key to
+  // label it with).
+  showLocationBadges: boolean;
   onEdit: (room: PropertyRoom) => void;
   onDelete: (room: PropertyRoom) => void;
 }
 
-function RoomRow({ room, canWrite, onEdit, onDelete }: RoomRowProps) {
+function RoomRow({ room, canWrite, showLocationBadges, onEdit, onDelete }: RoomRowProps) {
   const { t } = useTranslation("properties");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: room.id,
@@ -80,7 +128,12 @@ function RoomRow({ room, canWrite, onEdit, onDelete }: RoomRowProps) {
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-foreground truncate font-medium">{room.name}</p>
-            <Badge variant="outline">{t(`rooms.placements.${room.placement}`)}</Badge>
+            {showLocationBadges && room.placement ? (
+              <Badge variant="outline">{t(`rooms.placements.${room.placement}`)}</Badge>
+            ) : null}
+            {showLocationBadges && room.floor ? (
+              <Badge variant="outline">{t(`rooms.floors.${room.floor}`)}</Badge>
+            ) : null}
             {room.is_ensuite ? (
               <Badge variant="secondary">
                 {room.ensuite_type
@@ -156,13 +209,13 @@ export function RoomsTab() {
     setLocalOrder(null);
   }, [serverRooms]);
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = displayed.findIndex((r) => r.id === active.id);
-    const newIndex = displayed.findIndex((r) => r.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(displayed, oldIndex, newIndex);
+  // Headers appear only when there are ≥2 distinct (placement, floor) keys —
+  // one lone group (e.g. legacy all-main_house data) stays a flat list with
+  // badges rather than sprouting a pointless header (review B1).
+  const groups = useMemo(() => groupRooms(displayed), [displayed]);
+  const isGrouped = groups.length >= 2;
+
+  const applyReorder = async (next: PropertyRoom[]) => {
     setLocalOrder(next);
     try {
       await reorderMutation.mutateAsync(next.map((r) => r.id));
@@ -171,6 +224,31 @@ export function RoomsTab() {
       setLocalOrder(null);
       toast.error(t("rooms.toasts.reorder_failed"));
     }
+  };
+
+  const handleFlatDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = displayed.findIndex((r) => r.id === active.id);
+    const newIndex = displayed.findIndex((r) => r.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    await applyReorder(arrayMove(displayed, oldIndex, newIndex));
+  };
+
+  // Drag is confined to one group (each has its own DndContext); the drop
+  // re-flattens ALL groups in display order and posts the full id list, so the
+  // first within-group drag converges stored sort_order with the grouped
+  // display (deliberate — display is the truth users see).
+  const handleGroupDragEnd = (groupKey: string) => async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const group = groups.find((g) => g.key === groupKey);
+    if (!group) return;
+    const oldIndex = group.rooms.findIndex((r) => r.id === active.id);
+    const newIndex = group.rooms.findIndex((r) => r.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const movedRooms = arrayMove(group.rooms, oldIndex, newIndex);
+    await applyReorder(groups.flatMap((g) => (g.key === groupKey ? movedRooms : g.rooms)));
   };
 
   const handleDelete = async () => {
@@ -232,8 +310,42 @@ export function RoomsTab() {
 
       {displayed.length === 0 ? (
         <EmptyState title={t("rooms.empty.title")} description={t("rooms.empty.description")} />
+      ) : isGrouped ? (
+        <div className="space-y-6">
+          {groups.map((group) => {
+            const label = groupLabel(group, t);
+            return (
+              <section key={group.key} aria-label={label} className="space-y-2">
+                <h3 className="text-muted-foreground text-sm font-medium">{label}</h3>
+                <DndContext
+                  id={`rooms-group-${group.key}`}
+                  sensors={sensors}
+                  onDragEnd={handleGroupDragEnd(group.key)}
+                >
+                  <SortableContext
+                    items={group.rooms.map((r) => r.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <ul className="space-y-2">
+                      {group.rooms.map((room) => (
+                        <RoomRow
+                          key={room.id}
+                          room={room}
+                          canWrite={canWrite}
+                          showLocationBadges={false}
+                          onEdit={setEditing}
+                          onDelete={setDeleting}
+                        />
+                      ))}
+                    </ul>
+                  </SortableContext>
+                </DndContext>
+              </section>
+            );
+          })}
+        </div>
       ) : (
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <DndContext id="rooms-flat" sensors={sensors} onDragEnd={handleFlatDragEnd}>
           <SortableContext
             items={displayed.map((r) => r.id)}
             strategy={verticalListSortingStrategy}
@@ -244,6 +356,7 @@ export function RoomsTab() {
                   key={room.id}
                   room={room}
                   canWrite={canWrite}
+                  showLocationBadges
                   onEdit={setEditing}
                   onDelete={setDeleting}
                 />

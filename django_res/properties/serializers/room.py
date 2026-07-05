@@ -75,6 +75,8 @@ class RoomSerializer(serializers.ModelSerializer[Room]):
             "property",
             "name",
             "placement",
+            "floor",
+            "placement_note",
             "website_description",
             "vc_notes",
             "is_ensuite",

@@ -66,6 +66,8 @@ Property ─1:N→ RatePlan ─1:N→ RatePeriod ─1:N→ RateBand
 
 Room ─M:M→ RoomAttribute (via RoomAttributeAssignment; amenity catalog,
            GAP-064 — RoomAttribute.implies_property_feature bridges to Feature)
+Room location = two orthogonal blank-able axes (GAP-065): placement (building)
+           + floor (ladder); raw legacy string preserved in placement_note
 
 Enquiry ─1:N→ Quotation ─1:N→ QuotationLine ─1:N→ Booking
 Person  ─1:N→ Quotation, Booking            (customer; also User OneToOne)

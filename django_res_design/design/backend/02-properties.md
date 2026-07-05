@@ -183,7 +183,19 @@ Owned by `Property` (CASCADE FK). Hard-deleted with its parent or directly when 
 
 - `property` — FK CASCADE
 - `name` — CharField (e.g. "Master Suite", "Garden Room")
-- `placement` — TextChoices (`MAIN_HOUSE`, `GUEST_HOUSE`, `POOL_HOUSE`, `ANNEX`, `OTHER`) — replaces `VillaRoomsPlacement` lookup (set is fixed)
+- `placement` — TextChoices (`MAIN_HOUSE`, `GUEST_HOUSE`, `POOL_HOUSE`,
+  `ANNEX` ("Annexe"), `COTTAGE`, `BUNGALOW`, `STUDIO`, `OTHER`), blank=True
+  (`""` = unknown — GAP-065 dropped the dishonest `MAIN_HOUSE` default). The
+  **building** axis; replaces the legacy `VillaRoomsPlacement` free-text
+  lookup, which overloaded building + floor into one string.
+- `floor` — TextChoices ladder (`LOWER_GROUND`, `GROUND`, `FIRST`, `SECOND`,
+  `THIRD_PLUS`), blank=True (`""` = unknown). Orthogonal to `placement`
+  ("first floor of the guest house"). GAP-065; rungs pending owner steer A2.
+- `placement_note` — CharField(255, blank=True) — the raw legacy
+  `VillaRoomsPlacement.Name` preserved verbatim by `RoomLoader` (no-loss
+  guarantee; `data_migration.placement_parsing.parse_placement` fills the two
+  axes from it where confident). API-writable so staff can clear it once the
+  split is confirmed; read-only helper text in the room form.
 - `website_description` — TextField(blank=True)
 - `vc_notes` — TextField(blank=True)
 - `is_ensuite` — BooleanField(default=False)

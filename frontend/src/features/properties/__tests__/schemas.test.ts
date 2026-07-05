@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   PROPERTY_CONTACT_ROLES,
+  ROOM_FLOORS,
+  ROOM_PLACEMENTS,
   availabilityBlockWriteInputSchema,
   availabilityCellSchema,
   propertyContactAssignmentWriteInputSchema,
@@ -395,6 +397,54 @@ describe("propertyRoomSchema — GAP-064 facets + amenity links", () => {
   });
 });
 
+describe("propertyRoomSchema — GAP-065 location axes", () => {
+  const base = {
+    id: 201,
+    property: 7,
+    name: "Loft",
+    is_ensuite: false,
+    sort_order: 1,
+  };
+
+  it("defaults placement, floor and placement_note when omitted (older fixtures)", () => {
+    const room = propertyRoomSchema.parse(base);
+    expect(room.placement).toBe("");
+    expect(room.floor).toBe("");
+    expect(room.placement_note).toBe("");
+  });
+
+  it("accepts blank placement and floor ('' = unknown)", () => {
+    const room = propertyRoomSchema.parse({ ...base, placement: "", floor: "" });
+    expect(room.placement).toBe("");
+    expect(room.floor).toBe("");
+  });
+
+  it("parses the new building members and every floor rung", () => {
+    for (const placement of ["cottage", "bungalow", "studio"] as const) {
+      expect(ROOM_PLACEMENTS).toContain(placement);
+      expect(propertyRoomSchema.parse({ ...base, placement }).placement).toBe(placement);
+    }
+    for (const floor of ROOM_FLOORS) {
+      expect(propertyRoomSchema.parse({ ...base, floor }).floor).toBe(floor);
+    }
+  });
+
+  it("carries the preserved legacy placement_note (read shape)", () => {
+    const room = propertyRoomSchema.parse({
+      ...base,
+      placement: "guest_house",
+      floor: "first",
+      placement_note: "First floor of the guest house",
+    });
+    expect(room.placement_note).toBe("First floor of the guest house");
+  });
+
+  it("rejects junk placement and floor", () => {
+    expect(() => propertyRoomSchema.parse({ ...base, placement: "treehouse" })).toThrow();
+    expect(() => propertyRoomSchema.parse({ ...base, floor: "mezzanine" })).toThrow();
+  });
+});
+
 describe("roomAttributeSchema — GAP-064 catalog", () => {
   it("parses a catalog row inside the DRF envelope", () => {
     const page = roomAttributesResponseSchema.parse({
@@ -445,6 +495,7 @@ describe("propertyRoomWriteInputSchema", () => {
   const valid = {
     name: "Master",
     placement: "main_house" as const,
+    floor: "" as const,
     website_description: "",
     vc_notes: "",
     is_ensuite: true,
@@ -462,6 +513,7 @@ describe("propertyRoomWriteInputSchema", () => {
     const result = propertyRoomWriteInputSchema.parse({
       name: "Master",
       placement: "main_house" as const,
+      floor: "",
       website_description: "",
       vc_notes: "",
       is_ensuite: true,
@@ -470,6 +522,37 @@ describe("propertyRoomWriteInputSchema", () => {
     });
     expect(result.beds).toBeUndefined();
     expect(result.name).toBe("Master");
+  });
+
+  it("accepts blank and enum values for placement and floor, rejects junk (GAP-065)", () => {
+    expect(propertyRoomWriteInputSchema.parse({ ...valid, placement: "" }).placement).toBe("");
+    expect(propertyRoomWriteInputSchema.parse(valid).floor).toBe("");
+    const set = propertyRoomWriteInputSchema.parse({
+      ...valid,
+      placement: "cottage",
+      floor: "third_plus",
+    });
+    expect(set.placement).toBe("cottage");
+    expect(set.floor).toBe("third_plus");
+    expect(() =>
+      propertyRoomWriteInputSchema.parse({ ...valid, placement: "treehouse" }),
+    ).toThrow();
+    expect(() => propertyRoomWriteInputSchema.parse({ ...valid, floor: "mezzanine" })).toThrow();
+  });
+
+  it("keeps placement/floor required so a PATCH can send '' to clear them (GAP-065)", () => {
+    // Same clearing-trap posture as the GAP-064 facets: `.optional()` would
+    // omit the field and silently stop clearing a previously-set value.
+    expect(() => propertyRoomWriteInputSchema.parse({ ...valid, placement: undefined })).toThrow();
+    expect(() => propertyRoomWriteInputSchema.parse({ ...valid, floor: undefined })).toThrow();
+  });
+
+  it("strips placement_note — the form must never write it (GAP-065)", () => {
+    const result = propertyRoomWriteInputSchema.parse({
+      ...valid,
+      placement_note: "First floor of the guest house",
+    });
+    expect("placement_note" in result).toBe(false);
   });
 
   it("accepts blank and enum values for the GAP-064 facets, rejects junk", () => {

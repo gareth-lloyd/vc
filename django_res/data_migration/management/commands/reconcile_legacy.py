@@ -168,6 +168,26 @@ _CHECKS: list[_Check] = [
         expected_gap=307,
     ),
     _Check(
+        "SELECT COUNT(*) FROM VillaRooms WHERE PlacementId IS NOT NULL",
+        Room,
+        "Room placement (GAP-065)",
+        # No-loss gate: every legacy room with a placement must land with the
+        # raw string preserved in `placement_note`. PLACEHOLDER — recalibrate
+        # at the first cutover dry-run (BUG-013 precedent). The gap has two
+        # legitimate causes to apportion then: (a) rooms whose parent property
+        # wasn't loaded (the 307 slice above, restricted to rows with a
+        # PlacementId); (b) dangling PlacementId → NULL/blank
+        # VillaRoomsPlacement.Name (the LEFT JOIN preserves the room but the
+        # note is honestly empty).
+        # `placement_note` is API-writable, so count only the legacy slice —
+        # a staff-entered note during the cutover window must not shift the
+        # gap (the BookingChargeItem precedent below).
+        expected_gap=0,
+        loaded_count=lambda m: (
+            m._default_manager.exclude(placement_note="").filter(legacy_id__isnull=False).count()
+        ),
+    ),
+    _Check(
         "SELECT COUNT(*) FROM VillaPropertyImages",
         PropertyImage,
         "PropertyImage",

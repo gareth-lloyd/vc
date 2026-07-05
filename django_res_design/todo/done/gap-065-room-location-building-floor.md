@@ -1,5 +1,28 @@
 # GAP-065 — Room location: building + floor (and fix the lossy migration)
 
+> **✅ RESOLVED (2026-07-05)** — shipped in 6 commits (model → API → loader →
+> backfill → seeding → frontend) + this close-out. As proposed: `RoomPlacement`
+> extended (cottage/bungalow/studio; "Annex"→"Annexe" label, value unchanged),
+> new `RoomFloor` ladder, `Room.placement`/`floor` blank-able (`""`=unknown,
+> MAIN_HOUSE default dropped), `RoomLoader` LEFT JOINs `VillaRoomsPlacement`
+> and parses via `data_migration/placement_parsing.py` (typo/hyphen-tolerant;
+> ordinal floors require a floor-context word; building picked by earliest
+> text position; ambiguous rungs → `""`), reconcile row "Room placement
+> (GAP-065)" (expected_gap=0 placeholder — recalibrate at first dry-run),
+> `backfill_room_attrs` scans `placement_note` too, seed_dev
+> `rooms_with_location` knob, FE floor select + sentinel placement select +
+> grouped rooms list (headers only when ≥2 distinct groups; per-group DnD
+> re-flattens and POSTs the full order). **Deviations:** raw string preserved
+> in a dedicated `Room.placement_note` field (not a `vc_notes` append),
+> API-writable so staff can clear it post-confirmation (FE editing deferred);
+> existing rows keep their stored `main_house` (indistinguishable from
+> deliberate; prod is reloaded by the fixed loader at cutover). **A2 owner
+> steer unanswered** → ticket defaults shipped, pending confirmation recorded
+> in `design/decisions.md`. Loader `--since` now alias-qualified
+> (`r.UpdatedAt`); the same latent JOIN ambiguity exists in
+> `PropertyContactAssignmentLoader` (`loaders/reservations.py`) — flagged,
+> fix separately.
+
 - **Severity:** Build + **data-loss bug** — answers **A2**, builds **Q-019**
 - **Files:** `properties/enums.py` (`RoomPlacement` → repurpose + new `RoomFloor`),
   `properties/models/rooms.py` (`Room`), `data_migration/loaders/property_children.py`

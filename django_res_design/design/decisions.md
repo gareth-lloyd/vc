@@ -144,6 +144,17 @@ These need an answer before implementation; tracked here so they don't get lost 
   so the owner can revise without a developer; if she doesn't track the
   shower/bath distinction the `ensuite_type` column simply stays `""`. Confirm
   with Bryony alongside the GAP-065 A2 questions.
+- **GAP-065 room location shipped on ticket defaults — A2 owner confirmation
+  pending (2026-07-05).** The A2 steer (floor-ladder rungs; how to map the
+  ambiguous "Upper floor"/"Lower level" strings; building+floor as two fields)
+  was never answered, so GAP-065 shipped the ticket recommendations: ladder
+  Lower ground / Ground / First / Second / Third+ (`""` = unknown), two
+  orthogonal fields (`placement` building + `floor`), and ambiguous rungs
+  (upper/lower level, mezzanine, basement) parse to `""` with the raw legacy
+  string preserved verbatim in `Room.placement_note` — so any later mapping
+  decision (e.g. Upper→First, or new rungs) is a re-parse over preserved
+  data, never a data recovery. Confirm with Bryony alongside the GAP-064 A1
+  questions above.
 - **Owner-approval SLA**: `workflows/09-booking/booking-creation.md` describes owner approval but doesn't specify a default reminder cadence or auto-decline window. The `escalate_pending_owner_approvals` Celery task needs a threshold (currently `[CONFIGURABLE]`).
 - **Cancellation-fee pre-window behaviour**: current design uses a single `cancellation_window_days`. A common pattern is sliding bands (e.g. 100% > 60 days, 50% 30-60d, 0% < 30d). Out of v1; add a `cancellation_bands` JSONField on `PropertyFinance` if it lands.
 - **`DamageClaim` model** *(was Open ticket; resolved 2026-06-23, BUG-008)*: shipped in `reservations/` (`reservations/models/damage_claim.py`) — booking + currency FKs, amount, `DamageClaimStatus`, a DC reference sequence, and the `itemized_lines`/`photos`/`accepted_by_guest_at` scaffolds for the fuller spec. `SecurityDeposit.damage_claim` is now a real `FK(SET_NULL)`, resolved + booking-validated in `SecurityDepositService.claim()`. The damages *workflow* (operator report sub-form, photo upload, threshold permissions, the damages email, the enforced approval state machine) stays deferred to workflow 8/17.

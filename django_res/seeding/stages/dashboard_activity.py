@@ -88,7 +88,7 @@ def _is_free(prop: Any, date_from: date, date_to: date) -> bool:
 
 
 def _requires_pre_approval(prop: Any) -> bool:
-    return bool(cast(Any, prop.settings).effective("bookings_require_pre_approval"))
+    return bool(prop.settings.bookings_require_pre_approval)
 
 
 def _candidates(ctx: SeedContext) -> list[Any]:

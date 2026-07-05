@@ -26,14 +26,14 @@ from reservations.models import Booking, BookingChargeItem
 
 def _percent_sd_finance(property_: Any, *, method: str = "card_hold") -> None:
     """Give `property_` a 10%-of-total security-deposit policy."""
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
 
-    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
-    gf.security_deposit_required = True
-    gf.security_deposit_amount = Decimal("10.00")
-    gf.security_deposit_calculation_type = "percent"
-    gf.security_deposit_payment_method = method
-    gf.save(
+    finance, _ = PropertyFinance.objects.get_or_create(property=property_)
+    finance.security_deposit_required = True
+    finance.security_deposit_amount = Decimal("10.00")
+    finance.security_deposit_calculation_type = "percent"
+    finance.security_deposit_payment_method = method
+    finance.save(
         update_fields=[
             "security_deposit_required",
             "security_deposit_amount",
@@ -41,7 +41,6 @@ def _percent_sd_finance(property_: Any, *, method: str = "card_hold") -> None:
             "security_deposit_payment_method",
         ]
     )
-    PropertyFinance.objects.get_or_create(property=property_)
 
 
 def _add_charge(booking: Booking, amount: str) -> BookingChargeItem:
@@ -118,14 +117,14 @@ def test_no_skip_event_when_figure_unchanged(booking: Any, property_: Any) -> No
     even past the pre-charge window. Pins the fix for the skip-event over-fire
     where every `booking_total_changed` on a PRE_AUTHED/fixed SD wrote a
     RESIZE_SKIPPED row regardless of whether the figure actually moved."""
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
 
-    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
-    gf.security_deposit_required = True
-    gf.security_deposit_amount = Decimal("500.00")
-    gf.security_deposit_calculation_type = "fixed"
-    gf.security_deposit_payment_method = "card_hold"
-    gf.save(
+    finance, _ = PropertyFinance.objects.get_or_create(property=property_)
+    finance.security_deposit_required = True
+    finance.security_deposit_amount = Decimal("500.00")
+    finance.security_deposit_calculation_type = "fixed"
+    finance.security_deposit_payment_method = "card_hold"
+    finance.save(
         update_fields=[
             "security_deposit_required",
             "security_deposit_amount",
@@ -133,7 +132,6 @@ def test_no_skip_event_when_figure_unchanged(booking: Any, property_: Any) -> No
             "security_deposit_payment_method",
         ]
     )
-    PropertyFinance.objects.get_or_create(property=property_)
     booking = Booking.objects.get(pk=booking.pk)
     sd = SecurityDepositService.create_for_booking(booking)
     assert sd is not None
@@ -218,14 +216,14 @@ def test_resize_writes_audit_event_on_change(booking: Any, property_: Any) -> No
 def test_fixed_sd_is_unaffected_by_total_change(booking: Any, property_: Any) -> None:
     """A fixed SD doesn't depend on the total — a charge leaves it untouched and
     writes no spurious resize event."""
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
 
-    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
-    gf.security_deposit_required = True
-    gf.security_deposit_amount = Decimal("500.00")
-    gf.security_deposit_calculation_type = "fixed"
-    gf.security_deposit_payment_method = "card_hold"
-    gf.save(
+    finance, _ = PropertyFinance.objects.get_or_create(property=property_)
+    finance.security_deposit_required = True
+    finance.security_deposit_amount = Decimal("500.00")
+    finance.security_deposit_calculation_type = "fixed"
+    finance.security_deposit_payment_method = "card_hold"
+    finance.save(
         update_fields=[
             "security_deposit_required",
             "security_deposit_amount",
@@ -233,7 +231,6 @@ def test_fixed_sd_is_unaffected_by_total_change(booking: Any, property_: Any) ->
             "security_deposit_payment_method",
         ]
     )
-    PropertyFinance.objects.get_or_create(property=property_)
     booking = Booking.objects.get(pk=booking.pk)
     sd = SecurityDepositService.create_for_booking(booking)
     assert sd is not None
@@ -249,9 +246,8 @@ def test_fixed_sd_is_unaffected_by_total_change(booking: Any, property_: Any) ->
 @pytest.mark.django_db
 def test_resize_for_booking_no_sd_is_noop(booking: Any, property_: Any) -> None:
     """No SD on the booking → the resize returns None and raises nothing."""
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
 
-    GroupFinance.objects.get_or_create(group=property_.group)
     PropertyFinance.objects.get_or_create(property=property_)
     booking = Booking.objects.get(pk=booking.pk)
 

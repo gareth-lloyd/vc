@@ -171,10 +171,4 @@ class BookingService:
         settings_obj = getattr(property_, "settings", None)
         if settings_obj is None:
             return False
-        resolver = getattr(settings_obj, "effective", None)
-        if resolver is None:
-            return False
-        try:
-            return bool(resolver("bookings_require_pre_approval"))
-        except AttributeError:
-            return False
+        return bool(settings_obj.bookings_require_pre_approval)

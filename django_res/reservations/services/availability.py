@@ -97,22 +97,16 @@ def _hold_kind(reason: str) -> str:
 
 
 def _resolve_changeover_times(property: Any) -> tuple[time | None, time | None]:
-    """Effective (property→group) check-out / check-in times, or (None, None).
+    """The property's check-out / check-in times, or (None, None).
 
-    A property with no settings, or whose group has no settings, simply has
-    no half-day boundary — the day stays whole. Never raises.
+    A property with no settings row, or with the times unset, simply has no
+    half-day boundary — the day stays whole. Never raises.
     """
     try:
         settings = property.settings
     except ObjectDoesNotExist:
         return None, None
-    try:
-        return (
-            settings.effective("check_out_time"),
-            settings.effective("check_in_time"),
-        )
-    except (ObjectDoesNotExist, AttributeError):
-        return None, None
+    return settings.check_out_time, settings.check_in_time
 
 
 class AvailabilityService:

@@ -129,16 +129,16 @@ def test_patch_settings_other_field_leaves_timezone(
     assert location.timezone == "Europe/London"
 
 
-# --- currency_code (GAP-026): group-resolved effective currency as a string ---
+# --- currency_code (GAP-026): the property's currency as a string code ------
 
 
 @pytest.mark.django_db
 def test_currency_code_uses_property_level_currency(
     api_client: APIClient, staff: User, property_: Property, gbp: Currency, eur: Currency
 ) -> None:
-    """A property-level currency wins over the group fallback."""
+    """The property's own currency is projected as its string code."""
     PropertySettings.objects.update_or_create(property=property_, defaults={"currency": gbp})
-    # A post_save signal auto-creates the group's settings row; update it.
+    # Group-level currency must be IGNORED (GAP-070: no runtime inheritance).
     GroupSettings.objects.update_or_create(group=property_.group, defaults={"currency": eur})
 
     api_client.force_login(staff)
@@ -148,24 +148,14 @@ def test_currency_code_uses_property_level_currency(
 
 
 @pytest.mark.django_db
-def test_currency_code_falls_back_to_group(
+def test_currency_code_null_when_property_currency_unset(
     api_client: APIClient, staff: User, property_: Property, eur: Currency
 ) -> None:
-    """A null property-level currency inherits the group's."""
+    """A null property-level currency stays null — group values are never
+    consulted (GAP-070: currency has no runtime fallback)."""
     PropertySettings.objects.update_or_create(property=property_, defaults={"currency": None})
     GroupSettings.objects.update_or_create(group=property_.group, defaults={"currency": eur})
 
-    api_client.force_login(staff)
-    response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
-    assert response.status_code == 200, response.content
-    assert response.json()["currency_code"] == "EUR"
-
-
-@pytest.mark.django_db
-def test_currency_code_null_when_neither_set(
-    api_client: APIClient, staff: User, property_: Property
-) -> None:
-    """No property or group currency resolves to null, not a blank string."""
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
     assert response.status_code == 200, response.content
@@ -173,16 +163,10 @@ def test_currency_code_null_when_neither_set(
 
 
 @pytest.mark.django_db
-def test_currency_code_null_when_missing_group_settings(
+def test_currency_code_null_when_neither_set(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:
-    """When the group has no settings row, `effective()` raises
-    `ObjectDoesNotExist`; the except-branch falls back to the (null)
-    property-level value → null, not a 500. Delete the signal-created row to
-    exercise this defensive path."""
-    PropertySettings.objects.update_or_create(property=property_, defaults={"currency": None})
-    GroupSettings.objects.filter(group=property_.group).delete()
-
+    """No property currency resolves to null, not a blank string."""
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
     assert response.status_code == 200, response.content
@@ -197,10 +181,10 @@ def test_get_settings_query_count_includes_currency_chain(
     location: PropertyLocation,
     eur: Currency,
 ) -> None:
-    """The group-fallback currency leg is select_related, so resolving
-    `currency_code` from the group adds no per-request SELECT. Pin the count so
-    a dropped `select_related` (the N+1 regression) is caught."""
-    GroupSettings.objects.update_or_create(group=property_.group, defaults={"currency": eur})
+    """The currency leg is select_related, so resolving `currency_code` adds
+    no per-request SELECT. Pin the count so a dropped `select_related` (the
+    N+1 regression) is caught."""
+    PropertySettings.objects.update_or_create(property=property_, defaults={"currency": eur})
     api_client.force_login(staff)
     # Warm the request so the PropertySettings `get_or_create` is a SELECT.
     api_client.get(f"/api/v1/properties/{property_.pk}/settings")
@@ -327,8 +311,8 @@ def test_patch_settings_invalid_calendar_url_returns_400(
 #
 # The rate-band form derives the net/gross counterpart on display (never
 # persisting it — that would double-count against the BUG-009 engine carve-out).
-# The math needs three group-resolved inputs the settings endpoint surfaces
-# read-only beside `currency_code`: the property's *default* basis
+# The math needs three inputs the settings endpoint surfaces read-only beside
+# `currency_code`: the property's *default* basis
 # (`prices_entered_as_effective`), the effective commission, and the effective
 # tax policy.
 
@@ -347,10 +331,10 @@ def test_prices_entered_as_effective_uses_property_level(
 
 
 @pytest.mark.django_db
-def test_prices_entered_as_effective_falls_back_to_group_default(
+def test_prices_entered_as_effective_defaults_to_gross(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:
-    """Property null → the GroupSettings floor, which defaults to GROSS."""
+    """Property null → GROSS (the hardcoded default basis)."""
     PropertySettings.objects.update_or_create(
         property=property_, defaults={"prices_entered_as": None}
     )
@@ -379,10 +363,11 @@ def test_rate_entry_commission_reflects_property_level(
 
 
 @pytest.mark.django_db
-def test_rate_entry_commission_falls_back_to_group(
+def test_rate_entry_commission_null_columns_resolve_to_policy_floor(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:
-    """Null property-level commission inherits the group floor."""
+    """Null commission columns resolve to the policy floor (percent / 0) —
+    group values are never consulted (GAP-070)."""
     GroupFinance.objects.update_or_create(
         group=property_.group,
         defaults={
@@ -397,27 +382,22 @@ def test_rate_entry_commission_falls_back_to_group(
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
     assert response.status_code == 200, response.content
-    assert response.json()["commission"] == {"calculation_type": "fixed", "amount": "500.00"}
+    assert response.json()["commission"] == {"calculation_type": "percent", "amount": "0"}
 
 
 @pytest.mark.django_db
-def test_rate_entry_commission_present_without_property_finance_row(
+def test_rate_entry_commission_null_without_property_finance_row(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:
-    """No PropertyFinance row at all still resolves to the group floor (the
-    signal-seeded GroupFinance) — not null, not a 500."""
-    GroupFinance.objects.update_or_create(
-        group=property_.group,
-        defaults={
-            "commission_calculation_type": CommissionCalcType.PERCENT,
-            "commission_amount": Decimal("20.00"),
-        },
-    )
+    """No PropertyFinance row at all → null commission/tax ("not configured"),
+    not a 500. Real properties always have a row post-GAP-070 (creation
+    snapshot + freeze migration); this is the factory/legacy edge."""
     assert not PropertyFinance.objects.filter(property=property_).exists()
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
     assert response.status_code == 200, response.content
-    assert response.json()["commission"] == {"calculation_type": "percent", "amount": "20.00"}
+    assert response.json()["commission"] is None
+    assert response.json()["tax"] is None
 
 
 @pytest.mark.django_db

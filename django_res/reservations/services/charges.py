@@ -132,11 +132,10 @@ def booking_charge_breakdown(booking: Booking) -> dict[str, Any]:
 def effective_commission_for(booking: Booking) -> dict[str, Any] | None:
     """Resolve the booking property's effective commission config.
 
-    Tolerates missing `PropertyFinance` / `GroupFinance` rows
-    (legacy/imported data) by returning None; any other failure is a real
-    bug and propagates.
+    Tolerates a missing `PropertyFinance` row (legacy/imported data) by
+    returning None; any other failure is a real bug and propagates.
     """
-    from properties.models import GroupFinance, PropertyFinance
+    from properties.models import PropertyFinance
 
     prop = booking.property
     if prop is None:
@@ -145,12 +144,7 @@ def effective_commission_for(booking: Booking) -> dict[str, Any] | None:
         finance = prop.finance
     except PropertyFinance.DoesNotExist:
         return None
-    try:
-        return finance.effective_commission()
-    except GroupFinance.DoesNotExist:
-        # `effective()` walks property.group.finance for the fallback;
-        # legacy/imported groups may not have one.
-        return None
+    return finance.effective_commission()
 
 
 class OwnerEffect(NamedTuple):

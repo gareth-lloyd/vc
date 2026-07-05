@@ -10,7 +10,8 @@ from rest_framework import serializers
 
 from accounts.models import User
 from core.api.permissions import NON_OPERATOR_ASSIGNEE_MSG, is_assignable_operator
-from properties.models import GroupSettings, PropertyFinance, PropertySettings
+from properties.enums import PriceBasis
+from properties.models import PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
 from reservations.serializers._contact_reads import contact_email, contact_name
 from reservations.services.charges import charges_total_for, effective_commission_for, owner_effect
@@ -145,9 +146,9 @@ class BookingDetailSerializer(BookingListSerializer):
 
     # ------------------------------------------------------------------
     # Owner-tab payload — sourced from `property.finance.contact` and the
-    # `PropertyFinance.effective()` property→group resolver. Both fields
-    # tolerate the (very real) cases where `PropertyFinance` is missing or
-    # has no contact assigned.
+    # `PropertyFinance.effective_*()` resolvers. Both fields tolerate the
+    # (very real) cases where `PropertyFinance` is missing or has no contact
+    # assigned.
     # ------------------------------------------------------------------
     @staticmethod
     def _finance(obj: Booking) -> Any:
@@ -201,8 +202,7 @@ class BookingDetailSerializer(BookingListSerializer):
         return {
             "calculation_type": commission["calculation_type"] or None,
             "amount": f"{amount:.2f}" if amount is not None else None,
-            # `effective()` returns "" for empty strings (its "no own value"
-            # heuristic falls through to the group default). Coerce None → "".
+            # The note is a blank-capable TextField; coerce None → "".
             "note": commission["note"] or "",
         }
 
@@ -214,11 +214,12 @@ class BookingDetailSerializer(BookingListSerializer):
     # ------------------------------------------------------------------
     @staticmethod
     def _effective_prices_entered_as(obj: Booking) -> str | None:
-        """Resolve the effective `prices_entered_as` for the booking's property.
+        """Resolve the `prices_entered_as` basis for the booking's property.
 
-        Walks PropertySettings → GroupSettings via the `effective()` resolver.
-        Returns None when neither row exists (legacy/import edge case);
-        callers treat None as "unknown — let the UI fall back to gross".
+        Reads `PropertySettings.prices_entered_as` directly, defaulting a
+        NULL to GROSS (the pre-GAP-070 group-floor default). Returns None
+        only when no settings row exists (legacy/import edge case); callers
+        treat None as "unknown — let the UI fall back to gross".
         """
         prop = obj.property
         if prop is None:
@@ -226,15 +227,8 @@ class BookingDetailSerializer(BookingListSerializer):
         try:
             settings_ = prop.settings
         except PropertySettings.DoesNotExist:
-            try:
-                return prop.group.settings.prices_entered_as
-            except GroupSettings.DoesNotExist:
-                return None
-        try:
-            value = settings_.effective("prices_entered_as")
-        except GroupSettings.DoesNotExist:
-            return settings_.prices_entered_as
-        return value or None
+            return None
+        return settings_.prices_entered_as or PriceBasis.GROSS.value
 
     def get_prices_entered_as(self, obj: Booking) -> str | None:
         return self._effective_prices_entered_as(obj)

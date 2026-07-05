@@ -36,8 +36,8 @@ def test_effective_day_from_property_settings(property_: Property) -> None:
     assert ChangeoverService.required_weekday(property_, WEDNESDAY) == 5  # Saturday
 
 
-def test_effective_day_defaults_to_group_any(property_: Property) -> None:
-    # No PropertySettings row; group default is ANY (unconstrained).
+def test_effective_day_defaults_to_any(property_: Property) -> None:
+    # No PropertySettings row → ANY (unconstrained).
     assert ChangeoverService.effective_day(property_, WEDNESDAY) == PrefilledChangeOverDay.ANY.value
     assert ChangeoverService.required_weekday(property_, WEDNESDAY) is None
 

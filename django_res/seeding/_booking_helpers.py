@@ -172,9 +172,7 @@ def create_one_booking(
         if line is None:
             raise RuntimeError("QuotationService produced no lines")
         quotation.send()
-        requires_pre_approval = bool(
-            cast(Any, prop.settings).effective("bookings_require_pre_approval")
-        )
+        requires_pre_approval = bool(prop.settings.bookings_require_pre_approval)
         if not requires_pre_approval:
             quotation.accept(line)
         booking = BookingService.create_from_quotation_line(line, terms_version=terms)

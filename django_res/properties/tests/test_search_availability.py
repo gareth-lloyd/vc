@@ -266,16 +266,16 @@ def test_search_specific_changeover_still_matches(
 
 
 @pytest.mark.django_db
-def test_search_changeover_falls_back_to_group_default(
+def test_search_changeover_null_matches_every_weekday(
     api_client: APIClient,
     staff: User,
     category: PropertyCategory,
     region: Region,
 ) -> None:
     """When `PropertySettings.changeover_day` is null, the effective value is
-    the group's `changeover_day` (default `ANY` from `GroupSettings`)."""
+    `ANY` — the property must not vanish from weekday-filtered search."""
     inherited = _make_property(
-        slug="inherits-from-group",
+        slug="null-changeover",
         category=category,
         region=region,
         changeover_day=None,

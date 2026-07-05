@@ -36,16 +36,16 @@ logger = structlog.get_logger(__name__)
 
 
 def _resolve_default_expiry(property: Any) -> datetime:
-    """Resolve the default hold expiry from the property's effective settings.
+    """Resolve the default hold expiry from the property's settings.
 
-    Lazily ensures a `PropertySettings` row exists so the inheritance chain
-    resolves cleanly to the group default when no per-property override is
-    set. The group fallback (48 hours by default) means this never raises.
+    Lazily ensures a `PropertySettings` row exists; a NULL
+    `hold_duration_hours` falls back to 48 (the pre-GAP-070 group-floor
+    default), so this never raises.
     """
     from properties.models import PropertySettings
 
     settings, _ = PropertySettings.objects.get_or_create(property=property)
-    hours = settings.effective("hold_duration_hours")
+    hours = settings.hold_duration_hours if settings.hold_duration_hours is not None else 48
     return timezone.now() + timedelta(hours=hours)
 
 
@@ -209,7 +209,7 @@ class HoldService:
         """Place a live hold; raises `HoldUnavailable` if one already overlaps.
 
         When `expires_at` is omitted, defaults to
-        `now() + property.settings.effective("hold_duration_hours")`. Callers
+        `now() + property.settings.hold_duration_hours` (48 when unset). Callers
         may always pass an explicit value to override the per-villa default.
 
         Pass `never_expires=True` for indefinite blocks (owner / maintenance):

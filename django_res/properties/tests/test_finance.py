@@ -95,9 +95,17 @@ def test_property_group_resave_does_not_replace_group_finance() -> None:
     assert group.finance.pk == finance_pk
 
 
+# --- effective_*() resolvers (GAP-070): own fields + policy-floor fallbacks --
+#
+# Post-freeze (migration 0027) real rows carry concrete values; a NULL only
+# occurs on rows created outside `snapshot_defaults` (factories, lazy
+# `get_or_create`) and resolves to the pre-GAP-070 policy-floor default.
+# Group-level values are never consulted.
+
+
 @pytest.mark.django_db
 def test_effective_commission_returns_property_value_when_set(prop: Property) -> None:
-    # Group floor.
+    # Group values must be IGNORED — the resolver reads own fields only.
     gf = prop.group.finance
     gf.commission_calculation_type = CommissionCalcType.PERCENT
     gf.commission_amount = Decimal("15.00")
@@ -120,9 +128,10 @@ def test_effective_commission_returns_property_value_when_set(prop: Property) ->
 
 
 @pytest.mark.django_db
-def test_effective_commission_falls_back_to_group_when_property_null(prop: Property) -> None:
+def test_effective_commission_null_falls_back_to_policy_floor(prop: Property) -> None:
+    """NULL columns resolve to the policy floor, NOT the group's values."""
     gf = prop.group.finance
-    gf.commission_calculation_type = CommissionCalcType.PERCENT
+    gf.commission_calculation_type = CommissionCalcType.FIXED
     gf.commission_amount = Decimal("12.50")
     gf.commission_note = "group default"
     gf.save()
@@ -132,19 +141,17 @@ def test_effective_commission_falls_back_to_group_when_property_null(prop: Prope
     result = prop.finance.effective_commission()
     assert result == {
         "calculation_type": CommissionCalcType.PERCENT,
-        "amount": Decimal("12.50"),
-        "note": "group default",
+        "amount": Decimal("0"),
+        "note": "",
     }
 
 
 @pytest.mark.django_db
-def test_effective_commission_empty_string_field_falls_back_to_group(prop: Property) -> None:
-    """Empty string at property level → inherit from group, same as null.
-
-    Exercises both branches of the generic `effective()` resolver:
-    `is None` for nullable numerics/booleans, and empty-string fallback
-    for `TextField` / `CharField` columns.
-    """
+def test_effective_commission_empty_note_is_a_real_value(prop: Property) -> None:
+    """An empty-string note is a genuine own value (post-freeze semantics) —
+    it is returned as-is, never resolved elsewhere."""
+    # Group values are inert — seeded only as contrast (pre-GAP-070 a blank
+    # note inherited "group note when prop blank"; now it must stay "").
     gf = prop.group.finance
     gf.commission_note = "group note when prop blank"
     gf.commission_amount = Decimal("9.00")
@@ -152,33 +159,27 @@ def test_effective_commission_empty_string_field_falls_back_to_group(prop: Prope
 
     PropertyFinance.objects.create(
         property=prop,
-        commission_note="",  # explicit blank text → inherit
-        commission_amount=None,  # explicit null numeric → inherit
+        commission_note="",  # blank text stays blank
+        commission_amount=None,  # null numeric → policy floor 0
     )
 
     result = prop.finance.effective_commission()
-    assert result["note"] == "group note when prop blank"
-    assert result["amount"] == Decimal("9.00")
+    assert result["note"] == ""
+    assert result["amount"] == Decimal("0")
 
 
 @pytest.mark.django_db
-def test_effective_tax_policy_returns_merged_dict(prop: Property) -> None:
-    gf = prop.group.finance
-    gf.tax_number = "GROUP-TAX-1"
-    gf.tax_is_exempt = False
-    gf.tax_percentage = Decimal("20.00")
-    gf.save()
-
+def test_effective_tax_policy_merges_own_values_and_floor(prop: Property) -> None:
     PropertyFinance.objects.create(
         property=prop,
-        tax_percentage=Decimal("5.00"),  # override
-        # tax_is_exempt left null → inherit
-        # tax_number left blank → inherit
+        tax_percentage=Decimal("5.00"),  # own value
+        # tax_is_exempt left null → floor False
+        # tax_number left blank → "" (a real value)
     )
 
     result = prop.finance.effective_tax_policy()
     assert result == {
-        "tax_number": "GROUP-TAX-1",
+        "tax_number": "",
         "is_exempt": False,
         "percentage": Decimal("5.00"),
     }
@@ -186,48 +187,32 @@ def test_effective_tax_policy_returns_merged_dict(prop: Property) -> None:
 
 @pytest.mark.django_db
 def test_effective_payment_schedule_returns_full_dict(prop: Property) -> None:
-    gf = prop.group.finance
-    gf.deposit_required = True
-    gf.deposit_calculation_type = DepositCalcType.PERCENT
-    gf.deposit_amount = Decimal("25.00")
-    gf.interim_required = True
-    gf.interim_calculation_type = DepositCalcType.PERCENT
-    gf.interim_amount = Decimal("50.00")
-    gf.days_interim_due_before_arrival = 90
-    gf.days_balance_due_before_arrival = 30
-    gf.save()
-
     PropertyFinance.objects.create(
         property=prop,
-        deposit_amount=Decimal("40.00"),  # override
+        deposit_amount=Decimal("40.00"),  # own value
+        interim_required=True,
+        interim_amount=Decimal("50.00"),
+        days_interim_due_before_arrival=90,
     )
 
     result = prop.finance.effective_payment_schedule()
     assert result == {
-        "deposit_required": True,
-        "deposit_calculation_type": DepositCalcType.PERCENT,
+        "deposit_required": True,  # floor
+        "deposit_calculation_type": DepositCalcType.PERCENT,  # floor
         "deposit_amount": Decimal("40.00"),
         "interim_required": True,
-        "interim_calculation_type": DepositCalcType.PERCENT,
+        "interim_calculation_type": DepositCalcType.PERCENT,  # floor
         "interim_amount": Decimal("50.00"),
         "days_interim_due_before_arrival": 90,
-        "days_balance_due_before_arrival": 30,
+        "days_balance_due_before_arrival": 60,  # floor
     }
 
 
 @pytest.mark.django_db
 def test_effective_security_deposit_policy_returns_full_dict(prop: Property) -> None:
-    gf = prop.group.finance
-    gf.security_deposit_required = True
-    gf.security_deposit_calculation_type = SecurityDepositCalcType.FIXED
-    gf.security_deposit_amount = Decimal("500.00")
-    gf.security_deposit_days_due_before_arrival = 14
-    gf.security_deposit_days_refunded_after_departure = 7
-    gf.security_deposit_payment_method = SecurityDepositPaymentMethod.CARD_HOLD
-    gf.save()
-
     PropertyFinance.objects.create(
         property=prop,
+        security_deposit_required=True,
         security_deposit_amount=Decimal("1000.00"),
         security_deposit_payment_method=SecurityDepositPaymentMethod.BANK_TRANSFER,
     )
@@ -235,34 +220,28 @@ def test_effective_security_deposit_policy_returns_full_dict(prop: Property) -> 
     result = prop.finance.effective_security_deposit_policy()
     assert result == {
         "required": True,
-        "calculation_type": SecurityDepositCalcType.FIXED,
+        "calculation_type": SecurityDepositCalcType.FIXED,  # floor
         "amount": Decimal("1000.00"),
-        "days_due_before_arrival": 14,
-        "days_refunded_after_departure": 7,
+        "days_due_before_arrival": 14,  # floor
+        "days_refunded_after_departure": 7,  # floor
         "payment_method": SecurityDepositPaymentMethod.BANK_TRANSFER,
     }
 
 
 @pytest.mark.django_db
 def test_effective_cancellation_policy_returns_fields(prop: Property) -> None:
-    gf = prop.group.finance
-    gf.cancellation_fee_amount = Decimal("100.00")
-    gf.cancellation_fee_percent = Decimal("25.00")
-    gf.cancellation_window_days = 30
-    gf.cancellation_notes = "group cancellation policy"
-    gf.save()
-
     PropertyFinance.objects.create(
         property=prop,
-        cancellation_fee_percent=Decimal("50.00"),  # override
+        cancellation_fee_percent=Decimal("50.00"),
+        cancellation_window_days=30,
     )
 
     result = prop.finance.effective_cancellation_policy()
     assert result == {
-        "fee_amount": Decimal("100.00"),
+        "fee_amount": Decimal("0"),  # floor
         "fee_percent": Decimal("50.00"),
         "window_days": 30,
-        "notes": "group cancellation policy",
+        "notes": "",
     }
 
 

@@ -86,13 +86,13 @@ def test_settings_currency_when_no_plans(property_: Property, gbp: Currency, eur
 
 
 @pytest.mark.django_db
-def test_group_settings_fallback_without_property_settings(
-    property_: Property, gbp: Currency, eur: Currency
-) -> None:
+def test_group_settings_never_consulted(property_: Property, gbp: Currency, eur: Currency) -> None:
+    """A group-level currency is ignored (GAP-070: no runtime inheritance) —
+    with no plans and no property currency, resolution falls to EUR."""
     group_settings = property_.group.settings
     group_settings.currency = gbp
     group_settings.save()
-    assert resolve_property_currency(property_) == gbp
+    assert resolve_property_currency(property_) == eur
 
 
 @pytest.mark.django_db

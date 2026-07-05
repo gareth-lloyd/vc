@@ -426,22 +426,17 @@ def test_modify_dates_resizes_security_deposit(booking: Booking, rate_rule: Rate
     from decimal import Decimal
 
     from payments.services.security_deposit import SecurityDepositService
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
 
-    gf, _ = GroupFinance.objects.get_or_create(group=booking.property.group)
-    gf.security_deposit_required = True
-    gf.security_deposit_amount = Decimal("10.00")
-    gf.security_deposit_calculation_type = "percent"
-    gf.security_deposit_payment_method = "card_hold"
-    gf.save(
-        update_fields=[
-            "security_deposit_required",
-            "security_deposit_amount",
-            "security_deposit_calculation_type",
-            "security_deposit_payment_method",
-        ]
+    PropertyFinance.objects.update_or_create(
+        property=booking.property,
+        defaults={
+            "security_deposit_required": True,
+            "security_deposit_amount": Decimal("10.00"),
+            "security_deposit_calculation_type": "percent",
+            "security_deposit_payment_method": "card_hold",
+        },
     )
-    PropertyFinance.objects.get_or_create(property=booking.property)
     _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
     # Re-fetch so the SD policy resolves against the finance just written, not
     # relations the fixture cached before it existed.

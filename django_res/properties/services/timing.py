@@ -28,7 +28,7 @@ def _local_datetime(property: Any, on_date: date, time_field: str) -> datetime |
     ``settings`` and ``location`` — this reads both.
     """
     try:
-        wall_clock: time | None = property.settings.effective(time_field)
+        wall_clock: time | None = getattr(property.settings, time_field)
         tz = property.location.timezone
     except (ObjectDoesNotExist, AttributeError):
         return None

@@ -4,11 +4,8 @@
 
 1. A `ChangeOverRule` whose `[starts_on, ends_on]` window contains the
    arrival date (peak-season override).
-2. Otherwise the canonical `PropertySettings.effective("changeover_day")`
-   chain (property value, falling back to the group default). When no
-   `PropertySettings` row exists, fall straight back to the group default
-   (`GroupSettings.changeover_day`, which is non-null and defaults to
-   `any`).
+2. Otherwise `PropertySettings.changeover_day`. A missing settings row or a
+   null value means unconstrained (`any`).
 
 `PrefilledChangeOverDay.ANY` means "no constraint". A non-conforming arrival
 is never rejected — `align_forward` nudges it to the next valid changeover day
@@ -55,9 +52,10 @@ class ChangeoverService:
             return rule.day
 
         try:
-            return property.settings.effective("changeover_day")
+            day = property.settings.changeover_day
         except PropertySettings.DoesNotExist:
-            return property.group.settings.changeover_day
+            return PrefilledChangeOverDay.ANY.value
+        return day or PrefilledChangeOverDay.ANY.value
 
     @staticmethod
     def weekday_for(day: str) -> int | None:

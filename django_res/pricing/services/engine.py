@@ -10,7 +10,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 
 from core.exceptions import (
@@ -581,17 +580,13 @@ class PricingEngine:
 
         Reuses `PropertySettings.min_nights_rental` (GAP-056 decision 4 — no new
         Property field). The hand-built pricing/reservations test properties have
-        no `PropertySettings` / `GroupSettings` row, so both the reverse accessor
-        and `effective()`'s group dereference can raise; every failure falls back
-        to the legacy default of 1.
+        no `PropertySettings` row, so the reverse accessor can raise; a missing
+        row or a NULL value falls back to the legacy default of 1.
         """
         settings = getattr(property, "settings", None)
         if settings is None:
             return 1
-        try:
-            value = settings.effective("min_nights_rental")
-        except (AttributeError, ObjectDoesNotExist):
-            value = settings.min_nights_rental
+        value = settings.min_nights_rental
         return value if value is not None else 1
 
     @classmethod

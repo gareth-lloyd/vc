@@ -32,20 +32,19 @@ def test_create_for_booking__is_idempotent(booking: Any, property_: Any) -> None
     """
     from decimal import Decimal
 
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
 
-    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
-    gf.security_deposit_required = True
-    gf.security_deposit_amount = Decimal("500.00")
-    gf.security_deposit_calculation_type = "fixed"
-    gf.save(
+    finance, _ = PropertyFinance.objects.get_or_create(property=property_)
+    finance.security_deposit_required = True
+    finance.security_deposit_amount = Decimal("500.00")
+    finance.security_deposit_calculation_type = "fixed"
+    finance.save(
         update_fields=[
             "security_deposit_required",
             "security_deposit_amount",
             "security_deposit_calculation_type",
         ]
     )
-    PropertyFinance.objects.get_or_create(property=property_)
     from reservations.models import Booking
 
     booking = Booking.objects.get(pk=booking.pk)
@@ -67,21 +66,20 @@ def test_create_for_booking__percent_base_includes_charge_items(
     deposit/balance schedule uses — not bare `balance_due`. 10% of
     (1400 + 200) = 160, not 140.
     """
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
     from reservations.models import Booking, BookingChargeItem
 
-    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
-    gf.security_deposit_required = True
-    gf.security_deposit_amount = Decimal("10.00")
-    gf.security_deposit_calculation_type = "percent"
-    gf.save(
+    finance, _ = PropertyFinance.objects.get_or_create(property=property_)
+    finance.security_deposit_required = True
+    finance.security_deposit_amount = Decimal("10.00")
+    finance.security_deposit_calculation_type = "percent"
+    finance.save(
         update_fields=[
             "security_deposit_required",
             "security_deposit_amount",
             "security_deposit_calculation_type",
         ]
     )
-    PropertyFinance.objects.get_or_create(property=property_)
     booking = Booking.objects.get(pk=booking.pk)
     BookingChargeItem.objects.create(
         booking=booking, label="Heating", amount=Decimal("200.00"), currency=gbp

@@ -665,14 +665,14 @@ def test_owner_and_commission_null_when_finance_missing(
 
 
 @pytest.mark.django_db
-def test_owner_commission_falls_back_to_group_finance(
+def test_owner_commission_null_columns_resolve_to_policy_floor(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:
-    # Property finance with everything null on commission — should fall back
-    # to GroupFinance, which `properties.signals` auto-creates with defaults.
+    # Property finance with everything null on commission resolves to the
+    # policy floor (percent / 0) — group values are never consulted (GAP-070).
     _make_finance(booking.property)
     group_finance = booking.property.group.finance
-    group_finance.commission_calculation_type = CommissionCalcType.PERCENT.value
+    group_finance.commission_calculation_type = CommissionCalcType.FIXED.value
     group_finance.commission_amount = Decimal("8.00")
     group_finance.commission_note = "Group default"
     group_finance.save()
@@ -683,29 +683,9 @@ def test_owner_commission_falls_back_to_group_finance(
     assert response.status_code == 200
     assert response.data["commission"] == {
         "calculation_type": "percent",
-        "amount": "8.00",
-        "note": "Group default",
+        "amount": "0.00",
+        "note": "",
     }
-
-
-@pytest.mark.django_db
-def test_owner_commission_null_when_group_finance_missing(
-    api_client: APIClient, staff: User, booking: Booking
-) -> None:
-    """Legacy/imported groups can lack a GroupFinance row. PropertyFinance.
-    effective_commission() raises GroupFinance.DoesNotExist when it tries
-    the group fallback; the serializer must catch it and return None
-    rather than 500.
-    """
-    _make_finance(booking.property)
-    # Drop the auto-created GroupFinance to simulate the legacy-import case.
-    booking.property.group.finance.delete()
-
-    api_client.force_login(staff)
-    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
-
-    assert response.status_code == 200
-    assert response.data["commission"] is None
 
 
 @pytest.mark.django_db
@@ -828,10 +808,11 @@ def test_owner_booking_summary_renders_gross_when_prices_entered_as_gross(
 
 
 @pytest.mark.django_db
-def test_owner_booking_summary_resolves_basis_via_group_fallback(
+def test_owner_booking_summary_null_basis_defaults_to_gross(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:
-    """Property-level NULL `prices_entered_as` falls back to group default."""
+    """Property-level NULL `prices_entered_as` defaults to GROSS — group
+    values are never consulted (GAP-070)."""
     _set_prices_entered_as(booking.property, None)
     group_settings = booking.property.group.settings
     group_settings.prices_entered_as = PriceBasis.NET.value
@@ -844,7 +825,7 @@ def test_owner_booking_summary_resolves_basis_via_group_fallback(
     response = api_client.get(f"/api/v1/bookings/{booking.pk}")
 
     assert response.status_code == 200
-    assert response.data["prices_entered_as"] == PriceBasis.NET.value
+    assert response.data["prices_entered_as"] == PriceBasis.GROSS.value
 
 
 @pytest.mark.django_db

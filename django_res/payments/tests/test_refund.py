@@ -229,13 +229,12 @@ def _configure_cancellation(
     fee_amount: Decimal,
     fee_percent: Decimal,
 ) -> None:
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
 
-    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
-    gf.cancellation_fee_amount = fee_amount
-    gf.cancellation_fee_percent = fee_percent
-    gf.save(update_fields=["cancellation_fee_amount", "cancellation_fee_percent"])
-    PropertyFinance.objects.get_or_create(property=property_)
+    finance, _ = PropertyFinance.objects.get_or_create(property=property_)
+    finance.cancellation_fee_amount = fee_amount
+    finance.cancellation_fee_percent = fee_percent
+    finance.save(update_fields=["cancellation_fee_amount", "cancellation_fee_percent"])
 
 
 @pytest.mark.django_db

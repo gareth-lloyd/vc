@@ -38,15 +38,12 @@ def default_currency() -> Currency | None:
 
 
 def settings_currency(property: Any) -> Currency | None:
-    """The `PropertySettings.effective("currency")` chain, tolerant of a
-    property with no settings row (falls to the group's settings)."""
+    """`PropertySettings.currency`, tolerant of a property with no settings
+    row. Stays nullable — there is no runtime currency fallback (GAP-070)."""
     try:
-        return property.settings.effective("currency")
+        return property.settings.currency
     except ObjectDoesNotExist:
-        try:
-            return property.group.settings.currency
-        except ObjectDoesNotExist:
-            return None
+        return None
 
 
 def pick_preferred_plan(plans: Sequence[RatePlan], property: Any) -> RatePlan | None:
@@ -77,8 +74,7 @@ def resolve_property_currency(property: Any) -> Currency | None:
        most recent wins (after a currency switch this is the villa's *current*
        currency; a pre-loaded future-dated plan — a scheduled switch — must
        not dictate today's currency);
-    2. else the `PropertySettings.effective("currency")` chain (property,
-       falling back to its group);
+    2. else the property's own `PropertySettings.currency`;
     3. else EUR via `default_currency()`.
 
     Shared by the pricing engine's projection seam, the data-migration

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date
 
-from django.db.models import F, Q, QuerySet
+from django.db.models import F, Q, QuerySet, Value
 from django.db.models.functions import Coalesce
 from django_filters import rest_framework as filters
 
@@ -92,15 +92,16 @@ class PropertyFilter(filters.FilterSet):
         """Match the requested weekday OR a property whose effective changeover
         day is `ANY`.
 
-        Effective value resolves `PropertySettings.changeover_day` with fallback
-        to the group's `GroupSettings.changeover_day` (which is non-null with
-        default `ANY`), mirroring `PropertySettings.effective("changeover_day")`.
+        The Coalesce keeps null-changeover (and settings-row-less) properties
+        matching every weekday filter — a bare field ref would drop them from
+        the results (`NULL = 'sat'` is not true), mirroring
+        `ChangeoverService.effective_day`'s null → ANY fallback.
         """
         any_value = PrefilledChangeOverDay.ANY.value
         return qs.annotate(
             effective_changeover_day=Coalesce(
                 F("settings__changeover_day"),
-                F("group__settings__changeover_day"),
+                Value(any_value),
             ),
         ).filter(
             Q(effective_changeover_day=any_value) | Q(effective_changeover_day=value),

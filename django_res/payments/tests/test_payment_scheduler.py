@@ -11,14 +11,13 @@ from payments.enums import PaymentPurpose, PaymentStatus, SecurityDepositStatus
 from payments.models import Payment, SecurityDeposit
 from payments.services import PaymentScheduler
 from properties.models import Property
-from properties.models.finance import GroupFinance, PropertyFinance
+from properties.models.finance import PropertyFinance
 
 
-def _ensure_finance(property_: Property) -> GroupFinance:
-    """Build both `GroupFinance` and the per-property override row."""
-    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
-    PropertyFinance.objects.get_or_create(property=property_)
-    return gf
+def _ensure_finance(property_: Property) -> PropertyFinance:
+    """Build the per-property finance row (policy lives on it, GAP-070)."""
+    finance, _ = PropertyFinance.objects.get_or_create(property=property_)
+    return finance
 
 
 @pytest.mark.django_db
@@ -26,11 +25,11 @@ def test_create_for_booking__creates_deposit_balance_and_security_deposit(
     booking: Any,
     property_: Property,
 ) -> None:
-    gf = _ensure_finance(property_)
-    gf.security_deposit_required = True
-    gf.security_deposit_amount = Decimal("500.00")
-    gf.security_deposit_calculation_type = "fixed"
-    gf.save(
+    finance = _ensure_finance(property_)
+    finance.security_deposit_required = True
+    finance.security_deposit_amount = Decimal("500.00")
+    finance.security_deposit_calculation_type = "fixed"
+    finance.save(
         update_fields=[
             "security_deposit_required",
             "security_deposit_amount",
@@ -105,11 +104,11 @@ def test_create_for_booking__conserves_total_for_zero_dp_currency(
     from reservations.models import Booking
 
     jpy = Currency.objects.create(code="JPY", name="Japanese yen", symbol="¥", decimal_places=0)
-    gf = _ensure_finance(property_)
-    gf.deposit_required = True
-    gf.deposit_calculation_type = "percent"
-    gf.deposit_amount = Decimal("50")
-    gf.save(
+    finance = _ensure_finance(property_)
+    finance.deposit_required = True
+    finance.deposit_calculation_type = "percent"
+    finance.deposit_amount = Decimal("50")
+    finance.save(
         update_fields=[
             "deposit_required",
             "deposit_calculation_type",
@@ -136,9 +135,9 @@ def test_create_for_booking__skips_security_deposit_when_not_required(
     booking: Any,
     property_: Property,
 ) -> None:
-    gf = _ensure_finance(property_)
-    gf.security_deposit_required = False
-    gf.save(update_fields=["security_deposit_required"])
+    finance = _ensure_finance(property_)
+    finance.security_deposit_required = False
+    finance.save(update_fields=["security_deposit_required"])
     from reservations.models import Booking
 
     booking = Booking.objects.get(pk=booking.pk)
@@ -160,11 +159,11 @@ def test_create_for_booking__is_idempotent(
     explicit callers, so a re-entry (signal re-fire, retry) must be a no-op
     rather than minting a second deposit/balance/SD set.
     """
-    gf = _ensure_finance(property_)
-    gf.security_deposit_required = True
-    gf.security_deposit_amount = Decimal("500.00")
-    gf.security_deposit_calculation_type = "fixed"
-    gf.save(
+    finance = _ensure_finance(property_)
+    finance.security_deposit_required = True
+    finance.security_deposit_amount = Decimal("500.00")
+    finance.security_deposit_calculation_type = "fixed"
+    finance.save(
         update_fields=[
             "security_deposit_required",
             "security_deposit_amount",

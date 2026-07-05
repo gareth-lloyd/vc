@@ -13,14 +13,13 @@ from payments.enums import PaymentPurpose, PaymentStatus
 from payments.models import Payment
 from payments.services import PaymentScheduler
 from properties.models import Property
-from properties.models.finance import GroupFinance, PropertyFinance
+from properties.models.finance import PropertyFinance
 from reservations.models import Booking, BookingChargeItem, BookingEvent
 
 
-def _ensure_finance(property_: Property) -> GroupFinance:
-    gf, _ = GroupFinance.objects.get_or_create(group=property_.group)
+def _ensure_finance(property_: Property) -> None:
+    """All-default finance row — the scheduler reads the policy floor."""
     PropertyFinance.objects.get_or_create(property=property_)
-    return gf
 
 
 @pytest.fixture

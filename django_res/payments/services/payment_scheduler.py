@@ -1,8 +1,8 @@
 """`PaymentScheduler` — generates the per-booking payment row schedule.
 
 Called at `Booking` creation. Reads the effective payment-schedule and
-security-deposit policy from `PropertyFinance` (with `GroupFinance`
-fallback), sizes each row, and writes them as `Payment` rows in PENDING.
+security-deposit policy from `PropertyFinance` (NULLs resolve to the policy
+floor), sizes each row, and writes them as `Payment` rows in PENDING.
 The security-deposit workflow row, if required, is opened by
 `SecurityDepositService.create_for_booking()` (delegated here so the
 scheduler stays focused on the deposit/interim/balance track).

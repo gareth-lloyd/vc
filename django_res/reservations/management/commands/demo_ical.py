@@ -45,7 +45,6 @@ ORG_NAME = "iCal Demo Org"
 PROPERTY_SLUG = "ical-demo-villa"
 REGION_SLUG = "ical-demo-region"
 CATEGORY_SLUG = "ical-demo-category"
-GROUP_NAME = "iCal Demo Group"
 GUEST_EMAIL = "ical-demo-guest@example.com"
 TERMS_VERSION = "ical-demo-terms"
 DEFAULT_OWNER_EMAIL = "demo.owner@example.com"
@@ -325,13 +324,12 @@ def _demo_property() -> Property:
 
     On a seeded DB the slug points at the `ical_demo` seed_dev property, so the
     demo runs against realistic data; on an empty DB (tests) this builds a
-    self-contained property + geo/group graph under the same slug.
+    self-contained property + geo graph under the same slug.
     """
     from properties.models import (
         Country,
         Property,
         PropertyCategory,
-        PropertyGroup,
         Region,
     )
 
@@ -347,14 +345,12 @@ def _demo_property() -> Property:
         slug=CATEGORY_SLUG,
         defaults={"name": "iCal Demo Villa"},
     )
-    group, _ = PropertyGroup.objects.get_or_create(name=GROUP_NAME)
     prop, _ = Property.objects.get_or_create(
         slug=PROPERTY_SLUG,
         defaults={
             "name": "iCal Demo Villa",
             "display_name": "iCal Demo Villa",
             "category": category,
-            "group": group,
             "region": region,
         },
     )
@@ -485,7 +481,6 @@ def _delete_demo_data() -> int:
     from properties.models import (
         Property,
         PropertyCategory,
-        PropertyGroup,
         Region,
     )
     from reservations.models import (
@@ -621,5 +616,4 @@ def _delete_demo_data() -> int:
 
         Region.objects.filter(slug=REGION_SLUG).delete()
         PropertyCategory.objects.filter(slug=CATEGORY_SLUG).delete()
-        PropertyGroup.objects.filter(name=GROUP_NAME).delete()
     return total

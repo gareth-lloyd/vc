@@ -323,9 +323,8 @@ def test_post_charge_resizes_pending_schedule_end_to_end(
     from payments.enums import PaymentPurpose
     from payments.models import Payment
     from payments.services import PaymentScheduler
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
 
-    GroupFinance.objects.get_or_create(group=booking.property.group)
     PropertyFinance.objects.get_or_create(property=booking.property)
     fresh = Booking.objects.get(pk=booking.pk)
     PaymentScheduler.create_for_booking(fresh)

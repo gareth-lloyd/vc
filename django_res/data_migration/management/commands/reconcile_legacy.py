@@ -56,7 +56,7 @@ from properties.models.features import (
 from properties.models.finance import PropertyFinance
 from properties.models.geo import Country, NearbyPlaceType, PropertyNearbyPlace, Region
 from properties.models.images import PropertyImage
-from properties.models.property import Property, PropertyCategory, PropertyGroup
+from properties.models.property import Property, PropertyCategory
 from properties.models.rooms import Room
 from reservations.models.booking import Booking
 from reservations.models.charge_item import BookingChargeItem
@@ -137,12 +137,6 @@ _CHECKS: list[_Check] = [
         loaded_count=lambda m: m._default_manager.filter(org_type=OrgType.AGENCY).count(),
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaGroup WHERE DeletedAt IS NULL",
-        PropertyGroup,
-        "PropertyGroup",
-        expected_gap=-1,  # unknown_group sentinel row (no legacy origin).
-    ),
-    _Check(
         "SELECT COUNT(*) FROM VillaMaster WHERE DeletedAt IS NULL",
         Property,
         "Property",
@@ -186,7 +180,7 @@ _CHECKS: list[_Check] = [
         RatePlan,
         "RatePlan",
         # Seasons whose VillaId doesn't resolve, or with no resolvable currency
-        # (none on the season's rates and none configured on the property/group).
+        # (none on the season's rates and none configured on the property).
         expected_gap=67,
     ),
     _Check(
@@ -256,8 +250,11 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaFinance WHERE VillaId IS NOT NULL",
         PropertyFinance,
         "PropertyFinance",
-        # 413 contact-default rows mirror onto GroupFinance (no 1:1 mapping);
-        # 676 parent-child override rows have no schema equivalent.
+        # 413 contact-default rows are per-contact templates, not per-villa
+        # rows (the unit-6 owner-contact fallback applies them to villas with
+        # no VillaFinance row of their own — those villas count under the
+        # VillaId IS NOT NULL universe either way); 676 parent-child override
+        # rows have no schema equivalent.
         expected_gap=1236,
     ),
     _Check(

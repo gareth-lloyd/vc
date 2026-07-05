@@ -1,4 +1,4 @@
-"""PropertyGroup + Property + Location + Capacity + Settings + Description loaders.
+"""Property + Location + Capacity + Settings + Description loaders.
 
 The Property loader is the big one: a single VillaMaster row creates five
 Django rows (Property + four 1:1 children). Description is multi-row per
@@ -16,7 +16,6 @@ from django.utils.text import slugify
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.loaders.sentinels import (
     unknown_country,
-    unknown_group,
     unknown_region,
 )
 from pricing.models.currency import Currency
@@ -33,53 +32,9 @@ from properties.models.descriptions import PropertyDescription
 from properties.models.features import Collection, CollectionMembership
 from properties.models.geo import Region
 from properties.models.location import PropertyLocation
-from properties.models.property import Property, PropertyCategory, PropertyGroup
-from properties.models.settings import GroupSettings, PropertySettings
+from properties.models.property import Property, PropertyCategory
+from properties.models.settings import PropertySettings
 from properties.services.location import location_defaults
-
-
-class PropertyGroupLoader(BaseLoader):
-    name = "property_group"
-    target_model = PropertyGroup
-    legacy_query = (
-        "SELECT Id, Name, Description, IsActive=1 FROM VillaGroup WHERE DeletedAt IS NULL"
-    )
-
-    def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        name = (row.get("Name") or "").strip()[:128]
-        if not name:
-            return None
-        # Disambiguate same-name groups
-        if PropertyGroup.objects.filter(name=name).exclude(legacy_id=str(row["Id"])).exists():
-            name = f"{name} ({row['Id']})"
-        return {
-            "name": name,
-            "description": (row.get("Description") or "").strip(),
-            "is_active": True,
-        }
-
-    def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
-        super()._process_row(row, report)
-        # Ensure a GroupSettings exists for each group (one-to-one PK,
-        # required for Property.group inheritance lookups).
-        legacy_id = row.get(self.legacy_pk_column)
-        if legacy_id is None:
-            return
-        group = PropertyGroup.objects.filter(legacy_id=str(legacy_id)).first()
-        if group is None:
-            return
-        GroupSettings.objects.get_or_create(group=group)
-        self._group_finance_loader().sync_one(group, report)
-
-    def _group_finance_loader(self) -> Any:
-        # Reused across rows so its internal legacy-template cache survives.
-        # Local import to break the data_migration.loaders.finance cycle.
-        if not hasattr(self, "_group_finance_loader_cache"):
-            from data_migration.loaders.finance import GroupFinanceLoader
-
-            self._group_finance_loader_cache = GroupFinanceLoader()
-        return self._group_finance_loader_cache
-
 
 _PROPERTY_STATUS_MAP = {
     # VillaStatus.Id → PropertyStatus
@@ -126,7 +81,7 @@ class PropertyLoader(BaseLoader):
         "PostCode, LicenceNumber, Latitude, Longitude, "
         "Category, Channel, Guests, AdditionalGuests, Bedrooms, Ensuites, "
         "Bathrooms, Size, "
-        "RegionId, GroupId, ViilaStatus, "
+        "RegionId, ViilaStatus, "
         "SettingAvailabilityStatusId, SettingIsBookingsRequirePreApproval, "
         "SettingPricesEnteredTypeId, SettingCurrencyId, "
         "SettingCheckInTime, SettingCheckOutTime, SettingChangeoverDayId, "
@@ -140,7 +95,6 @@ class PropertyLoader(BaseLoader):
             return None
 
         region = Region.objects.filter(legacy_id=str(row.get("RegionId") or "")).first()
-        group = PropertyGroup.objects.filter(legacy_id=str(row.get("GroupId") or "")).first()
         category = (
             PropertyCategory.objects.filter(legacy_id=str(row["Category"])).first()
             if row.get("Category")
@@ -148,8 +102,6 @@ class PropertyLoader(BaseLoader):
         )
         if region is None:
             region = self._sentinel_region()
-        if group is None:
-            group = self._sentinel_group()
         if category is None:
             # Fall back to first available; create a sentinel if none exist.
             category = PropertyCategory.objects.first()
@@ -174,7 +126,6 @@ class PropertyLoader(BaseLoader):
             ),
             "channel": PropertyChannel.DIRECT,
             "category": category,
-            "group": group,
             "region": region,
         }
 
@@ -198,11 +149,6 @@ class PropertyLoader(BaseLoader):
         if not hasattr(self, "_sentinel_region_cache"):
             self._sentinel_region_cache = unknown_region(unknown_country())
         return self._sentinel_region_cache
-
-    def _sentinel_group(self) -> PropertyGroup:
-        if not hasattr(self, "_sentinel_group_cache"):
-            self._sentinel_group_cache = unknown_group()
-        return self._sentinel_group_cache
 
     def _write_location(self, prop: Property, row: dict[str, Any]) -> None:
         PropertyLocation.objects.update_or_create(

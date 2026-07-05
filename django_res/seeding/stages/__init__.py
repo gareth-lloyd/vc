@@ -22,7 +22,6 @@ from seeding.stages import (
     extra_quotations,  # noqa: F401
     features,  # noqa: F401
     gallery,  # noqa: F401
-    groups,  # noqa: F401
     guest_preferences,  # noqa: F401
     ical_demo,  # noqa: F401
     integrations,  # noqa: F401

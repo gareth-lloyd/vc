@@ -22,7 +22,6 @@ from properties.models import (
     Property,
     PropertyCategory,
     PropertyContactAssignment,
-    PropertyGroup,
     Region,
 )
 from reservations.models import OwnerBlock
@@ -38,13 +37,11 @@ def _property_with_owner(email: str) -> Property:
         defaults={"country": country, "name": "South West"},
     )
     category, _ = PropertyCategory.objects.get_or_create(slug="villa", defaults={"name": "Villa"})
-    group = PropertyGroup.objects.create(name="Contest group")
     property_ = Property.objects.create(
         name="Contest Villa",
         display_name="Contest Villa",
         slug="contest-villa",
         category=category,
-        group=group,
         region=region,
     )
     contact = Person.objects.create(first_name="Olive", last_name="Owner")

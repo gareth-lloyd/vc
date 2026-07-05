@@ -1,14 +1,9 @@
 """Seed the property graph: Property + RatePlan/RatePeriod/RateBand + Discount +
-Extra, optionally rotated across multiple currencies and groups.
+Extra, optionally rotated across multiple currencies.
 
-Currency / group rotation is opt-in via the v2 dials:
-
-* If `ctx.currencies` has more than one entry, properties spread evenly
-  across them so EUR/USD pricing shows up in the dev DB.
-* If `ctx.groups` is non-empty, properties join one of those pre-seeded
-  groups instead of getting a fresh one-per-property group.
-
-Otherwise the legacy single-currency / per-property-group shape is
+Currency rotation is opt-in via the v2 dials: if `ctx.currencies` has more
+than one entry, properties spread evenly across them so EUR/USD pricing
+shows up in the dev DB. Otherwise the legacy single-currency shape is
 preserved (the `happy` profile still produces byte-for-byte equivalent
 output to the pre-v2 seeder).
 """
@@ -99,7 +94,6 @@ def _run(ctx: SeedContext) -> int:
         }
 
     currency_pool: list[Any] = list(ctx.currencies.values()) or [ctx.default_currency]
-    group_pool: list[Any] = list(ctx.groups)
     # Villa entries with generated imagery. Cycling this list assigns each
     # property imagery plus a coherent location/description, exhausting every
     # villa before any repeats. Names are NOT taken from the manifest — the
@@ -112,8 +106,6 @@ def _run(ctx: SeedContext) -> int:
     for i in range(ctx.n_properties):
         currency = currency_pool[i % len(currency_pool)]
         extra_kwargs: dict[str, Any] = {}
-        if group_pool:
-            extra_kwargs["group"] = group_pool[i % len(group_pool)]
         villa = villa_pool[i % len(villa_pool)] if villa_pool else None
         if villa is not None:
             # Reuse the migration-seeded Country row and name the Region after
@@ -245,4 +237,4 @@ def _run(ctx: SeedContext) -> int:
     return ctx.n_properties
 
 
-register(Stage(name="properties", run=_run, depends_on=("system_setup", "groups")))
+register(Stage(name="properties", run=_run, depends_on=("system_setup",)))

@@ -48,9 +48,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     queryset = (
         Property.objects.all()
-        .select_related(
-            "category", "group", "region", "capacity", "settings", "availability_confirmed_by"
-        )
+        .select_related("category", "region", "capacity", "settings", "availability_confirmed_by")
         # Scalar subqueries → no JOIN, no row multiplication, so the paginator
         # COUNT(*) stays correct and each flag costs no per-row query (GAP-034).
         # `_CalendarSourceMixin` reads these annotations, falling back for fresh

@@ -27,7 +27,6 @@ class OwnerPropertySerializer(serializers.ModelSerializer[Property]):
             "slug",
             "status",
             "category",
-            "group",
             "region",
             "guests",
             "bedrooms",

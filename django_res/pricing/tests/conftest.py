@@ -1,6 +1,6 @@
 """Pricing test fixtures.
 
-Builds a minimal property graph (category + group + region + country +
+Builds a minimal property graph (category + region + country +
 property) so tests don't need to know the full `properties` schema.
 """
 
@@ -35,7 +35,6 @@ def property_(db: None) -> Property:
         Country,
         Property,
         PropertyCategory,
-        PropertyGroup,
         Region,
     )
 
@@ -45,13 +44,11 @@ def property_(db: None) -> Property:
     )
     region = Region.objects.create(country=country, name="South West", slug="south-west")
     category = PropertyCategory.objects.create(name="Villa", slug="villa")
-    group = PropertyGroup.objects.create(name="Test group")
     return Property.objects.create(
         name="Test Villa",
         display_name="Test Villa",
         slug="test-villa",
         category=category,
-        group=group,
         region=region,
     )
 

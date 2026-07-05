@@ -322,9 +322,8 @@ def test_modify_guests_from_checked_in_raises(booking: Booking, rate_rule: RateB
 def _with_schedule(booking: Booking) -> Booking:
     """Give `booking` the default finance + a PENDING deposit/balance schedule."""
     from payments.services import PaymentScheduler
-    from properties.models.finance import GroupFinance, PropertyFinance
+    from properties.models.finance import PropertyFinance
 
-    GroupFinance.objects.get_or_create(group=booking.property.group)
     PropertyFinance.objects.get_or_create(property=booking.property)
     _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
     PaymentScheduler.create_for_booking(booking)

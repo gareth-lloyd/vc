@@ -176,7 +176,6 @@ def test_pricing_quote_bulk_mixed_currencies_all_price(
         display_name="EUR Villa",
         slug="eur-villa",
         category=property_.category,
-        group=property_.group,
         region=property_.region,
     )
     plan2 = RatePlan.objects.create(
@@ -416,7 +415,6 @@ def test_quote_bulk_carries_hero_image_url(
         display_name="No Hero Villa",
         slug="no-hero-villa",
         category=property_.category,
-        group=property_.group,
         region=property_.region,
     )
     plan2 = RatePlan.objects.create(

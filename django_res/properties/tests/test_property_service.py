@@ -6,7 +6,7 @@ import pytest
 from django.db import IntegrityError
 
 from pricing.services.extras import date_ranges_overlap
-from properties.models import Property, PropertyCategory, PropertyGroup, PropertyService, Region
+from properties.models import Property, PropertyCategory, PropertyService, Region
 from properties.models.geo import Country
 
 
@@ -30,17 +30,11 @@ def region(country: Country) -> Region:
 
 
 @pytest.fixture
-def group(db: None) -> PropertyGroup:
-    return PropertyGroup.objects.create(name="Test group")
-
-
-@pytest.fixture
-def prop(group: PropertyGroup, category: PropertyCategory, region: Region) -> Property:
+def prop(category: PropertyCategory, region: Region) -> Property:
     return Property.objects.create(
         name="Sea View",
         display_name="Sea View",
         slug="sea-view",
-        group=group,
         category=category,
         region=region,
     )

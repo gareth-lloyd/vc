@@ -17,7 +17,7 @@ from data_migration.management.commands.audit_plan_currencies import (
 from pricing.models.currency import Currency
 from pricing.models.rate import RatePlan
 from properties.models.geo import Country, Region
-from properties.models.property import Property, PropertyCategory, PropertyGroup
+from properties.models.property import Property, PropertyCategory
 from properties.models.settings import PropertySettings
 
 
@@ -26,13 +26,11 @@ def prop(db: None) -> Property:
     country = Country.objects.get(iso2="GB")
     region = Region.objects.create(country=country, name="Cornwall", slug="cornwall")
     cat = PropertyCategory.objects.create(name="Villa", slug="villa")
-    group = PropertyGroup.objects.create(name="G")
     return Property.objects.create(
         name="P",
         display_name="P",
         slug="p",
         category=cat,
-        group=group,
         region=region,
         legacy_id="900",
     )

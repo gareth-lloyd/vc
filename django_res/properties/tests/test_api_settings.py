@@ -18,8 +18,6 @@ from pricing.models import Currency
 from properties.enums import CommissionCalcType, PriceBasis
 from properties.models import (
     Country,
-    GroupFinance,
-    GroupSettings,
     Property,
     PropertyFinance,
     PropertyLocation,
@@ -138,8 +136,6 @@ def test_currency_code_uses_property_level_currency(
 ) -> None:
     """The property's own currency is projected as its string code."""
     PropertySettings.objects.update_or_create(property=property_, defaults={"currency": gbp})
-    # Group-level currency must be IGNORED (GAP-070: no runtime inheritance).
-    GroupSettings.objects.update_or_create(group=property_.group, defaults={"currency": eur})
 
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
@@ -151,10 +147,9 @@ def test_currency_code_uses_property_level_currency(
 def test_currency_code_null_when_property_currency_unset(
     api_client: APIClient, staff: User, property_: Property, eur: Currency
 ) -> None:
-    """A null property-level currency stays null — group values are never
-    consulted (GAP-070: currency has no runtime fallback)."""
+    """A null property-level currency stays null (GAP-070: currency has no
+    runtime fallback)."""
     PropertySettings.objects.update_or_create(property=property_, defaults={"currency": None})
-    GroupSettings.objects.update_or_create(group=property_.group, defaults={"currency": eur})
 
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
@@ -204,9 +199,8 @@ def test_get_settings_query_count_pins_property_currency_join(
     gbp: Currency,
 ) -> None:
     """The property-level currency leg resolves via `select_related("currency")`,
-    adding no per-request SELECT. The group-fallback test pins the *other* leg;
-    this one guards the common (property sets its own currency) path so dropping
-    either `select_related` is caught."""
+    adding no per-request SELECT, so dropping the `select_related` is
+    caught."""
     PropertySettings.objects.update_or_create(property=property_, defaults={"currency": gbp})
     api_client.force_login(staff)
     # Warm the request so the PropertySettings `get_or_create` is a SELECT.
@@ -348,7 +342,7 @@ def test_prices_entered_as_effective_defaults_to_gross(
 def test_rate_entry_commission_reflects_property_level(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:
-    """A property-level commission override wins over the group floor."""
+    """A property-level commission override is projected as-is."""
     PropertyFinance.objects.update_or_create(
         property=property_,
         defaults={
@@ -366,15 +360,8 @@ def test_rate_entry_commission_reflects_property_level(
 def test_rate_entry_commission_null_columns_resolve_to_policy_floor(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:
-    """Null commission columns resolve to the policy floor (percent / 0) —
-    group values are never consulted (GAP-070)."""
-    GroupFinance.objects.update_or_create(
-        group=property_.group,
-        defaults={
-            "commission_calculation_type": CommissionCalcType.FIXED,
-            "commission_amount": Decimal("500.00"),
-        },
-    )
+    """Null commission columns resolve to the policy floor (percent / 0,
+    GAP-070)."""
     PropertyFinance.objects.update_or_create(
         property=property_,
         defaults={"commission_calculation_type": None, "commission_amount": None},
@@ -420,9 +407,9 @@ def test_get_settings_query_count_includes_finance_chain(
     staff: User,
     property_: Property,
 ) -> None:
-    """The effective commission/tax legs (`finance`, `group__finance`) are
-    select_related, so resolving the derivation context adds no per-request
-    SELECT. Pin the count so a dropped join (the N+1 regression) is caught."""
+    """The effective commission/tax leg (`finance`) is select_related, so
+    resolving the derivation context adds no per-request SELECT. Pin the
+    count so a dropped join (the N+1 regression) is caught."""
     PropertyFinance.objects.update_or_create(
         property=property_,
         defaults={

@@ -13,7 +13,6 @@ from properties.models import (
     Country,
     Property,
     PropertyCategory,
-    PropertyGroup,
     Region,
 )
 
@@ -62,11 +61,6 @@ def category(db: None) -> PropertyCategory:
 
 
 @pytest.fixture
-def group(db: None) -> PropertyGroup:
-    return PropertyGroup.objects.create(name="Group A")
-
-
-@pytest.fixture
 def country(db: None) -> Country:
     country, _ = Country.objects.get_or_create(
         iso2="GB",
@@ -83,7 +77,6 @@ def region(country: Country) -> Region:
 @pytest.fixture
 def property_(
     category: PropertyCategory,
-    group: PropertyGroup,
     region: Region,
 ) -> Property:
     return Property.objects.create(
@@ -91,6 +84,5 @@ def property_(
         display_name="Test Villa",
         slug="test-villa",
         category=category,
-        group=group,
         region=region,
     )

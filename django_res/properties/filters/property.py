@@ -16,14 +16,13 @@ from properties.models import Property
 class PropertyFilter(filters.FilterSet):
     """Filters supported by `GET /properties`.
 
-    Spec query params: `status`, `category`, `group`, `region`, `country`,
+    Spec query params: `status`, `category`, `region`, `country`,
     `collection`, `min_bedrooms`, `max_bedrooms`, `min_guests`, `q`,
     `changeover_day`, `date_from`, `date_to`, `include_unavailable`.
     """
 
     status = filters.CharFilter(field_name="status")
     category = filters.NumberFilter(field_name="category_id")
-    group = filters.NumberFilter(field_name="group_id")
     region = filters.CharFilter(method="filter_region")
     country = filters.CharFilter(method="filter_country")
     collection = filters.CharFilter(method="filter_collection")
@@ -33,7 +32,7 @@ class PropertyFilter(filters.FilterSet):
     q = filters.CharFilter(method="filter_q")
 
     # T2.2 — search filtered to a specific weekday must also match properties
-    # whose effective `changeover_day=ANY` (group-fallback aware).
+    # whose effective `changeover_day=ANY` (null-means-ANY aware).
     changeover_day = filters.ChoiceFilter(
         method="filter_changeover_day",
         choices=PrefilledChangeOverDay.choices,
@@ -51,7 +50,6 @@ class PropertyFilter(filters.FilterSet):
         fields = [
             "status",
             "category",
-            "group",
             "region",
             "country",
             "collection",

@@ -26,7 +26,6 @@ from properties.enums import ImageKind
 from properties.models import (
     Property,
     PropertyCategory,
-    PropertyGroup,
     PropertyImage,
     Region,
 )
@@ -43,7 +42,7 @@ def _filename() -> str:
 
 
 @pytest.fixture
-def make_property(category: PropertyCategory, group: PropertyGroup, region: Region) -> MakeProperty:
+def make_property(category: PropertyCategory, region: Region) -> MakeProperty:
     def make(legacy_id: str | None) -> Property:
         token = uuid.uuid4().hex[:8]
         return Property.objects.create(
@@ -51,7 +50,6 @@ def make_property(category: PropertyCategory, group: PropertyGroup, region: Regi
             display_name=f"Villa {token}",
             slug=f"villa-{token}",
             category=category,
-            group=group,
             region=region,
             legacy_id=legacy_id,
         )

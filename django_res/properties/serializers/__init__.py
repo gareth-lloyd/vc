@@ -18,10 +18,7 @@ from properties.serializers.feature import (
     FeatureCategorySerializer,
     FeatureSerializer,
 )
-from properties.serializers.finance import (
-    GroupFinanceSerializer,
-    PropertyFinanceSerializer,
-)
+from properties.serializers.finance import PropertyFinanceSerializer
 from properties.serializers.geo import (
     CountrySerializer,
     NearbyPlaceTypeSerializer,
@@ -35,10 +32,7 @@ from properties.serializers.image import (
     PropertyImageWriteSerializer,
 )
 from properties.serializers.location import PropertyLocationSerializer
-from properties.serializers.metadata import (
-    PropertyCategorySerializer,
-    PropertyGroupSerializer,
-)
+from properties.serializers.metadata import PropertyCategorySerializer
 from properties.serializers.price_display import PropertyPriceDisplaySerializer
 from properties.serializers.property import (
     PropertyDetailSerializer,
@@ -47,10 +41,7 @@ from properties.serializers.property import (
 )
 from properties.serializers.room import RoomSerializer
 from properties.serializers.service import PropertyServiceSerializer
-from properties.serializers.settings import (
-    GroupSettingsSerializer,
-    PropertySettingsSerializer,
-)
+from properties.serializers.settings import PropertySettingsSerializer
 
 __all__ = [
     "ChangeOverRuleSerializer",
@@ -60,8 +51,6 @@ __all__ = [
     "CountrySerializer",
     "FeatureCategorySerializer",
     "FeatureSerializer",
-    "GroupFinanceSerializer",
-    "GroupSettingsSerializer",
     "NearbyPlaceTypeSerializer",
     "PropertyCapacitySerializer",
     "PropertyCategorySerializer",
@@ -70,7 +59,6 @@ __all__ = [
     "PropertyDescriptionSerializer",
     "PropertyDetailSerializer",
     "PropertyFinanceSerializer",
-    "PropertyGroupSerializer",
     "PropertyImageReorderSerializer",
     "PropertyImageSerializer",
     "PropertyImageSetHeroSerializer",

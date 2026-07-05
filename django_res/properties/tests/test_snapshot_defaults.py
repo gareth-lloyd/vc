@@ -22,7 +22,6 @@ from properties.models import (
     PropertyCategory,
     PropertyDefaults,
     PropertyFinance,
-    PropertyGroup,
     PropertySettings,
     Region,
 )
@@ -80,7 +79,6 @@ def test_api_create_snapshots_defaults(
     api_client: APIClient,
     staff: User,
     category: PropertyCategory,
-    group: PropertyGroup,
     region: Region,
 ) -> None:
     api_client.force_login(staff)
@@ -91,7 +89,6 @@ def test_api_create_snapshots_defaults(
             "display_name": "Snapshot Villa",
             "slug": "snapshot-villa",
             "category": category.pk,
-            "group": group.pk,
             "region": region.pk,
         },
         format="json",

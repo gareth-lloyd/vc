@@ -1,11 +1,10 @@
-"""PropertyFinance + GroupFinance + Quotation loaders.
+"""PropertyFinance + Quotation loaders.
 
 VillaFinance is a multi-purpose table:
 - `VillaId > 0` rows → per-property `PropertyFinance` (PropertyFinanceLoader).
 - `VillaId IS NULL/0, ContactId NOT NULL, ParentId NULL` rows are per-contact
-  defaults. We mirror them onto `GroupFinance` for each PropertyGroup whose
-  primary OWNER assignment matches that contact. GroupFinanceLoader is
-  invoked from `PropertyGroupLoader._process_row`.
+  defaults (see `_fetch_contact_default_finance`; the GAP-070 unit-6 fallback
+  applies them to villas that have no VillaFinance row of their own).
 - `VillaId IS NULL/0, ParentId NOT NULL` rows are parent-child overrides;
   not migrated (no schema equivalent).
 """
@@ -18,7 +17,6 @@ from typing import Any
 
 from django.utils import timezone
 
-from accounts.enums import ContactRole
 from accounts.models import Person
 from core.refs import quotation_reference
 from data_migration.base import BaseLoader, LoadReport
@@ -32,9 +30,8 @@ from properties.enums import (
     SecurityDepositCalcType,
     SecurityDepositPaymentMethod,
 )
-from properties.models.contacts import PropertyContactAssignment
-from properties.models.finance import GroupFinance, PropertyFinance
-from properties.models.property import Property, PropertyGroup
+from properties.models.finance import PropertyFinance
+from properties.models.property import Property
 from reservations.enums import QuotationStatus
 from reservations.models.enquiry import Enquiry
 from reservations.models.quotation import Quotation, QuotationLine
@@ -83,9 +80,8 @@ def _decimal(v: Any) -> Decimal | None:
 def _finance_defaults(row: dict[str, Any]) -> dict[str, Any]:
     """Translate a VillaFinance row into model-field defaults.
 
-    Shared between PropertyFinance (all fields nullable) and GroupFinance
-    (mostly non-nullable with defaults). Caller is responsible for stripping
-    `None`s if writing to GroupFinance.
+    All PropertyFinance policy fields are nullable, so `None`s pass through
+    (a NULL means the legacy column was unset).
     """
     defaults: dict[str, Any] = {
         "commission_calculation_type": _COMMISSION_TYPE_MAP.get(
@@ -207,87 +203,6 @@ def _fetch_contact_default_finance() -> dict[str, dict[str, Any]]:
             cid = str(row["ContactId"])
             by_contact.setdefault(cid, row)
     return by_contact
-
-
-class GroupFinanceLoader(BaseLoader):
-    """For each PropertyGroup, mirror the primary OWNER contact's default
-    finance row onto `GroupFinance`. Falls back to schema defaults if no
-    matching legacy template exists.
-
-    Not normally invoked directly; runs from
-    `PropertyGroupLoader._process_row` so freshly-loaded groups get a
-    GroupFinance row in the same pass. Can be run standalone via the
-    registry to refresh existing groups.
-    """
-
-    name = "group_finance"
-    target_model = GroupFinance
-    legacy_query = ""
-
-    def load(self) -> LoadReport:
-        import time as _t
-
-        report = LoadReport(loader=self.name)
-        started = _t.monotonic()
-        for group in PropertyGroup.objects.all():
-            self._sync_group(group, self._by_contact(), report)
-        report.duration_s = _t.monotonic() - started
-        return report
-
-    def sync_one(self, group: PropertyGroup, report: LoadReport) -> None:
-        self._sync_group(group, self._by_contact(), report)
-
-    def _by_contact(self) -> dict[str, dict[str, Any]]:
-        # Cached per instance — when invoked once per group from
-        # PropertyGroupLoader, this avoids one legacy-DB round trip per group.
-        if not hasattr(self, "_by_contact_cache"):
-            self._by_contact_cache = _fetch_contact_default_finance()
-        return self._by_contact_cache
-
-    def _sync_group(
-        self,
-        group: PropertyGroup,
-        by_contact: dict[str, dict[str, Any]],
-        report: LoadReport,
-    ) -> None:
-        owner_contact = (
-            PropertyContactAssignment.objects.filter(
-                property__group=group,
-                role=ContactRole.OWNER,
-                is_primary=True,
-            )
-            .select_related("contact")
-            .values_list("contact__legacy_id", "contact_id")
-            .first()
-        )
-        if owner_contact is None:
-            owner_contact = (
-                PropertyContactAssignment.objects.filter(
-                    property__group=group, role=ContactRole.OWNER
-                )
-                .select_related("contact")
-                .values_list("contact__legacy_id", "contact_id")
-                .first()
-            )
-
-        defaults: dict[str, Any] = {}
-        owner_pk: int | None = None
-        if owner_contact and owner_contact[0]:
-            owner_pk = owner_contact[1]
-            template = by_contact.get(owner_contact[0])
-            if template is not None:
-                # GroupFinance fields are mostly non-nullable; only copy
-                # values that actually parsed (i.e. drop None).
-                defaults = {k: v for k, v in _finance_defaults(template).items() if v is not None}
-
-        if owner_pk is not None:
-            defaults["contact_id"] = owner_pk
-
-        _, created = GroupFinance.objects.update_or_create(group=group, defaults=defaults)
-        if created:
-            report.created += 1
-        else:
-            report.updated += 1
 
 
 def _ensure_default_terms() -> TermsVersion:

@@ -84,9 +84,6 @@ class ProfileKnobs:
     # When True, run the one-shot system_setup stage (multi-currency, FxRates,
     # SMTP/templates, multiple TermsVersions). Always on outside `happy`.
     do_system_setup: bool = False
-    # Number of distinct PropertyGroups created up-front to be assigned to
-    # properties. 0 falls back to legacy 1-to-1 group-per-property.
-    n_property_groups: int = 0
     # Number of `accounts.Organisation` (B2B companies — agencies / suppliers /
     # management companies) minted by the `companies` stage. Nonzero on every
     # profile including happy: a populated Companies directory is a deliverable.
@@ -180,7 +177,6 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         booking_date_spread_days=365,
         # v2 dials:
         do_system_setup=True,
-        n_property_groups=3,
         rooms_per_property=(4, 8),
         features_per_property=(5, 15),
         images_per_property=(4, 12),
@@ -230,7 +226,6 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         booking_date_spread_days=365,
         # v2 dials (cranked):
         do_system_setup=True,
-        n_property_groups=3,
         rooms_per_property=(3, 10),
         features_per_property=(8, 20),
         images_per_property=(6, 16),
@@ -281,7 +276,6 @@ class SeedContext:
     # same villa the `properties` stage assigned (and which the factory used
     # for the HERO), keeping each property's image set coherent.
     property_villa: dict[int, str] = field(default_factory=dict)
-    groups: list[Any] = field(default_factory=list)
     # `accounts.Organisation` rows seeded by the `companies` stage, so the
     # `contacts` stage can attach agent contacts to an agency.
     organisations: list[Any] = field(default_factory=list)

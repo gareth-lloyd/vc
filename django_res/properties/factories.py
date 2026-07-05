@@ -198,16 +198,6 @@ class PropertyCategoryFactory(DjangoModelFactory):
     slug = factory.LazyAttribute(lambda o: o.spec[1])
 
 
-class PropertyGroupFactory(DjangoModelFactory):
-    class Meta:
-        model = models.PropertyGroup
-
-    # `properties.signals` auto-creates GroupSettings + GroupFinance on insert
-    # (the rows `PropertySettings.effective()` / `PropertyFinance.effective()`
-    # fall back to), so the factory must not create them again.
-    name = factory.Sequence(lambda n: f"Portfolio {RUN_TOKEN}-{n}")
-
-
 class FeatureCategoryFactory(DjangoModelFactory):
     class Meta:
         model = models.FeatureCategory
@@ -238,7 +228,6 @@ class PropertyFactory(DjangoModelFactory):
     status = PropertyStatus.ACTIVE
     channel = PropertyChannel.DIRECT
     category = factory.SubFactory(PropertyCategoryFactory)
-    group = factory.SubFactory(PropertyGroupFactory)
     region = factory.SubFactory(RegionFactory)
 
     @factory.post_generation
@@ -263,7 +252,8 @@ class PropertyFactory(DjangoModelFactory):
             bathrooms=3,
             ensuites=2,
         )
-        # All-null PropertySettings/PropertyFinance => inherit from the group.
+        # All-null PropertySettings/PropertyFinance => consumers apply the
+        # hardcoded policy floors; tests set concrete values explicitly.
         models.PropertySettings.objects.create(property=obj)
         models.PropertyFinance.objects.create(property=obj)
         models.PropertyDescription.objects.create(
@@ -288,8 +278,8 @@ class PropertyFactory(DjangoModelFactory):
     ) -> None:
         """Opt-in: attach a Person + commission terms to the finance row.
 
-        Default off (preserves legacy "all-null finance, inherit from group"
-        shape). Set to True via ``PropertyFactory(with_owner_contact=True)`` —
+        Default off (preserves the "all-null finance" shape). Set to True
+        via ``PropertyFactory(with_owner_contact=True)`` —
         the seeded Person gets a primary `PersonEmail` and `PersonPhone`,
         and the finance row gets a mix of percent / fixed commission so the
         Owner tab renders both branches in dev/staging.

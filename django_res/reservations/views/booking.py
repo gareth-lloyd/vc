@@ -85,9 +85,7 @@ def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
         # GAP-046: the owner block surfaces the contact's agency name (the
         # successor to free-text `company`), so deepen the join to its agency.
         "property__finance__contact__agency",
-        "property__group__finance",
         "property__settings",
-        "property__group__settings",
     ).prefetch_related(
         "person__emails",
         Prefetch(

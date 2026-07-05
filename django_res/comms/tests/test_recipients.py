@@ -28,7 +28,6 @@ from properties.models import (
     Property,
     PropertyCategory,
     PropertyContactAssignment,
-    PropertyGroup,
     Region,
 )
 
@@ -47,13 +46,11 @@ def _build_property(slug_suffix: str) -> Property:
         slug="villa",
         defaults={"name": "Villa"},
     )
-    group = PropertyGroup.objects.create(name=f"Group {slug_suffix}")
     return Property.objects.create(
         name=f"Villa {slug_suffix}",
         display_name=f"Villa {slug_suffix}",
         slug=f"villa-{slug_suffix}",
         category=category,
-        group=group,
         region=region,
     )
 

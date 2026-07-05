@@ -1,16 +1,10 @@
-"""Per-property and per-group financial configuration.
+"""Per-property financial configuration.
 
-`PropertyFinance` is a OneToOne mirror of `Property` with every
-operator-editable field nullable; a `NULL` means "inherit from `GroupFinance`".
-`GroupFinance` is the floor — every field non-nullable with sensible
-defaults. `effective_*()` resolvers merge property → group.
-
-This file mirrors the columns in
-`properties/migrations/0002_groupfinance_propertyfinance.py`. It is being
-landed by the properties agent; this is a minimal, faithful stub kept in
-sync with the migration so cross-app imports (`payments`, `reservations`,
-`pricing`) resolve cleanly. Expect the file to be replaced wholesale by
-the properties agent's full implementation.
+`PropertyFinance` is a OneToOne mirror of `Property`. Rows are materialised
+from the `PropertyDefaults` singleton at creation (`snapshot_defaults`); a
+`NULL` policy column means *genuinely unset* and resolves to the frozen
+legacy floor in `_POLICY_FALLBACKS` (GAP-070). The `effective_*()` builders
+are the canonical read surface for payments/reservations/pricing.
 """
 
 from __future__ import annotations
@@ -28,18 +22,6 @@ from properties.enums import (
     SecurityDepositCalcType,
     SecurityDepositPaymentMethod,
 )
-
-
-class _FinanceFieldMixin:
-    """Shared `effective(field)` resolver — looked up by `PropertyFinance`."""
-
-    def effective(self, field: str) -> Any:
-        own = getattr(self, field)
-        if own is not None and own != "":
-            return own
-        group_finance = self.property.group.finance  # type: ignore[attr-defined]
-        return getattr(group_finance, field)
-
 
 # Final fallbacks for the nullable policy columns — the pre-GAP-070
 # `GroupFinance` floor defaults, kept so a NULL on a row created outside
@@ -74,7 +56,7 @@ _POLICY_FALLBACKS: dict[str, Any] = {
 }
 
 
-class PropertyFinance(_FinanceFieldMixin, AuditedModel):
+class PropertyFinance(AuditedModel):
     property = models.OneToOneField(
         "properties.Property",
         on_delete=models.CASCADE,
@@ -291,119 +273,3 @@ class PropertyFinance(_FinanceFieldMixin, AuditedModel):
             "window_days": self._policy("cancellation_window_days"),
             "notes": self.cancellation_notes,
         }
-
-
-class GroupFinance(AuditedModel):
-    group = models.OneToOneField(
-        "properties.PropertyGroup",
-        on_delete=models.CASCADE,
-        primary_key=True,
-        related_name="finance",
-    )
-    contact = models.ForeignKey(
-        "accounts.Person",
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="+",
-    )
-    notes = models.TextField(blank=True)
-
-    commission_calculation_type = models.CharField(
-        max_length=8,
-        choices=CommissionCalcType.choices,
-        default=CommissionCalcType.PERCENT,
-    )
-    commission_amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0,
-    )
-    commission_note = models.TextField(blank=True)
-
-    tax_number = models.CharField(max_length=64, blank=True)
-    tax_is_exempt = models.BooleanField(default=False)
-    tax_percentage = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-    )
-
-    bank_account_name = models.CharField(max_length=128, blank=True)
-    bank_account_number = EncryptedTextField(blank=True, default="")
-    bank_sort_code = EncryptedTextField(blank=True, default="")
-    bank_iban = EncryptedTextField(blank=True, default="")
-    bank_bic = EncryptedTextField(blank=True, default="")
-    bank_name = models.CharField(max_length=128, blank=True)
-    bank_address_line_1 = models.CharField(max_length=255, blank=True)
-    bank_address_line_2 = models.CharField(max_length=255, blank=True)
-    bank_post_code = models.CharField(max_length=32, blank=True)
-    bank_city = models.CharField(max_length=128, blank=True)
-
-    deposit_required = models.BooleanField(default=True)
-    deposit_calculation_type = models.CharField(
-        max_length=8,
-        choices=DepositCalcType.choices,
-        default=DepositCalcType.PERCENT,
-    )
-    deposit_amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=30,
-    )
-    interim_required = models.BooleanField(default=False)
-    interim_calculation_type = models.CharField(
-        max_length=8,
-        choices=DepositCalcType.choices,
-        default=DepositCalcType.PERCENT,
-    )
-    interim_amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0,
-    )
-    days_interim_due_before_arrival = models.PositiveSmallIntegerField(default=0)
-    days_balance_due_before_arrival = models.PositiveSmallIntegerField(default=60)
-
-    security_deposit_required = models.BooleanField(default=False)
-    security_deposit_calculation_type = models.CharField(
-        max_length=8,
-        choices=SecurityDepositCalcType.choices,
-        default=SecurityDepositCalcType.FIXED,
-    )
-    security_deposit_amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0,
-    )
-    security_deposit_days_due_before_arrival = models.PositiveSmallIntegerField(default=14)
-    security_deposit_days_refunded_after_departure = models.PositiveSmallIntegerField(default=7)
-    security_deposit_payment_method = models.CharField(
-        max_length=16,
-        choices=SecurityDepositPaymentMethod.choices,
-        default=SecurityDepositPaymentMethod.CARD_HOLD,
-    )
-
-    cancellation_fee_amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0,
-    )
-    cancellation_fee_percent = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-    )
-    cancellation_window_days = models.PositiveSmallIntegerField(default=0)
-    cancellation_notes = models.TextField(blank=True)
-
-    currency = models.ForeignKey(
-        "pricing.Currency",
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="+",
-    )
-
-    def __str__(self) -> str:
-        return f"Finance for group #{self.group_id}"

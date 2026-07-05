@@ -16,7 +16,6 @@ from properties.models import (
     Property,
     PropertyCapacity,
     PropertyCategory,
-    PropertyGroup,
     Region,
 )
 
@@ -145,7 +144,6 @@ def test_min_guests_filter_excludes_zero_and_missing_capacity(
     api_client: APIClient,
     staff: User,
     category: PropertyCategory,
-    group: PropertyGroup,
     region: Region,
 ) -> None:
     """Regression: `min_guests` keeps excluding properties whose capacity is
@@ -156,7 +154,6 @@ def test_min_guests_filter_excludes_zero_and_missing_capacity(
         display_name="Big Villa",
         slug="big-villa",
         category=category,
-        group=group,
         region=region,
     )
     PropertyCapacity.objects.create(property=quotable, guests=8)
@@ -165,7 +162,6 @@ def test_min_guests_filter_excludes_zero_and_missing_capacity(
         display_name="Zero Villa",
         slug="zero-villa",
         category=category,
-        group=group,
         region=region,
     )
     PropertyCapacity.objects.create(property=zero, guests=0)
@@ -174,7 +170,6 @@ def test_min_guests_filter_excludes_zero_and_missing_capacity(
         display_name="No Capacity Villa",
         slug="no-capacity-villa",
         category=category,
-        group=group,
         region=region,
     )
     api_client.force_login(staff)

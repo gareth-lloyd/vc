@@ -13,7 +13,7 @@ from properties.models.features import (
     FeatureCategory,
     PropertyFeature,
 )
-from properties.models.finance import GroupFinance, PropertyFinance
+from properties.models.finance import PropertyFinance
 from properties.models.geo import (
     Country,
     NearbyPlaceType,
@@ -22,10 +22,10 @@ from properties.models.geo import (
 )
 from properties.models.images import PropertyImage
 from properties.models.location import PropertyLocation
-from properties.models.property import Property, PropertyCategory, PropertyGroup
+from properties.models.property import Property, PropertyCategory
 from properties.models.rooms import Room, RoomBeds
 from properties.models.services import PropertyService
-from properties.models.settings import GroupSettings, PropertySettings
+from properties.models.settings import PropertySettings
 
 __all__ = [
     "ChangeOverRule",
@@ -34,8 +34,6 @@ __all__ = [
     "Country",
     "Feature",
     "FeatureCategory",
-    "GroupFinance",
-    "GroupSettings",
     "NearbyPlaceType",
     "Property",
     "PropertyCalendarFeed",
@@ -46,7 +44,6 @@ __all__ = [
     "PropertyDescription",
     "PropertyFeature",
     "PropertyFinance",
-    "PropertyGroup",
     "PropertyImage",
     "PropertyLocation",
     "PropertyNearbyPlace",

@@ -21,7 +21,6 @@ from properties.models import (
     PropertyCalendarFeed,
     PropertyCategory,
     PropertyFeature,
-    PropertyGroup,
     PropertyImage,
     PropertyLocation,
     PropertySettings,
@@ -55,7 +54,6 @@ def test_list_orders_collisions_deterministically(
     api_client: APIClient,
     staff: User,
     category: PropertyCategory,
-    group: PropertyGroup,
     region: Region,
 ) -> None:
     """Equal names must fall back to ascending id so page boundaries are stable.
@@ -69,7 +67,6 @@ def test_list_orders_collisions_deterministically(
             display_name="Shared Name",
             slug=f"shared-{i}",
             category=category,
-            group=group,
             region=region,
         )
         for i in range(3)
@@ -86,7 +83,6 @@ def test_create_property_as_staff(
     api_client: APIClient,
     staff: User,
     category: PropertyCategory,
-    group: PropertyGroup,
     region: Region,
 ) -> None:
     api_client.force_login(staff)
@@ -97,7 +93,6 @@ def test_create_property_as_staff(
             "display_name": "Fresh Villa",
             "slug": "fresh-villa",
             "category": category.pk,
-            "group": group.pk,
             "region": region.pk,
         },
         format="json",
@@ -118,7 +113,6 @@ def test_create_property_rejected_for_viewer(
     api_client: APIClient,
     viewer: User,
     category: PropertyCategory,
-    group: PropertyGroup,
     region: Region,
 ) -> None:
     api_client.force_login(viewer)
@@ -129,7 +123,6 @@ def test_create_property_rejected_for_viewer(
             "display_name": "Fresh Villa",
             "slug": "fresh-villa",
             "category": category.pk,
-            "group": group.pk,
             "region": region.pk,
         },
         format="json",
@@ -271,7 +264,6 @@ def test_create_property_persists_feature_order(
     api_client: APIClient,
     staff: User,
     category: PropertyCategory,
-    group: PropertyGroup,
     region: Region,
 ) -> None:
     """The order of `features` on create becomes the per-villa `sort_order`."""
@@ -288,7 +280,6 @@ def test_create_property_persists_feature_order(
             "display_name": "Ordered Villa",
             "slug": "ordered-villa",
             "category": category.pk,
-            "group": group.pk,
             "region": region.pk,
             "features": [c.pk, a.pk, b.pk],
         },
@@ -587,7 +578,6 @@ def test_create_response_includes_flag_via_fallback(
     api_client: APIClient,
     staff: User,
     category: PropertyCategory,
-    group: PropertyGroup,
     region: Region,
 ) -> None:
     """`create` serializes a fresh, non-annotated instance — the SMF must fall
@@ -600,7 +590,6 @@ def test_create_response_includes_flag_via_fallback(
             "display_name": "Fresh Villa",
             "slug": "fresh-villa",
             "category": category.pk,
-            "group": group.pk,
             "region": region.pk,
         },
         format="json",
@@ -626,7 +615,6 @@ def test_list_query_count_constant_with_feeds_and_settings(
     api_client: APIClient,
     staff: User,
     category: PropertyCategory,
-    group: PropertyGroup,
     region: Region,
 ) -> None:
     """Surfacing the flags (scalar `Exists`/`Subquery`), `calendar_url`
@@ -641,7 +629,6 @@ def test_list_query_count_constant_with_feeds_and_settings(
                 display_name=f"QC Villa {idx}",
                 slug=f"qc-villa-{idx}",
                 category=category,
-                group=group,
                 region=region,
                 # Non-null actor FK so a forgotten select_related actually N+1s
                 # when availability_confirmed_by_name resolves the name (GAP-033).

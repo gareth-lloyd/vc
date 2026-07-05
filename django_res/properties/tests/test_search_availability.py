@@ -28,7 +28,6 @@ from properties.models import (
     Country,
     Property,
     PropertyCategory,
-    PropertyGroup,
     PropertySettings,
     Region,
 )
@@ -73,21 +72,17 @@ def _make_property(
     category: PropertyCategory,
     region: Region,
     changeover_day: str | None,
-    group: PropertyGroup | None = None,
 ) -> Property:
     """Create a property with a `PropertySettings` row holding `changeover_day`.
 
     Bypasses the factory's full child graph to keep the test queryset focused;
     the search filter only needs the property row + `settings.changeover_day`.
     """
-    if group is None:
-        group = PropertyGroup.objects.create(name=f"Group for {slug}")
     prop = Property.objects.create(
         name=slug,
         display_name=slug,
         slug=slug,
         category=category,
-        group=group,
         region=region,
     )
     PropertySettings.objects.create(property=prop, changeover_day=changeover_day)

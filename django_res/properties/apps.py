@@ -15,7 +15,7 @@ class PropertiesConfig(AppConfig):
         from properties.models.contacts import PropertyContactAssignment
         from properties.models.defaults import PropertyDefaults
         from properties.models.features import PropertyFeature
-        from properties.models.finance import GroupFinance, PropertyFinance
+        from properties.models.finance import PropertyFinance
         from properties.models.geo import PropertyNearbyPlace
         from properties.models.images import PropertyImage
         from properties.models.property import Property
@@ -75,12 +75,6 @@ class PropertiesConfig(AppConfig):
             fields=_AUDITED_FINANCE_FIELDS,
             sensitive=_SENSITIVE_BANK_FIELDS,
         )
-        audit.track(
-            GroupFinance,
-            fields=_AUDITED_FINANCE_FIELDS,
-            sensitive=_SENSITIVE_BANK_FIELDS,
-        )
-
         # Global creation-defaults singleton (GAP-070): it carries the finance
         # policy every new property starts with, so edits need a trail. No bank
         # fields on it by design, hence no `sensitive` set.
@@ -126,7 +120,7 @@ class PropertiesConfig(AppConfig):
         # Property master record: lifecycle/identity columns only — the chatty
         # description/content fields live on child models and are deliberately
         # excluded (FG-017). Edits to a property's name, status, channel, or its
-        # category/group/region placement are the staff actions that leave no
+        # category/region placement are the staff actions that leave no
         # trail today.
         audit.track(
             Property,
@@ -138,7 +132,6 @@ class PropertiesConfig(AppConfig):
                 "status",
                 "channel",
                 "category_id",
-                "group_id",
                 "region_id",
             ),
         )

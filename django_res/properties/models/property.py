@@ -29,21 +29,6 @@ class PropertyCategory(TimestampedModel):
         return self.name
 
 
-class PropertyGroup(AuditedModel):
-    """Organisational grouping of properties (e.g. a brand sub-portfolio)."""
-
-    name = models.CharField(max_length=128, unique=True)
-    description = models.TextField(blank=True)
-    is_active = models.BooleanField(default=True)
-    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
-
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self) -> str:
-        return self.name
-
-
 class Property(AuditedModel):
     """Catalogue entry for a bookable villa / apartment / chalet."""
 
@@ -63,11 +48,6 @@ class Property(AuditedModel):
     )
     category = models.ForeignKey(
         PropertyCategory,
-        on_delete=models.PROTECT,
-        related_name="properties",
-    )
-    group = models.ForeignKey(
-        PropertyGroup,
         on_delete=models.PROTECT,
         related_name="properties",
     )
@@ -123,7 +103,6 @@ class Property(AuditedModel):
         indexes = [
             models.Index(fields=["status"]),
             models.Index(fields=["region", "status"]),
-            models.Index(fields=["group"]),
             models.Index(fields=["legacy_id"]),
         ]
         verbose_name_plural = "properties"

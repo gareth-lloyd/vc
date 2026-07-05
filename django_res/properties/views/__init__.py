@@ -23,7 +23,6 @@ from properties.views.description import (
 )
 from properties.views.feature import FeatureCategoryViewSet, FeatureViewSet
 from properties.views.finance import (
-    GroupFinanceView,
     PropertyFinanceView,
 )
 from properties.views.geo import (
@@ -42,7 +41,6 @@ from properties.views.image import (
 from properties.views.location import PropertyLocationView
 from properties.views.metadata import (
     PropertyCategoryViewSet,
-    PropertyGroupViewSet,
 )
 from properties.views.price_display import PropertyPriceDisplayView
 from properties.views.property import PropertyViewSet
@@ -56,7 +54,6 @@ from properties.views.service import (
     PropertyServiceListCreateView,
 )
 from properties.views.settings import (
-    GroupSettingsView,
     PropertySettingsView,
 )
 
@@ -67,8 +64,6 @@ __all__ = [
     "CountryViewSet",
     "FeatureCategoryViewSet",
     "FeatureViewSet",
-    "GroupFinanceView",
-    "GroupSettingsView",
     "NearbyPlaceTypeViewSet",
     "PropertyCapacityView",
     "PropertyCategoryViewSet",
@@ -80,7 +75,6 @@ __all__ = [
     "PropertyDescriptionDetailView",
     "PropertyDescriptionListView",
     "PropertyFinanceView",
-    "PropertyGroupViewSet",
     "PropertyImageDetailView",
     "PropertyImageListCreateView",
     "PropertyImageReorderView",

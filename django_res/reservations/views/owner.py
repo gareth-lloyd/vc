@@ -106,9 +106,7 @@ class OwnerDashboardView(APIView):
             # live outside the snapshot, and their owner effect needs the
             # charges annotation + the property's commission config. Gross
             # stays rental-price-based — charges are extras, not rent.
-            money_bookings = with_charges_total(money_ytd).select_related(
-                "property__finance", "property__group__finance"
-            )
+            money_bookings = with_charges_total(money_ytd).select_related("property__finance")
             for money_booking in money_bookings:
                 money = owner_money_for_booking(money_booking)
                 if money is not None:

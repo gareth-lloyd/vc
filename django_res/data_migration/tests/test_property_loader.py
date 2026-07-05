@@ -4,9 +4,9 @@ import pytest
 
 from data_migration.base import LoadReport
 from data_migration.loaders.properties import PropertyLoader
-from data_migration.loaders.sentinels import unknown_country, unknown_group, unknown_region
+from data_migration.loaders.sentinels import unknown_country, unknown_region
 from properties.models.geo import Country, Region
-from properties.models.property import Property, PropertyCategory, PropertyGroup
+from properties.models.property import Property, PropertyCategory
 
 
 @pytest.fixture
@@ -43,7 +43,6 @@ def _row(**overrides: object) -> dict[str, object]:
         "Bathrooms": 0,
         "Size": None,
         "RegionId": None,
-        "GroupId": None,
         "ViilaStatus": 1,
         "SettingAvailabilityStatusId": None,
         "SettingIsBookingsRequirePreApproval": False,
@@ -65,18 +64,16 @@ def test_transform_skips_property_with_no_name(category: PropertyCategory) -> No
 
 
 @pytest.mark.django_db
-def test_transform_falls_back_to_unknown_region_and_group(
+def test_transform_falls_back_to_unknown_region(
     category: PropertyCategory,
 ) -> None:
-    """Plan 1.2: a property whose RegionId/GroupId can't be resolved attaches
-    to the unknown sentinel rather than getting skipped.
+    """Plan 1.2: a property whose RegionId can't be resolved attaches to the
+    unknown sentinel rather than getting skipped.
     """
-    kwargs = PropertyLoader().transform(_row(RegionId=999, GroupId=999))
+    kwargs = PropertyLoader().transform(_row(RegionId=999))
     assert kwargs is not None
     sentinel_region = unknown_region(unknown_country())
-    sentinel_group = unknown_group()
     assert kwargs["region"].pk == sentinel_region.pk
-    assert kwargs["group"].pk == sentinel_group.pk
 
 
 @pytest.mark.django_db
@@ -88,13 +85,11 @@ def test_transform_uses_explicit_fks_when_present(category: PropertyCategory) ->
         slug="crete",
         legacy_id="55",
     )
-    group = PropertyGroup.objects.create(name="Owners", legacy_id="7")
     kwargs = PropertyLoader().transform(
-        _row(RegionId=55, GroupId=7, Category=str(category.legacy_id or "")),
+        _row(RegionId=55, Category=str(category.legacy_id or "")),
     )
     assert kwargs is not None
     assert kwargs["region"].pk == region.pk
-    assert kwargs["group"].pk == group.pk
 
 
 @pytest.mark.django_db
@@ -103,7 +98,6 @@ def test_process_row_creates_property_with_sentinel_when_fks_missing(
 ) -> None:
     loader = PropertyLoader()
     report = LoadReport(loader=loader.name)
-    loader._process_row(_row(RegionId=999, GroupId=999), report)
+    loader._process_row(_row(RegionId=999), report)
     p = Property.objects.get(legacy_id="100")
     assert p.region.legacy_id == "__unknown__"
-    assert p.group.legacy_id == "__unknown__"

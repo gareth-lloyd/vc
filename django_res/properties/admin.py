@@ -10,7 +10,6 @@ from properties.models import (
     Country,
     Feature,
     FeatureCategory,
-    GroupSettings,
     NearbyPlaceType,
     Property,
     PropertyCalendarFeed,
@@ -19,7 +18,6 @@ from properties.models import (
     PropertyContactAssignment,
     PropertyDefaults,
     PropertyDescription,
-    PropertyGroup,
     PropertyImage,
     PropertyLocation,
     PropertyNearbyPlace,
@@ -35,12 +33,10 @@ admin.site.register(Region)
 admin.site.register(NearbyPlaceType)
 admin.site.register(PropertyNearbyPlace)
 admin.site.register(PropertyCategory)
-admin.site.register(PropertyGroup)
 admin.site.register(Property)
 admin.site.register(PropertyLocation)
 admin.site.register(PropertyCapacity)
 admin.site.register(PropertySettings)
-admin.site.register(GroupSettings)
 admin.site.register(PropertyDescription)
 admin.site.register(Room)
 admin.site.register(RoomBeds)

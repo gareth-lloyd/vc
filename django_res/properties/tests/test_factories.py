@@ -40,10 +40,8 @@ def test_property_factory_builds_full_graph() -> None:
     assert prop.finance is not None
     assert prop.descriptions.exists()
     assert prop.hero_image() is not None
-    # Group fallbacks the `effective()` resolvers depend on.
-    assert prop.group.settings is not None
-    assert prop.group.finance is not None
-    assert prop.settings.effective("bookings_require_pre_approval") in (True, False)
+    # All-null settings row: consumers apply the hardcoded policy floors.
+    assert prop.settings.bookings_require_pre_approval is None
 
 
 def test_property_slug_unique_across_runs() -> None:

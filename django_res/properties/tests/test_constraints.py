@@ -16,7 +16,6 @@ from properties.models import (
     Property,
     PropertyCategory,
     PropertyContactAssignment,
-    PropertyGroup,
     PropertyImage,
     Region,
 )
@@ -43,13 +42,7 @@ def region(country: Country) -> Region:
 
 
 @pytest.fixture
-def group(db: None) -> PropertyGroup:
-    return PropertyGroup.objects.create(name="Test group")
-
-
-@pytest.fixture
 def prop(
-    group: PropertyGroup,
     category: PropertyCategory,
     region: Region,
 ) -> Property:
@@ -57,7 +50,6 @@ def prop(
         name="Sea View",
         display_name="Sea View",
         slug="sea-view",
-        group=group,
         category=category,
         region=region,
     )
@@ -75,7 +67,6 @@ def organisation(db: None) -> Organisation:
 
 @pytest.fixture
 def prop2(
-    group: PropertyGroup,
     category: PropertyCategory,
     region: Region,
 ) -> Property:
@@ -83,7 +74,6 @@ def prop2(
         name="Hill View",
         display_name="Hill View",
         slug="hill-view",
-        group=group,
         category=category,
         region=region,
     )

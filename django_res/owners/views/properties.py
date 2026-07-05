@@ -45,7 +45,7 @@ class OwnerPropertyViewSet(viewsets.ReadOnlyModelViewSet):
         hero_images = PropertyImage.objects.filter(kind=ImageKind.HERO, is_active=True)
         return (
             Property.objects.filter(id__in=owner_property_ids(user))
-            .select_related("category", "group", "region", "capacity")
+            .select_related("category", "region", "capacity")
             .prefetch_related(Prefetch("images", queryset=hero_images))
             .order_by("name")
         )

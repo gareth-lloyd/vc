@@ -14,7 +14,6 @@ from data_migration.loaders.bookings import (
 )
 from data_migration.loaders.country import CountryLoader
 from data_migration.loaders.finance import (
-    GroupFinanceLoader,
     PropertyFinanceLoader,
     QuotationLineLoader,
     QuotationLoader,
@@ -42,7 +41,6 @@ from data_migration.loaders.pricing import RateBandLoader, RatePlanLoader
 from data_migration.loaders.properties import (
     CollectionLoader,
     CollectionMembershipLoader,
-    PropertyGroupLoader,
     PropertyLoader,
 )
 from data_migration.loaders.property_children import (
@@ -69,7 +67,6 @@ LOADERS: dict[str, type[Loader]] = {
     ContactLoader.name: ContactLoader,
     ContactEmailLoader.name: ContactEmailLoader,
     ContactPhoneLoader.name: ContactPhoneLoader,
-    PropertyGroupLoader.name: PropertyGroupLoader,
     PropertyLoader.name: PropertyLoader,
     CollectionLoader.name: CollectionLoader,
     CollectionMembershipLoader.name: CollectionMembershipLoader,
@@ -89,7 +86,6 @@ LOADERS: dict[str, type[Loader]] = {
     GuestPreferenceLoader.name: GuestPreferenceLoader,
     EnquiryLoader.name: EnquiryLoader,
     PropertyFinanceLoader.name: PropertyFinanceLoader,
-    GroupFinanceLoader.name: GroupFinanceLoader,
     QuotationLoader.name: QuotationLoader,
     QuotationLineLoader.name: QuotationLineLoader,
     BookingLoader.name: BookingLoader,

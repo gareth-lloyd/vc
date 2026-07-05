@@ -47,7 +47,6 @@ EXPECTED_TRACKED_MODELS = {
     "pricing.RatePeriod",
     "pricing.RatePlan",
     "pricing.RateBand",
-    "properties.GroupFinance",
     "properties.PropertyCalendarFeed",
     "properties.PropertyFinance",
     "reservations.Booking",

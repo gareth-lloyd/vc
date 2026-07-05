@@ -1,4 +1,4 @@
-"""Serializers for `PropertyFinance` and `GroupFinance`.
+"""Serializer for `PropertyFinance`.
 
 Bank-account fields (`bank_account_number`, `bank_sort_code`, `bank_iban`,
 `bank_bic`) are encrypted at rest and **never echoed back** in API responses.
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from properties.models import GroupFinance, PropertyFinance
+from properties.models import PropertyFinance
 
 _BANK_SECRET_FIELDS = (
     "bank_account_number",
@@ -74,12 +74,4 @@ class PropertyFinanceSerializer(_FinanceBaseSerializer):
         read_only_fields = ["property"]
         # Encrypted bank-secret fields are accepted on write but suppressed on
         # read by `_FinanceBaseSerializer.to_representation`.
-        extra_kwargs = {f: {"write_only": False} for f in _BANK_SECRET_FIELDS}
-
-
-class GroupFinanceSerializer(_FinanceBaseSerializer):
-    class Meta:
-        model = GroupFinance
-        fields = ("group", *_FINANCE_FIELDS, "contact", "currency")
-        read_only_fields = ["group"]
         extra_kwargs = {f: {"write_only": False} for f in _BANK_SECRET_FIELDS}

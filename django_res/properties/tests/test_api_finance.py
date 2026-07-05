@@ -9,14 +9,13 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from properties.enums import CommissionCalcType
-from properties.models import GroupFinance, Property, PropertyFinance, PropertyGroup
+from properties.models import Property, PropertyFinance
 
 
 @pytest.mark.django_db
 def test_get_finance_creates_row_when_missing(
-    api_client: APIClient, staff: User, property_: Property, group: PropertyGroup
+    api_client: APIClient, staff: User, property_: Property
 ) -> None:
-    GroupFinance.objects.get_or_create(group=group)
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/properties/{property_.pk}/finance")
     assert response.status_code == 200, response.content
@@ -25,9 +24,8 @@ def test_get_finance_creates_row_when_missing(
 
 @pytest.mark.django_db
 def test_finance_get_does_not_echo_bank_secrets(
-    api_client: APIClient, staff: User, property_: Property, group: PropertyGroup
+    api_client: APIClient, staff: User, property_: Property
 ) -> None:
-    GroupFinance.objects.get_or_create(group=group)
     PropertyFinance.objects.create(
         property=property_,
         bank_account_number="123456",
@@ -44,9 +42,8 @@ def test_finance_get_does_not_echo_bank_secrets(
 
 @pytest.mark.django_db
 def test_patch_finance_updates_commission(
-    api_client: APIClient, staff: User, property_: Property, group: PropertyGroup
+    api_client: APIClient, staff: User, property_: Property
 ) -> None:
-    GroupFinance.objects.get_or_create(group=group)
     PropertyFinance.objects.create(property=property_)
     api_client.force_login(staff)
     response = api_client.patch(

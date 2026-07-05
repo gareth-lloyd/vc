@@ -19,7 +19,6 @@ from properties.models import (
     Country,
     Property,
     PropertyCategory,
-    PropertyGroup,
     Region,
 )
 
@@ -34,13 +33,11 @@ def _property() -> Property:
         defaults={"country": country, "name": "South West"},
     )
     category, _ = PropertyCategory.objects.get_or_create(slug="villa", defaults={"name": "Villa"})
-    group = PropertyGroup.objects.create(name="iCal conflict group")
     return Property.objects.create(
         name="Conflict Villa",
         display_name="Conflict Villa",
         slug="conflict-villa",
         category=category,
-        group=group,
         region=region,
     )
 

@@ -13,11 +13,9 @@ from properties.enums import (
     SecurityDepositPaymentMethod,
 )
 from properties.models import (
-    GroupFinance,
     Property,
     PropertyCategory,
     PropertyFinance,
-    PropertyGroup,
     Region,
 )
 from properties.models.geo import Country
@@ -43,13 +41,7 @@ def region(country: Country) -> Region:
 
 
 @pytest.fixture
-def group(db: None) -> PropertyGroup:
-    return PropertyGroup.objects.create(name="Finance test group")
-
-
-@pytest.fixture
 def prop(
-    group: PropertyGroup,
     category: PropertyCategory,
     region: Region,
 ) -> Property:
@@ -57,42 +49,9 @@ def prop(
         name="Sea View",
         display_name="Sea View",
         slug="sea-view-finance",
-        group=group,
         category=category,
         region=region,
     )
-
-
-@pytest.mark.django_db
-def test_property_group_post_save_creates_group_finance() -> None:
-    group = PropertyGroup.objects.create(name="Auto-finance group")
-
-    assert GroupFinance.objects.filter(group=group).exists()
-    gf = group.finance
-    # Sensible non-null defaults are applied.
-    assert gf.commission_calculation_type == CommissionCalcType.PERCENT
-    assert gf.commission_amount == Decimal("0.00")
-    assert gf.tax_is_exempt is False
-    assert gf.deposit_required is True
-    assert gf.deposit_calculation_type == DepositCalcType.PERCENT
-    assert gf.deposit_amount == Decimal("30.00")
-    assert gf.days_balance_due_before_arrival == 60
-    assert gf.security_deposit_required is False
-    assert gf.security_deposit_payment_method == SecurityDepositPaymentMethod.CARD_HOLD
-    assert gf.security_deposit_calculation_type == SecurityDepositCalcType.FIXED
-    assert gf.cancellation_window_days == 0
-
-
-@pytest.mark.django_db
-def test_property_group_resave_does_not_replace_group_finance() -> None:
-    group = PropertyGroup.objects.create(name="Stable finance")
-    finance_pk = group.finance.pk
-
-    group.description = "Updated"
-    group.save()
-
-    group.refresh_from_db()
-    assert group.finance.pk == finance_pk
 
 
 # --- effective_*() resolvers (GAP-070): own fields + policy-floor fallbacks --
@@ -105,13 +64,6 @@ def test_property_group_resave_does_not_replace_group_finance() -> None:
 
 @pytest.mark.django_db
 def test_effective_commission_returns_property_value_when_set(prop: Property) -> None:
-    # Group values must be IGNORED — the resolver reads own fields only.
-    gf = prop.group.finance
-    gf.commission_calculation_type = CommissionCalcType.PERCENT
-    gf.commission_amount = Decimal("15.00")
-    gf.commission_note = "group note"
-    gf.save()
-
     PropertyFinance.objects.create(
         property=prop,
         commission_calculation_type=CommissionCalcType.FIXED,
@@ -129,13 +81,7 @@ def test_effective_commission_returns_property_value_when_set(prop: Property) ->
 
 @pytest.mark.django_db
 def test_effective_commission_null_falls_back_to_policy_floor(prop: Property) -> None:
-    """NULL columns resolve to the policy floor, NOT the group's values."""
-    gf = prop.group.finance
-    gf.commission_calculation_type = CommissionCalcType.FIXED
-    gf.commission_amount = Decimal("12.50")
-    gf.commission_note = "group default"
-    gf.save()
-
+    """NULL columns resolve to the policy floor."""
     PropertyFinance.objects.create(property=prop)  # All fields null/blank.
 
     result = prop.finance.effective_commission()
@@ -150,13 +96,6 @@ def test_effective_commission_null_falls_back_to_policy_floor(prop: Property) ->
 def test_effective_commission_empty_note_is_a_real_value(prop: Property) -> None:
     """An empty-string note is a genuine own value (post-freeze semantics) —
     it is returned as-is, never resolved elsewhere."""
-    # Group values are inert — seeded only as contrast (pre-GAP-070 a blank
-    # note inherited "group note when prop blank"; now it must stay "").
-    gf = prop.group.finance
-    gf.commission_note = "group note when prop blank"
-    gf.commission_amount = Decimal("9.00")
-    gf.save()
-
     PropertyFinance.objects.create(
         property=prop,
         commission_note="",  # blank text stays blank

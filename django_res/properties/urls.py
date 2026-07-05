@@ -11,8 +11,6 @@ from properties.views import (
     CountryViewSet,
     FeatureCategoryViewSet,
     FeatureViewSet,
-    GroupFinanceView,
-    GroupSettingsView,
     NearbyPlaceTypeViewSet,
     PropertyCapacityView,
     PropertyCategoryViewSet,
@@ -24,7 +22,6 @@ from properties.views import (
     PropertyDescriptionDetailView,
     PropertyDescriptionListView,
     PropertyFinanceView,
-    PropertyGroupViewSet,
     PropertyImageDetailView,
     PropertyImageListCreateView,
     PropertyImageReorderView,
@@ -50,7 +47,6 @@ from properties.views.collection import (
 router = DefaultRouter(trailing_slash=False)
 router.register(r"properties", PropertyViewSet, basename="property")
 router.register(r"property-categories", PropertyCategoryViewSet, basename="property-category")
-router.register(r"property-groups", PropertyGroupViewSet, basename="property-group")
 router.register(r"collections", CollectionViewSet, basename="collection")
 router.register(r"features", FeatureViewSet, basename="feature")
 router.register(r"feature-categories", FeatureCategoryViewSet, basename="feature-category")
@@ -218,16 +214,6 @@ _property_subresources: list[URLPattern] = [
         "property-defaults",
         PropertyDefaultsView.as_view(),
         name="property-defaults",
-    ),
-    path(
-        "property-groups/<int:group_id>/settings",
-        GroupSettingsView.as_view(),
-        name="property-group-settings",
-    ),
-    path(
-        "property-groups/<int:group_id>/finance",
-        GroupFinanceView.as_view(),
-        name="property-group-finance",
     ),
     path(
         "collections/<slug:slug>/properties",

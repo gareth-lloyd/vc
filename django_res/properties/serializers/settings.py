@@ -1,4 +1,4 @@
-"""Serializers for `PropertySettings` and `GroupSettings`."""
+"""Serializer for `PropertySettings`."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
 from properties.enums import PriceBasis
-from properties.models import GroupSettings, PropertySettings
+from properties.models import PropertySettings
 
 
 class PropertySettingsSerializer(serializers.ModelSerializer[PropertySettings]):
@@ -94,22 +94,3 @@ class PropertySettingsSerializer(serializers.ModelSerializer[PropertySettings]):
             "is_exempt": tax_src["is_exempt"],
         }
         return commission, tax
-
-
-class GroupSettingsSerializer(serializers.ModelSerializer[GroupSettings]):
-    class Meta:
-        model = GroupSettings
-        fields = [
-            "group",
-            "availability_default",
-            "bookings_require_pre_approval",
-            "requires_enquiry_first",
-            "currency",
-            "check_in_time",
-            "check_out_time",
-            "changeover_day",
-            "min_nights_rental",
-            "min_nights_rental_note",
-            "prices_entered_as",
-        ]
-        read_only_fields = ["group"]

@@ -107,10 +107,10 @@ class StayOptionsService:
         properties_by_id = {
             p.pk: p
             for p in Property.objects.filter(pk__in=property_ids)
-            # `settings` / `group__settings` feed the engine's villa min-nights
+            # `settings` feeds the engine's villa min-nights
             # default (GAP-056); fold them into this fetch so the per-property
             # resolution costs no extra query.
-            .select_related("settings", "group__settings")
+            .select_related("settings")
             .prefetch_related("images")
         }
         occupied = cls._occupied_intervals(requests, flex_days)
@@ -156,10 +156,10 @@ class StayOptionsService:
         properties_by_id = {
             p.pk: p
             for p in Property.objects.filter(pk__in=property_ids)
-            # `settings` / `group__settings` feed the engine's villa min-nights
+            # `settings` feeds the engine's villa min-nights
             # default (GAP-056) that every per-week `quote()` now resolves; fold
             # them in so the timeline doesn't re-query settings per property.
-            .select_related("capacity", "settings", "group__settings")
+            .select_related("capacity", "settings")
         }
         return [
             cls._weekly_prices_one(

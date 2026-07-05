@@ -669,13 +669,8 @@ def test_owner_commission_null_columns_resolve_to_policy_floor(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:
     # Property finance with everything null on commission resolves to the
-    # policy floor (percent / 0) — group values are never consulted (GAP-070).
+    # policy floor (percent / 0, GAP-070).
     _make_finance(booking.property)
-    group_finance = booking.property.group.finance
-    group_finance.commission_calculation_type = CommissionCalcType.FIXED.value
-    group_finance.commission_amount = Decimal("8.00")
-    group_finance.commission_note = "Group default"
-    group_finance.save()
 
     api_client.force_login(staff)
     response = api_client.get(f"/api/v1/bookings/{booking.pk}")
@@ -811,12 +806,8 @@ def test_owner_booking_summary_renders_gross_when_prices_entered_as_gross(
 def test_owner_booking_summary_null_basis_defaults_to_gross(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:
-    """Property-level NULL `prices_entered_as` defaults to GROSS — group
-    values are never consulted (GAP-070)."""
+    """Property-level NULL `prices_entered_as` defaults to GROSS (GAP-070)."""
     _set_prices_entered_as(booking.property, None)
-    group_settings = booking.property.group.settings
-    group_settings.prices_entered_as = PriceBasis.NET.value
-    group_settings.save(update_fields=["prices_entered_as"])
 
     booking.pricing_snapshot = _snapshot()
     booking.save(update_fields=["pricing_snapshot"])

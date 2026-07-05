@@ -11,7 +11,6 @@ from __future__ import annotations
 from accounts.enums import PersonKind, PersonStatus
 from accounts.models import Person
 from properties.models.geo import Country, Region
-from properties.models.property import PropertyGroup
 
 _UNKNOWN = "__unknown__"
 
@@ -75,15 +74,3 @@ def unknown_client() -> Person:
         },
     )
     return person
-
-
-def unknown_group() -> PropertyGroup:
-    group, _ = PropertyGroup.objects.get_or_create(
-        legacy_id=_UNKNOWN,
-        defaults={
-            "name": "Unknown",
-            "description": "Sentinel group for legacy properties with no resolvable group.",
-            "is_active": False,
-        },
-    )
-    return group

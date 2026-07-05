@@ -4,44 +4,11 @@ from typing import Any
 
 from django.db import transaction
 from django.db.models.fields.files import FieldFile
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
 from properties.models.features import Collection
-from properties.models.finance import GroupFinance
 from properties.models.images import PropertyImage
-from properties.models.property import PropertyGroup
-from properties.models.settings import GroupSettings
-
-
-@receiver(post_save, sender=PropertyGroup, dispatch_uid="properties.create_group_settings")
-def create_group_settings(
-    sender: type[PropertyGroup],
-    instance: PropertyGroup,
-    created: bool,
-    **kwargs: Any,
-) -> None:
-    """Ensure every `PropertyGroup` has an attached `GroupSettings` row.
-
-    Created with defaults on `PropertyGroup` insert; the row lives for the
-    group's lifetime (CASCADE on delete).
-    """
-    if not created:
-        return
-    GroupSettings.objects.get_or_create(group=instance)
-
-
-@receiver(post_save, sender=PropertyGroup, dispatch_uid="properties.create_group_finance")
-def create_group_finance(
-    sender: type[PropertyGroup],
-    instance: PropertyGroup,
-    created: bool,
-    **kwargs: Any,
-) -> None:
-    """Ensure every `PropertyGroup` has an attached `GroupFinance` row."""
-    if not created:
-        return
-    GroupFinance.objects.get_or_create(group=instance)
 
 
 def _delete_stored_file_after_commit(field_file: FieldFile) -> None:

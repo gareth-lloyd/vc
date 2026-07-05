@@ -25,6 +25,8 @@
       "category_placeholder": "Επιλέξτε κατηγορία",
       "group": "Ομάδα",
       "group_placeholder": "Επιλέξτε ομάδα",
+      "country": "Χώρα",
+      "country_placeholder": "Επιλέξτε χώρα",
       "region": "Περιοχή",
       "region_placeholder": "Επιλέξτε περιοχή"
     },

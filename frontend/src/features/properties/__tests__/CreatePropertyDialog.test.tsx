@@ -18,7 +18,20 @@ function stubTaxonomies() {
     ),
     http.get("/api/v1/regions", () =>
       HttpResponse.json(
-        drfPage([{ id: 3, name: "Tuscany", slug: "tuscany", country: null, is_active: true }]),
+        drfPage([
+          { id: 3, name: "Tuscany", slug: "tuscany", country: null, is_active: true },
+          { id: 7, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza", is_active: true },
+          { id: 11, country: 2, country_iso2: "GR", name: "Crete", slug: "crete", is_active: true },
+        ]),
+      ),
+    ),
+    // The dialog's country picker (a picker aid, not a payload field).
+    http.get("/api/v1/countries", () =>
+      HttpResponse.json(
+        drfPage([
+          { id: 1, iso2: "ES", name: "Spain", is_active: true },
+          { id: 2, iso2: "GR", name: "Greece", is_active: true },
+        ]),
       ),
     ),
   );
@@ -117,6 +130,27 @@ describe("CreatePropertyDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: /create villa/i }));
 
     expect(await screen.findByText(/slug already exists/i)).toBeInTheDocument();
+  });
+
+  it("narrows regions to the picked country and resets the region on change", async () => {
+    stubTaxonomies();
+    renderWithProviders(<CreatePropertyDialog open onOpenChange={() => {}} />);
+
+    await userEvent.click(screen.getByRole("combobox", { name: /country/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Spain" }));
+
+    // Scoped: only Spanish regions on offer, plain labels.
+    await userEvent.click(screen.getByRole("combobox", { name: /region/i }));
+    expect(await screen.findByRole("option", { name: "Ibiza" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Crete/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Tuscany/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "Ibiza" }));
+    expect(screen.getByRole("combobox", { name: /region/i })).toHaveTextContent("Ibiza");
+
+    // Switching country resets the region to unselected.
+    await userEvent.click(screen.getByRole("combobox", { name: /country/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Greece" }));
+    expect(screen.getByRole("combobox", { name: /region/i })).not.toHaveTextContent("Ibiza");
   });
 
   it("blocks submission until the required FKs are chosen", async () => {

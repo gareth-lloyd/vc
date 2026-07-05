@@ -2,20 +2,10 @@ import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 
-export const bookingStatusSchema = z.enum([
-  "draft",
-  "pending_owner_approval",
-  "awaiting_deposit",
-  "deposit_paid",
-  "awaiting_balance",
-  "balance_paid",
-  "checked_in",
-  "checked_out",
-  "cancelled",
-  "expired",
-  "declined",
-]);
-export type BookingStatus = z.infer<typeof bookingStatusSchema>;
+// Lives in lib/domain so contacts can render booking history without
+// importing this feature's schemas (GAP-063); re-exported for local use.
+import { bookingStatusSchema, type BookingStatus } from "@/lib/domain/statuses";
+export { bookingStatusSchema, type BookingStatus } from "@/lib/domain/statuses";
 
 export const bookingListItemSchema = z.object({
   id: z.number(),

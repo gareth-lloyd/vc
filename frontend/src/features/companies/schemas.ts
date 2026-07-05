@@ -2,14 +2,16 @@ import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 
-// The serialized agency value is "agency"; the other org types ("mgmt",
-// "supplier") are accepted on read so the detail/list schemas never reject a
-// row, even though this UI only ever creates/filters agencies.
-export const orgTypeSchema = z.enum(["agency", "mgmt", "supplier"]);
-export type OrgType = z.infer<typeof orgTypeSchema>;
-
-export const orgStatusSchema = z.enum(["active", "inactive"]);
-export type OrgStatus = z.infer<typeof orgStatusSchema>;
+// The org enums live in lib/domain so contacts' nested agency_detail can
+// reuse them without importing this feature's schemas (GAP-063);
+// re-exported for local use.
+import { orgStatusSchema, orgTypeSchema } from "@/lib/domain/statuses";
+export {
+  orgStatusSchema,
+  orgTypeSchema,
+  type OrgStatus,
+  type OrgType,
+} from "@/lib/domain/statuses";
 
 // Field ceilings mirror the backend Organisation model max_lengths exactly, so a
 // value that passes client validation can never 400 server-side (name 128,

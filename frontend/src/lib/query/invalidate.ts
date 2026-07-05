@@ -85,8 +85,9 @@ export function invalidateQuotationRelated(
 }
 
 /** Everything a quotation status change can make stale: its own detail
- * (status flips are visible there), lists, status counts, plus the related
- * enquiry and contacts. */
+ * (status flips are visible there), lists, status counts, the parent
+ * enquiry's list row/badges (send/convert flip the enquiry stage server-side)
+ * plus the related enquiry detail and contacts. */
 export function invalidateQuotationDependents(
   qc: QueryClient,
   quotation: {
@@ -99,5 +100,9 @@ export function invalidateQuotationDependents(
   void qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(quotation.id) });
   void qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
   void qc.invalidateQueries({ queryKey: queryKeys.quotations.statusCountsAll() });
+  if (quotation.enquiry != null) {
+    void qc.invalidateQueries({ queryKey: queryKeys.enquiries.lists() });
+    void qc.invalidateQueries({ queryKey: queryKeys.enquiries.statusCountsAll() });
+  }
   invalidateQuotationRelated(qc, quotation);
 }

@@ -11,13 +11,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useQueryClient } from "@tanstack/react-query";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
 import { apiErrorMessage } from "@/lib/api/forms";
 import { toDatetimeLocal } from "@/lib/format/date";
 import { toDecimalString } from "@/lib/format/money";
-import { queryKeys } from "@/lib/query/keys";
 import { useCreateContact } from "@/features/contacts/hooks";
 import { useCreateQuotation, useCurrentTermsVersion } from "../hooks";
 import { checkedSaveableBands, isStagedLineValid } from "../lineTotals";
@@ -112,7 +110,6 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
   const [expiresAt, setExpiresAt] = useState<string>(defaultExpiresAt());
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
-  const qc = useQueryClient();
   const createContact = useCreateContact();
   const createQuotation = useCreateQuotation();
   // Remembers a customer Person created by a failed save attempt so a retry
@@ -202,12 +199,10 @@ export function SaveQuoteDialog({ open, onOpenChange, enquiry, lines, onSaved }:
         lines: lines.flatMap(toLineWriteBodies),
       });
 
-      // The enquiry detail carries the inline quote-stack, so a freshly-created
-      // draft must refresh it (the workspace renders the new quote in place
-      // without a reload). `useCreateQuotation` already invalidates the
-      // quotations list/badges; the brand-new detail has no cached entries.
-      qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(enquiry.id) });
-
+      // The enquiry detail carries the inline quote-stack; `useCreateQuotation`
+      // routes through invalidateQuotationDependents, which refreshes the
+      // parent enquiry (and lists/badges) from the response — no manual
+      // invalidation needed here.
       toast.success(t("builder.save.toasts.success"));
       onSaved(quotation);
       onOpenChange(false);

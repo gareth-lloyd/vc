@@ -1,6 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import { queryKeys, type QuotationId } from "@/lib/query/keys";
+import {
+  invalidateBookingDependents,
+  invalidatePropertyAvailability,
+  invalidateQuotationDependents,
+  invalidateQuotationRelated,
+} from "@/lib/query/invalidate";
 import { fetchStatusCounts } from "@/lib/api/statusCounts";
 import {
   convertQuotation,
@@ -26,6 +32,7 @@ import {
 import type {
   QuotationDetail,
   QuotationFilters,
+  QuotationLine,
   QuotationLineWriteInput,
   QuotationSendOverrides,
   QuoteCriteriaInput,
@@ -110,43 +117,23 @@ export function useCreateQuotation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createQuotation,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
-      // A new draft row shifts the status tab-bar badge counts.
-      qc.invalidateQueries({ queryKey: queryKeys.quotations.statusCountsAll() });
-    },
+    // The new draft shifts the list + badge counts and appears on the parent
+    // enquiry and the guest/agent contact rails (BUG-018).
+    onSuccess: (created) => invalidateQuotationDependents(qc, created),
   });
 }
 
 // ----------------------------------------------------------------------
-// Lifecycle action hooks — send / duplicate / withdraw.
+// Lifecycle action hooks — send / duplicate / withdraw / convert. All route
+// through invalidateQuotationDependents: every response is the (new)
+// QuotationDetail, which carries the enquiry/guest/agent FKs the cross-entity
+// surfaces hang off.
 // ----------------------------------------------------------------------
 
-function invalidateQuotationStatus(qc: ReturnType<typeof useQueryClient>, id: QuotationId) {
-  // Lifecycle actions can change the row visible on the list (status, etc.).
-  qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(id) });
-  qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
-  // The status tab-bar badges count by status, so any transition restains them.
-  qc.invalidateQueries({ queryKey: queryKeys.quotations.statusCountsAll() });
-}
-
 function invalidateQuotationLines(qc: ReturnType<typeof useQueryClient>, id: QuotationId) {
-  // Line CRUD changes totals on detail but not on the list row.
-  qc.invalidateQueries({ queryKey: queryKeys.quotations.lines(id) });
+  // Line CRUD changes totals on detail but not on the list row. detail(id)
+  // is a prefix of the lines/preview sub-keys, so one call covers them all.
   qc.invalidateQueries({ queryKey: queryKeys.quotations.detail(id) });
-}
-
-function invalidateAfterSend(
-  qc: ReturnType<typeof useQueryClient>,
-  id: QuotationId,
-  quotation: QuotationDetail,
-) {
-  invalidateQuotationStatus(qc, id);
-  // Parent enquiry status flips to QUOTE_SENT — refresh that view too.
-  if (quotation.enquiry != null) {
-    qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(quotation.enquiry) });
-    qc.invalidateQueries({ queryKey: queryKeys.enquiries.activity(quotation.enquiry) });
-  }
 }
 
 // Path A — sends the guest email. Optional overrides (subject/intro/signoff)
@@ -155,7 +142,7 @@ export function useSendQuotation(id: QuotationId) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (overrides?: QuotationSendOverrides) => sendQuotation(id, overrides),
-    onSuccess: (quotation) => invalidateAfterSend(qc, id, quotation),
+    onSuccess: (quotation) => invalidateQuotationDependents(qc, quotation),
   });
 }
 
@@ -164,7 +151,7 @@ export function useMarkQuotationManuallySent(id: QuotationId) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => markQuotationManuallySent(id),
-    onSuccess: (quotation) => invalidateAfterSend(qc, id, quotation),
+    onSuccess: (quotation) => invalidateQuotationDependents(qc, quotation),
   });
 }
 
@@ -172,11 +159,8 @@ export function useDuplicateQuotation(id: QuotationId) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => duplicateQuotation(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.quotations.lists() });
-      // The duplicate is a new draft row, shifting the status tab-bar badges.
-      qc.invalidateQueries({ queryKey: queryKeys.quotations.statusCountsAll() });
-    },
+    // The response is the NEW draft — same enquiry/contacts, new id.
+    onSuccess: (duplicated) => invalidateQuotationDependents(qc, duplicated),
   });
 }
 
@@ -184,21 +168,22 @@ export function useWithdrawQuotation(id: QuotationId) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (reason: string) => withdrawQuotation(id, reason),
-    onSuccess: () => invalidateQuotationStatus(qc, id),
+    onSuccess: (quotation) => invalidateQuotationDependents(qc, quotation),
   });
 }
 
-export function useConvertQuotation(id: QuotationId) {
+export function useConvertQuotation(
+  quotation: Pick<QuotationDetail, "id" | "enquiry" | "guest" | "agent">,
+) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: ConvertQuotationInput) => convertQuotation(id, input),
+    mutationFn: (input: ConvertQuotationInput) => convertQuotation(quotation.id, input),
     onSuccess: (booking) => {
-      // The quotation flips to ACCEPTED and a new booking row appears —
-      // refresh both feature lists + the new booking detail + both badge sets.
-      invalidateQuotationStatus(qc, id);
-      qc.invalidateQueries({ queryKey: queryKeys.bookings.lists() });
-      qc.invalidateQueries({ queryKey: queryKeys.bookings.statusCountsAll() });
-      qc.invalidateQueries({ queryKey: queryKeys.bookings.detail(booking.id) });
+      // The quotation flips to ACCEPTED, its parent enquiry to CONVERTED, and
+      // a new booking appears whose dates block the villa.
+      invalidateQuotationDependents(qc, quotation);
+      qc.setQueryData(queryKeys.bookings.detail(booking.id), booking);
+      invalidateBookingDependents(qc, booking);
     },
   });
 }
@@ -222,25 +207,50 @@ export function useDeleteQuotationLine(quotationId: QuotationId) {
   });
 }
 
+// Related-entity FKs threaded from the caller's QuotationDetail — a hold
+// isn't a status transition, so hold hooks refresh the related surfaces
+// without churning quotation lists/status counts.
+type QuotationRelated = { enquiry?: number | null; guest?: number | null; agent?: number | null };
+
 // Manual hold toggles. A hold blocks the villa's dates for everyone, so the
-// availability surfaces (calendar grid, multi-villa timeline) restain too.
-function invalidateAfterHoldChange(qc: ReturnType<typeof useQueryClient>, id: QuotationId) {
+// held line's property availability (calendar grid, holds, multi-villa
+// timeline) restains, plus the parent enquiry / contact rails.
+function invalidateAfterHoldChange(
+  qc: ReturnType<typeof useQueryClient>,
+  id: QuotationId,
+  line: QuotationLine,
+  related: QuotationRelated,
+) {
   invalidateQuotationLines(qc, id);
-  qc.invalidateQueries({ queryKey: queryKeys.availability.all() });
+  if (line.property != null) {
+    invalidatePropertyAvailability(qc, line.property);
+  } else {
+    qc.invalidateQueries({ queryKey: queryKeys.availability.all() });
+  }
+  invalidateQuotationRelated(qc, related);
 }
 
-export function useHoldQuotationLine(quotationId: QuotationId) {
+// `related` is required (though possibly undefined while the quotation is
+// still loading) so call sites can't silently forget to thread it: undefined
+// degrades to a broad contacts refresh and no enquiry refresh.
+export function useHoldQuotationLine(
+  quotationId: QuotationId,
+  related: QuotationRelated | undefined,
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (lineId: number) => holdQuotationLine(quotationId, lineId),
-    onSuccess: () => invalidateAfterHoldChange(qc, quotationId),
+    onSuccess: (line) => invalidateAfterHoldChange(qc, quotationId, line, related ?? {}),
   });
 }
 
-export function useReleaseQuotationLineHold(quotationId: QuotationId) {
+export function useReleaseQuotationLineHold(
+  quotationId: QuotationId,
+  related: QuotationRelated | undefined,
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (lineId: number) => releaseQuotationLineHold(quotationId, lineId),
-    onSuccess: () => invalidateAfterHoldChange(qc, quotationId),
+    onSuccess: (line) => invalidateAfterHoldChange(qc, quotationId, line, related ?? {}),
   });
 }

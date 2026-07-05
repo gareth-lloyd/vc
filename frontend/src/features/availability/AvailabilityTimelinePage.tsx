@@ -19,14 +19,8 @@ import { activeLocale } from "@/lib/format/date";
 import { useListParams } from "@/lib/list/useListParams";
 import { useCountries } from "@/features/admin/countries/hooks";
 import { TAXONOMY_PAGE_SIZE } from "@/features/properties/api";
-import { PROPERTIES_PAGE_SIZE } from "@/features/properties/hooks";
-import {
-  useCollections,
-  useMultiAvailability,
-  useRegions,
-  useTimelineProperties,
-  useWeeklyPrices,
-} from "./hooks";
+import { PROPERTIES_PAGE_SIZE, useCollections, useRegions } from "@/features/properties/hooks";
+import { useMultiAvailability, useTimelineProperties, useWeeklyPrices } from "./hooks";
 import { monthSpanLabel } from "./monthSpan";
 import { hasAnyFilter, type TimelineFilters } from "./schemas";
 import { bandStatusClasses, type BandDisplayStatus } from "./status";

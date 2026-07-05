@@ -27,8 +27,7 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
 import { slugify } from "@/lib/format/slug";
 import { propertyDetailsPath } from "@/lib/routes";
-import { useCreateProperty, usePropertyCategories, usePropertyGroups } from "../hooks";
-import { useRegions } from "@/features/availability/hooks";
+import { useCreateProperty, usePropertyCategories, usePropertyGroups, useRegions } from "../hooks";
 import { propertyCreateInputSchema, type PropertyCreateInput } from "../schemas";
 
 interface CreatePropertyDialogProps {

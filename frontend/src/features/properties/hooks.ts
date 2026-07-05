@@ -29,6 +29,7 @@ import {
   deleteRatePlan,
   duplicateRatePlan,
   fetchChangeOverRules,
+  fetchCollections,
   fetchNearbyPlaceTypes,
   fetchProperties,
   fetchProperty,
@@ -51,6 +52,8 @@ import {
   fetchPropertyRatePlans,
   fetchPropertySettings,
   fetchRatePlanDetail,
+  fetchRegions,
+  type RegionListFilters,
   reorderPropertyImages,
   reorderPropertyRooms,
   restoreProperty,
@@ -114,6 +117,17 @@ export function usePropertyCategories() {
 
 export function usePropertyGroups() {
   return useQuery({ queryKey: queryKeys.propertyGroups.list(), queryFn: fetchPropertyGroups });
+}
+
+export function useRegions(filters?: RegionListFilters) {
+  return useQuery({
+    queryKey: queryKeys.regions.list(filters),
+    queryFn: () => fetchRegions(filters),
+  });
+}
+
+export function useCollections() {
+  return useQuery({ queryKey: queryKeys.collections.list(), queryFn: fetchCollections });
 }
 
 export function useCreateProperty() {

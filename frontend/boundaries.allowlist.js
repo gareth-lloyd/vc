@@ -7,12 +7,14 @@ export const ALLOWED_EDGES = {
   auth: ["owner-portal"],
   availability: ["admin", "properties"],
   bookings: ["audit", "auth"],
-  clients: ["availability", "contacts"],
+  // clients→availability relabelled to clients→properties when the geo hooks
+  // (useRegions/useCollections) moved to their true home (GAP-063 Unit 3).
+  clients: ["contacts", "properties"],
   companies: ["audit"],
   contacts: ["audit", "bookings", "companies", "enquiries", "properties"],
   dashboard: ["bookings", "enquiries"],
   enquiries: ["bookings", "contacts", "quotations", "users"],
   "owner-portal": ["auth"],
-  properties: ["admin", "audit", "availability", "contacts"],
-  quotations: ["admin", "availability", "bookings", "contacts", "enquiries", "properties"],
+  properties: ["admin", "audit", "contacts"],
+  quotations: ["admin", "bookings", "contacts", "enquiries", "properties"],
 };

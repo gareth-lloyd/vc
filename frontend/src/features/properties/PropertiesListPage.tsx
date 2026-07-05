@@ -21,11 +21,10 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { propertyDetailsPath } from "@/lib/routes";
 import { useCountries } from "@/features/admin/countries/hooks";
-import { useRegions } from "@/features/availability/hooks";
 import { TAXONOMY_PAGE_SIZE } from "./api";
 import { CreatePropertyDialog } from "./components/CreatePropertyDialog";
 import { propertyColumns } from "./columns";
-import { PROPERTIES_PAGE_SIZE, useProperties } from "./hooks";
+import { PROPERTIES_PAGE_SIZE, useProperties, useRegions } from "./hooks";
 import type { PropertyFilters, PropertyListItem } from "./schemas";
 
 const ALL_VALUE = "__all__";

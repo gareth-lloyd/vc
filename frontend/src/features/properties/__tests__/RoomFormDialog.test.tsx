@@ -33,6 +33,8 @@ const existingRoom: PropertyRoom = {
   website_description: "",
   vc_notes: "",
   is_ensuite: true,
+  ensuite_type: "",
+  access: "",
   sort_order: 0,
   beds: {
     double: 1,
@@ -43,7 +45,39 @@ const existingRoom: PropertyRoom = {
     sofa: 0,
     childrens: 0,
   },
+  attribute_links: [],
 };
+
+// Assigned amenities: one live catalog row (Wardrobe, id 1 in the default MSW
+// catalog) and one retired row (Fireplace, id 3, is_active=false).
+const roomWithAmenities: PropertyRoom = {
+  ...existingRoom,
+  attribute_links: [
+    {
+      id: 90,
+      attribute: 1,
+      slug: "wardrobe",
+      name: "Wardrobe",
+      icon: "shirt",
+      is_active: true,
+      note: "walk-in",
+    },
+    {
+      id: 91,
+      attribute: 3,
+      slug: "fireplace",
+      name: "Fireplace",
+      icon: "flame",
+      is_active: false,
+      note: "",
+    },
+  ],
+};
+
+async function choose(comboboxName: RegExp, optionName: RegExp) {
+  await userEvent.click(await screen.findByRole("combobox", { name: comboboxName }));
+  await userEvent.click(await screen.findByRole("option", { name: optionName }));
+}
 
 describe("RoomFormDialog", () => {
   it("submits a new room on save (create)", async () => {
@@ -118,6 +152,109 @@ describe("RoomFormDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(patchBody).not.toBeNull());
     expect((patchBody as { name?: string }).name).toBe("Master suite");
+    useAuthStore.getState().clear();
+  });
+
+  it("submits facet selects and ticked amenities with notes (create)", async () => {
+    setReservationsUser();
+    let postedBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/properties/7/rooms", async ({ request }) => {
+        postedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...existingRoom, id: 999, name: "New room" }, { status: 201 });
+      }),
+    );
+    renderWithProviders(
+      <RoomFormDialog propertyId={7} open mode="create" onOpenChange={() => {}} />,
+    );
+    await userEvent.type(await screen.findByLabelText(/^Name$/i), "New room");
+    await choose(/ensuite type/i, /^shower$/i);
+    await choose(/^access$/i, /^outside$/i);
+    await userEvent.click(await screen.findByRole("checkbox", { name: /^wardrobe$/i }));
+    await userEvent.type(screen.getByPlaceholderText(/note \(optional\)/i), "walk-in");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(postedBody).not.toBeNull());
+    expect(postedBody).toMatchObject({
+      ensuite_type: "shower",
+      access: "outside",
+      is_ensuite: true,
+      attribute_links: [{ attribute: 1, note: "walk-in" }],
+    });
+    useAuthStore.getState().clear();
+  });
+
+  it("auto-checks Ensuite when a type is picked; unchecking Ensuite resets the type", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RoomFormDialog propertyId={7} open mode="create" onOpenChange={() => {}} />,
+    );
+    const ensuiteCheckbox = await screen.findByRole("checkbox", { name: /^ensuite$/i });
+    expect(ensuiteCheckbox).not.toBeChecked();
+    await choose(/ensuite type/i, /^bath$/i);
+    expect(ensuiteCheckbox).toBeChecked();
+    await userEvent.click(ensuiteCheckbox);
+    expect(ensuiteCheckbox).not.toBeChecked();
+    expect(screen.getByRole("combobox", { name: /ensuite type/i })).toHaveTextContent(/unknown/i);
+    useAuthStore.getState().clear();
+  });
+
+  it("unticking an amenity removes it from the submitted full list (edit)", async () => {
+    setReservationsUser();
+    let patchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/properties/7/rooms/200", async ({ request }) => {
+        patchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(roomWithAmenities);
+      }),
+    );
+    renderWithProviders(
+      <RoomFormDialog
+        propertyId={7}
+        open
+        mode="edit"
+        room={roomWithAmenities}
+        onOpenChange={() => {}}
+      />,
+    );
+    const wardrobe = await screen.findByRole("checkbox", { name: /^wardrobe$/i });
+    expect(wardrobe).toBeChecked();
+    await userEvent.click(wardrobe);
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(patchBody).not.toBeNull());
+    expect(patchBody).toMatchObject({ attribute_links: [{ attribute: 3, note: "" }] });
+    useAuthStore.getState().clear();
+  });
+
+  it("keeps a retired-but-assigned amenity ticked, badged, and in the saved list (B1)", async () => {
+    setReservationsUser();
+    let patchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/properties/7/rooms/200", async ({ request }) => {
+        patchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(roomWithAmenities);
+      }),
+    );
+    renderWithProviders(
+      <RoomFormDialog
+        propertyId={7}
+        open
+        mode="edit"
+        room={roomWithAmenities}
+        onOpenChange={() => {}}
+      />,
+    );
+    const fireplace = await screen.findByRole("checkbox", { name: /^fireplace$/i });
+    expect(fireplace).toBeChecked();
+    // Styled as retired but NOT disabled — the user must still be able to untick.
+    expect(fireplace).toBeEnabled();
+    expect(screen.getByText(/^retired$/i)).toBeInTheDocument();
+    // Save without touching the amenities: the retired link must survive.
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(patchBody).not.toBeNull());
+    const links = (patchBody as unknown as { attribute_links: { attribute: number }[] })
+      .attribute_links;
+    expect(links).toContainEqual({ attribute: 3, note: "" });
+    expect(links).toContainEqual({ attribute: 1, note: "walk-in" });
     useAuthStore.getState().clear();
   });
 });

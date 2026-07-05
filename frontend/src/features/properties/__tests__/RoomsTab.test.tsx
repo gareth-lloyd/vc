@@ -117,6 +117,37 @@ function setup() {
   );
 }
 
+// GAP-064: facets + assigned amenities (attribute_links read shape).
+const roomC = {
+  ...roomA,
+  id: 202,
+  name: "Garden suite",
+  is_ensuite: true,
+  ensuite_type: "shower",
+  access: "outside",
+  sort_order: 2,
+  attribute_links: [
+    {
+      id: 90,
+      attribute: 1,
+      slug: "wardrobe",
+      name: "Wardrobe",
+      icon: "shirt",
+      is_active: true,
+      note: "",
+    },
+    {
+      id: 91,
+      attribute: 3,
+      slug: "fireplace",
+      name: "Fireplace",
+      icon: "flame",
+      is_active: false,
+      note: "gas",
+    },
+  ],
+};
+
 describe("RoomsTab", () => {
   it("renders rows with placement badge and bed summary", async () => {
     setReservationsUser();
@@ -129,6 +160,21 @@ describe("RoomsTab", () => {
     expect(screen.getByText("Twin room")).toBeInTheDocument();
     expect(screen.getByText(/1 double/i)).toBeInTheDocument();
     expect(screen.getByText(/2 twins/i)).toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
+  it("renders amenity chips and facet badges for a room with attribute_links (GAP-064)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    server.use(http.get("/api/v1/properties/7/rooms", () => HttpResponse.json(drfPage([roomC]))));
+    setup();
+    await waitFor(() => expect(screen.getByText("Garden suite")).toBeInTheDocument());
+    // Amenity chips render name (icon is decorative) — retired links included.
+    expect(screen.getByText("Wardrobe")).toBeInTheDocument();
+    expect(screen.getByText("Fireplace")).toBeInTheDocument();
+    // Ensuite badge carries the type; access surfaces as its own badge.
+    expect(screen.getByText(/Ensuite · Shower/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Outside$/i)).toBeInTheDocument();
     useAuthStore.getState().clear();
   });
 

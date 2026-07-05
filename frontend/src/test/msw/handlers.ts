@@ -1,6 +1,49 @@
 import { http, HttpResponse } from "msw";
 import { drfPage } from "@/test/drf";
 
+// GAP-064 amenity catalog. In the DEFAULT list (below) because RoomFormDialog
+// fetches it on every mount — without an always-on handler every existing test
+// that opens the room form would trip onUnhandledRequest:"error". Includes one
+// inactive row so retired-amenity rendering is exercisable without overrides.
+export const roomAttributeHandlers = [
+  http.get("/api/v1/room-attributes", () =>
+    HttpResponse.json(
+      drfPage([
+        {
+          id: 1,
+          slug: "wardrobe",
+          name: "Wardrobe",
+          description: "",
+          icon: "shirt",
+          sort_order: 1,
+          is_active: true,
+          implies_property_feature: null,
+        },
+        {
+          id: 2,
+          slug: "air-conditioning",
+          name: "Air conditioning",
+          description: "",
+          icon: "snowflake",
+          sort_order: 2,
+          is_active: true,
+          implies_property_feature: null,
+        },
+        {
+          id: 3,
+          slug: "fireplace",
+          name: "Fireplace",
+          description: "",
+          icon: "flame",
+          sort_order: 3,
+          is_active: false,
+          implies_property_feature: null,
+        },
+      ]),
+    ),
+  ),
+];
+
 export const defaultHandlers = [
   http.get("/api/v1/auth/me", () =>
     HttpResponse.json({ detail: "Unauthenticated" }, { status: 401 }),
@@ -8,6 +51,7 @@ export const defaultHandlers = [
   // BootGate fires this on every mount (CSRF cookie prime); always-on so
   // unrelated tests don't trip onUnhandledRequest.
   http.get("/api/v1/auth/csrf", () => new HttpResponse(null, { status: 204 })),
+  ...roomAttributeHandlers,
 ];
 
 // The block dialogs read a property's calendar to grey out occupied days in the

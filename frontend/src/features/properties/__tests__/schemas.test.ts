@@ -8,10 +8,13 @@ import {
   propertyDetailSchema,
   propertyListItemSchema,
   propertyListResponseSchema,
+  propertyRoomSchema,
   propertyRoomWriteInputSchema,
   propertySettingsWriteInputSchema,
   ratePeriodWriteInputSchema,
   rateBandWriteInputSchema,
+  roomAttributeSchema,
+  roomAttributesResponseSchema,
 } from "../schemas";
 
 describe("propertyListItemSchema — GAP-034 calendar source", () => {
@@ -347,6 +350,88 @@ describe("rateBandWriteInputSchema", () => {
   });
 });
 
+describe("propertyRoomSchema — GAP-064 facets + amenity links", () => {
+  const base = {
+    id: 200,
+    property: 7,
+    name: "Master",
+    placement: "main_house",
+    is_ensuite: true,
+    sort_order: 0,
+  };
+
+  it("defaults the new fields when omitted (older fixtures)", () => {
+    const room = propertyRoomSchema.parse(base);
+    expect(room.ensuite_type).toBe("");
+    expect(room.access).toBe("");
+    expect(room.attribute_links).toEqual([]);
+  });
+
+  it("parses facets and attribute_links (read shape)", () => {
+    const room = propertyRoomSchema.parse({
+      ...base,
+      ensuite_type: "both",
+      access: "outside",
+      attribute_links: [
+        {
+          id: 90,
+          attribute: 3,
+          slug: "fireplace",
+          name: "Fireplace",
+          icon: "flame",
+          is_active: false,
+          note: "gas",
+        },
+      ],
+    });
+    expect(room.ensuite_type).toBe("both");
+    expect(room.access).toBe("outside");
+    expect(room.attribute_links[0]).toMatchObject({
+      attribute: 3,
+      name: "Fireplace",
+      is_active: false,
+      note: "gas",
+    });
+  });
+});
+
+describe("roomAttributeSchema — GAP-064 catalog", () => {
+  it("parses a catalog row inside the DRF envelope", () => {
+    const page = roomAttributesResponseSchema.parse({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 1,
+          slug: "wardrobe",
+          name: "Wardrobe",
+          description: "",
+          icon: "shirt",
+          sort_order: 1,
+          is_active: true,
+          implies_property_feature: null,
+        },
+      ],
+    });
+    expect(page.results[0].slug).toBe("wardrobe");
+  });
+
+  it("accepts inactive rows (the endpoint serves retired attributes too)", () => {
+    const row = roomAttributeSchema.parse({
+      id: 3,
+      slug: "fireplace",
+      name: "Fireplace",
+      description: null,
+      icon: null,
+      sort_order: 3,
+      is_active: false,
+      implies_property_feature: 12,
+    });
+    expect(row.is_active).toBe(false);
+  });
+});
+
 describe("propertyRoomWriteInputSchema", () => {
   const beds = {
     double: 1,
@@ -363,6 +448,8 @@ describe("propertyRoomWriteInputSchema", () => {
     website_description: "",
     vc_notes: "",
     is_ensuite: true,
+    ensuite_type: "" as const,
+    access: "" as const,
     beds,
   };
 
@@ -378,9 +465,46 @@ describe("propertyRoomWriteInputSchema", () => {
       website_description: "",
       vc_notes: "",
       is_ensuite: true,
+      ensuite_type: "",
+      access: "",
     });
     expect(result.beds).toBeUndefined();
     expect(result.name).toBe("Master");
+  });
+
+  it("accepts blank and enum values for the GAP-064 facets, rejects junk", () => {
+    expect(propertyRoomWriteInputSchema.parse(valid).ensuite_type).toBe("");
+    expect(propertyRoomWriteInputSchema.parse(valid).access).toBe("");
+    const set = propertyRoomWriteInputSchema.parse({
+      ...valid,
+      ensuite_type: "shower",
+      access: "outside",
+    });
+    expect(set.ensuite_type).toBe("shower");
+    expect(set.access).toBe("outside");
+    expect(() => propertyRoomWriteInputSchema.parse({ ...valid, ensuite_type: "sauna" })).toThrow();
+    expect(() => propertyRoomWriteInputSchema.parse({ ...valid, access: "teleport" })).toThrow();
+  });
+
+  it("keeps the facets required so a PATCH can send '' to clear them", () => {
+    // Same clearing-trap guard as website_description: `.optional()` would omit
+    // the field and silently stop clearing a previously-set value.
+    expect(() =>
+      propertyRoomWriteInputSchema.parse({ ...valid, ensuite_type: undefined }),
+    ).toThrow();
+    expect(() => propertyRoomWriteInputSchema.parse({ ...valid, access: undefined })).toThrow();
+  });
+
+  it("keeps attribute_links optional (absent ≠ clear) but validates entries", () => {
+    expect(propertyRoomWriteInputSchema.parse(valid).attribute_links).toBeUndefined();
+    const result = propertyRoomWriteInputSchema.parse({
+      ...valid,
+      attribute_links: [{ attribute: 3, note: "walk-in" }, { attribute: 5 }],
+    });
+    expect(result.attribute_links).toEqual([{ attribute: 3, note: "walk-in" }, { attribute: 5 }]);
+    expect(() =>
+      propertyRoomWriteInputSchema.parse({ ...valid, attribute_links: [{ note: "no pk" }] }),
+    ).toThrow();
   });
 
   it("still rejects a blank name", () => {

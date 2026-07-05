@@ -283,6 +283,14 @@ class TestRoomAttributeCatalogEndpoint:
         row = next(r for r in results if r["slug"] == "aircon")
         assert set(row) >= {"id", "slug", "name", "icon", "sort_order", "is_active"}
 
+    def test_honours_page_size_for_the_whole_catalog_fetch(self, api_client: APIClient) -> None:
+        # The room form fetches everything in one request (taxonomy pattern);
+        # growth past the default page must not silently truncate the picker.
+        for i in range(60):
+            _attr(slug=f"bulk-attr-{i}")
+        resp = api_client.get("/api/v1/room-attributes?page_size=500")
+        assert len(resp.json()["results"]) >= 60
+
     def test_includes_inactive_rows(self, api_client: APIClient) -> None:
         # The form needs retired rows it must keep ticked (B1); filtering to
         # active-only is the client's job.

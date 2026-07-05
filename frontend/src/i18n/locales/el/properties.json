@@ -502,6 +502,7 @@
       "edit": "Επεξεργασία",
       "delete": "Διαγραφή",
       "ensuite": "Με ιδιωτικό μπάνιο",
+      "ensuite_with_type": "Με ιδιωτικό μπάνιο · {{type}}",
       "no_beds": "Δεν έχουν διαμορφωθεί κρεβάτια",
       "beds_count": {
         "double": "{{count}} διπλό",
@@ -533,6 +534,17 @@
       "pool_house": "Σπίτι πισίνας",
       "annex": "Παράρτημα",
       "other": "Άλλο"
+    },
+    "ensuite_types": {
+      "unknown": "Άγνωστο",
+      "shower": "Ντους",
+      "bath": "Μπανιέρα",
+      "both": "Μπανιέρα & ντους"
+    },
+    "access_types": {
+      "unspecified": "Δεν έχει καθοριστεί",
+      "inside": "Εσωτερική",
+      "outside": "Εξωτερική"
     },
     "beds": {
       "double": "Διπλό",
@@ -566,10 +578,15 @@
         "name_placeholder": "Κύριο υπνοδωμάτιο",
         "placement": "Τοποθεσία",
         "is_ensuite": "Με ιδιωτικό μπάνιο",
+        "ensuite_type": "Τύπος ιδιωτικού μπάνιου",
+        "access": "Πρόσβαση",
         "beds": "Κρεβάτια",
+        "amenities": "Παροχές",
+        "amenity_note_placeholder": "Σημείωση (προαιρετικό)",
         "website_description": "Περιγραφή ιστότοπου",
         "vc_notes": "Εσωτερικές σημειώσεις"
       },
+      "retired_badge": "Αποσυρμένο",
       "actions": {
         "cancel": "Ακύρωση",
         "save": "Αποθήκευση",

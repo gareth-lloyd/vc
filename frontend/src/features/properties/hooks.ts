@@ -51,6 +51,7 @@ import {
   fetchPropertyRatePlans,
   fetchPropertySettings,
   fetchRatePlanDetail,
+  fetchRoomAttributes,
   reorderPropertyImages,
   reorderPropertyRooms,
   restoreProperty,
@@ -188,6 +189,16 @@ export function useNearbyPlaceTypes() {
   return useQuery({
     queryKey: queryKeys.nearbyPlaceTypes.list(),
     queryFn: fetchNearbyPlaceTypes,
+    staleTime: 1000 * 60 * 60,
+  });
+}
+
+// GAP-064 amenity catalog: near-static lookup, same posture as
+// useNearbyPlaceTypes above.
+export function useRoomAttributes() {
+  return useQuery({
+    queryKey: queryKeys.roomAttributes.list(),
+    queryFn: fetchRoomAttributes,
     staleTime: 1000 * 60 * 60,
   });
 }

@@ -12,7 +12,11 @@ from rest_framework import generics, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.api import AllowAnyReadStaffWrite, IsReservationsWriter
+from core.api import (
+    AllowAnyReadStaffWrite,
+    ConfigurablePageSizePagination,
+    IsReservationsWriter,
+)
 from properties.models import Property, Room, RoomAttribute, RoomAttributeAssignment
 from properties.serializers import RoomAttributeSerializer, RoomSerializer
 
@@ -102,3 +106,7 @@ class RoomAttributeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = RoomAttribute.objects.all()
     serializer_class = RoomAttributeSerializer
     permission_classes = [AllowAnyReadStaffWrite]
+    # The room form fetches the whole catalog in one request (the taxonomy
+    # picker pattern); honour its `page_size` so growth past the default page
+    # never silently truncates the amenity list.
+    pagination_class = ConfigurablePageSizePagination

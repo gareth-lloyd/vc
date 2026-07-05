@@ -334,7 +334,7 @@ is where the dry-run calibration happens), not just here.
 | Source table              | Expected gap | Reason |
 |---------------------------|--------------|--------|
 | `VillaCollectionsMappings`| 308          | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
-| `VillaFinance`            | 1236         | 413 contact-default rows mirror onto `GroupFinance` (no 1:1 mapping); 676 parent-child override rows have no schema equivalent. |
+| `VillaFinance`            | 1236         | 413 contact-default rows are per-contact templates, not per-villa rows (the GAP-070 unit-6 owner-contact fallback applies them to villas with no `VillaFinance` row of their own); 676 parent-child override rows have no schema equivalent. |
 | `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
 | `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 3727 *(placeholder)* | **BUG-013**: RateRule now loads from two legacy sources, so the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents (see [Occupancy-band pricing](#occupancy-band-pricing-bug-013)). `3727` is a **placeholder to recalibrate at the first post-BUG-013 dry-run** — it can only be derived against the live dump. The true gap nets synthetic base-weekly gap-fallback rules (no legacy row) against dropped priceless/invalid-band/overlap-covered rows and rows on the 67 unloaded seasons; the old 3462 + 265 breakdown no longer holds as-is. |
 | `VillaMaster`             | 1            | One row with empty `Name`. |

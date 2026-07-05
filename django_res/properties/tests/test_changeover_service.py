@@ -1,7 +1,7 @@
 """ChangeoverService — resolve the effective changeover day and align arrivals.
 
 Resolution order: a ChangeOverRule window covering the arrival date wins;
-otherwise the PropertySettings.effective() chain (property -> group);
+otherwise `PropertySettings.changeover_day` (NULL -> ANY);
 `any` means no constraint. A non-conforming arrival is never rejected — it is
 nudged forward to the next valid changeover day (GAP-007).
 """
@@ -43,7 +43,7 @@ def test_effective_day_defaults_to_any(property_: Property) -> None:
 
 
 def test_changeover_rule_window_overrides_settings(property_: Property) -> None:
-    # Property default is ANY (group), but a rule forces Saturday in the window.
+    # Property default is ANY (NULL floor), but a rule forces Saturday in the window.
     ChangeOverRule.objects.create(
         property=property_,
         day=PrefilledChangeOverDay.SAT.value,

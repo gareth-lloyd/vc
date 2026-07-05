@@ -57,21 +57,17 @@ _FINANCE_FIELDS = (
 )
 
 
-class _FinanceBaseSerializer(serializers.ModelSerializer):
-    """Drop encrypted bank fields from the serialized output."""
+class PropertyFinanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PropertyFinance
+        fields = ("property", *_FINANCE_FIELDS, "season", "contact", "parent")
+        read_only_fields = ["property"]
+        # Encrypted bank-secret fields are accepted on write but suppressed on
+        # read by `to_representation` below.
+        extra_kwargs = {f: {"write_only": False} for f in _BANK_SECRET_FIELDS}
 
     def to_representation(self, instance):  # type: ignore[no-untyped-def]
         data = super().to_representation(instance)
         for field in _BANK_SECRET_FIELDS:
             data.pop(field, None)
         return data
-
-
-class PropertyFinanceSerializer(_FinanceBaseSerializer):
-    class Meta:
-        model = PropertyFinance
-        fields = ("property", *_FINANCE_FIELDS, "season", "contact", "parent")
-        read_only_fields = ["property"]
-        # Encrypted bank-secret fields are accepted on write but suppressed on
-        # read by `_FinanceBaseSerializer.to_representation`.
-        extra_kwargs = {f: {"write_only": False} for f in _BANK_SECRET_FIELDS}

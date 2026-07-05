@@ -48,10 +48,9 @@ class PropertySettings(AuditedModel):
         blank=True,
     )
     min_nights_rental = models.PositiveSmallIntegerField(null=True, blank=True)
-    # Inheritable (see `_INHERITABLE_FIELDS`), so `null=True` — `None` means
-    # "inherit from the group", and the SettingsTab's `blankToNull`-on-submit
-    # clears an emptied note by sending `null`. Without it the whole Operational
-    # form 400s ("This field may not be null.") whenever the note is empty.
+    # `null=True` so the SettingsTab's `blankToNull`-on-submit can clear an
+    # emptied note by sending `null`. Without it the whole Operational form
+    # 400s ("This field may not be null.") whenever the note is empty.
     min_nights_rental_note = models.TextField(null=True, blank=True)
     prices_entered_as = models.CharField(
         max_length=8,

@@ -147,8 +147,8 @@ def test_create_from_quotation_line__schedules_payments(
     from payments.models import Payment
     from properties.models.finance import PropertyFinance
 
-    # An all-null PropertyFinance row inherits the group's default deposit
-    # policy (30% deposit), so the schedule resolves to deposit + balance.
+    # An all-null PropertyFinance row resolves to the `_POLICY_FALLBACKS`
+    # floor (30% deposit), so the schedule resolves to deposit + balance.
     PropertyFinance.objects.get_or_create(property=quotation_line.property)
 
     booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)

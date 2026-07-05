@@ -30,6 +30,21 @@ Each feature lives in `src/features/<name>/` with a standard shape:
     components/      — dialogs, pickers, sub-components
     __tests__/       — colocated tests
 
+### Module boundaries (GAP-063)
+
+Features import only themselves, `src/lib/`, and `src/components/` — never
+another feature. What lint enforces is the cross-feature ban specifically:
+`eslint-plugin-boundaries` (`eslint.config.js`) errors on any
+feature→feature import whose pair is not in `ALLOWED_EDGES`
+(`boundaries.allowlist.js`), a **shrink-only ratchet** of pre-existing
+coupling (the backend import-linter model, FG-013). Entries may be removed as
+edges are paid down, never added — the one exception is a documented relabel
+when shared code moves to its true home feature. A vitest guard
+(`src/test/boundaries.test.ts`) fails if an entry goes stale, so paid-down
+edges must be deleted. New cross-feature needs go to `src/lib/domain/`
+(shared Zod schemas/labels) or `src/components/` (shared UI). Test files are
+exempt (cross-feature MSW handlers and scaffolding are fine there).
+
 ### Zod-first types
 
 Every API response type is `z.infer<typeof schema>`, never hand-typed.

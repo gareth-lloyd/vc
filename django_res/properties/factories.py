@@ -40,7 +40,6 @@ from properties.enums import (
     PrefilledChangeOverDay,
     PropertyChannel,
     PropertyStatus,
-    RoomPlacement,
 )
 from properties.services.location import location_defaults
 
@@ -362,7 +361,6 @@ class RoomFactory(DjangoModelFactory):
 
     property = factory.SubFactory(PropertyFactory)
     name = factory.Sequence(lambda n: f"Bedroom {n}")
-    placement = RoomPlacement.MAIN_HOUSE
 
     @factory.post_generation
     def beds(obj: models.Room, create: bool, extracted: object, **kwargs: object) -> None:

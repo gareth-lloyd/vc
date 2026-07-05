@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.db import models
 
 from core.models.base import AuditedModel, TimestampedModel
-from properties.enums import EnsuiteType, RoomAccess, RoomPlacement
+from properties.enums import EnsuiteType, RoomAccess, RoomFloor, RoomPlacement
 
 
 class Room(AuditedModel):
@@ -15,11 +15,23 @@ class Room(AuditedModel):
         related_name="rooms",
     )
     name = models.CharField(max_length=128)
+    # Location axes (GAP-065): "" = unknown for both. `placement` is the
+    # building, `floor` the ladder rung — orthogonal, either may be blank.
     placement = models.CharField(
         max_length=16,
         choices=RoomPlacement.choices,
-        default=RoomPlacement.MAIN_HOUSE,
+        blank=True,
+        default="",
     )
+    floor = models.CharField(
+        max_length=16,
+        choices=RoomFloor.choices,
+        blank=True,
+        default="",
+    )
+    # Raw legacy `VillaRoomsPlacement.Name` — the no-loss guarantee: even when
+    # parsing can't split it, the exact string survives, human-recoverable.
+    placement_note = models.CharField(max_length=255, blank=True, default="")
     website_description = models.TextField(blank=True)
     vc_notes = models.TextField(blank=True)
     is_ensuite = models.BooleanField(default=False)

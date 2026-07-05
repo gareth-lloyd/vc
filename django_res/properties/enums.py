@@ -47,11 +47,27 @@ class ImageKind(models.TextChoices):
 
 
 class RoomPlacement(models.TextChoices):
+    """Which building/structure a room is in ("" = unknown)."""
+
     MAIN_HOUSE = "main_house", "Main house"
     GUEST_HOUSE = "guest_house", "Guest house"
     POOL_HOUSE = "pool_house", "Pool house"
-    ANNEX = "annex", "Annex"
+    ANNEX = "annex", "Annexe"
+    COTTAGE = "cottage", "Cottage"
+    BUNGALOW = "bungalow", "Bungalow"
+    STUDIO = "studio", "Studio"
     OTHER = "other", "Other"
+
+
+class RoomFloor(models.TextChoices):
+    """Fixed floor ladder ("" = unknown). Rare oddities (mezzanine, basement)
+    stay blank with the raw legacy string preserved in `placement_note`."""
+
+    LOWER_GROUND = "lower_ground", "Lower ground"
+    GROUND = "ground", "Ground"
+    FIRST = "first", "First"
+    SECOND = "second", "Second"
+    THIRD_PLUS = "third_plus", "Third or above"
 
 
 class EnsuiteType(models.TextChoices):

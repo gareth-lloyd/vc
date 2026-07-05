@@ -112,6 +112,8 @@ class PropertiesConfig(AppConfig):
                 "property_id",
                 "name",
                 "placement",
+                "floor",
+                "placement_note",
                 "is_ensuite",
                 "ensuite_type",
                 "access",

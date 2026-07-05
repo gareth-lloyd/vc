@@ -49,6 +49,21 @@ describe("queryKeys", () => {
     ]);
   });
 
+  it("invalidation-root factories are prefixes of their filtered/ranged variants", () => {
+    // properties.lists() must prefix list(filters); bookingsRoot must prefix
+    // bookingsInRange; contacts.details() must prefix every contact detail
+    // subtree — invalidateQueries matches by prefix.
+    expect(queryKeys.properties.lists()).toEqual(["properties", "list"]);
+    expect(queryKeys.properties.list({ q: "x" }).slice(0, 2)).toEqual(queryKeys.properties.lists());
+    expect(queryKeys.properties.bookingsRoot(7)).toEqual(["properties", "detail", "7", "bookings"]);
+    expect(queryKeys.properties.bookingsInRange(7, "2026-01-01", "2026-02-01").slice(0, 4)).toEqual(
+      queryKeys.properties.bookingsRoot(7),
+    );
+    expect(queryKeys.contacts.details()).toEqual(["contacts", "detail"]);
+    expect(queryKeys.contacts.detail(3).slice(0, 2)).toEqual(queryKeys.contacts.details());
+    expect(queryKeys.contacts.bookings(3).slice(0, 2)).toEqual(queryKeys.contacts.details());
+  });
+
   it("normalizes id-bearing keys so string and number ids hash identically", () => {
     // A detail page reads the id from the URL (always a string) while mutation
     // success handlers write the cache with entity.id (a number). React Query

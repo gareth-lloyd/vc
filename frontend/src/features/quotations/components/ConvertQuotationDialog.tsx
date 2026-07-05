@@ -44,7 +44,7 @@ function pickInitialLineId(
 export function ConvertQuotationDialog({ open, onOpenChange, quotation, initialLineId }: Props) {
   const { t } = useTranslation("quotations");
   const navigate = useNavigate();
-  const convert = useConvertQuotation(quotation.id);
+  const convert = useConvertQuotation(quotation);
   const linesQuery = useQuotationLines(quotation.id);
   const lines = linesQuery.data?.results;
 

@@ -216,8 +216,8 @@ export function QuotationDetailLayout() {
   const canWrite = useHasReservationsRole();
   const duplicate = useDuplicateQuotation(query.data?.id ?? 0);
   const deleteLineMut = useDeleteQuotationLine(query.data?.id ?? 0);
-  const holdLineMut = useHoldQuotationLine(query.data?.id ?? 0);
-  const releaseHoldMut = useReleaseQuotationLineHold(query.data?.id ?? 0);
+  const holdLineMut = useHoldQuotationLine(query.data?.id ?? 0, query.data);
+  const releaseHoldMut = useReleaseQuotationLineHold(query.data?.id ?? 0, query.data);
   const markManuallySent = useMarkQuotationManuallySent(query.data?.id ?? 0);
   const { copy } = useCopyToClipboard();
   // Prefetch the guest-facing preview so the rail "Copy" button can write to

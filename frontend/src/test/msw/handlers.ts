@@ -81,12 +81,22 @@ export const geoLookupHandlers = [
       ]),
     ),
   ),
-  http.get("/api/v1/regions", () =>
-    HttpResponse.json(
-      drfPage([
-        { id: 7, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza" },
-        { id: 11, country: 2, country_iso2: "GR", name: "Crete", slug: "crete" },
-      ]),
-    ),
-  ),
+  // Param-aware: honours the country / country_iso2 scoping the API supports
+  // (absent params -> the full list, so param-less consumers are unaffected).
+  http.get("/api/v1/regions", ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    // Empty values behave like absent params (matching django-filter, which
+    // ignores empty CharFilter values rather than matching nothing).
+    const country = params.get("country") || null;
+    const iso2 = params.get("country_iso2")?.toUpperCase() || undefined;
+    const rows = [
+      { id: 7, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza", is_active: true },
+      { id: 11, country: 2, country_iso2: "GR", name: "Crete", slug: "crete", is_active: true },
+    ].filter(
+      (r) =>
+        (country === null || r.country === Number(country)) &&
+        (iso2 === undefined || r.country_iso2 === iso2),
+    );
+    return HttpResponse.json(drfPage(rows));
+  }),
 ];

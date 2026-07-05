@@ -71,7 +71,9 @@ describe("ClientsListPage", () => {
   it("renders quoted/booked region chips by name", async () => {
     server.use(
       http.get("/api/v1/regions", () =>
-        HttpResponse.json(drfPage([{ id: 7, country: 1, name: "Tuscany", slug: "tuscany" }])),
+        HttpResponse.json(
+          drfPage([{ id: 7, country: 1, name: "Tuscany", slug: "tuscany", is_active: true }]),
+        ),
       ),
       http.get("/api/v1/clients", () =>
         HttpResponse.json({

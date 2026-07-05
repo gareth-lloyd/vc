@@ -28,8 +28,30 @@ describe("PropertiesListPage", () => {
       http.get("/api/v1/regions", () =>
         HttpResponse.json(
           drfPage([
-            { id: 7, country: 1, country_iso2: "ES", name: "Ibiza", slug: "ibiza-7" },
-            { id: 9, country: 1, country_iso2: "ES", name: "Mallorca", slug: "mallorca-9" },
+            {
+              id: 7,
+              country: 1,
+              country_iso2: "ES",
+              name: "Ibiza",
+              slug: "ibiza-7",
+              is_active: true,
+            },
+            {
+              id: 9,
+              country: 1,
+              country_iso2: "ES",
+              name: "Mallorca",
+              slug: "mallorca-9",
+              is_active: true,
+            },
+            {
+              id: 11,
+              country: 2,
+              country_iso2: "GR",
+              name: "Crete",
+              slug: "crete-11",
+              is_active: true,
+            },
           ]),
         ),
       ),
@@ -238,5 +260,49 @@ describe("PropertiesListPage", () => {
     // Label disambiguates by country; value forwarded is the region id.
     await userEvent.click(await screen.findByRole("option", { name: "Ibiza (ES)" }));
     await waitFor(() => expect(seen).toContain("7"));
+  });
+
+  it("scopes region options to a lowercase bookmarked country", async () => {
+    server.use(http.get("/api/v1/properties", () => HttpResponse.json(fixture)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties?country=es" },
+    );
+    await screen.findByText("Casa Norte");
+    await userEvent.click(screen.getByRole("combobox", { name: /filter by region/i }));
+    // Scoped options drop the ISO suffix; other countries' regions vanish.
+    expect(await screen.findByRole("option", { name: "Ibiza" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Crete/ })).not.toBeInTheDocument();
+  });
+
+  it("clears the region filter when the country changes", async () => {
+    const seen: Array<{ country: string | null; region: string | null }> = [];
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        const url = new URL(request.url);
+        seen.push({
+          country: url.searchParams.get("country"),
+          region: url.searchParams.get("region"),
+        });
+        return HttpResponse.json(fixture);
+      }),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties?region=11" },
+    );
+    await screen.findByText("Casa Norte");
+    await userEvent.click(screen.getByRole("combobox", { name: /filter by country/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Spain" }));
+    // One request with the new country and NO region — never the impossible
+    // ES+Crete combination.
+    await waitFor(() =>
+      expect(seen).toContainEqual(expect.objectContaining({ country: "ES", region: null })),
+    );
+    expect(seen).not.toContainEqual(expect.objectContaining({ country: "ES", region: "11" }));
   });
 });

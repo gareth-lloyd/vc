@@ -24,6 +24,7 @@ import factory
 import yaml
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.utils.text import slugify
 from factory.django import DjangoModelFactory
 from faker import Faker
 from PIL import Image
@@ -178,12 +179,18 @@ class CountryFactory(DjangoModelFactory):
 
 
 class RegionFactory(DjangoModelFactory):
+    """Idempotent on (country, slug), with slug derived from name — so seed
+    stages calling `RegionFactory(country=c, name="Algarve")` per property
+    reuse one row instead of duplicating it. The default name keeps the
+    RUN_TOKEN so bare calls stay process-unique (never aliased together)."""
+
     class Meta:
         model = models.Region
+        django_get_or_create = ("country", "slug")
 
     country = factory.SubFactory(CountryFactory)
-    name = factory.Faker("city")
-    slug = factory.Sequence(lambda n: f"region-{RUN_TOKEN}-{n}")
+    name = factory.Sequence(lambda n: f"Region {RUN_TOKEN} {n}")
+    slug = factory.LazyAttribute(lambda o: slugify(o.name))
 
 
 class PropertyCategoryFactory(DjangoModelFactory):

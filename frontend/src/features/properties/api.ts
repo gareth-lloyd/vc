@@ -386,6 +386,10 @@ export interface RegionListFilters {
   // Only regions that actually hold properties (quote-builder criteria
   // dropdown); server-side opt-in narrowing, false behaves like absent.
   hasProperties?: boolean;
+  // Scope to one country: `country` is the FK id, `countryIso2` the
+  // case-insensitive ISO code — pass whichever the caller holds.
+  country?: number;
+  countryIso2?: string;
 }
 
 export async function fetchRegions(filters: RegionListFilters = {}): Promise<Paginated<Region>> {
@@ -394,6 +398,8 @@ export async function fetchRegions(filters: RegionListFilters = {}): Promise<Pag
       ordering: "name",
       page_size: TAXONOMY_PAGE_SIZE,
       has_properties: filters.hasProperties || undefined,
+      country: filters.country,
+      country_iso2: filters.countryIso2,
     },
   });
   return regionsResponseSchema.parse(data);
@@ -604,6 +610,16 @@ export async function updatePropertyLocation(
 ): Promise<PropertyLocation> {
   const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/location`, body);
   return propertyLocationSchema.parse(data);
+}
+
+// Root-resource PATCH — currently only the taxonomy region FK is edited this
+// way (the other editable facets live on nested sub-resources).
+export async function updateProperty(
+  propertyId: PropertyId,
+  body: { region: number },
+): Promise<PropertyDetail> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}`, body);
+  return propertyDetailSchema.parse(data);
 }
 
 export async function updatePropertyFeatures(

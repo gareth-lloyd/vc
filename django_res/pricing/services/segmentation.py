@@ -147,8 +147,13 @@ def segment_card_rules(rules: Iterable[_RuleLike]) -> SegmentationResult:
         if counts.get(id(rule), 0) > 1
     ]
 
-    # Party-bracket collisions "can't happen" under the DB overlap EXCLUDE, but
-    # report defensively — once per colliding pair, not once per shared segment.
+    # Party-bracket collisions "can't happen" for *persisted* grids under the
+    # DB overlap EXCLUDE, so report defensively — once per colliding pair, not
+    # once per shared segment. NB: the BUG-016 flattener
+    # (`pricing.services.flattening`) feeds this function party-overlapping
+    # bands by design and deliberately ignores this report — it resolves the
+    # collisions by precedence instead. Don't treat a non-empty `anomalies` as
+    # an invariant violation without checking the caller.
     anomalies: list[PartyCollision] = []
     seen_pairs: set[frozenset[int]] = set()
     for seg in segments:

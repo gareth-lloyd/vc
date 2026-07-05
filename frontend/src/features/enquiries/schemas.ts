@@ -1,7 +1,7 @@
 import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
-import { quotationDetailSchema } from "@/features/quotations/schemas";
+import { quotationDetailSchema } from "@/lib/domain/quotation";
 import { LEAD_STATUSES, type LeadStatus } from "@/styles/tokens";
 
 export const enquiryStatusSchema = z.enum([

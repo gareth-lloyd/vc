@@ -1,11 +1,11 @@
 // Neutral home for status enums shared across features (GAP-063): contacts
 // renders booking/enquiry history and reuses the org enums for its nested
-// agency_detail. This lift fully pays down the contacts→enquiries edge;
-// contacts→bookings and contacts→companies survive deliberately (contacts
-// still imports bookingStatusLabel from bookings and Company UI pieces from
-// companies — deferred pay-down, see the ratchet). Owner features re-export
-// for intra-feature use; options lists and terminal sets stay with their
-// owners.
+// agency_detail. This lift pays down the contacts→enquiries edge, and the
+// bookingStatusLabel move here (GAP-072) pays down contacts→bookings too;
+// contacts→companies survives deliberately (contacts still imports Company UI
+// pieces from companies — deferred pay-down, see the ratchet). Owner features
+// re-export for intra-feature use; options lists and terminal sets stay with
+// their owners.
 import { z } from "zod";
 import i18n from "@/i18n";
 
@@ -23,6 +23,12 @@ export const bookingStatusSchema = z.enum([
   "declined",
 ]);
 export type BookingStatus = z.infer<typeof bookingStatusSchema>;
+
+// Resolve at call time so language switches take effect. The template key is
+// safe: the fragment is a typed enum value.
+export function bookingStatusLabel(status: BookingStatus): string {
+  return i18n.t(`bookings:labels.status.${status}`);
+}
 
 export const enquiryStatusSchema = z.enum([
   "new",

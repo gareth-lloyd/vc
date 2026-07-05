@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { Collapsible } from "@/components/ui/collapsible";
-import { bookingStatusLabel } from "@/features/bookings/schemas";
+import { bookingStatusLabel } from "@/lib/domain/statuses";
 import { enquiryStatusLabel } from "@/lib/domain/statuses";
 import type { ContactId } from "@/lib/query/keys";
 import { useContactEnquiries } from "../hooks";

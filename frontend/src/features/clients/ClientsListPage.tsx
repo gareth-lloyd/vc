@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
-import { PERSON_TAGS } from "@/features/contacts/personTags";
+import { PERSON_TAGS } from "@/lib/domain/personTags";
 import { clientColumns } from "./columns";
 import { useClients } from "./hooks";
 import type { ClientFilters, ClientListItem } from "./schemas";

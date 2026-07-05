@@ -3,9 +3,9 @@ import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
 
 // Lives in lib/domain so contacts can render booking history without
-// importing this feature's schemas (GAP-063); re-exported for local use.
-import { bookingStatusSchema, type BookingStatus } from "@/lib/domain/statuses";
-export { bookingStatusSchema, type BookingStatus } from "@/lib/domain/statuses";
+// importing this feature's schemas (GAP-063/GAP-072); re-exported for local use.
+import { bookingStatusSchema, bookingStatusLabel, type BookingStatus } from "@/lib/domain/statuses";
+export { bookingStatusSchema, bookingStatusLabel, type BookingStatus } from "@/lib/domain/statuses";
 
 export const bookingListItemSchema = z.object({
   id: z.number(),
@@ -186,11 +186,8 @@ export const bookingNoteWriteInputSchema = z.object({
 export type BookingNoteWriteInput = z.infer<typeof bookingNoteWriteInputSchema>;
 
 // Enum label resolvers — resolve at call time so language switches take effect.
+// bookingStatusLabel now lives in lib/domain/statuses (re-exported above).
 // Template-string keys are fine here: the fragment is a typed enum value.
-export function bookingStatusLabel(status: BookingStatus): string {
-  return i18n.t(`bookings:labels.status.${status}`);
-}
-
 export function bookingNoteKindLabel(kind: BookingNoteKind): string {
   return i18n.t(`bookings:labels.note_kind.${kind}`);
 }

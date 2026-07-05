@@ -39,6 +39,7 @@ from properties.views import (
     PropertySettingsView,
     PropertyViewSet,
     RegionViewSet,
+    RoomAttributeViewSet,
     RoomDetailView,
 )
 from properties.views.collection import (
@@ -56,6 +57,7 @@ router.register(r"feature-categories", FeatureCategoryViewSet, basename="feature
 router.register(r"regions", RegionViewSet, basename="region")
 router.register(r"countries", CountryViewSet, basename="country")
 router.register(r"nearby-place-types", NearbyPlaceTypeViewSet, basename="nearby-place-type")
+router.register(r"room-attributes", RoomAttributeViewSet, basename="room-attribute")
 
 # Action endpoints + nested sub-resources. The colon-verb form is registered
 # explicitly because DRF's DefaultRouter doesn't generate it.

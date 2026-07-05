@@ -48,6 +48,7 @@ from properties.views.property import PropertyViewSet
 from properties.views.room import (
     PropertyRoomListCreateView,
     PropertyRoomReorderView,
+    RoomAttributeViewSet,
     RoomDetailView,
 )
 from properties.views.service import (
@@ -94,5 +95,6 @@ __all__ = [
     "PropertySettingsView",
     "PropertyViewSet",
     "RegionViewSet",
+    "RoomAttributeViewSet",
     "RoomDetailView",
 ]

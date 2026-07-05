@@ -30,6 +30,7 @@ import {
   propertyServicesResponseSchema,
   propertyRoomSchema,
   propertyRoomsResponseSchema,
+  roomAttributesResponseSchema,
   propertySettingsSchema,
   ratePeriodSchema,
   ratePlanDetailSchema,
@@ -73,6 +74,7 @@ import {
   type PropertyServiceWriteInput,
   type PropertyRoom,
   type PropertyRoomWriteInput,
+  type RoomAttribute,
   type PropertySettings,
   type PropertySettingsWriteInput,
   type RatePeriod,
@@ -212,6 +214,15 @@ export async function reorderPropertyRooms(
 export async function fetchNearbyPlaceTypes(): Promise<Paginated<NearbyPlaceType>> {
   const data = await apiGet<unknown>("/nearby-place-types");
   return nearbyPlaceTypesResponseSchema.parse(data);
+}
+
+// GAP-064 amenity catalog (anonymously readable; serves inactive rows too so
+// retired-but-assigned amenities can still be labelled in the room form).
+export async function fetchRoomAttributes(): Promise<Paginated<RoomAttribute>> {
+  const data = await apiGet<unknown>("/room-attributes", {
+    query: { page_size: TAXONOMY_PAGE_SIZE },
+  });
+  return roomAttributesResponseSchema.parse(data);
 }
 
 export async function fetchPropertyNearbyPlaces(

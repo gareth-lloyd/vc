@@ -239,4 +239,8 @@ export const queryKeys = {
     all: () => ["nearby-place-types"] as const,
     list: () => ["nearby-place-types", "list"] as const,
   },
+  roomAttributes: {
+    all: () => ["room-attributes"] as const,
+    list: () => ["room-attributes", "list"] as const,
+  },
 } as const;

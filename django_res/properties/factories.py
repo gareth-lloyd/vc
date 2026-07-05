@@ -370,6 +370,18 @@ class RoomFactory(DjangoModelFactory):
             models.RoomBeds.objects.create(room=obj, double=1)
 
 
+class RoomAttributeFactory(DjangoModelFactory):
+    """Catalog lookup: slugs are unique and migration-seeded rows exist, so
+    reuse by slug on rerun via get_or_create."""
+
+    class Meta:
+        model = models.RoomAttribute
+        django_get_or_create = ("slug",)
+
+    name = factory.Sequence(lambda n: f"Room attribute {RUN_TOKEN}-{n}")
+    slug = factory.Sequence(lambda n: f"room-attr-{RUN_TOKEN}-{n}")
+
+
 class NearbyPlaceTypeFactory(DjangoModelFactory):
     """Canonical lookup: NearbyPlaceType.name is unique, so reuse seeded rows
     on rerun via get_or_create."""

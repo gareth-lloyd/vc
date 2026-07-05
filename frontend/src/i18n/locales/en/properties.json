@@ -504,6 +504,7 @@
       "edit": "Edit",
       "delete": "Delete",
       "ensuite": "Ensuite",
+      "ensuite_with_type": "Ensuite · {{type}}",
       "no_beds": "No beds configured",
       "beds_count": {
         "double": "{{count}} double",
@@ -535,6 +536,17 @@
       "pool_house": "Pool house",
       "annex": "Annex",
       "other": "Other"
+    },
+    "ensuite_types": {
+      "unknown": "Unknown",
+      "shower": "Shower",
+      "bath": "Bath",
+      "both": "Bath & shower"
+    },
+    "access_types": {
+      "unspecified": "Not specified",
+      "inside": "Inside",
+      "outside": "Outside"
     },
     "beds": {
       "double": "Double",
@@ -568,10 +580,15 @@
         "name_placeholder": "Master bedroom",
         "placement": "Placement",
         "is_ensuite": "Ensuite",
+        "ensuite_type": "Ensuite type",
+        "access": "Access",
         "beds": "Beds",
+        "amenities": "Amenities",
+        "amenity_note_placeholder": "Note (optional)",
         "website_description": "Website description",
         "vc_notes": "Internal notes"
       },
+      "retired_badge": "Retired",
       "actions": {
         "cancel": "Cancel",
         "save": "Save",

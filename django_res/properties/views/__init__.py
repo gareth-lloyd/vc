@@ -16,6 +16,7 @@ from properties.views.contact_assignment import (
     PropertyContactAssignmentDetailView,
     PropertyContactAssignmentListCreateView,
 )
+from properties.views.defaults import PropertyDefaultsView
 from properties.views.description import (
     PropertyDescriptionDetailView,
     PropertyDescriptionListView,
@@ -75,6 +76,7 @@ __all__ = [
     "PropertyCollectionsView",
     "PropertyContactAssignmentDetailView",
     "PropertyContactAssignmentListCreateView",
+    "PropertyDefaultsView",
     "PropertyDescriptionDetailView",
     "PropertyDescriptionListView",
     "PropertyFinanceView",

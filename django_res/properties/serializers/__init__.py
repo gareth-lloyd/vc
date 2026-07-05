@@ -12,6 +12,7 @@ from properties.serializers.collection import (
 from properties.serializers.contact_assignment import (
     PropertyContactAssignmentSerializer,
 )
+from properties.serializers.defaults import PropertyDefaultsSerializer
 from properties.serializers.description import PropertyDescriptionSerializer
 from properties.serializers.feature import (
     FeatureCategorySerializer,
@@ -65,6 +66,7 @@ __all__ = [
     "PropertyCapacitySerializer",
     "PropertyCategorySerializer",
     "PropertyContactAssignmentSerializer",
+    "PropertyDefaultsSerializer",
     "PropertyDescriptionSerializer",
     "PropertyDetailSerializer",
     "PropertyFinanceSerializer",

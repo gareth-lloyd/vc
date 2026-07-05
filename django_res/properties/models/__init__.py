@@ -4,6 +4,7 @@ from properties.models.calendar_feed import PropertyCalendarFeed
 from properties.models.capacity import PropertyCapacity
 from properties.models.changeover import ChangeOverRule
 from properties.models.contacts import PropertyContactAssignment
+from properties.models.defaults import PropertyDefaults
 from properties.models.descriptions import PropertyDescription
 from properties.models.features import (
     Collection,
@@ -41,6 +42,7 @@ __all__ = [
     "PropertyCapacity",
     "PropertyCategory",
     "PropertyContactAssignment",
+    "PropertyDefaults",
     "PropertyDescription",
     "PropertyFeature",
     "PropertyFinance",

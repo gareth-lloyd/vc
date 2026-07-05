@@ -13,6 +13,7 @@ class PropertiesConfig(AppConfig):
         from properties.models.calendar_feed import PropertyCalendarFeed
         from properties.models.changeover import ChangeOverRule
         from properties.models.contacts import PropertyContactAssignment
+        from properties.models.defaults import PropertyDefaults
         from properties.models.features import PropertyFeature
         from properties.models.finance import GroupFinance, PropertyFinance
         from properties.models.geo import PropertyNearbyPlace
@@ -78,6 +79,48 @@ class PropertiesConfig(AppConfig):
             GroupFinance,
             fields=_AUDITED_FINANCE_FIELDS,
             sensitive=_SENSITIVE_BANK_FIELDS,
+        )
+
+        # Global creation-defaults singleton (GAP-070): it carries the finance
+        # policy every new property starts with, so edits need a trail. No bank
+        # fields on it by design, hence no `sensitive` set.
+        audit.track(
+            PropertyDefaults,
+            fields=(
+                "availability_default",
+                "bookings_require_pre_approval",
+                "requires_enquiry_first",
+                "currency_id",
+                "check_in_time",
+                "check_out_time",
+                "changeover_day",
+                "min_nights_rental",
+                "prices_entered_as",
+                "hold_duration_hours",
+                "commission_calculation_type",
+                "commission_amount",
+                "commission_note",
+                "tax_is_exempt",
+                "tax_percentage",
+                "deposit_required",
+                "deposit_calculation_type",
+                "deposit_amount",
+                "interim_required",
+                "interim_calculation_type",
+                "interim_amount",
+                "days_interim_due_before_arrival",
+                "days_balance_due_before_arrival",
+                "security_deposit_required",
+                "security_deposit_calculation_type",
+                "security_deposit_amount",
+                "security_deposit_days_due_before_arrival",
+                "security_deposit_days_refunded_after_departure",
+                "security_deposit_payment_method",
+                "cancellation_fee_amount",
+                "cancellation_fee_percent",
+                "cancellation_window_days",
+                "cancellation_notes",
+            ),
         )
 
         # Property master record: lifecycle/identity columns only — the chatty

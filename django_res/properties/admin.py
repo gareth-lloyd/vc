@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.contrib import admin
+from django.http import HttpRequest
 
 from properties.models import (
     ChangeOverRule,
@@ -16,6 +17,7 @@ from properties.models import (
     PropertyCapacity,
     PropertyCategory,
     PropertyContactAssignment,
+    PropertyDefaults,
     PropertyDescription,
     PropertyGroup,
     PropertyImage,
@@ -50,6 +52,18 @@ admin.site.register(CollectionMembership)
 admin.site.register(PropertyContactAssignment)
 admin.site.register(ChangeOverRule)
 admin.site.register(PropertyService)
+
+
+@admin.register(PropertyDefaults)
+class PropertyDefaultsAdmin(admin.ModelAdmin):
+    # Singleton (pk=1, migration-seeded): a blank admin "Add" form would
+    # silently overwrite the live row via the save() pk pin, and Delete would
+    # reset all configured defaults on the next get_solo(). Edit-only.
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: object = None) -> bool:
+        return False
 
 
 @admin.register(PropertyCalendarFeed)

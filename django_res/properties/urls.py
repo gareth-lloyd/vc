@@ -20,6 +20,7 @@ from properties.views import (
     PropertyCollectionsView,
     PropertyContactAssignmentDetailView,
     PropertyContactAssignmentListCreateView,
+    PropertyDefaultsView,
     PropertyDescriptionDetailView,
     PropertyDescriptionListView,
     PropertyFinanceView,
@@ -212,6 +213,11 @@ _property_subresources: list[URLPattern] = [
         "properties/<int:property_id>/collections/<str:collection>",
         CollectionMembershipDetailView.as_view(),
         name="property-collection-membership",
+    ),
+    path(
+        "property-defaults",
+        PropertyDefaultsView.as_view(),
+        name="property-defaults",
     ),
     path(
         "property-groups/<int:group_id>/settings",

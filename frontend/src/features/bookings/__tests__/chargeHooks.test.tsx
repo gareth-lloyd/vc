@@ -100,6 +100,37 @@ describe("useCreateChargeItem", () => {
   });
 });
 
+describe("charge mutations — BUG-018 cross-entity fan-out", () => {
+  it("invalidates contact sub-tabs (broad) but not property availability — money doesn't move dates", async () => {
+    const client = createClient();
+    seedAffectedKeys(client);
+    const contactKey = queryKeys.contacts.bookings(7);
+    const statusCountsKey = queryKeys.bookings.statusCountsAll();
+    const calendarKey = queryKeys.properties.availabilityCalendar(12, "2026-07-01", "2026-07-31");
+    client.setQueryData(contactKey, {});
+    client.setQueryData(statusCountsKey, {});
+    client.setQueryData(calendarKey, {});
+
+    server.use(
+      http.post(`/api/v1/bookings/${BOOKING_ID}/charge-items`, () =>
+        HttpResponse.json(makeItem({ id: 100 }), { status: 201 }),
+      ),
+    );
+
+    const { result } = renderHook(() => useCreateChargeItem(BOOKING_ID), {
+      wrapper: wrapperWith(client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ label: "Late checkout", amount: "150.00", notes: "" });
+    });
+
+    expect(client.getQueryState(contactKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(statusCountsKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(calendarKey)?.isInvalidated).toBe(false);
+  });
+});
+
 describe("useUpdateChargeItem", () => {
   it("PATCHes the item and invalidates every total-dependent cache", async () => {
     const client = createClient();

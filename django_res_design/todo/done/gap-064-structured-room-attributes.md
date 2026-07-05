@@ -1,5 +1,44 @@
 # GAP-064 — Structured room attributes (admin-editable attribute catalog)
 
+> **✅ RESOLVED (2026-07-05)** — shipped on `feat/gap-064` in 5 commits
+> (`9868d55`, `cfacca6`, `a8a1778`, `a7bd5f1`, `e821aee`), merged to local
+> `main` (unpushed).
+> - **Facets**: `Room.ensuite_type` (shower/bath/both) + `Room.access`
+>   (inside/outside), blank-able enum columns (`""` = unknown), with a DB
+>   CheckConstraint `room_ensuite_type_implies_is_ensuite`; the serializer
+>   keeps the pair coherent in both directions.
+> - **Amenities**: `RoomAttribute` catalog (name, unique slug, icon,
+>   sort_order, is_active, nullable `implies_property_feature` SET_NULL) +
+>   `RoomAttributeAssignment` (room CASCADE via `attribute_links`, attribute
+>   PROTECT, optional note, unique (room, attribute)); Django-admin curation;
+>   9 starter rows seeded by migration `0027` via the re-invocable
+>   `sync_room_attributes()`; audit-tracked per FG-017; seed_dev
+>   `room_attributes` stage (knob `attributes_per_room`).
+> - **API**: facets + `attribute_links` full-list sync on `RoomSerializer`
+>   (absent on PATCH leaves links alone; retired links resubmitted are kept —
+>   the B1 review blocker); read-only anon `/room-attributes` catalog
+>   endpoint (serves inactive rows; ConfigurablePageSizePagination).
+> - **Frontend**: RoomFormDialog facet selects + data-driven amenity tick
+>   list (active ∪ assigned, retired badged but still ticked), per-tick note;
+>   RoomsTab chips; en+el i18n; MSW default handlers.
+> - **Backfill**: `backfill_room_attrs` (positives-only keyword pass,
+>   `--dry-run`, idempotent, re-syncs implications) — CUTOVER.md §6b.
+>
+> **Deliberate deviations from the sketch below**: assignment
+> `related_name` is `attribute_links` (mirrors `feature_links`; keeps the
+> serializer field name free), not `attributes`; implication linking is
+> set-if-NULL and deferred to post-load re-sync (Features are not
+> migration-seeded, so slug lookups at migrate time always miss); the
+> ticket's `10-decisions.md` filename is `design/decisions.md`.
+> **A1 owner steer was NOT answered** — ticket defaults shipped (ensuite
+> trio; 9 starter rows; sea_view→sea-view implication; wheelchair stays
+> NULL until an accessibility Feature exists). All of it is admin-editable
+> data — recorded as pending owner confirmation in `design/decisions.md`.
+> **Moved, not lost**: placement-text backfill source → GAP-065 (re-run
+> `backfill_room_attrs` when it lands); derivation service → GAP-067;
+> FE catalog admin screen → Django admin suffices for now.
+
+
 - **Severity:** Build (with one vocabulary decision) — answers **A1**, builds **Q-019**
 - **Files:** `properties/models/rooms.py` (`Room`, new `RoomAttribute`,
   `RoomAttributeAssignment`), `properties/enums.py` (new `EnsuiteType`,

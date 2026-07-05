@@ -1,7 +1,7 @@
 # Q-019 — Structured room attributes (bath/shower, aircon, views, accessibility, floor)
 
 > **✅ SUPERSEDED (2026-07-02)** by three legacy-grounded build tickets:
-> [GAP-064](../gap-064-structured-room-attributes.md) (room attributes —
+> [GAP-064](gap-064-structured-room-attributes.md) (room attributes —
 > enum-column facets + an admin-editable `RoomAttribute` catalog),
 > [GAP-065](../gap-065-room-location-building-floor.md) (building + floor; also
 > fixes a live migration data-loss bug where `RoomLoader` discards every

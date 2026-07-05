@@ -19,14 +19,9 @@ import { activeLocale } from "@/lib/format/date";
 import { useListParams } from "@/lib/list/useListParams";
 import { useCountries } from "@/features/admin/countries/hooks";
 import { TAXONOMY_PAGE_SIZE } from "@/features/properties/api";
-import { PROPERTIES_PAGE_SIZE } from "@/features/properties/hooks";
-import {
-  useCollections,
-  useMultiAvailability,
-  useRegions,
-  useTimelineProperties,
-  useWeeklyPrices,
-} from "./hooks";
+import { regionOptionsForCountry } from "@/features/properties/regionOptions";
+import { PROPERTIES_PAGE_SIZE, useCollections, useRegions } from "@/features/properties/hooks";
+import { useMultiAvailability, useTimelineProperties, useWeeklyPrices } from "./hooks";
 import { monthSpanLabel } from "./monthSpan";
 import { hasAnyFilter, type TimelineFilters } from "./schemas";
 import { bandStatusClasses, type BandDisplayStatus } from "./status";
@@ -57,7 +52,7 @@ const LEGEND: BandDisplayStatus[] = ["booked", "on_hold", "stop_sale"];
 
 export function AvailabilityTimelinePage() {
   const { t } = useTranslation("availability");
-  const { params, search, setSearch, updateParam, goToPage } = useListParams();
+  const { params, search, setSearch, updateParam, updateParams, goToPage } = useListParams();
   // Stringify-keyed memo: useSearchParams' URLSearchParams identity changes on every render.
   const filters = useMemo(() => paramsToFilters(params), [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
   const filtered = hasAnyFilter(filters);
@@ -90,8 +85,9 @@ export function AvailabilityTimelinePage() {
     value: string | undefined,
     options: Array<{ value: string; label: string }>,
     aria: string,
+    onChange: (value: string) => void = (v) => updateParam(key, v),
   ) => (
-    <Select value={value ?? ALL_VALUE} onValueChange={(v) => updateParam(key, v)}>
+    <Select value={value ?? ALL_VALUE} onValueChange={onChange}>
       <SelectTrigger className="w-[160px]" aria-label={aria}>
         <SelectValue />
       </SelectTrigger>
@@ -205,18 +201,22 @@ export function AvailabilityTimelinePage() {
                   })),
                 ],
                 t("filters.country_aria"),
+                // Dependent filter: a region from another country can no
+                // longer match — clear it in the same history entry.
+                (v) => updateParams({ country: v, region: undefined }),
               )}
               {filterSelect(
                 "region",
                 filters.region,
                 [
                   { value: ALL_VALUE, label: t("filters.any_region") },
-                  // Region id, not slug: slug/name repeat across countries, so
-                  // the label carries the country ISO. filter_region takes id.
-                  ...(regions.data?.results ?? []).map((r) => ({
-                    value: String(r.id),
-                    label: r.country_iso2 ? `${r.name} (${r.country_iso2})` : r.name,
-                  })),
+                  // Region id, not slug: slug/name repeat across countries;
+                  // options scope to the chosen country. filter_region takes id.
+                  ...regionOptionsForCountry(
+                    regions.data?.results ?? [],
+                    filters.country,
+                    filters.region,
+                  ),
                 ],
                 t("filters.region_aria"),
               )}

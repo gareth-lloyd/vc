@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { queryKeys, type BookingId } from "@/lib/query/keys";
+import { invalidateBookingDependents } from "@/lib/query/invalidate";
 import { enabledQuery } from "@/lib/query/enabledQuery";
 import { ApiError } from "@/lib/api/errors";
 import { fetchStatusCounts } from "@/lib/api/statusCounts";
@@ -172,10 +173,9 @@ interface ToggleNotePinContext {
 function onActionSuccess(queryClient: QueryClient, bookingId: BookingId, updated: BookingDetail) {
   queryClient.setQueryData(queryKeys.bookings.detail(bookingId), updated);
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.lists() });
-  // The status tab-bar badges count by status, so any transition restains them.
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.statusCountsAll() });
-  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
+  // Lists, status-count badges, dashboard, the property's availability
+  // calendars and contact sub-tabs (BUG-018).
+  invalidateBookingDependents(queryClient, updated);
 }
 
 export function useConfirmBooking(bookingId: BookingId) {
@@ -262,12 +262,6 @@ export function useResendBookingConfirmation(bookingId: BookingId) {
 // Payment tracks
 // ----------------------------------------------------------------------
 
-const TRACK_KEY: Record<TrackName, (id: BookingId) => readonly unknown[]> = {
-  deposit: queryKeys.bookings.deposit,
-  balance: queryKeys.bookings.balance,
-  security: queryKeys.bookings.security,
-};
-
 const TRACK_FETCHER = {
   deposit: fetchDepositTrack,
   balance: fetchBalanceTrack,
@@ -286,18 +280,24 @@ export function useSecurityTrack(id: BookingId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.bookings.security, fetchSecurityTrack));
 }
 
-function invalidateTrack(queryClient: QueryClient, bookingId: BookingId, track: TrackName): void {
-  queryClient.invalidateQueries({ queryKey: TRACK_KEY[track](bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+// Money moved on this booking (payment / charge / refund): the booking total,
+// schedule tracks, refund rows and activity feed all live under the
+// bookings.detail(id) prefix, so one invalidation covers every detail
+// surface. Unlike the lifecycle actions there is no fresh BookingDetail
+// response to setQueryData, hence invalidating detail itself. The shared
+// helper adds lists/status-counts/dashboard/contact sub-tabs; the response
+// carries no property id, so availability is correctly skipped — money
+// doesn't move dates.
+function invalidateBookingMoneyDependents(queryClient: QueryClient, bookingId: BookingId): void {
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.detail(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() });
+  invalidateBookingDependents(queryClient);
 }
 
 export function useRequestPayment(bookingId: BookingId, track: TrackName) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => requestPayment(bookingId, track),
-    onSuccess: () => invalidateTrack(queryClient, bookingId, track),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -305,7 +305,7 @@ export function useMarkPaid(bookingId: BookingId, track: TrackName) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: MarkPaidInput) => markPaid(bookingId, track, input),
-    onSuccess: () => invalidateTrack(queryClient, bookingId, track),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -313,7 +313,7 @@ export function useWaiveTrack(bookingId: BookingId, track: TrackName) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: WaiveTrackInput) => waiveTrack(bookingId, track, input),
-    onSuccess: () => invalidateTrack(queryClient, bookingId, track),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -328,24 +328,15 @@ export function useBookingChargeItems(id: BookingId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.bookings.chargeItems, fetchBookingChargeItems));
 }
 
-// A charge mutation moves the booking total, which moves the rail tiles
-// (detail), the list row, the timeline and the resized deposit/balance
-// schedule — invalidate them all, not just the charge list. (The concierge
-// hooks invalidate narrowly because concierge money never enters `total`.)
-function invalidateChargeDependents(queryClient: QueryClient, bookingId: BookingId): void {
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.chargeItems(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.detail(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.lists() });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.deposit(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.balance(bookingId) });
-}
+// A charge mutation moves the booking total — every detail surface and the
+// list row must refresh. (The concierge hooks invalidate narrowly because
+// concierge money never enters `total`.)
 
 export function useCreateChargeItem(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: ChargeItemWriteInput) => createChargeItem(bookingId, input),
-    onSuccess: () => invalidateChargeDependents(queryClient, bookingId),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -358,7 +349,7 @@ export function useUpdateChargeItem(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ itemId, input }: UpdateChargeVars) => updateChargeItem(bookingId, itemId, input),
-    onSuccess: () => invalidateChargeDependents(queryClient, bookingId),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -366,7 +357,7 @@ export function useDeleteChargeItem(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ itemId }: { itemId: number }) => deleteChargeItem(bookingId, itemId),
-    onSuccess: () => invalidateChargeDependents(queryClient, bookingId),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -461,6 +452,9 @@ export function useSecurityDeposit(id: BookingId | undefined) {
 // A release/capture moves the SD row state, the Payment-aggregate security
 // track (`paid_amount`), and — for a capture — the consumed damage claim.
 // Invalidate all three, plus the activity feed (the transition emits an event).
+// Deliberately NOT routed through invalidateBookingDependents: SD money never
+// enters the booking `total`, so lists/status-counts/dashboard/contact tabs
+// can't change.
 function invalidateSecurityDepositDependents(queryClient: QueryClient, bookingId: BookingId): void {
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.securityDeposit(bookingId) });
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.security(bookingId) });
@@ -493,27 +487,15 @@ export function useBookingRefunds(id: BookingId | undefined) {
   return useQuery(enabledQuery(id, queryKeys.bookings.refunds, fetchBookingRefunds));
 }
 
-// A refund mutation moves the refund row, and a settled (succeeded) refund moves
-// the booking finance and the relevant payment track's `paid_amount`. The cheap,
-// correct move is to bust the refund list + the booking finance surfaces and all
-// three tracks + the activity feed (each transition writes an event).
-function invalidateRefundDependents(queryClient: QueryClient, bookingId: BookingId): void {
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.refunds(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.detail(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.deposit(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.balance(bookingId) });
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.security(bookingId) });
-  // A security_deposit_release refund settles against the SD row, which the
-  // SD panel reads from its own query — bust it too so the panel isn't stale.
-  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.securityDeposit(bookingId) });
-}
+// Refund transitions route through invalidateBookingMoneyDependents: the
+// refund rows, tracks and SD panel all live under the bookings.detail(id)
+// prefix it invalidates.
 
 export function useCreateRefund(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: RefundRequestInput) => createRefund(bookingId, input),
-    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -521,7 +503,7 @@ export function useApproveRefund(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ refundId }: { refundId: number }) => approveRefund(refundId),
-    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -530,7 +512,7 @@ export function useRejectRefund(bookingId: BookingId) {
   return useMutation({
     mutationFn: ({ refundId, reason }: { refundId: number; reason: string }) =>
       rejectRefund(refundId, reason),
-    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -539,7 +521,7 @@ export function useExecuteRefund(bookingId: BookingId) {
   return useMutation({
     mutationFn: ({ refundId, tfaCode }: { refundId: number; tfaCode?: string }) =>
       executeRefund(refundId, tfaCode),
-    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 
@@ -547,7 +529,7 @@ export function useCancelRefund(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ refundId }: { refundId: number }) => cancelRefund(refundId),
-    onSuccess: () => invalidateRefundDependents(queryClient, bookingId),
+    onSuccess: () => invalidateBookingMoneyDependents(queryClient, bookingId),
   });
 }
 

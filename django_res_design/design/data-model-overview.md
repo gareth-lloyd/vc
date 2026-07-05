@@ -64,6 +64,9 @@ Property ─1:N→ RatePlan ─1:N→ RatePeriod ─1:N→ RateBand
          ─M:M→ Person (via PropertyContactAssignment)
          ─M:M→ Feature, Collection
 
+Room ─M:M→ RoomAttribute (via RoomAttributeAssignment; amenity catalog,
+           GAP-064 — RoomAttribute.implies_property_feature bridges to Feature)
+
 Enquiry ─1:N→ Quotation ─1:N→ QuotationLine ─1:N→ Booking
 Person  ─1:N→ Quotation, Booking            (customer; also User OneToOne)
 Person  ─1:N→ Quotation.agent, Booking.agent (agent; also User OneToOne)
@@ -83,8 +86,8 @@ EmailLog    ─N:1→ SmtpProfile, TermsVersion (loosely, via correlation key)
   (`PROTECT`, `editable=False`).
 
 Most domain models extend `AuditedModel`. A handful of lookup tables
-(`NearbyPlaceType`, `RoomBeds`, `FeatureCategory`, `SyncRecord`) extend only
-`TimestampedModel` or neither.
+(`NearbyPlaceType`, `RoomBeds`, `FeatureCategory`, `RoomAttribute`,
+`SyncRecord`) extend only `TimestampedModel` or neither.
 
 ### Legacy migration
 Every importable domain model carries a `legacy_id` field

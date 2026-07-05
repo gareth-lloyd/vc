@@ -131,6 +131,47 @@ export const ROOM_PLACEMENTS = [
 ] as const;
 export type RoomPlacement = (typeof ROOM_PLACEMENTS)[number];
 
+// GAP-064 room facets. Blank means "unknown / not specified" on both — the
+// backend stores "" and a non-blank ensuite_type auto-refines `is_ensuite` to
+// true server-side (mirrored in the form UI).
+export const ENSUITE_TYPES = ["shower", "bath", "both"] as const;
+export type EnsuiteType = (typeof ENSUITE_TYPES)[number];
+export const ensuiteTypeSchema = z.enum(ENSUITE_TYPES);
+
+export const ROOM_ACCESS = ["inside", "outside"] as const;
+export type RoomAccess = (typeof ROOM_ACCESS)[number];
+export const roomAccessSchema = z.enum(ROOM_ACCESS);
+
+// GAP-064 amenity catalog row (`GET /room-attributes`). The endpoint serves
+// INACTIVE rows too, so retired-but-assigned amenities can still be labelled.
+export const roomAttributeSchema = z.object({
+  id: z.number(),
+  slug: z.string(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+  icon: z.string().nullable().optional(),
+  sort_order: z.number().int(),
+  is_active: z.boolean(),
+  implies_property_feature: z.number().nullable().optional(),
+});
+export type RoomAttribute = z.infer<typeof roomAttributeSchema>;
+
+export const roomAttributesResponseSchema = paginated(roomAttributeSchema);
+
+// Read shape of one room↔amenity link: the assignment row plus the catalog
+// row's display fields (incl. `is_active` so the form can badge retired rows
+// instead of silently dropping them on a full-list save).
+export const roomAttributeLinkSchema = z.object({
+  id: z.number(),
+  attribute: z.number(),
+  slug: z.string(),
+  name: z.string(),
+  icon: z.string().nullable().optional(),
+  is_active: z.boolean(),
+  note: z.string().optional().default(""),
+});
+export type RoomAttributeLink = z.infer<typeof roomAttributeLinkSchema>;
+
 export const roomBedsSchema = z.object({
   double: z.number().int().min(0),
   twin_double: z.number().int().min(0),
@@ -150,8 +191,12 @@ export const propertyRoomSchema = z.object({
   website_description: z.string().nullable().optional(),
   vc_notes: z.string().nullable().optional(),
   is_ensuite: z.boolean(),
+  // GAP-064 facets; blank = unknown. Defaulted so older fixtures still parse.
+  ensuite_type: ensuiteTypeSchema.or(z.literal("")).optional().default(""),
+  access: roomAccessSchema.or(z.literal("")).optional().default(""),
   sort_order: z.number().int(),
   beds: roomBedsSchema.optional(),
+  attribute_links: z.array(roomAttributeLinkSchema).optional().default([]),
 });
 export type PropertyRoom = z.infer<typeof propertyRoomSchema>;
 
@@ -272,12 +317,23 @@ export const propertyRoomWriteInputSchema = z.object({
   website_description: z.string().trim(),
   vc_notes: z.string().trim(),
   is_ensuite: z.boolean(),
+  // GAP-064 facets: blank-able enums, NOT `.optional()` — PATCH must be able to
+  // send `""` to clear a previously-set value (same clearing trap as
+  // `website_description`/`vc_notes` below).
+  ensuite_type: ensuiteTypeSchema.or(z.literal("")),
+  access: roomAccessSchema.or(z.literal("")),
   // Optional to match the serializer (`RoomSerializer.beds` is `required=False`,
   // room.py:29): a room can be saved with just a name and filled in over time
   // (GAP-024). NOTE: `website_description`/`vc_notes` above stay `z.string()`
   // (not `.optional()`) — PATCH sends `""` to clear them; `.optional()` would
   // emit `undefined`, omit the field, and silently stop clearing.
   beds: roomBedsSchema.optional(),
+  // Full-list sync: submitting the list replaces the room's amenity set;
+  // ABSENT on PATCH leaves the links untouched (so absent ≠ clear — `[]`
+  // clears, `undefined` skips).
+  attribute_links: z
+    .array(z.object({ attribute: z.number(), note: z.string().optional() }))
+    .optional(),
 });
 export type PropertyRoomWriteInput = z.infer<typeof propertyRoomWriteInputSchema>;
 
@@ -299,6 +355,7 @@ export const regionSchema = z.object({
   country_iso2: z.string().nullable().optional(),
   name: z.string(),
   slug: z.string(),
+  is_active: z.boolean(),
 });
 export type Region = z.infer<typeof regionSchema>;
 

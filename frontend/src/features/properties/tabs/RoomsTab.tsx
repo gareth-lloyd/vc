@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
+import { FeatureIcon } from "@/components/data/FeatureIcon";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { cn } from "@/lib/cn";
 import { useDeletePropertyRoom, usePropertyRooms, useReorderPropertyRooms } from "../hooks";
@@ -80,9 +81,33 @@ function RoomRow({ room, canWrite, onEdit, onDelete }: RoomRowProps) {
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-foreground truncate font-medium">{room.name}</p>
             <Badge variant="outline">{t(`rooms.placements.${room.placement}`)}</Badge>
-            {room.is_ensuite ? <Badge variant="secondary">{t("rooms.row.ensuite")}</Badge> : null}
+            {room.is_ensuite ? (
+              <Badge variant="secondary">
+                {room.ensuite_type
+                  ? t("rooms.row.ensuite_with_type", {
+                      type: t(`rooms.ensuite_types.${room.ensuite_type}`),
+                    })
+                  : t("rooms.row.ensuite")}
+              </Badge>
+            ) : null}
+            {room.access ? (
+              <Badge variant="outline">{t(`rooms.access_types.${room.access}`)}</Badge>
+            ) : null}
           </div>
           <p className="text-muted-foreground text-sm">{bedSummary(room.beds, t)}</p>
+          {room.attribute_links.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {room.attribute_links.map((link) => (
+                <span
+                  key={link.id}
+                  className="border-border text-muted-foreground inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+                >
+                  <FeatureIcon name={link.icon} className="size-3" />
+                  {link.name}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
       {canWrite ? (

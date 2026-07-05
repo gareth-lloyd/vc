@@ -131,6 +131,19 @@ These are real legacy or workflow concepts that the v1 design intentionally does
 
 These need an answer before implementation; tracked here so they don't get lost in workflows / docs.
 
+- **GAP-064 room-attribute vocabulary shipped on ticket defaults — A1 owner
+  confirmation pending (2026-07-05).** The A1 steer (ensuite shower/bath/both
+  distinction; the 9-row starter amenity catalog; which amenities imply a
+  property feature) was never answered, so GAP-064 shipped the ticket
+  defaults: `ensuite_type` trio with `""`=unknown, starter rows aircon /
+  ceiling_fan / sea_view / balcony / terrace / wheelchair / in_room_safe /
+  hairdryer / mini_fridge, `sea_view`→`sea-view` implication (candidate-slug,
+  set-if-NULL), `wheelchair` implication left NULL (no accessibility Feature
+  exists yet). Everything vocabulary-shaped is admin-editable data
+  (`RoomAttribute` rows + the `implies_property_feature` FK in Django admin),
+  so the owner can revise without a developer; if she doesn't track the
+  shower/bath distinction the `ensuite_type` column simply stays `""`. Confirm
+  with Bryony alongside the GAP-065 A2 questions.
 - **Owner-approval SLA**: `workflows/09-booking/booking-creation.md` describes owner approval but doesn't specify a default reminder cadence or auto-decline window. The `escalate_pending_owner_approvals` Celery task needs a threshold (currently `[CONFIGURABLE]`).
 - **Cancellation-fee pre-window behaviour**: current design uses a single `cancellation_window_days`. A common pattern is sliding bands (e.g. 100% > 60 days, 50% 30-60d, 0% < 30d). Out of v1; add a `cancellation_bands` JSONField on `PropertyFinance` if it lands.
 - **`DamageClaim` model** *(was Open ticket; resolved 2026-06-23, BUG-008)*: shipped in `reservations/` (`reservations/models/damage_claim.py`) — booking + currency FKs, amount, `DamageClaimStatus`, a DC reference sequence, and the `itemized_lines`/`photos`/`accepted_by_guest_at` scaffolds for the fuller spec. `SecurityDeposit.damage_claim` is now a real `FK(SET_NULL)`, resolved + booking-validated in `SecurityDepositService.claim()`. The damages *workflow* (operator report sub-form, photo upload, threshold permissions, the damages email, the enforced approval state machine) stays deferred to workflow 8/17.

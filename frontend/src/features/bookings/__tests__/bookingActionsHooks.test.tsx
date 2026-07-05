@@ -351,6 +351,78 @@ describe("booking action hooks — happy paths", () => {
   });
 });
 
+describe("BUG-018 — lifecycle mutations refresh availability + contact sub-tabs", () => {
+  // The response payload carries `property: 12` (makeBookingDetail), which
+  // must fan out to that property's availability caches, the cross-property
+  // timeline, and (broadly — no contact FK on bookings) contact sub-tabs.
+  function seedCrossEntityKeys(client: QueryClient) {
+    const keys = [
+      queryKeys.properties.availabilityCalendar(12, "2026-07-01", "2026-07-31"),
+      queryKeys.properties.holds(12, "2026-07-01", "2026-07-31"),
+      queryKeys.properties.bookingsInRange(12, "2026-07-01", "2026-07-31"),
+      queryKeys.availability.timeline([12], "2026-07-01", "2026-07-31"),
+      queryKeys.contacts.bookings(7),
+      queryKeys.bookings.statusCountsAll(),
+    ];
+    for (const key of keys) {
+      client.setQueryData(key, {});
+    }
+    return keys;
+  }
+
+  function expectAllInvalidated(client: QueryClient, keys: readonly (readonly unknown[])[]) {
+    for (const key of keys) {
+      expect(client.getQueryState(key)?.isInvalidated, key.join("/")).toBe(true);
+    }
+  }
+
+  it("useModifyBookingDates invalidates the property's availability caches and contact sub-tabs", async () => {
+    const fx = setupActionFixture(":modify-dates", "deposit_paid");
+    const keys = seedCrossEntityKeys(fx.client);
+    const { result } = renderHook(() => useModifyBookingDates(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        date_from: "2026-07-10",
+        date_to: "2026-07-17",
+        reason: "guest req",
+      });
+    });
+
+    expectAllInvalidated(fx.client, keys);
+  });
+
+  it("useConfirmBooking invalidates the property's availability caches and contact sub-tabs", async () => {
+    const fx = setupActionFixture(":confirm", "awaiting_deposit");
+    const keys = seedCrossEntityKeys(fx.client);
+    const { result } = renderHook(() => useConfirmBooking(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync();
+    });
+
+    expectAllInvalidated(fx.client, keys);
+  });
+
+  it("useCancelBooking invalidates the property's availability caches and contact sub-tabs", async () => {
+    const fx = setupActionFixture(":cancel", "cancelled");
+    const keys = seedCrossEntityKeys(fx.client);
+    const { result } = renderHook(() => useCancelBooking(BOOKING_ID), {
+      wrapper: wrapperWith(fx.client),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ reason: "guest no-show" });
+    });
+
+    expectAllInvalidated(fx.client, keys);
+  });
+});
+
 describe("useDeclineBooking error envelope", () => {
   it("rejects with an ApiError on 400 so callers can apply field errors", async () => {
     const client = createClient();

@@ -7,7 +7,7 @@
   cross-cutting). First member of the `refactor-*` bucket (see README).
 - **Files (representative, not exhaustive):**
   - Dialog-state triple: `properties/tabs/PeopleTab.tsx:73–75,194–196,319–321,491–496`
-    (13 `useState`), `rate-workbench/components/InspectorPanel.tsx:177–179,266–268,368–370`
+    (13 `useState`), `properties/rate-workbench/components/InspectorPanel.tsx:177–179,266–268,368–370`
     (10 `useState`).
   - `form.reset()`-in-`useEffect`: ~43 files call `form.reset`; ~28 FormDialogs
     (~6,800 LOC) repeat the skeleton, e.g. `SettingsTab.tsx:149,382,684`,
@@ -22,7 +22,7 @@
   - Optimistic updates: three divergent copies —
     `bookings/hooks.ts:607` (`useToggleBookingNotePin`),
     `contacts/hooks.ts:132` (`useSetContactTags`),
-    `rate-workbench/hooks.ts:87` (`useOptimisticBandPrice`, the only one with an
+    `properties/rate-workbench/hooks.ts:87` (`useOptimisticBandPrice`, the only one with an
     `isMutating` settle-guard). `frontend/CLAUDE.md` still claims there is "one
     example."
   - God-components carrying the tax: `quotations/components/QuoteBuilder.tsx`

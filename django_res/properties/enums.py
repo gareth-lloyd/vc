@@ -54,6 +54,19 @@ class RoomPlacement(models.TextChoices):
     OTHER = "other", "Other"
 
 
+class EnsuiteType(models.TextChoices):
+    """Refines `Room.is_ensuite` when the facility kind is known ("" = unknown)."""
+
+    SHOWER = "shower", "Shower"
+    BATH = "bath", "Bath"
+    BOTH = "both", "Bath & shower"
+
+
+class RoomAccess(models.TextChoices):
+    INSIDE = "inside", "Inside access"
+    OUTSIDE = "outside", "Separate outside access"
+
+
 class DescriptionSection(models.TextChoices):
     OVERVIEW = "overview", "Overview"
     HOUSE_RULES = "house_rules", "House rules"

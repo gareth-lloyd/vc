@@ -1,18 +1,13 @@
 import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
-import { quotationDetailSchema } from "@/features/quotations/schemas";
+import { quotationDetailSchema } from "@/lib/domain/quotation";
 import { LEAD_STATUSES, type LeadStatus } from "@/styles/tokens";
 
-export const enquiryStatusSchema = z.enum([
-  "new",
-  "progressing",
-  "quote_sent",
-  "follow_up",
-  "dead",
-  "converted",
-]);
-export type EnquiryStatus = z.infer<typeof enquiryStatusSchema>;
+// Lives in lib/domain so contacts can render enquiry history without
+// importing this feature's schemas (GAP-063); re-exported for local use.
+import { enquiryStatusSchema, enquiryStatusLabel, type EnquiryStatus } from "@/lib/domain/statuses";
+export { enquiryStatusSchema, enquiryStatusLabel, type EnquiryStatus } from "@/lib/domain/statuses";
 
 // Columns shown on the Kanban board. `dead`, `progressing`, and `follow_up` are
 // excluded: `dead` is reachable via Close, while `progressing`/`follow_up` have no
@@ -266,10 +261,6 @@ export const UNASSIGNED_FILTER_VALUE = "unassigned";
 // suppresses the inline builder and the close action is disabled for these.
 export function isFinalStatus(status: EnquiryStatus): boolean {
   return status === "converted" || status === "dead";
-}
-
-export function enquiryStatusLabel(status: EnquiryStatus): string {
-  return i18n.t(`enquiries:labels.status.${status}`);
 }
 
 export function enquirySourceLabel(source: EnquirySource): string {

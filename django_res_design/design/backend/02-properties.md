@@ -187,6 +187,12 @@ Owned by `Property` (CASCADE FK). Hard-deleted with its parent or directly when 
 - `website_description` — TextField(blank=True)
 - `vc_notes` — TextField(blank=True)
 - `is_ensuite` — BooleanField(default=False)
+- `ensuite_type` — TextChoices (`SHOWER`, `BATH`, `BOTH`), blank=True (`""` =
+  unknown; refines `is_ensuite`). DB CheckConstraint
+  `room_ensuite_type_implies_is_ensuite`: a typed ensuite must be flagged
+  ensuite. The serializer keeps the pair coherent in both directions (a
+  non-blank type sets the bool; unticking the bool clears the type). GAP-064.
+- `access` — TextChoices (`INSIDE`, `OUTSIDE`), blank=True (`""` = unknown). GAP-064.
 - `sort_order` — int
 
 ### `RoomBeds(TimestampedModel)`
@@ -194,6 +200,34 @@ Owned by `Property` (CASCADE FK). Hard-deleted with its parent or directly when 
 - `double`, `twin_double`, `twin`, `single`, `bunk`, `sofa`, `childrens` — PositiveSmallInteger(default=0)
 
 Keeps the wide bed-count fields out of Room.
+
+### `RoomAttribute(TimestampedModel)` — GAP-064
+Admin-curated catalog of per-room amenity tags (aircon, sea view, balcony, …).
+Deliberately **separate** from the property `Feature` taxonomy (no category /
+`service_type` / pricing coupling). A new amenity is a data row a curator adds
+in the Django admin — no migration, serializer, schema or FE change.
+
+- `name` — CharField (curator-editable label)
+- `slug` — SlugField(unique) — the stable machine key (code/backfill/tests key on it)
+- `description`, `icon`, `sort_order`, `is_active` — the standard catalog shape
+- `implies_property_feature` — nullable FK → `Feature`, SET_NULL — the
+  data-driven GAP-067 bridge (a room carrying this attribute derives that
+  property-level feature; derivation logic itself is GAP-067's). Candidate
+  links are attached set-if-NULL by `sync_room_attributes()`
+  (`properties/room_attribute_catalog.py`), which migration `0027` calls to
+  seed the 9 starter rows and `backfill_room_attrs` re-invokes post-load.
+
+### `RoomAttributeAssignment` — GAP-064
+Through model: `room` FK CASCADE (`related_name="attribute_links"`, mirroring
+`feature_links`), `attribute` FK **PROTECT** (in-use catalog rows can only be
+retired via `is_active`, never deleted), optional `note` CharField(200)
+("sea view from the balcony only"), `UniqueConstraint(room, attribute)`.
+Presence semantics: present = yes, absent = not claimed (never "confirmed
+absent"). Audit-tracked (FG-017) — the API write path is a per-row full-list
+diff-writer on `RoomSerializer.attribute_links`; absent field on PATCH leaves
+links alone. Read-only catalog endpoint at `/room-attributes` (anon-readable,
+serves inactive rows so the room form can keep retired-but-assigned rows
+ticked).
 
 ## Images
 

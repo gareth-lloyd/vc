@@ -13,8 +13,9 @@ import pytest
 from django.core.management import call_command
 
 from accounts.enums import OrgType
-from accounts.models import Organisation
+from accounts.models import Organisation, User
 from comms.models import EmailTemplate, SmtpProfile
+from core.enums import StaffRole
 from integrations.models.oauth_credential import OAuthCredential
 from integrations.models.sync_issue import SyncIssue
 from integrations.models.sync_record import SyncRecord
@@ -43,6 +44,7 @@ from reservations.enums import BookingStatus
 from reservations.models import (
     Booking,
     BookingNote,
+    Enquiry,
     EnquiryNote,
     TermsVersion,
 )
@@ -166,4 +168,23 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
     assert (
         PropertyStatus.DRAFT.value in property_statuses
         or PropertyStatus.ARCHIVED.value in property_statuses
+    )
+
+    # ---- Enquiry assignment: most enquiries land on a RESERVATIONS owner ----
+    # The `enquiry_assignees` stage assigns ~80% of enquiries to sales staff;
+    # every owner is a RESERVATIONS user, and a healthy unassigned queue remains.
+    total_enquiries = Enquiry.objects.count()
+    assigned = Enquiry.objects.filter(assigned_to__isnull=False)
+    assert total_enquiries > 0
+    assert assigned.count() >= total_enquiries * 0.6, "enquiry_assignees should own most enquiries"
+    assert Enquiry.objects.filter(assigned_to__isnull=True).exists(), (
+        "a realistic unassigned queue should remain"
+    )
+    owner_roles = set(
+        User.objects.filter(assigned_enquiries__isnull=False)
+        .values_list("role", flat=True)
+        .distinct()
+    )
+    assert owner_roles == {StaffRole.RESERVATIONS.value}, (
+        f"enquiry owners must all be RESERVATIONS staff, got {owner_roles}"
     )

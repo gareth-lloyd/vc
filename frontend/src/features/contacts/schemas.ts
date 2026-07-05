@@ -1,9 +1,12 @@
 import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
-import { bookingStatusSchema } from "@/features/bookings/schemas";
-import { enquiryStatusSchema } from "@/features/enquiries/schemas";
-import { orgStatusSchema, orgTypeSchema } from "@/features/companies/schemas";
+import {
+  bookingStatusSchema,
+  enquiryStatusSchema,
+  orgStatusSchema,
+  orgTypeSchema,
+} from "@/lib/domain/statuses";
 
 // The agent's agency (GAP-046): the contact API exposes a writable `agency` PK
 // plus a read-only nested `agency_detail`. Reusing the companies enums keeps

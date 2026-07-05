@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { registerLogoutCleanup } from "@/lib/auth/logoutCleanup";
 import type { OwnerMe, OwnerOrganisation } from "./schemas";
 
 // "error" is distinct from "not_owner": a non-owner is a 200 {is_owner:false}
@@ -24,3 +25,10 @@ export const useOwnerStore = create<OwnerState>((set) => ({
   setProbeError: () => set({ status: "error", organisations: [] }),
   clear: () => set({ status: "idle", organisations: [] }),
 }));
+
+// Cleared on logout via the lib/auth registry rather than auth importing this
+// feature (GAP-063). Module-scope registration is safe because this module is
+// EAGERLY imported in every session (app/guards.tsx, app/boot.tsx, router's
+// OwnerShell/RequireOwner) — if it ever becomes lazy, move the registration
+// somewhere that still runs before logout.
+registerLogoutCleanup(() => useOwnerStore.getState().clear());

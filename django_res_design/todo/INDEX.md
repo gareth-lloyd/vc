@@ -15,7 +15,7 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-03, recounted from files): **118 done** (113 resolved + 5 dropped), **43 open**
+Scoreboard (2026-07-05, recounted from files): **119 done** (114 resolved + 5 dropped), **42 open**
 (incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
@@ -140,8 +140,8 @@ workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` re
 | [GAP-060](done/gap-060-kill-old-pricing-tab.md) | Retire the legacy property "Pricing" tab; rename the Workbench tab to "Rates" | ✅ resolved (2026-07-02) — FE-only on local `main` (unpushed; `7f8fe63`, `f7bd8b9`, `fc27581`). Unit 1: rate-plan create/edit/duplicate/delete + period edit/delete + GAP-026 warning ported into the Workbench (add/duplicate no longer skeleton-blanks the page). Unit 2: renamed "Rates", dropped the Preview badge. Unit 3: deleted PricingTab + RatePlanDetailPanel, `/pricing`→Rates redirect, dropped the writer-only nav gate, pruned dead i18n. Full FE gate green (1642 tests) |
 | [GAP-061](gap-061-security-deposit-release-automation.md) | Security-deposit release/refund automation unbuilt (`process_sd_refunds` empty, unscheduled); holds sit open indefinitely | ⬜ from 2026-07-02 complexity audit; real money held on cards; needs idempotency key on the release refund |
 | [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md) | No frontend↔backend contract check — 20 hand-maintained Zod schemas drift silently from DRF (`currency`/`country` typed number in some features, string in others) | ⬜ from 2026-07-02 frontend complexity audit; add a fixtures contract test or OpenAPI type-gen |
-| [GAP-063](gap-063-frontend-feature-coupling-and-cycles.md) | Frontend feature boundaries leak — cross-feature imports (rate-workbench→properties ×26) + schema-level cycles (enquiries⇄quotations, properties⇄availability); no import boundary rule | ⬜ from 2026-07-02 frontend complexity audit; add eslint boundaries + break the two schema cycles |
-| [GAP-064](gap-064-structured-room-attributes.md) | Structured room attributes — enum-column facets (ensuite type, access) + an admin-editable `RoomAttribute` catalog for open-ended amenities | ⬜ supersedes Q-019 (attributes); legacy-grounded; needs A1 owner steer (seed catalog + which attrs imply a property feature) |
+| [GAP-063](done/gap-063-frontend-feature-coupling-and-cycles.md) | Frontend feature boundaries leak — cross-feature imports (rate-workbench→properties ×26) + schema-level cycles (enquiries⇄quotations, properties⇄availability); no import boundary rule | ✅ resolved (2026-07-05) — `eslint-plugin-boundaries` shrink-only ratchet (`boundaries.allowlist.js`, 32→27 pairs) + staleness vitest; rate-workbench folded into `properties/`; all four 2-cycles broken via `src/lib/domain/` + logout-cleanup registry; remaining edge pay-down → GAP-072 |
+| [GAP-064](done/gap-064-structured-room-attributes.md) | Structured room attributes — enum-column facets (ensuite type, access) + an admin-editable `RoomAttribute` catalog for open-ended amenities | ✅ resolved (2026-07-05) — shipped with ticket-default A1 vocabulary (all admin-editable data; owner confirmation pending, see `design/decisions.md`); backfill re-run + placement source → GAP-065; derivation → GAP-067 |
 | [GAP-065](gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ⬜ supersedes Q-019 (floor); data-loss bug on cutover; needs A2 owner steer (floor ladder) |
 | [GAP-066](gap-066-room-bed-size.md) | Bed **size** fidelity (King/Super-king/Emperor) + bed-type vocabulary | ⬜ surfaced from the legacy exhibit form + crammed free-text; needs owner steer (advertised or internal?) |
 | [GAP-067](gap-067-room-feature-taxonomy-cleanup.md) | Feature taxonomy cleanup + derive property features from room attributes (data-driven bridge) | ⬜ supersedes the taxonomy half of Q-021; de-dupe the ~300-row `VillaFeatures` list (5× aircon, junk rows) with link-remap |
@@ -149,6 +149,7 @@ workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` re
 | [GAP-069](done/gap-069-workbench-carry-forward-affordance.md) | Rate-workbench carry-forward affordance — promote a projected year into editable rows | ✅ resolved (2026-07-03, local main unpushed) — FE-only; "Carry rates forward" button in the empty-year state (writer-gated, currency-code + non-past-year gated) → `CarryForwardDialog` (uplift %) → live `…:carry-forward` endpoint; on success new plan selected + year fills in place. No backend change. `f524142`/`e303050`/`62f5f14` |
 | [GAP-070](gap-070-remove-groups-global-property-defaults.md) | Remove property groups + runtime inheritance; global `PropertyDefaults` singleton + editor UI, snapshot at creation | ⬜ owner-requested (drop Villa Groups); **subsumes GAP-068**, moots FG-002, reverses FG-003; deletes `PropertyGroup`/`Group*Settings`/`effective()`; freeze-then-drop migration |
 | [GAP-071](gap-071-manual-security-deposit-creation.md) | No way to create a security deposit — auto-creation at booking confirmation is the only path; empty state is a dead end | ⬜ from 2026-07-03 `/bookings/383/payments` investigation (follows `c9e5fac` 204 fix); needs new `SecurityDepositService.create_manual` + POST endpoint + FE empty-state action; 4 open product decisions |
+| [GAP-072](gap-072-frontend-boundary-ratchet-paydown.md) | Pay down the remaining boundary-ratchet edges — last 2 mutual cycles (properties⇄contacts, UI-level enquiries⇄quotations), sanctioned-vs-debt allowlist tiering, geo/taxonomy home decision | ⬜ GAP-063 residue (2026-07-05); incremental, one edge-group per commit; coordinates `lib/domain` lifts with GAP-062 |
 
 ## Open product questions
 
@@ -167,7 +168,7 @@ workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` re
 
 Highest-leverage unanswered questions (each blocks a slice of downstream work):
 
-- **GAP-064 / GAP-065** — Structured room attributes + floor (owner vocabulary A1/A2; blocks the room-attribute write surface)
+- **GAP-065** — Building/floor placement (owner vocabulary A2). GAP-064 shipped 2026-07-05 with the ticket-default A1 vocabulary — the seed catalog + implies-feature links are admin-editable data, so the pending A1 confirmation no longer blocks code (see `design/decisions.md`)
 - **Q-024** — Signals vs explicit orchestration for cross-app money side-effects (architecture; blocks SMELL-020, BUG-015, GAP-061)
 
 ---

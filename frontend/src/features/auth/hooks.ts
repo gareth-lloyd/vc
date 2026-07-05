@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
-import { useOwnerStore } from "@/features/owner-portal/ownerStore";
+import { runLogoutCleanups } from "@/lib/auth/logoutCleanup";
 import {
+  confirmPasswordReset,
   confirmTfaEnrollment,
   fetchMe,
   fetchPermissions,
   login,
   logout,
+  requestPasswordReset,
   startTfaEnrollment,
   updateMe,
   verifyTfa,
@@ -95,13 +97,29 @@ export function useUpdateMe() {
   });
 }
 
+export function useRequestPasswordReset() {
+  // Unauthenticated flow — no session is created, so no cache reset is needed.
+  return useMutation({
+    mutationFn: (email: string) => requestPasswordReset(email),
+  });
+}
+
+export function useConfirmPasswordReset() {
+  // Confirm returns 204 without logging in; the user signs in fresh at /login.
+  return useMutation({
+    mutationFn: (input: { token: string; new_password: string }) => confirmPasswordReset(input),
+  });
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => logout(),
     onSuccess: () => {
       useAuthStore.getState().clear();
-      useOwnerStore.getState().clear();
+      // Feature-owned session state (e.g. the owner-portal store) clears via
+      // the registry — auth must not import other features (GAP-063).
+      runLogoutCleanups();
       resetAuthQueryCache(queryClient);
     },
   });

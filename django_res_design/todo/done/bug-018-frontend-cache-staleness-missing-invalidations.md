@@ -1,3 +1,16 @@
+> **✅ RESOLVED (2026-07-05)** — shipped as 5 units on `feat/bug-018-cache-invalidations`
+> (7ea9f07, 0af438c, 732ba91, df69b90, 72f20e0). New entity→dependents map at
+> `frontend/src/lib/query/invalidate.ts`; booking/quotation/enquiry mutations route
+> through it (availability + contact sub-tabs now refresh); properties
+> over-invalidation narrowed. Two deliberate deviations from this ticket's text:
+> (1) booking payloads carry no contact FK (GAP-045), so booking mutations use the
+> broad `["contacts","detail"]` prefix (user-approved; precise targeting would need
+> a backend `person` field — revisit if noisy). (2) The prescribed
+> `properties.features(id)` invalidation was wrong for the as-built code — nothing
+> subscribes to that key; `feature_ids` ride the detail payload — so the features
+> save writes its response into `properties.detail(id|slug)` via setQueryData
+> instead (same narrowing goal, no staleness).
+
 # BUG-018 — Frontend cache staleness: booking mutations skip the availability calendar; contact sub-tabs never invalidate
 
 - **Severity:** 🔴 Bug (frontend) — a mutation succeeds but leaves other

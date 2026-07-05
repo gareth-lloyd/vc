@@ -88,7 +88,10 @@ function mockSaveFlow() {
       HttpResponse.json({ id: 5, version: "v1", is_current: true, published_at: null }),
     ),
     http.post("/api/v1/quotations", () =>
-      HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 }),
+      HttpResponse.json(
+        { id: 50, reference: "QVC50", status: "draft", enquiry: 99 },
+        { status: 201 },
+      ),
     ),
   ];
 }
@@ -319,7 +322,10 @@ describe("QuoteBuilder", () => {
       ),
       http.post("/api/v1/quotations", async ({ request }) => {
         saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
-        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+        return HttpResponse.json(
+          { id: 50, reference: "QVC50", status: "draft", enquiry: 99 },
+          { status: 201 },
+        );
       }),
       http.post("/api/v1/quotations:search-options", async ({ request }) => {
         const body = (await request.json()) as { flex_days: number };
@@ -407,7 +413,10 @@ describe("QuoteBuilder", () => {
       ),
       http.post("/api/v1/quotations", async ({ request }) => {
         saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
-        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+        return HttpResponse.json(
+          { id: 50, reference: "QVC50", status: "draft", enquiry: 99 },
+          { status: 201 },
+        );
       }),
       http.post("/api/v1/quotations:search-options", async ({ request }) => {
         const body = (await request.json()) as { flex_days: number };
@@ -502,7 +511,10 @@ describe("QuoteBuilder", () => {
       ),
       http.post("/api/v1/quotations", async ({ request }) => {
         saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
-        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+        return HttpResponse.json(
+          { id: 50, reference: "QVC50", status: "draft", enquiry: 99 },
+          { status: 201 },
+        );
       }),
       http.post("/api/v1/quotations:search-options", () =>
         HttpResponse.json({
@@ -656,7 +668,10 @@ describe("QuoteBuilder", () => {
       ),
       http.post("/api/v1/quotations", async ({ request }) => {
         quotationBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+        return HttpResponse.json(
+          { id: 50, reference: "QVC50", status: "draft", enquiry: 99 },
+          { status: 201 },
+        );
       }),
     );
     renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
@@ -737,7 +752,10 @@ describe("QuoteBuilder", () => {
       ),
       http.post("/api/v1/quotations", async ({ request }) => {
         saveBody = (await request.json()) as { lines: Array<Record<string, unknown>> };
-        return HttpResponse.json({ id: 50, reference: "QVC50", status: "draft" }, { status: 201 });
+        return HttpResponse.json(
+          { id: 50, reference: "QVC50", status: "draft", enquiry: 99 },
+          { status: 201 },
+        );
       }),
       http.post("/api/v1/quotations:search-options", async ({ request }) => {
         const body = (await request.json()) as { flex_days: number };

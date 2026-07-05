@@ -30,6 +30,30 @@ Each feature lives in `src/features/<name>/` with a standard shape:
     components/      — dialogs, pickers, sub-components
     __tests__/       — colocated tests
 
+A feature may contain a folded sub-feature directory keeping this same shape
+when the sub-feature is one-way coupled to its owner — `properties/
+rate-workbench/` is the only one (see Module boundaries); don't copy the
+pattern without that justification.
+
+### Module boundaries (GAP-063)
+
+Features import only themselves, `src/lib/`, and `src/components/` — never
+another feature. What lint enforces is the cross-feature ban specifically:
+`eslint-plugin-boundaries` (`eslint.config.js`) errors on any
+feature→feature import whose pair is not in `ALLOWED_EDGES`
+(`boundaries.allowlist.js`), a **shrink-only ratchet** of pre-existing
+coupling (the backend import-linter model, FG-013). Entries may be removed as
+edges are paid down, never added — the one exception is a documented relabel
+when shared code moves to its true home feature. A vitest guard
+(`src/test/boundaries.test.ts`) fails if an entry goes stale, so paid-down
+edges must be deleted. New cross-feature needs go to `src/lib/domain/`
+(shared Zod schemas/labels) or `src/components/` (shared UI). Test files are
+exempt (cross-feature MSW handlers and scaffolding are fine there).
+
+rate-workbench is a `properties` sub-feature
+(`features/properties/rate-workbench/`), not a standalone feature (GAP-063
+decided fold over promotion: its 29 imports were one-way into properties).
+
 ### Zod-first types
 
 Every API response type is `z.infer<typeof schema>`, never hand-typed.
@@ -56,7 +80,11 @@ response type. Custom actions use colon-verb syntax:
   boot-level 401 handler all funnel through `resetAuthQueryCache`
   (`features/auth/resetAuthQueryCache.ts`) — never a hand-picked prefix
   allowlist, which leaks one user's cached data into the next session. Any new
-  auth transition must call it too.
+  auth transition must call it too. Feature-owned session **stores** clear via
+  `registerLogoutCleanup` (`lib/auth/logoutCleanup.ts`) — register at module
+  scope in an eagerly-imported module (reference: `owner-portal/ownerStore.ts`);
+  both session-drop paths (logout, expiry 401) run the registry. Never have
+  auth import a feature's store directly (GAP-063 boundary).
 
 ### Form dialog pattern (create / edit)
 

@@ -27,6 +27,7 @@ from accounts.models import User, UserSession
 from accounts.serializers import (
     LoginSerializer,
     PasswordChangeSerializer,
+    PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     SessionInfoSerializer,
     TfaChallengeSerializer,
@@ -315,9 +316,6 @@ class TfaDisableView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-# --- 501 placeholders for endpoints whose comms wiring isn't ready yet -----
-
-
 class PasswordResetRequestView(APIView):
     """`POST /auth/password-reset:request` — start the email-based reset flow.
 
@@ -337,12 +335,30 @@ class PasswordResetRequestView(APIView):
 
 
 class PasswordResetConfirmView(APIView):
+    """`POST /auth/password-reset:confirm` — apply a new password via reset token.
+
+    A thin shell: the serializer validates shape, and
+    `PasswordResetService.consume` verifies the token and sets the password.
+    Token failures raise `PasswordResetTokenExpired` / `PasswordResetTokenInvalid`
+    (both `DomainError`s → 400 via the canonical exception handler), so no
+    per-view try/except is needed.
+    """
+
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "auth.password_reset"
 
     def post(self, request: Request) -> Response:
-        return not_implemented_response("Password reset confirmation is not yet wired.")
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        PasswordResetService.consume(
+            serializer.validated_data["token"],
+            serializer.validated_data["new_password"],
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --- 501 placeholders for endpoints whose comms wiring isn't ready yet -----
 
 
 class MagicLinkRequestView(APIView):

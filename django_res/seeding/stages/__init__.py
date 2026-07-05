@@ -18,6 +18,7 @@ from seeding.stages import (
     concierge_items,  # noqa: F401
     contacts,  # noqa: F401
     dashboard_activity,  # noqa: F401
+    enquiry_assignees,  # noqa: F401
     extra_quotations,  # noqa: F401
     features,  # noqa: F401
     gallery,  # noqa: F401
@@ -32,6 +33,7 @@ from seeding.stages import (
     properties,  # noqa: F401
     property_lifecycle,  # noqa: F401
     refunds,  # noqa: F401
+    room_attributes,  # noqa: F401
     rooms,  # noqa: F401
     system_setup,  # noqa: F401
     users,  # noqa: F401

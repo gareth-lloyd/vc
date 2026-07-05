@@ -2,6 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { authChannel } from "@/lib/api/authChannel";
+import { runLogoutCleanups } from "@/lib/auth/logoutCleanup";
 import { resetAuthQueryCache } from "@/features/auth/resetAuthQueryCache";
 import { primeCsrfCookie } from "@/lib/api/client";
 import { useMe } from "@/features/auth/hooks";
@@ -10,11 +11,15 @@ import { useOwnerMe } from "@/features/owner-portal/hooks";
 import { useOwnerStore } from "@/features/owner-portal/ownerStore";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const PUBLIC_PATH_PREFIX = "/login";
+// Paths reachable without a session. An anonymous visitor to any of these must
+// NOT mount <AuthenticatedBoot> — that fires GET /auth/me → 401 → the
+// onUnauthorized handler redirects to /login, which would bounce a reset-email
+// link away before its form ever renders. The password-reset pages join /login.
+const PUBLIC_PATH_PREFIXES = ["/login", "/forgot-password", "/reset-password"];
 
 export function BootGate() {
   const location = useLocation();
-  const isPublic = location.pathname.startsWith(PUBLIC_PATH_PREFIX);
+  const isPublic = PUBLIC_PATH_PREFIXES.some((p) => location.pathname.startsWith(p));
 
   // Prime the csrftoken cookie once per boot so a fresh browser's first
   // unsafe request (typically the login POST itself) isn't 403'd by
@@ -96,7 +101,9 @@ function AuthenticatedBoot() {
       // storm), which is why resetAuthQueryCache uses removeQueries rather than
       // clear — it drops cached data without kicking a refetch.
       setUnauthenticated();
-      useOwnerStore.getState().clear();
+      // Same registry useLogout runs — both session-drop paths (explicit
+      // logout, expiry 401) must clear feature-owned session state.
+      runLogoutCleanups();
       if (!current.startsWith("/login")) {
         navigate("/login", { replace: true, state: { next: current } });
       }

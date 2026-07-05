@@ -76,6 +76,11 @@ class PasswordResetRequestSerializer(serializers.Serializer[dict[str, Any]]):
     email = serializers.EmailField()
 
 
+class PasswordResetConfirmSerializer(serializers.Serializer[dict[str, Any]]):
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, trim_whitespace=False, min_length=8)
+
+
 class SessionInfoSerializer(serializers.Serializer[dict[str, Any]]):
     session_key = serializers.CharField()
     created_at = serializers.DateTimeField()

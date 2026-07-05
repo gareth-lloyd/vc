@@ -1,13 +1,15 @@
 """Best-effort, positives-only enrichment of GAP-064 room attributes from prose.
 
-A keyword pass over `Room.website_description` creates
-`RoomAttributeAssignment` rows for confident matches and fills
+A keyword pass over `Room.website_description` and the preserved legacy
+placement string `Room.placement_note` (GAP-065 — the legacy field crammed
+amenity facts like "First floor - King, hairdryer" into the location box)
+creates `RoomAttributeAssignment` rows for confident matches and fills
 `ensuite_type` from explicit "en-suite shower/bath" phrasing — only when the
 facet is currently unknown (`""`). It never infers an absence, never removes
 an assignment, and never overwrites curator data, so re-running (e.g. after
-GAP-065 lands its preserved placement text, or after a cutover delta load) is
-always safe. Source prose is retained on the Room, so a missed keyword loses
-nothing — this is convenience, not a correctness dependency.
+a cutover delta load) is always safe. Source prose is retained on the Room,
+so a missed keyword loses nothing — this is convenience, not a correctness
+dependency.
 
 It also re-invokes `sync_room_attributes()` first, so the catalog's
 `implies_property_feature` candidate links (a no-op at migrate time — Features
@@ -69,8 +71,8 @@ def _ensuite_type_from(text: str) -> str:
 class Command(BaseCommand):
     help = (
         "Positives-only keyword backfill of room amenity assignments and the "
-        "ensuite_type facet from website_description (GAP-064). Idempotent; "
-        "never overwrites curator data."
+        "ensuite_type facet from website_description and placement_note "
+        "(GAP-064/GAP-065). Idempotent; never overwrites curator data."
     )
 
     def add_arguments(self, parser: Any) -> None:
@@ -95,8 +97,12 @@ class Command(BaseCommand):
 
         assigned: Counter[str] = Counter()
         ensuite_set = 0
-        for room in Room.objects.exclude(website_description="").iterator():
-            text = room.website_description
+        rooms = Room.objects.exclude(website_description="", placement_note="")
+        for room in rooms.iterator():
+            # Newline join = a sentence boundary for `_ensuite_type_from`, so
+            # note vocabulary never merges into a trailing description
+            # sentence ("… en-suite" + "… Shower room nearby" must not couple).
+            text = "\n".join(t for t in (room.website_description, room.placement_note) if t)
             for slug, pattern in patterns.items():
                 if slug not in attributes or not pattern.search(text):
                     continue

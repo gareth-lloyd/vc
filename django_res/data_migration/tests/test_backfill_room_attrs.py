@@ -111,6 +111,50 @@ class TestEnsuiteFacet:
         assert room.is_ensuite is False
 
 
+class TestPlacementNoteSource:
+    """GAP-065 — the crammed amenity facts in the preserved legacy placement
+    string ("First floor - King, hairdryer") get re-homed by the same pass."""
+
+    def test_amenities_only_in_placement_note_are_assigned(self) -> None:
+        room = cast(Room, RoomFactory(placement_note="First floor - King, hairdryer"))
+        assert room.website_description == ""
+        _call()
+        assert _slugs(room) == {"hairdryer"}
+
+    def test_note_and_description_both_contribute(self) -> None:
+        room = _room(
+            "Lovely sea view.",
+            placement_note="Ground floor. Mini fridge, safe",
+        )
+        _call()
+        assert _slugs(room) == {"sea_view", "mini_fridge"}
+
+    def test_note_vocabulary_never_merges_into_a_description_sentence(self) -> None:
+        # The sources are joined with a newline (a sentence boundary): an
+        # en-suite mention trailing the description must not read shower/bath
+        # words from the note.
+        room = _room(
+            "Master bedroom, en-suite",
+            placement_note="Ground floor. Shower room nearby",
+        )
+        _call()
+        room.refresh_from_db()
+        assert room.ensuite_type == ""
+
+    def test_idempotent_over_note_matches(self) -> None:
+        room = cast(Room, RoomFactory(placement_note="Ground floor. Ceiling fan"))
+        _call()
+        _call()
+        assert RoomAttributeAssignment.objects.filter(room=room).count() == 1
+
+    def test_dry_run_counts_note_sourced_hits(self) -> None:
+        cast(Room, RoomFactory(placement_note="First floor. Wifi and hair dryer"))
+        out = _call("--dry-run")
+        assert "would create" in out
+        assert "1 x hairdryer" in out
+        assert RoomAttributeAssignment.objects.count() == 0
+
+
 class TestSyncReinvocation:
     def test_links_implications_once_features_exist(self) -> None:
         feature = cast(Feature, FeatureFactory(slug="sea-view"))

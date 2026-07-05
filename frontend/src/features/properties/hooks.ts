@@ -60,6 +60,7 @@ import {
   updatePropertyBlock,
   updatePropertyCapacity,
   updatePropertyContact,
+  updateProperty,
   updatePropertyFeatures,
   updatePropertyFinance,
   updatePropertyImage,
@@ -719,6 +720,18 @@ export function useDeleteChangeOverRule(propertyId: number) {
     mutationFn: ({ ruleId }: { ruleId: number }) => deleteChangeOverRule(ruleId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.changeover(propertyId) });
+    },
+  });
+}
+
+export function useUpdateProperty(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { region: number }) => updateProperty(propertyId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.detail(propertyId) });
+      // Region shows up in list filtering, so stale list pages must refetch.
+      queryClient.invalidateQueries({ queryKey: [...queryKeys.properties.all(), "list"] });
     },
   });
 }

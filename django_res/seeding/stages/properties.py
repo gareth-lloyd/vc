@@ -120,7 +120,10 @@ def _run(ctx: SeedContext) -> int:
             # the villa's location so the property reads coherently with its
             # imagery. `.get` (not get_or_create) so a manifest country_iso2
             # absent from the ISO-3166 seed fails loudly instead of creating a
-            # malformed Country row.
+            # malformed Country row. RegionFactory is idempotent on
+            # (country, slugify(name)), so cycling the 20-entry manifest — and
+            # repeated seed runs — reuses one Region per locality instead of
+            # minting duplicates.
             country = Country.objects.get(iso2=villa["country_iso2"])
             locality = villa["location_tag"].rsplit(",", 1)[0].strip()
             extra_kwargs["region"] = RegionFactory(country=country, name=locality)

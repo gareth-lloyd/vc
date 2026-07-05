@@ -6,6 +6,8 @@ import { RequireAdmin, RequireAuth, RequireStaff } from "./guards";
 import { BootGate } from "./boot";
 import { RouteErrorBoundary } from "./RouteErrorBoundary";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { ForgotPasswordPage } from "@/features/auth/ForgotPasswordPage";
+import { ResetPasswordPage } from "@/features/auth/ResetPasswordPage";
 import { TfaChallengePage } from "@/features/auth/TfaChallengePage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { ComingSoonTab } from "@/components/feedback/ComingSoonTab";
@@ -93,6 +95,8 @@ export const router = createBrowserRouter([
       { path: "/", element: <Navigate to="/dashboard" replace /> },
       { path: "/login", element: <LoginPage /> },
       { path: "/login/2fa", element: <TfaChallengePage /> },
+      { path: "/forgot-password", element: <ForgotPasswordPage /> },
+      { path: "/reset-password", element: <ResetPasswordPage /> },
       {
         element: <RequireAuth />,
         children: [

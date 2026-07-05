@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  forgotPasswordInputSchema,
   loginInputSchema,
   loginResponseSchema,
   permissionsResponseSchema,
+  resetPasswordInputSchema,
   userMeSchema,
 } from "../schemas";
 
@@ -17,6 +19,44 @@ describe("loginInputSchema", () => {
 
   it("rejects empty password", () => {
     expect(loginInputSchema.safeParse({ email: "a@b.com", password: "" }).success).toBe(false);
+  });
+});
+
+describe("forgotPasswordInputSchema", () => {
+  it("accepts a valid email", () => {
+    expect(forgotPasswordInputSchema.safeParse({ email: "a@b.com" }).success).toBe(true);
+  });
+
+  it("rejects a bad email", () => {
+    expect(forgotPasswordInputSchema.safeParse({ email: "nope" }).success).toBe(false);
+  });
+});
+
+describe("resetPasswordInputSchema", () => {
+  it("accepts matching passwords of sufficient length", () => {
+    const ok = resetPasswordInputSchema.safeParse({
+      new_password: "longenough",
+      confirm_password: "longenough",
+    });
+    expect(ok.success).toBe(true);
+  });
+
+  it("rejects a password shorter than 8 characters", () => {
+    expect(
+      resetPasswordInputSchema.safeParse({ new_password: "short", confirm_password: "short" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects mismatched passwords with the error on confirm_password", () => {
+    const result = resetPasswordInputSchema.safeParse({
+      new_password: "longenough",
+      confirm_password: "different1",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(["confirm_password"]);
+    }
   });
 });
 

@@ -387,3 +387,90 @@ def test_password_reset_request_is_idempotent_on_repeat(
 
     assert len(mail.outbox) == 1
     assert EmailLog.objects.filter(template_key="auth.password_reset").count() == 1
+
+
+# --- password-reset:confirm --------------------------------------------------
+
+_CONFIRM_URL = "/api/v1/auth/password-reset:confirm"
+_NEW_PASSWORD = "brand new battery staple"
+
+
+@pytest.mark.django_db
+def test_password_reset_confirm_sets_new_password(
+    api_client: APIClient, user: User, password: str
+) -> None:
+    from accounts.services.password_reset import _make_token
+
+    token = _make_token(user)
+    response = api_client.post(
+        _CONFIRM_URL,
+        {"token": token, "new_password": _NEW_PASSWORD},
+        format="json",
+    )
+
+    assert response.status_code == 204
+    user.refresh_from_db()
+    assert user.check_password(_NEW_PASSWORD)
+    assert not user.check_password(password)
+
+
+@pytest.mark.django_db
+@override_settings(PASSWORD_RESET_TTL_SECONDS=-1)
+def test_password_reset_confirm_rejects_expired_token(api_client: APIClient, user: User) -> None:
+    from accounts.services.password_reset import _make_token
+
+    token = _make_token(user)
+    response = api_client.post(
+        _CONFIRM_URL,
+        {"token": token, "new_password": _NEW_PASSWORD},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "password_reset_token_expired"
+
+
+@pytest.mark.django_db
+def test_password_reset_confirm_rejects_tampered_token(api_client: APIClient, user: User) -> None:
+    response = api_client.post(
+        _CONFIRM_URL,
+        {"token": "not-a-real-token", "new_password": _NEW_PASSWORD},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "password_reset_token_invalid"
+
+
+@pytest.mark.django_db
+def test_password_reset_confirm_rejects_weak_password(api_client: APIClient, user: User) -> None:
+    from accounts.services.password_reset import _make_token
+
+    token = _make_token(user)
+    response = api_client.post(
+        _CONFIRM_URL,
+        {"token": token, "new_password": "short"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "new_password" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_password_reset_confirm_rejects_orphaned_token(api_client: APIClient, user: User) -> None:
+    """A valid token whose user was since deactivated degrades to 400, not 500."""
+    from accounts.services.password_reset import _make_token
+
+    token = _make_token(user)
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+
+    response = api_client.post(
+        _CONFIRM_URL,
+        {"token": token, "new_password": _NEW_PASSWORD},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "password_reset_token_invalid"

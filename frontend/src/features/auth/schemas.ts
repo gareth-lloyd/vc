@@ -12,6 +12,22 @@ export const loginInputSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
 
+export const forgotPasswordInputSchema = z.object({
+  email: z.string().email({ message: i18n.t("auth:errors.invalid_email") }),
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordInputSchema>;
+
+export const resetPasswordInputSchema = z
+  .object({
+    new_password: z.string().min(8, { message: i18n.t("auth:errors.password_min") }),
+    confirm_password: z.string(),
+  })
+  .refine((data) => data.new_password === data.confirm_password, {
+    message: i18n.t("auth:errors.password_mismatch"),
+    path: ["confirm_password"],
+  });
+export type ResetPasswordInput = z.infer<typeof resetPasswordInputSchema>;
+
 export const userMeSchema = z.object({
   id: z.union([z.number(), z.string()]),
   email: z.string(),

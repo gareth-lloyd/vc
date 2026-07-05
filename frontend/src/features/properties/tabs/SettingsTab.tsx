@@ -37,10 +37,12 @@ import {
   usePropertySettings,
   useRestoreProperty,
   useUpdatePropertyFinance,
+  useUpdateProperty,
   useUpdatePropertyLocation,
   useUpdatePropertySettings,
 } from "../hooks";
 import { CountryPicker } from "@/components/form/CountryPicker";
+import { RegionPicker } from "@/components/form/RegionPicker";
 import {
   PROPERTY_AVAILABILITY_DEFAULTS,
   PROPERTY_CHANGEOVER_DAYS,
@@ -667,10 +669,15 @@ function FinanceForm({
 function LocationForm({
   propertyId,
   initial,
+  initialRegion,
   canWrite,
 }: {
   propertyId: number;
   initial: PropertyLocation;
+  // The taxonomy Region FK lives on the property root, not the location
+  // sub-resource — carried alongside the address form (GAP: not editable
+  // anywhere post-create before this).
+  initialRegion: number | null;
   canWrite: boolean;
 }) {
   const { t } = useTranslation("properties");
@@ -680,31 +687,60 @@ function LocationForm({
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const mutation = useUpdatePropertyLocation(propertyId);
+  const regionMutation = useUpdateProperty(propertyId);
+  // Region baseline is tracked locally: the prop only refreshes when the
+  // detail query refetches, and a successful save must immediately read as
+  // "clean" rather than waiting on that round-trip.
+  const [region, setRegion] = useState<number | null>(initialRegion);
+  const [regionBaseline, setRegionBaseline] = useState<number | null>(initialRegion);
+  const regionDirty = region !== regionBaseline;
 
   useEffect(() => {
     form.reset(locationDefaults(initial));
   }, [initial, form]);
 
+  // Re-sync when the detail query refetches (mirrors the form.reset above).
+  useEffect(() => {
+    setRegion(initialRegion);
+    setRegionBaseline(initialRegion);
+  }, [initialRegion]);
+
   const onSubmit = async (values: PropertyLocationWriteInput) => {
     setTopLevelError(null);
-    try {
-      // Address/locality are non-null CharFields (blank ""), but lat/lng are
-      // nullable — clear them with null rather than an empty string.
-      await mutation.mutateAsync({
-        ...values,
-        latitude: values.latitude ? values.latitude : null,
-        longitude: values.longitude ? values.longitude : null,
-      });
-      toast.success(t("settings.location.saved"));
-      form.reset(values);
-    } catch (error) {
-      if (error instanceof ApiError && error.isClientError()) {
-        const { detail } = applyApiErrorToForm(form, error);
-        setTopLevelError(detail);
-      } else {
-        toast.error(t("settings.location.save_failed"));
+    // A region-only change skips the address PATCH — no redundant write.
+    if (form.formState.isDirty) {
+      try {
+        // Address/locality are non-null CharFields (blank ""), but lat/lng are
+        // nullable — clear them with null rather than an empty string.
+        await mutation.mutateAsync({
+          ...values,
+          latitude: values.latitude ? values.latitude : null,
+          longitude: values.longitude ? values.longitude : null,
+        });
+        form.reset(values);
+      } catch (error) {
+        if (error instanceof ApiError && error.isClientError()) {
+          const { detail } = applyApiErrorToForm(form, error);
+          setTopLevelError(detail);
+        } else {
+          toast.error(t("settings.location.save_failed"));
+        }
+        return;
       }
     }
+    // The region lives on the property root — a second PATCH, sent only when
+    // it actually changed. Partial failure must be loud: the address is
+    // already saved, so a generic error would misreport what happened.
+    if (regionDirty && region != null) {
+      try {
+        await regionMutation.mutateAsync({ region });
+        setRegionBaseline(region);
+      } catch {
+        toast.error(t("settings.location.region_save_failed"));
+        return;
+      }
+    }
+    toast.success(t("settings.location.saved"));
   };
 
   const country = form.watch("country");
@@ -794,6 +830,23 @@ function LocationForm({
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor="prop-location-listing-region">
+            {t("settings.location.fields.listing_region")}
+          </Label>
+          <RegionPicker
+            id="prop-location-listing-region"
+            value={region}
+            onChange={setRegion}
+            countryId={country}
+            placeholder={t("settings.location.listing_region_placeholder")}
+            disabled={!canWrite}
+          />
+          <p className="text-muted-foreground text-xs">
+            {t("settings.location.listing_region_help")}
+          </p>
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="prop-location-timezone">{t("settings.location.fields.timezone")}</Label>
           <Select
             value={timezone}
@@ -831,8 +884,18 @@ function LocationForm({
       <FormErrorAlert message={topLevelError} />
 
       <div className="flex justify-end">
-        <Button type="submit" disabled={!canWrite || !form.formState.isDirty || mutation.isPending}>
-          {mutation.isPending ? t("settings.location.saving") : t("settings.location.save")}
+        <Button
+          type="submit"
+          disabled={
+            !canWrite ||
+            (!form.formState.isDirty && !regionDirty) ||
+            mutation.isPending ||
+            regionMutation.isPending
+          }
+        >
+          {mutation.isPending || regionMutation.isPending
+            ? t("settings.location.saving")
+            : t("settings.location.save")}
         </Button>
       </div>
     </form>
@@ -980,7 +1043,12 @@ export function SettingsTab() {
       </Section>
 
       <Section title={t("settings.location.title")}>
-        <LocationForm propertyId={property.id} initial={location.data} canWrite={canWrite} />
+        <LocationForm
+          propertyId={property.id}
+          initial={location.data}
+          initialRegion={property.region ?? null}
+          canWrite={canWrite}
+        />
       </Section>
 
       <Section title={t("settings.finance.title")}>

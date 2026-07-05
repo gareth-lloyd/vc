@@ -10,11 +10,15 @@ import { useOwnerMe } from "@/features/owner-portal/hooks";
 import { useOwnerStore } from "@/features/owner-portal/ownerStore";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const PUBLIC_PATH_PREFIX = "/login";
+// Paths reachable without a session. An anonymous visitor to any of these must
+// NOT mount <AuthenticatedBoot> — that fires GET /auth/me → 401 → the
+// onUnauthorized handler redirects to /login, which would bounce a reset-email
+// link away before its form ever renders. The password-reset pages join /login.
+const PUBLIC_PATH_PREFIXES = ["/login", "/forgot-password", "/reset-password"];
 
 export function BootGate() {
   const location = useLocation();
-  const isPublic = location.pathname.startsWith(PUBLIC_PATH_PREFIX);
+  const isPublic = PUBLIC_PATH_PREFIXES.some((p) => location.pathname.startsWith(p));
 
   // Prime the csrftoken cookie once per boot so a fresh browser's first
   // unsafe request (typically the login POST itself) isn't 403'd by

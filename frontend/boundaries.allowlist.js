@@ -15,5 +15,4 @@ export const ALLOWED_EDGES = {
   "owner-portal": ["auth"],
   properties: ["admin", "audit", "availability", "contacts"],
   quotations: ["admin", "availability", "bookings", "contacts", "enquiries", "properties"],
-  "rate-workbench": ["properties"],
 };

@@ -39,7 +39,9 @@ export default tseslint.config(
     // elements, so ONLY feature→feature edges are constrained — app/, lib/,
     // components/, i18n/ importing features stays unconstrained by design
     // (incl. the pre-existing lib/auth → features/auth/store inversion).
-    // Tests are exempt: cross-feature MSW handlers / scaffolding are fine.
+    // Nested dirs fold into their parent element: properties/rate-workbench
+    // classifies as "properties". Tests are exempt: cross-feature MSW
+    // handlers / scaffolding are fine.
     files: ["src/features/**/*.{ts,tsx}"],
     ignores: ["**/__tests__/**", "**/*.test.*"],
     plugins: { boundaries },

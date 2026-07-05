@@ -30,6 +30,11 @@ Each feature lives in `src/features/<name>/` with a standard shape:
     components/      — dialogs, pickers, sub-components
     __tests__/       — colocated tests
 
+A feature may contain a folded sub-feature directory keeping this same shape
+when the sub-feature is one-way coupled to its owner — `properties/
+rate-workbench/` is the only one (see Module boundaries); don't copy the
+pattern without that justification.
+
 ### Module boundaries (GAP-063)
 
 Features import only themselves, `src/lib/`, and `src/components/` — never
@@ -44,6 +49,10 @@ when shared code moves to its true home feature. A vitest guard
 edges must be deleted. New cross-feature needs go to `src/lib/domain/`
 (shared Zod schemas/labels) or `src/components/` (shared UI). Test files are
 exempt (cross-feature MSW handlers and scaffolding are fine there).
+
+rate-workbench is a `properties` sub-feature
+(`features/properties/rate-workbench/`), not a standalone feature (GAP-063
+decided fold over promotion: its 29 imports were one-way into properties).
 
 ### Zod-first types
 

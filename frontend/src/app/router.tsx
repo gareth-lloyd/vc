@@ -222,7 +222,8 @@ export const router = createBrowserRouter([
                           {
                             path: "rate-workbench",
                             lazy: async () => {
-                              const m = await import("@/features/rate-workbench/RateWorkbenchPage");
+                              const m =
+                                await import("@/features/properties/rate-workbench/RateWorkbenchPage");
                               return { Component: m.RateWorkbenchPage };
                             },
                           },

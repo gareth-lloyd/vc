@@ -5,6 +5,8 @@ import pytest
 from data_migration.base import LoadReport
 from data_migration.loaders.properties import PropertyLoader
 from data_migration.loaders.sentinels import unknown_country, unknown_region
+from properties.enums import DescriptionSection
+from properties.models.descriptions import PropertyDescription
 from properties.models.geo import Country, Region
 from properties.models.property import Property, PropertyCategory
 
@@ -125,3 +127,51 @@ def test_changeover_day_maps_the_code_domain(category: PropertyCategory) -> None
         PropertySettings.objects.get(property__legacy_id="101").changeover_day
         == PrefilledChangeOverDay.ANY
     )
+
+
+# --- Website copy from VillaPropertyImagesDescription (PRESERVE ALL) --------
+
+
+@pytest.mark.django_db
+def test_transform_maps_vodeo_url_to_video_url(category: PropertyCategory) -> None:
+    kwargs = PropertyLoader().transform(_row(VodeoUrl="  https://player.vimeo.com/video/1  "))
+    assert kwargs is not None
+    assert kwargs["video_url"] == "https://player.vimeo.com/video/1"
+
+
+@pytest.mark.django_db
+def test_transform_blank_vodeo_url_leaves_video_url_empty(category: PropertyCategory) -> None:
+    assert PropertyLoader().transform(_row())["video_url"] == ""  # type: ignore[index]
+
+
+def _write_and_fetch(**overrides: object) -> dict[str, str]:
+    """Run `_process_row` and return {section: body} for the created property."""
+    loader = PropertyLoader()
+    loader._process_row(_row(**overrides), LoadReport(loader=loader.name))
+    prop = Property.objects.get(legacy_id="100")
+    return {d.section: d.body for d in PropertyDescription.objects.filter(property=prop)}
+
+
+@pytest.mark.django_db
+def test_web_description_concatenates_both_parts(category: PropertyCategory) -> None:
+    sections = _write_and_fetch(WebDesc1="  Marketing copy  ", WebDesc2="  Activities  ")
+    assert sections[DescriptionSection.WEB_DESCRIPTION] == "Marketing copy\n\nActivities"
+
+
+@pytest.mark.django_db
+def test_web_description_single_part_no_blank_join(category: PropertyCategory) -> None:
+    sections = _write_and_fetch(WebDesc1="Only first", WebDesc2="")
+    assert sections[DescriptionSection.WEB_DESCRIPTION] == "Only first"
+
+
+@pytest.mark.django_db
+def test_location_concatenates_both_parts(category: PropertyCategory) -> None:
+    sections = _write_and_fetch(Location1="Near the beach", Location2="10 min to town")
+    assert sections[DescriptionSection.LOCATION] == "Near the beach\n\n10 min to town"
+
+
+@pytest.mark.django_db
+def test_no_website_copy_writes_no_extra_sections(category: PropertyCategory) -> None:
+    sections = _write_and_fetch()
+    assert DescriptionSection.WEB_DESCRIPTION not in sections
+    assert DescriptionSection.LOCATION not in sections

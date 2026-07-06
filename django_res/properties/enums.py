@@ -98,6 +98,8 @@ class DescriptionSection(models.TextChoices):
     HOUSE_RULES = "house_rules", "House rules"
     VILLA_INFO = "villa_info", "Villa info"
     FURTHER_INFO = "further_info", "Further info"
+    LOCATION = "location", "Location"
+    WEB_DESCRIPTION = "web_description", "Web description"
 
 
 class FeatureServiceType(models.TextChoices):

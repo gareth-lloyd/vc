@@ -80,19 +80,30 @@ class PropertyLoader(BaseLoader):
 
     name = "property"
     target_model = Property
+    # `VillaPropertyImagesDescription` holds customer-facing website copy
+    # (WebDesc1/2, Location1/2) and a video URL (VodeoUrl — legacy misspelling)
+    # not carried by VillaMaster. It is one row per villa except for junk
+    # duplicates, so the MAX(Id) subselect pins the join to a single row —
+    # mirroring `PropertyImageLoader`. (Its Interior*/Exterior* columns are
+    # already migrated as image slot captions there; not read here.)
     legacy_query = (
-        "SELECT Id, Name, DisplayName, Slug, OverView, HouseRules, "
-        "FeatureDescription, RoomDescription, Notes, "
-        "LocalityRegion, LocalityTown, AddressLine1, AddressLine2, AddressLine3, "
-        "PostCode, LicenceNumber, Latitude, Longitude, "
-        "Category, Channel, Guests, AdditionalGuests, Bedrooms, Ensuites, "
-        "Bathrooms, Size, "
-        "RegionId, ViilaStatus, "
-        "SettingAvailabilityStatusId, SettingIsBookingsRequirePreApproval, "
-        "SettingPricesEnteredTypeId, SettingCurrencyId, "
-        "SettingCheckInTime, SettingCheckOutTime, SettingChangeoverDayId, "
-        "SettingMinNightsRental, SettingMinNightsRentalNote "
-        "FROM VillaMaster WHERE DeletedAt IS NULL"
+        "SELECT m.Id, m.Name, m.DisplayName, m.Slug, m.OverView, m.HouseRules, "
+        "m.FeatureDescription, m.RoomDescription, m.Notes, "
+        "m.LocalityRegion, m.LocalityTown, m.AddressLine1, m.AddressLine2, m.AddressLine3, "
+        "m.PostCode, m.LicenceNumber, m.Latitude, m.Longitude, "
+        "m.Category, m.Channel, m.Guests, m.AdditionalGuests, m.Bedrooms, m.Ensuites, "
+        "m.Bathrooms, m.Size, "
+        "m.RegionId, m.ViilaStatus, "
+        "m.SettingAvailabilityStatusId, m.SettingIsBookingsRequirePreApproval, "
+        "m.SettingPricesEnteredTypeId, m.SettingCurrencyId, "
+        "m.SettingCheckInTime, m.SettingCheckOutTime, m.SettingChangeoverDayId, "
+        "m.SettingMinNightsRental, m.SettingMinNightsRentalNote, "
+        "d.WebDesc1, d.WebDesc2, d.Location1, d.Location2, d.VodeoUrl "
+        "FROM VillaMaster m "
+        "LEFT JOIN VillaPropertyImagesDescription d ON d.Id = ("
+        "SELECT MAX(d2.Id) FROM VillaPropertyImagesDescription d2 "
+        "WHERE d2.VillaId = m.Id) "
+        "WHERE m.DeletedAt IS NULL"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -126,6 +137,7 @@ class PropertyLoader(BaseLoader):
             "display_name": (row.get("DisplayName") or name)[:255],
             "slug": slug,
             "licence_number": (row.get("LicenceNumber") or "").strip()[:128],
+            "video_url": (row.get("VodeoUrl") or "").strip()[:200],
             "status": _PROPERTY_STATUS_MAP.get(
                 row.get("ViilaStatus") or 0,
                 PropertyStatus.DRAFT,
@@ -229,6 +241,17 @@ class PropertyLoader(BaseLoader):
             sections[DescriptionSection.VILLA_INFO] = joined
         if notes := (row.get("Notes") or "").strip():
             sections[DescriptionSection.FURTHER_INFO] = notes
+        # Website copy from VillaPropertyImagesDescription (PRESERVE ALL,
+        # 2026-07-06): WebDesc1+WebDesc2->WEB_DESCRIPTION, Location1+Location2->
+        # LOCATION. Each pair concatenated (blank line join, blanks skipped).
+        web1 = (row.get("WebDesc1") or "").strip()
+        web2 = (row.get("WebDesc2") or "").strip()
+        if web1 or web2:
+            sections[DescriptionSection.WEB_DESCRIPTION] = "\n\n".join(p for p in (web1, web2) if p)
+        loc1 = (row.get("Location1") or "").strip()
+        loc2 = (row.get("Location2") or "").strip()
+        if loc1 or loc2:
+            sections[DescriptionSection.LOCATION] = "\n\n".join(p for p in (loc1, loc2) if p)
 
         for section, body in sections.items():
             PropertyDescription.objects.update_or_create(

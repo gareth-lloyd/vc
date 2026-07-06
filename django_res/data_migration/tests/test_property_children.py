@@ -5,7 +5,11 @@ from typing import cast
 import pytest
 
 from data_migration.base import LoadReport
-from data_migration.loaders.property_children import PropertyFeatureMappingLoader, RoomLoader
+from data_migration.loaders.property_children import (
+    PropertyFeatureMappingLoader,
+    PropertyImageLoader,
+    RoomLoader,
+)
 from properties.factories import FeatureFactory, PropertyFactory
 from properties.models.features import Feature
 from properties.models.property import Property
@@ -190,3 +194,113 @@ def test_load_rows_missing_legacy_id_is_skipped() -> None:
 
     assert (report.created, report.updated, report.skipped) == (0, 0, 1)
     assert Property.features.through.objects.count() == 0
+
+
+def _image_row(**overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "Id": 1,
+        "VillaId": "500",
+        "Name": "img.jpg",
+        "Description": None,
+        "IsGallary": 1,
+        "IsHero": 0,
+        "IsInterior1": 0,
+        "IsInterior2": 0,
+        "IsExterior1": 0,
+        "IsExterior2": 0,
+        "SortOrder": 0,
+        "IsActive": 1,
+        "SlotInterior1": None,
+        "SlotInterior2": None,
+        "SlotExterior1": None,
+        "SlotExterior2": None,
+    }
+    row.update(overrides)
+    return row
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("flag", "slot"),
+    [
+        ("IsInterior1", "SlotInterior1"),
+        ("IsInterior2", "SlotInterior2"),
+        ("IsExterior1", "SlotExterior1"),
+        ("IsExterior2", "SlotExterior2"),
+    ],
+)
+def test_image_flagged_blank_description_gains_slot_caption(flag: str, slot: str) -> None:
+    PropertyFactory(legacy_id="500")
+    row = _image_row(**{flag: 1, slot: "  A lovely view  "})
+
+    kwargs = PropertyImageLoader().transform(row)
+
+    assert kwargs is not None
+    assert kwargs["description"] == "A lovely view"
+
+
+@pytest.mark.django_db
+def test_image_own_description_wins_over_slot_caption() -> None:
+    PropertyFactory(legacy_id="500")
+    row = _image_row(IsInterior1=1, Description="Own words", SlotInterior1="Slot words")
+
+    kwargs = PropertyImageLoader().transform(row)
+
+    assert kwargs is not None
+    assert kwargs["description"] == "Own words"
+
+
+@pytest.mark.django_db
+def test_image_multi_flag_takes_first_flagged_slot_with_text() -> None:
+    PropertyFactory(legacy_id="500")
+    row = _image_row(
+        IsInterior1=1,
+        IsExterior1=1,
+        SlotInterior1="Interior text",
+        SlotExterior1="Exterior text",
+    )
+
+    kwargs = PropertyImageLoader().transform(row)
+
+    assert kwargs is not None
+    assert kwargs["description"] == "Interior text"
+
+
+@pytest.mark.django_db
+def test_image_multi_flag_falls_through_blank_slot() -> None:
+    PropertyFactory(legacy_id="500")
+    row = _image_row(
+        IsInterior1=1,
+        IsExterior1=1,
+        SlotInterior1="  ",
+        SlotExterior1="Exterior text",
+    )
+
+    kwargs = PropertyImageLoader().transform(row)
+
+    assert kwargs is not None
+    assert kwargs["description"] == "Exterior text"
+
+
+@pytest.mark.django_db
+def test_image_flagged_without_slot_text_stays_blank() -> None:
+    PropertyFactory(legacy_id="500")
+    row = _image_row(IsInterior2=1)
+
+    kwargs = PropertyImageLoader().transform(row)
+
+    assert kwargs is not None
+    assert kwargs["description"] == ""
+
+
+@pytest.mark.django_db
+def test_image_unflagged_ignores_slot_text() -> None:
+    """Slot text pairs only with its flagged image — a plain gallery image
+    from the same villa must not inherit the villa-level caption."""
+    PropertyFactory(legacy_id="500")
+    row = _image_row(SlotInterior1="Interior text", SlotExterior1="Exterior text")
+
+    kwargs = PropertyImageLoader().transform(row)
+
+    assert kwargs is not None
+    assert kwargs["description"] == ""

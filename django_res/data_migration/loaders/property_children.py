@@ -83,11 +83,40 @@ class RoomLoader(BaseLoader):
 class PropertyImageLoader(BaseLoader):
     name = "property_image"
     target_model = PropertyImage
+    # `VillaPropertyImagesDescription` is one row per villa (not per image)
+    # whose Interior1/2 + Exterior1/2 texts caption the images flagged
+    # IsInterior1/2 + IsExterior1/2 on the same villa. The MAX(Id) subselect
+    # pins the join to a single description row: the table is unique per
+    # VillaId except for junk VillaId=0 duplicates, which would otherwise
+    # fan the images out.
     legacy_query = (
-        "SELECT Id, VillaId, Name, Description, IsGallary, IsHero, "
-        "IsInterior1, IsInterior2, IsExterior1, IsExterior2, "
-        "SortOrder, IsActive FROM VillaPropertyImages"
+        "SELECT i.Id, i.VillaId, i.Name, i.Description, i.IsGallary, i.IsHero, "
+        "i.IsInterior1, i.IsInterior2, i.IsExterior1, i.IsExterior2, "
+        "i.SortOrder, i.IsActive, "
+        "d.Interior1 AS SlotInterior1, d.Interior2 AS SlotInterior2, "
+        "d.Exterior1 AS SlotExterior1, d.Exterior2 AS SlotExterior2 "
+        "FROM VillaPropertyImages i "
+        "LEFT JOIN VillaPropertyImagesDescription d ON d.Id = ("
+        "SELECT MAX(d2.Id) FROM VillaPropertyImagesDescription d2 "
+        "WHERE d2.VillaId = i.VillaId)"
     )
+
+    # Slot flag → villa-level caption column, in `_kind_for` precedence order.
+    _caption_slots: tuple[tuple[str, str], ...] = (
+        ("IsInterior1", "SlotInterior1"),
+        ("IsInterior2", "SlotInterior2"),
+        ("IsExterior1", "SlotExterior1"),
+        ("IsExterior2", "SlotExterior2"),
+    )
+
+    def _slot_caption(self, row: dict[str, Any]) -> str:
+        """First non-blank slot text whose flag is set on this image."""
+        for flag, slot in self._caption_slots:
+            if row.get(flag):
+                text = (row.get(slot) or "").strip()
+                if text:
+                    return text
+        return ""
 
     def _kind_for(self, row: dict[str, Any]) -> str:
         if row.get("IsHero"):
@@ -125,7 +154,11 @@ class PropertyImageLoader(BaseLoader):
             "image": f"properties/legacy/{filename}",
             "kind": kind,
             "name": filename[:255],
-            "description": (row.get("Description") or "").strip(),
+            # Precedence: the image's own Description wins over the villa-level
+            # slot caption. In the dump this never bites — none of the 1,226
+            # flagged images carries its own Description — but a post-dump edit
+            # to the per-image field should not be shadowed.
+            "description": (row.get("Description") or "").strip() or self._slot_caption(row),
             "sort_order": int(row.get("SortOrder") or 0),
             "is_active": is_active,
         }

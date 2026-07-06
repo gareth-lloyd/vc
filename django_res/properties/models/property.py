@@ -36,6 +36,7 @@ class Property(AuditedModel):
     display_name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True)
     licence_number = models.CharField(max_length=128, blank=True)
+    video_url = models.URLField(blank=True)
     status = models.CharField(
         max_length=16,
         choices=PropertyStatus.choices,

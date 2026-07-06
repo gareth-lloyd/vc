@@ -308,3 +308,49 @@ resolved; implementing decision 4 surfaced a further latent loader bug.
   flags payment/contact_email/etc. as risky) — test one, fix `_apply_since`
   if it produces invalid SQL.
 - Update CUTOVER.md (§4b Zoho tables, §4f closure, reconcile table numbers).
+
+## Run 2 — 2026-07-06 (GAP-073 reconciled branch, feat/gap-073)
+
+Live dry-run of the reconciled loaders against the same 24-Apr-2025 dump
+(`res-db`), fresh `villacollective_legacy_dryrun` DB migrated to the branch
+leaves (properties/0033, reservations/0039).
+
+- **`loadlegacy --all` → exit 0, zero errors on every loader.** Notable rows:
+  `property_image` 12283, `room` 1791, `property_contact_assignment` 334 (no
+  `grpmap-` slice — GroupMap expansion dropped), `guest_preference` 74
+  (registry reorder now runs it after QuotationLine), `availability_block`
+  **1** (property 133's single future run, 2026-07-25..08-22), `syncrecord_zoho`
+  119.
+- **`reconcile_legacy --integrations` — every GAP-073 check passes on live
+  data:** `RateBand` 7333/3528 gap **3805 = expected** (calibration confirmed
+  against real data); `VillaAvailability (future days)` 29/29 gap 0;
+  `GuestPreference` 167/74 gap 93; `PersonEmail`/`PersonPhone` gap 0
+  (client-slice exclusion); `PropertyContactAssignment` 335/334 gap 1 (direct
+  slice only); Zoho `VillaMaster` gap **1** (Temenos pair) OK, `VillaContact`/
+  `VillaEnquire` OK, `VillaQuotationMaster`/`VillaBooking` render **"no ZohoId
+  column"** (the INFORMATION_SCHEMA probe — no crash).
+
+### Two PRE-EXISTING blockers surfaced (NOT GAP-073 — main's own checks/loaders,
+### untouched by this branch; `finance.py` diff vs main is empty, RoomLoader kept whole)
+
+1. **`Room placement (GAP-065)`: gap 49 != expected 0.** 1823 legacy rooms have
+   a non-NULL `PlacementId`; only 1774 loaded with a non-empty `placement_note`.
+   GAP-065's `expected_gap=0` was never validated against the live dump — the 49
+   are likely `VillaRoomsPlacement` rows with a blank/whitespace `Name`
+   (possible real fidelity loss, not just miscalibration). **→ GAP-065 follow-up:
+   confirm whether the 49 carry recoverable placement text; recalibrate or fix.**
+2. **`PropertyFinance (GAP-070)`: gap 1235 != expected 1236** (off by one). Stale
+   estimate from before the live dump. **→ GAP-070 follow-up: recalibrate.**
+
+### Test-infra note (pre-existing, surfaced by this branch's test count)
+
+3 `seeding/tests/test_dashboard_activity.py` tests fail ONLY under the full
+parallel suite (green in isolation, green running all of `seeding/`, green on
+main's full suite). Cause: `transaction=True` + `--reuse-db` + timing-based
+`-n auto` `load` distribution — a non-restoring `transaction=True` test that
+co-locates on a worker before a dashboard test starves `seed_dev` of
+migration-seeded reference data, so its `>= N today-activity` thresholds miss.
+GAP-073's 36 new tests are all rollback-isolated (they don't contaminate); they
+only shift the scheduler so the latent collision surfaces. **→ test-infra
+follow-up: harden the dashboard tests (serialized_rollback / re-seed reference
+data) or pin them to `loadscope`.**

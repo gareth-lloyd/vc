@@ -1,8 +1,33 @@
 # GAP-073 — Legacy-loader bullet-proofing: land the remainder + branch reconciliation
 
-- **Severity:** 🟨 Partial — a large hardening effort is complete and verified on a
-  branch, but only one fix has landed on `main`; the rest needs reconciliation because
-  `main` moved past the branch's base.
+> **✅ RECONCILED (2026-07-06) — awaiting final ff-merge confirmation.** The remaining
+> bullet-proofing work was replayed onto current `main` on branch **`feat/gap-073`** as 6
+> TDD units + a merge of main (GAP-067) + a post-merge test fix (`b55df7c` web-copy,
+> `be108e8` Zoho/Temenos, `9f87e05` availability, `0494f1e` loadlegacy crash-isolation,
+> `9d67fda` reconcile calibration + guest-pref order, `8e24266` standards docs, `152020f`
+> merge main, `5def3c1` migration-0026 test fix). Per the owner decisions: **full
+> reconciliation** (rebase), **GroupMap expansion DROPPED**, **finance IsDefault* defaults
+> DEFERRED** to a separate finance investigation. **Live dry-run against the 24-Apr dump:
+> `loadlegacy --all` exit 0 / zero errors; every GAP-073 reconcile check passes on real
+> data** (see `DRYRUN_LOG.md` "Run 2"). `data_migration` suite 322 green; full backend
+> suite green except a pre-existing seeding flake (below). The ff-merge to local `main` +
+> worktree cleanup are **held pending owner confirmation** (a pre-existing seeding-test
+> flake would make main's full parallel suite intermittently red).
+>
+> **Two PRE-EXISTING issues the live dry-run surfaced (NOT GAP-073 regressions — spin into
+> their own follow-ups):**
+> 1. `reconcile_legacy` blocker `Room placement (GAP-065)` gap **49** != 0 — 49 legacy
+>    rooms with a PlacementId loaded with a blank `placement_note`; GAP-065's `expected_gap=0`
+>    was never live-validated (possible real fidelity loss). GAP-073 kept `RoomLoader` whole.
+> 2. `reconcile_legacy` blocker `PropertyFinance (GAP-070)` gap **1235** != **1236**
+>    (off-by-one stale estimate). GAP-073's `finance.py` diff vs main is empty.
+> 3. Test-infra: 3 `test_dashboard_activity` tests fail only under the full parallel suite
+>    (`transaction=True` + `--reuse-db` + timing-based xdist) — latent on main; GAP-073's 36
+>    isolated new tests only shift the scheduling. Harden the seeding tests.
+
+- **Severity:** 🟩 Reconciled on `feat/gap-073` (live-validated); ff-merge + cleanup pending
+  owner confirmation. Originally 🟨 Partial — a large hardening effort verified on a branch,
+  only one fix on `main`, rest needed reconciliation because `main` moved past the base.
 - **Source:** 2026-07-05/06 "make the data-migration legacy loader bullet-proof" effort
   on the `feat/legacy-loader` worktree (branched from `b3abc0e`). Full narrative in
   `django_res/data_migration/DRYRUN_LOG.md`, `ACCEPTANCE.md`, `COVERAGE.md`.

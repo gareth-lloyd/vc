@@ -35,12 +35,12 @@ and for the many loose fields, not even then. Evidence the mirrors already lag:
   and bookings silently rejects it. `email` is `.email()`-validated in ~5 of
   ~15 declaration sites; the rest accept a bare string.
 - **Schemas that have stopped asserting.** `.passthrough()` at
-  `bookings/schemas.ts:63,92` and `rate-workbench/schemas.ts:183,193,224`;
+  `bookings/schemas.ts:63,92` and `properties/rate-workbench/schemas.ts:183,193,224`;
   `z.unknown()` for `pricing_snapshot` / `breakdown`
   (`bookings/schemas.ts:136`, `quotations/schemas.ts:75,252`); pervasive
   `.optional()`/`.nullable()` (234 in properties, 149 in bookings). Back-compat
   scars — a dead `rule_id` alias "for pre-SMELL-019 snapshots"
-  (`rate-workbench/schemas.ts:177`), renamed-amount tolerance
+  (`properties/rate-workbench/schemas.ts:177`), renamed-amount tolerance
   (`bookings/schemas.ts:441`) — confirm the mirrors have been patched *after*
   the backend moved, i.e. drift has already bitten and been absorbed.
 
@@ -80,6 +80,8 @@ contract test surfaces).
 
 - Independent of BUG-018 but same audit. The `currency`/`country` fix may touch
   `pricing`/`accounts` serializers if DRF is found to be the inconsistent side.
-- Relates to [GAP-063](gap-063-frontend-feature-coupling-and-cycles.md): the
-  shared `money`/`country` schema is also the natural home to break the
-  cross-feature schema imports called out there.
+- Relates to [GAP-063](done/gap-063-frontend-feature-coupling-and-cycles.md)
+  (✅ resolved 2026-07-05): the neutral home it proposed now exists —
+  `frontend/src/lib/domain/` (holds the quotation read-model and shared
+  status enums). The shared `money`/`currencyCode`/`countryCode` schemas
+  from this ticket land there.

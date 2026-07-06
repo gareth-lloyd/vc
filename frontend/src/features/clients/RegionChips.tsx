@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
-import { useRegions } from "@/features/availability/hooks";
+import { useRegions } from "@/lib/geo/hooks";
 
 /**
  * Renders a client's region slugs as chips, labelled by region name.

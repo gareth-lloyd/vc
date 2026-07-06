@@ -162,6 +162,26 @@ _CHECKS: list[_Check] = [
         expected_gap=307,
     ),
     _Check(
+        "SELECT COUNT(*) FROM VillaRooms WHERE PlacementId IS NOT NULL",
+        Room,
+        "Room placement (GAP-065)",
+        # No-loss gate: every legacy room with a placement must land with the
+        # raw string preserved in `placement_note`. PLACEHOLDER — recalibrate
+        # at the first cutover dry-run (BUG-013 precedent). The gap has two
+        # legitimate causes to apportion then: (a) rooms whose parent property
+        # wasn't loaded (the 307 slice above, restricted to rows with a
+        # PlacementId); (b) dangling PlacementId → NULL/blank
+        # VillaRoomsPlacement.Name (the LEFT JOIN preserves the room but the
+        # note is honestly empty).
+        # `placement_note` is API-writable, so count only the legacy slice —
+        # a staff-entered note during the cutover window must not shift the
+        # gap (the BookingChargeItem precedent below).
+        expected_gap=0,
+        loaded_count=lambda m: (
+            m._default_manager.exclude(placement_note="").filter(legacy_id__isnull=False).count()
+        ),
+    ),
+    _Check(
         "SELECT COUNT(*) FROM VillaPropertyImages",
         PropertyImage,
         "PropertyImage",
@@ -209,8 +229,13 @@ _CHECKS: list[_Check] = [
         # fragment-inflation mechanism is unchanged, but there is no longer a
         # transitional `save()` shim or `backfill_plan_periods` pass: the
         # `RateBandLoader._load_rows` builds each plan's disjoint `RatePeriod`
-        # date axis directly via `segment_card_rules`. The old 3462+265 breakdown
-        # (see CUTOVER.md "Rate rule overlap resolution") no longer holds as-is.
+        # date axis directly via the shared `flatten_rate_grid`. The old
+        # 3462+265 breakdown (see CUTOVER.md "Rate rule overlap resolution") no
+        # longer holds as-is. 3727 is also pre-BUG-016: the split-not-clip
+        # flattener keeps fragments the old clip-only resolver discarded
+        # (interior-collision far sides, single-day remainders, extra
+        # party-split brackets), shifting row counts again — recalibrate at the
+        # next legacy dry-run.
         expected_gap=3727,
     ),
     _Check(

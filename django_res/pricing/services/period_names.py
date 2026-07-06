@@ -11,6 +11,7 @@ byte-identical and an operator can rename at leisure.
 from __future__ import annotations
 
 import datetime
+from collections.abc import Iterable
 
 _MONTHS_ABBR = (
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -44,3 +45,21 @@ def derive_period_name(date_from: datetime.date, date_to: datetime.date) -> str:
     if date_from.day != date_to.day:
         return f"{date_from.day}{_EN_DASH}{date_to.day} {from_month}"
     return f"{date_from.day} {from_month}"
+
+
+def uniform_or_derived_name(
+    names: Iterable[str], date_from: datetime.date, date_to: datetime.date
+) -> str:
+    """GAP-059 rule for naming a flattened period from its bands' parentage.
+
+    Keep the curated operator label when every band descends from one source
+    period (the common, no-collision carry); a period that regrouped bands
+    from different source periods has no single name to copy, so fall back to
+    the `derive_period_name` date-span placeholder. Shared by every BUG-016
+    flattener consumer that persists or projects periods, so a projected
+    period and its materialised twin always carry the same label.
+    """
+    unique = set(names)
+    if len(unique) == 1:
+        return unique.pop()
+    return derive_period_name(date_from, date_to)

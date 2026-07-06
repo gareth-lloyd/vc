@@ -350,54 +350,87 @@ Legacy had no rate-precedence concept: its per-night lookup was an unordered
 `SELECT TOP 1` (`sp_get_quote_weeks_price`) / `FirstOrDefault` over an
 unordered `DISTINCT` (`ResService.cs`), so the winner among overlapping
 `VillaSeasonRate` rows was formally arbitrary (de-facto lowest ID via the
-clustered index). The new schema forbids within-card overlap outright
-(`raterule_no_overlap` EXCLUDE constraint), so `RateRuleLoader` resolves
-overlaps at load time via `resolve_rate_rule_overlaps`:
+clustered index). The new schema forbids within-plan overlap outright
+(the `rateperiod_no_overlap` / `raterule_bands_no_overlap` EXCLUDE
+constraints), so `RateBandLoader` resolves overlaps at load time in two
+stages (BUG-016):
 
+**Stage 1 — pre-normalisation** (`resolve_rate_band_overlaps`, per season,
+pure on the row dicts):
+
+- **Junk pre-filter** — rows `transform()` would skip (junk dates, no price
+  and not POA) are excluded up front so they can neither trim nor be trimmed;
+  exact duplicates sharing a discriminator are dropped (dirty-input guard for
+  the flattener's duplicate-precedence `ValueError`).
 - **Boundary trim** — legacy stored checkout-style contiguous bands (the next
   band starts on the day the previous one ends) but looked them up
   inclusively. The new model is inclusive on both ends, so the earlier row's
   end is trimmed back one day when a party-overlapping sibling starts on it.
-- **Approved-first tiers** — `IsApprove = 1` rows claim date space before
-  unapproved rows, protecting currently-quotable ranges from being clipped by
-  unapproved drafts (67 such pairs in the 24-Apr-2025 dump).
-- **Earliest legacy ID wins within a tier** — matching legacy's de-facto
-  behaviour.
-- **Clip-only** — a losing row is clipped to its largest uncovered remainder
-  (a winner punched into its middle discards the smaller side) or dropped
-  when fully covered.
-- Rows with identical date spans clip the **party bracket** instead; the
-  property's capacity resolves unbounded remainders at transform time.
 
-After overlap resolution the loader hangs the surviving rules off a disjoint
-**`RatePeriod`** date axis (GAP-056): it resets the just-loaded rules and rebuilds
-via the shared `backfill_plan_periods` segmentation. A rule whose span a
-party-disjoint sibling's date boundary bisects is **fragmented** — the original
-keeps its `legacy_id` on its first segment, extra fragments get a `#seg{n}`
-suffix — so `RatePeriod`s are disjoint per plan even where the resolver left two
-party-disjoint rules sharing dates. So one legacy row now maps to **one or more**
-rules (was: at most one). This is the invariant Unit 9's periods-disjoint EXCLUDE
-enforces at the schema level.
+**Stage 2 — conflict resolution** (`_load_rows`, via the shared
+`pricing.services.flattening.flatten_rate_grid` — the same implementation
+projection, carryover and the period backfill use):
+
+- Runs **after** `_row_to_band`'s capacity clamp, so party brackets are
+  concrete integers (NULL `PartySize` → `[1, capacity]`, open-topped
+  occupancy gaps clamped) before precedence applies.
+- Precedence is `(not approved, id, disc)`: `IsApprove = 1` rows claim space
+  before unapproved drafts (67 such pairs in the 24-Apr-2025 dump), then the
+  earliest legacy ID wins — matching legacy's de-facto behaviour. `disc` is
+  the unique per-row discriminator (`_legacy_id`), breaking OccId/ID
+  numeric collisions.
+- **Split, not clip** — a losing row keeps *every* (date × party) cell no
+  winner covers; each surviving fragment becomes one `RateBand`.
+
+The flattener's disjoint output *is* the plan's **`RatePeriod`** date axis
+(GAP-056): each flat period is created directly
+(`legacy_id = "{plan}:p{i}"`), and a source surviving in more than one cell
+is **fragmented** — the bare `legacy_id` goes to its first fragment in
+`(period date_from, min_party)` order, later ones get a `#seg{n}` suffix. So
+one legacy row now maps to **one or more** bands (was: at most one).
+
+**Behaviour deltas vs the pre-BUG-016 loader** (the clip-only resolver):
+
+- (a) An interior collision (winner strictly inside the loser's span)
+  **splits** the loser, keeping BOTH sides — the old code clipped to the
+  larger side and discarded the smaller.
+- (b) **Single-day remainders persist** as single-day periods — the old
+  strict `<` remainder rule dropped them.
+- (c) A party-clipped loser keeps **ALL** surviving brackets (e.g. winner
+  `(3,3)` vs loser `(1,cap)` → both `(1,2)` and `(4,cap)` persist) — the old
+  transform picked only the first surviving interval.
+- (d) Conflict resolution now runs **after** the capacity clamp, so rows the
+  clamp makes party-disjoint (e.g. `(10,10)` vs `(1,NULL)` on a cap-8 villa)
+  no longer date-clip each other.
+- (e) For party-clipped rows the bare `legacy_id` attaches to the **lowest**
+  surviving bracket (fragment order is `(date_from, min_party)`) — the old
+  code kept the highest. Pure date-split `#seg` numbering is unchanged
+  (date order, n ≥ 1).
+- (f) Row counts shift accordingly — recalibrate the reconcile
+  `expected_gap` at the next legacy dry-run.
 
 Consequences:
 
 - The loader **ignores `--since`** (and logs a warning if passed) —
   resolution is a function of a season's whole row set, so every pass is a
   full reload (the table is small).
-- Each run is a **full replace**: all legacy-loaded rules are purged, then
-  the resolver's output is inserted. Inserting into an empty legacy footprint
-  means re-runs can never collide with the previous run's spans under the
-  EXCLUDE constraint, so a re-run always converges in one pass (the report
-  shows `created=N`, not `updated=N`). UI-created rules
+- Each run is a **full replace**: all legacy-loaded bands + periods are
+  purged, then the flattened grid is inserted. Inserting into an empty legacy
+  footprint means re-runs can never collide with the previous run's spans
+  under the EXCLUDE constraints, so a re-run always converges in one pass
+  (the report shows `created=N`, not `updated=N`). UI-created rows
   (`legacy_id IS NULL`) are never touched.
-- The 389 dropped rows (and trimmed boundary days) mean quoted prices can
-  shift versus legacy for the ~38 seasons that had genuinely conflicting
+- Dropped rows (fully shadowed) and trimmed boundary days mean quoted prices
+  can shift versus legacy for the seasons that had genuinely conflicting
   prices — previously the winner was the highest `ID % 65535` stamp under
   the old per-priority EXCLUDE constraint, and arbitrary in legacy itself.
 - The loader logs one summary event per run:
-  `data_migration.rate_rule_overlaps_resolved` with `trimmed` / `dropped` /
-  `party_clipped` / `purged` counters (24-Apr-2025 dump, first run:
-  2281 / 389 / 0 / 0).
+  `data_migration.rate_rule_overlaps_resolved` with `trimmed` / `dropped`
+  (pre-normalisation) / `shadowed_dropped` / `party_clipped` (flattener) /
+  `purged` / `periods_created` / `rule_fragments` counters. The pre-BUG-016
+  first-run numbers (2281 trimmed / 389 dropped on the 24-Apr-2025 dump) are
+  no longer directly comparable — the split-not-clip policy reclassifies
+  many former drops as fragments.
 
 ### Occupancy-band pricing (BUG-013)
 
@@ -409,7 +442,7 @@ parent whose child **`VillaOccupencyPrice`** rows carried
 back to the parent's `WeeklyPrice / 7` when no band matched. The original
 migration read `VillaSeasonRate` alone and **silently dropped every band**.
 
-`RateRuleLoader` now recovers them (no separate loader — all of a card's rules
+`RateBandLoader` now recovers them (no separate loader — all of a plan's rules
 must be made jointly overlap-free under the one EXCLUDE constraint):
 
 - The `legacy_query` **LEFT JOINs `VillaOccupencyPrice`** onto its parent (every
@@ -428,7 +461,8 @@ must be made jointly overlap-free under the one EXCLUDE constraint):
   null/0 price. Such a band priced nobody in legacy, so its party range falls to
   the base-weekly fallback (a null bound would also crash the resolver).
 - **`legacy_id` namespacing:** band rules are keyed `occ-{OccId}` and fallbacks
-  `occ-fb-{parent}-{k}` (via a `_process_row` override), because
+  `occ-fb-{parent}-{k}` (stamped by `_prepare_occupancy_rows` and carried
+  through `_load_rows`), because
   `VillaOccupencyPrice.Id` and `VillaSeasonRate.ID` are independent sequences
   that would otherwise clobber on upsert. The full-replace purge
   (`legacy_id IS NOT NULL`) covers both, so idempotency holds.
@@ -442,10 +476,10 @@ must be made jointly overlap-free under the one EXCLUDE constraint):
    against the live dump.
 2. **Band-vs-simple precedence edge.** If a season has both an occupancy-banded
    parent and a *separate* simple `VillaSeasonRate` with overlapping dates and
-   party ranges, `resolve_rate_rule_overlaps` orders them by
-   `(approved, id, disc)` — where a band's `id` is its `OccId` and a simple
+   party ranges, the shared flattener orders them by
+   `(not approved, id, disc)` — where a band's `id` is its `OccId` and a simple
    row's is its `VillaSeasonRate.ID`, two unrelated sequences. Which wins (and
-   thus whether the recovered band survives or is clipped/dropped) is
+   thus whether the recovered band survives or is split/dropped) is
    deterministic but arbitrary. Legacy's own per-night `TOP 1` was unordered
    here too, so there is no single parity answer — but if a spot-check shows
    real bands being lost this way, give band rows explicit precedence (an
@@ -471,6 +505,30 @@ full row set to detect deletions. `property_defaults` **skips entirely** on
 `VillaConfigPropertyDefault` singleton onto `PropertyDefaults` (pk=1 — it
 deliberately has no `legacy_id`), and a delta run must not clobber edits
 staff made through `PATCH /property-defaults` during the cutover window.
+
+## 6b. (Optional) Room-attribute backfill from prose (GAP-064/GAP-065)
+
+Room amenity facts live in `website_description` prose in the legacy book
+(loaded byte-for-byte by `RoomLoader`) and crammed into the free-text
+placement string preserved as `placement_note` (GAP-065 — e.g. "First floor -
+King, hairdryer"). After the rooms load, an optional positives-only keyword
+pass over both sources can enrich the structured GAP-064 columns:
+
+```bash
+uv run python manage.py backfill_room_attrs --dry-run   # inspect counts first
+uv run python manage.py backfill_room_attrs
+```
+
+It creates `RoomAttributeAssignment` rows for confident keyword matches,
+fills `ensuite_type` from explicit "en-suite shower/bath" phrasing (only when
+currently unknown), and first re-invokes `sync_room_attributes()` so the
+catalog's `implies_property_feature` links attach now that Features exist.
+It never infers absence, never removes assignments, never overwrites curator
+data — safe to re-run any time (e.g. after a delta load). There is no
+`reconcile_legacy` row for this: no legacy table exists to compare against;
+the command's per-slug counts are the reconcile signal. (Placement itself
+DOES have a reconcile row — "Room placement (GAP-065)" gates that every
+legacy `PlacementId` landed with a preserved `placement_note`.)
 
 ## 7. England → GB merge
 

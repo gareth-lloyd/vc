@@ -90,6 +90,13 @@ class ProfileKnobs:
     n_organisations: int = 0
     # Inclusive room count range per property; (0, 0) disables.
     rooms_per_property: tuple[int, int] = (0, 0)
+    # Inclusive amenity-tag count range per room; (0, 0) disables (facet
+    # columns are then left untouched too).
+    attributes_per_room: tuple[int, int] = (0, 0)
+    # Fraction of seeded rooms entering the GAP-065 location draw (a small
+    # share of those still draws blank on both axes) so the grouped rooms
+    # list shows structure; 0.0 disables (all blank).
+    rooms_with_location: float = 0.0
     # Inclusive feature count range per property.
     features_per_property: tuple[int, int] = (0, 0)
     # Inclusive extra gallery-image count range per property (beyond the
@@ -178,6 +185,8 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         # v2 dials:
         do_system_setup=True,
         rooms_per_property=(4, 8),
+        attributes_per_room=(0, 4),
+        rooms_with_location=0.8,
         features_per_property=(5, 15),
         images_per_property=(4, 12),
         nearby_per_property=(3, 8),
@@ -227,6 +236,8 @@ _PROFILES: dict[Profile, ProfileKnobs] = {
         # v2 dials (cranked):
         do_system_setup=True,
         rooms_per_property=(3, 10),
+        attributes_per_room=(0, 4),
+        rooms_with_location=0.8,
         features_per_property=(8, 20),
         images_per_property=(6, 16),
         nearby_per_property=(5, 12),

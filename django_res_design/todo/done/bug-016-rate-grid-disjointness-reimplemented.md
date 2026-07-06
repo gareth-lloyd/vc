@@ -1,3 +1,27 @@
+> **✅ RESOLVED (2026-07-05)** — Problem: the (date × party)-disjoint / precedence / `#seg{n}` invariant
+> was copy-derived in four producers (lazy projection + carryover + legacy loader + period backfill) that
+> could — and did — disagree: a projected quote could price differently from its materialised twin (the
+> party-widening case was live). Fix: ONE canonical flattener (`pricing/services/flattening.py`, built on
+> the shared `intervals.py` algebra + `segment_card_rules`) that all four consume; projection is now eager
+> and byte-identical to carryover **by construction** (shared `map_anchor_sources` builder); the
+> cross-producer equivalence suite (`pricing/tests/test_cross_producer_equivalence.py`) pins 9 grids
+> pointwise (tie-break, interior/Feb-29/weekday-shift collisions, single-day slivers, party widening, POA,
+> min-nights, uplift, fallback-only) plus byte-identical snapshots.
+>
+> Intentional behaviour deltas (all disclosed in `data_migration/CUTOVER.md` §Rate rule overlap resolution):
+> (1) loader adopts split-not-clip — interior collisions keep BOTH sides, single-day remainders persist,
+> party-clipped losers keep ALL surviving brackets, resolution runs post-capacity-clamp, bare legacy_id on
+> the lowest surviving bracket; row counts shift, so reconcile `expected_gap=3727` stays a
+> recalibrate-at-next-dry-run placeholder. (2) band-less/shadowed anchor periods no longer project (they
+> priced nothing; fallback-only anchors still project an empty-grid context priced at `fallback_nightly`;
+> affects `stay_length_bounds` only). (3) projected collision segments take the winner's (`bands[0]`)
+> min/max nights — matching the materialised twin; `MinNightsNotMet` can flip vs the old lazy behaviour.
+> (4) collision fragments in projected quotes snapshot deterministic negative synthetic period ids
+> (`QuoteLine.period_id` / `winning_period_id`; plain int fields, FE renders unknown ids label-less).
+> Bonus: fixed a pre-existing 0013 replay landmine (deferred FK triggers vs deferred CREATE INDEX).
+>
+> _Original ticket preserved below for context._
+
 # BUG-016 — Rate-grid disjointness/precedence reimplemented by four producers; a projected quote can price differently from its materialised twin
 
 - **Severity:** 🔴 Bug (money divergence — the number a guest was quoted can differ from the rows they accepted)

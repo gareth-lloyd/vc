@@ -15,7 +15,7 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-06, recounted from files): **121 done** (114 resolved + 7 dropped), **40 open**
+Scoreboard (2026-07-06, recounted from files): **124 done** (117 resolved + 7 dropped), **38 open**
 (incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
@@ -48,7 +48,7 @@ singleton) and **FG-002** (dropped, `effective()` deleted) with it._
 | [BUG-014](done/bug-014-raterule-flattened-period-occupancy-hierarchy.md) | `RateRule` flattened legacy's period→occupancy hierarchy — permits ragged/misaligned bands | ✅ superseded (2026-07-01) by **GAP-056** — Option B shipped and then some: `RateCard` dropped, `Property → RatePlan → RatePeriod → RateRule`, two `btree_gist` EXCLUDEs make ragged bands structurally impossible |
 | [BUG-018](bug-018-frontend-cache-staleness-missing-invalidations.md) | Frontend cache staleness — booking mutations skip the availability calendar; contact sub-tabs never invalidate | ⬜ from 2026-07-02 frontend complexity audit; per-mutation hand-listed invalidations have drifted → operator sees stale dates/history |
 | [BUG-015](bug-015-scattered-state-machines-false-409.md) | State machines hand-rolled 4 ways; SD's bare `ValueError` → false 409s; `BookingHold`/`DamageClaim` lifecycles unguarded | ⬜ from 2026-07-02 complexity audit; shape depends on Q-024 |
-| [BUG-016](bug-016-rate-grid-disjointness-reimplemented.md) | Rate-grid disjointness/precedence reimplemented by 4 producers — projected quote can price ≠ its materialised twin | ⬜ from 2026-07-02 complexity audit; needs a cross-producer equivalence test |
+| [BUG-016](done/bug-016-rate-grid-disjointness-reimplemented.md) | Rate-grid disjointness/precedence reimplemented by 4 producers — projected quote can price ≠ its materialised twin | ✅ resolved (2026-07-05) — ONE canonical flattener (`pricing/services/flattening.py` + shared `intervals.py`) consumed by projection (now eager, parity by construction via `map_anchor_sources`), carryover, the legacy loader (split-not-clip; deltas disclosed in CUTOVER.md) and the 0013 backfill; cross-producer equivalence suite pins 9 grids pointwise + byte-identical. Party-widening money bug fixed |
 | [BUG-017](bug-017-refund-approval-permissions-ungoverned.md) | Refund approve/execute perms declared but granted to nobody — SoD split governed by untracked config | ⬜ **high priority** from 2026-07-02 complexity audit; refunds un-approvable in a fresh env; affects BUG-010/GAP-057 |
 
 ## 🟠 Footguns
@@ -144,15 +144,16 @@ singleton) and **FG-002** (dropped, `effective()` deleted) with it._
 | [GAP-060](done/gap-060-kill-old-pricing-tab.md) | Retire the legacy property "Pricing" tab; rename the Workbench tab to "Rates" | ✅ resolved (2026-07-02) — FE-only on local `main` (unpushed; `7f8fe63`, `f7bd8b9`, `fc27581`). Unit 1: rate-plan create/edit/duplicate/delete + period edit/delete + GAP-026 warning ported into the Workbench (add/duplicate no longer skeleton-blanks the page). Unit 2: renamed "Rates", dropped the Preview badge. Unit 3: deleted PricingTab + RatePlanDetailPanel, `/pricing`→Rates redirect, dropped the writer-only nav gate, pruned dead i18n. Full FE gate green (1642 tests) |
 | [GAP-061](gap-061-security-deposit-release-automation.md) | Security-deposit release/refund automation unbuilt (`process_sd_refunds` empty, unscheduled); holds sit open indefinitely | ⬜ from 2026-07-02 complexity audit; real money held on cards; needs idempotency key on the release refund |
 | [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md) | No frontend↔backend contract check — 20 hand-maintained Zod schemas drift silently from DRF (`currency`/`country` typed number in some features, string in others) | ⬜ from 2026-07-02 frontend complexity audit; add a fixtures contract test or OpenAPI type-gen |
-| [GAP-063](gap-063-frontend-feature-coupling-and-cycles.md) | Frontend feature boundaries leak — cross-feature imports (rate-workbench→properties ×26) + schema-level cycles (enquiries⇄quotations, properties⇄availability); no import boundary rule | ⬜ from 2026-07-02 frontend complexity audit; add eslint boundaries + break the two schema cycles |
-| [GAP-064](gap-064-structured-room-attributes.md) | Structured room attributes — enum-column facets (ensuite type, access) + an admin-editable `RoomAttribute` catalog for open-ended amenities | ⬜ supersedes Q-019 (attributes); legacy-grounded; needs A1 owner steer (seed catalog + which attrs imply a property feature) |
-| [GAP-065](gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ⬜ supersedes Q-019 (floor); data-loss bug on cutover; needs A2 owner steer (floor ladder) |
+| [GAP-063](done/gap-063-frontend-feature-coupling-and-cycles.md) | Frontend feature boundaries leak — cross-feature imports (rate-workbench→properties ×26) + schema-level cycles (enquiries⇄quotations, properties⇄availability); no import boundary rule | ✅ resolved (2026-07-05) — `eslint-plugin-boundaries` shrink-only ratchet (`boundaries.allowlist.js`, 32→27 pairs) + staleness vitest; rate-workbench folded into `properties/`; all four 2-cycles broken via `src/lib/domain/` + logout-cleanup registry; remaining edge pay-down → GAP-072 |
+| [GAP-064](done/gap-064-structured-room-attributes.md) | Structured room attributes — enum-column facets (ensuite type, access) + an admin-editable `RoomAttribute` catalog for open-ended amenities | ✅ resolved (2026-07-05) — shipped with ticket-default A1 vocabulary (all admin-editable data; owner confirmation pending, see `design/decisions.md`); backfill re-run + placement source → GAP-065; derivation → GAP-067 |
+| [GAP-065](done/gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ✅ resolved (2026-07-05) — two blank-able axes + `placement_note` no-loss preserve + parsing loader + reconcile row + grouped rooms list; shipped on ticket-default A2 ladder (owner confirmation pending, see `design/decisions.md`); ambiguous rungs stay `""`+raw note |
 | [GAP-066](gap-066-room-bed-size.md) | Bed **size** fidelity (King/Super-king/Emperor) + bed-type vocabulary | ⬜ surfaced from the legacy exhibit form + crammed free-text; needs owner steer (advertised or internal?) |
 | [GAP-067](gap-067-room-feature-taxonomy-cleanup.md) | Feature taxonomy cleanup + derive property features from room attributes (data-driven bridge) | ⬜ supersedes the taxonomy half of Q-021; de-dupe the ~300-row `VillaFeatures` list (5× aircon, junk rows) with link-remap |
 | [GAP-068](done/gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ❌ dropped (2026-07-06) — superseded by **GAP-070** (dropped groups); its default **values** seed the global `PropertyDefaults` singleton, its features-starter half → GAP-067 |
 | [GAP-069](done/gap-069-workbench-carry-forward-affordance.md) | Rate-workbench carry-forward affordance — promote a projected year into editable rows | ✅ resolved (2026-07-03, local main unpushed) — FE-only; "Carry rates forward" button in the empty-year state (writer-gated, currency-code + non-past-year gated) → `CarryForwardDialog` (uplift %) → live `…:carry-forward` endpoint; on success new plan selected + year fills in place. No backend change. `f524142`/`e303050`/`62f5f14` |
 | [GAP-070](done/gap-070-remove-groups-global-property-defaults.md) | Remove property groups + runtime inheritance; global `PropertyDefaults` singleton + editor UI, snapshot at creation | ✅ resolved (2026-07-06, local main unpushed) — 9 units on `feat/gap-070`: `PropertyDefaults` singleton (`get_solo`, `/property-defaults`) snapshotted into concrete `PropertySettings`/`PropertyFinance` at creation, freeze migration `0027`, `PropertyGroup`/`Group*Settings`/`effective()` deleted (NULL now = genuinely unset → floor/`_POLICY_FALLBACKS`), cutover parity loader + owner-contact finance fallback, FE groups removed + `/admin/property-defaults` editor. **Subsumes GAP-068**, mooted FG-002, reversed FG-003 |
 | [GAP-071](gap-071-manual-security-deposit-creation.md) | No way to create a security deposit — auto-creation at booking confirmation is the only path; empty state is a dead end | ⬜ from 2026-07-03 `/bookings/383/payments` investigation (follows `c9e5fac` 204 fix); needs new `SecurityDepositService.create_manual` + POST endpoint + FE empty-state action; 4 open product decisions |
+| [GAP-072](gap-072-frontend-boundary-ratchet-paydown.md) | Pay down the remaining boundary-ratchet edges — last 2 mutual cycles (properties⇄contacts, UI-level enquiries⇄quotations), sanctioned-vs-debt allowlist tiering, geo/taxonomy home decision | ⬜ GAP-063 residue (2026-07-05); incremental, one edge-group per commit; coordinates `lib/domain` lifts with GAP-062 |
 
 ## Open product questions
 
@@ -171,8 +172,12 @@ singleton) and **FG-002** (dropped, `effective()` deleted) with it._
 
 Highest-leverage unanswered questions (each blocks a slice of downstream work):
 
-- **GAP-064 / GAP-065** — Structured room attributes + floor (owner vocabulary A1/A2; blocks the room-attribute write surface)
 - **Q-024** — Signals vs explicit orchestration for cross-app money side-effects (architecture; blocks SMELL-020, BUG-015, GAP-061)
+
+(GAP-064 A1 + GAP-065 A2 owner-vocabulary confirmations are pending but no
+longer block code — both shipped on ticket defaults with everything
+vocabulary-shaped either admin-editable data or re-parseable from the
+preserved `placement_note`; see `design/decisions.md` Open follow-ups.)
 
 ---
 

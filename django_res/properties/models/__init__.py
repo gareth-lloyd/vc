@@ -23,7 +23,12 @@ from properties.models.geo import (
 from properties.models.images import PropertyImage
 from properties.models.location import PropertyLocation
 from properties.models.property import Property, PropertyCategory
-from properties.models.rooms import Room, RoomBeds
+from properties.models.rooms import (
+    Room,
+    RoomAttribute,
+    RoomAttributeAssignment,
+    RoomBeds,
+)
 from properties.models.services import PropertyService
 from properties.models.settings import PropertySettings
 
@@ -51,5 +56,7 @@ __all__ = [
     "PropertySettings",
     "Region",
     "Room",
+    "RoomAttribute",
+    "RoomAttributeAssignment",
     "RoomBeds",
 ]

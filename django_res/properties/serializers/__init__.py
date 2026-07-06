@@ -39,7 +39,7 @@ from properties.serializers.property import (
     PropertyListSerializer,
     PropertyWriteSerializer,
 )
-from properties.serializers.room import RoomSerializer
+from properties.serializers.room import RoomAttributeSerializer, RoomSerializer
 from properties.serializers.service import PropertyServiceSerializer
 from properties.serializers.settings import PropertySettingsSerializer
 
@@ -71,5 +71,6 @@ __all__ = [
     "PropertySettingsSerializer",
     "PropertyWriteSerializer",
     "RegionSerializer",
+    "RoomAttributeSerializer",
     "RoomSerializer",
 ]

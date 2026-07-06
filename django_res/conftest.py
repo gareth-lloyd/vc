@@ -56,6 +56,13 @@ def _ensure_seeded_reference_data() -> None:
 
         sync_templates()
 
+    from properties.models import RoomAttribute
+
+    if not RoomAttribute.objects.exists():
+        from properties.room_attribute_catalog import sync_room_attributes
+
+        sync_room_attributes()
+
 
 @pytest.fixture(autouse=True)
 def _restore_seeded_reference_data(request: pytest.FixtureRequest) -> None:

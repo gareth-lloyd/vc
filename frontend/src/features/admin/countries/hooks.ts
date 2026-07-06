@@ -1,15 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
-import { createCountry, deleteCountry, fetchCountries, fetchCountry, updateCountry } from "./api";
-import type { CountryFilters, CountryWriteInput } from "./schemas";
+import { createCountry, deleteCountry, fetchCountry, updateCountry } from "./api";
+import type { CountryWriteInput } from "./schemas";
 
-export function useCountries(filters: CountryFilters) {
-  return useQuery({
-    queryKey: queryKeys.countries.list(filters),
-    queryFn: () => fetchCountries(filters),
-  });
-}
-
+// useCountries (the cross-feature list read) moved to lib/geo (GAP-072).
+// Country CRUD + the detail hook stay — they're admin-only.
 export function useCountry(iso2: string | undefined) {
   return useQuery({
     queryKey: iso2 ? queryKeys.countries.detail(iso2) : ["countries", "detail", "__disabled__"],

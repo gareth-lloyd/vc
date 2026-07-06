@@ -30,6 +30,50 @@ Each feature lives in `src/features/<name>/` with a standard shape:
     components/      — dialogs, pickers, sub-components
     __tests__/       — colocated tests
 
+A feature may contain a folded sub-feature directory keeping this same shape
+when the sub-feature is one-way coupled to its owner — `properties/
+rate-workbench/` is the only one (see Module boundaries); don't copy the
+pattern without that justification.
+
+### Module boundaries (GAP-063)
+
+Features import only themselves, `src/lib/`, and `src/components/` — never
+another feature. What lint enforces is the cross-feature ban specifically:
+`eslint-plugin-boundaries` (`eslint.config.js`) errors on any
+feature→feature import whose pair is not in `ALLOWED_EDGES`
+(`boundaries.allowlist.js`), the enumerated coupling (the backend import-linter
+model, FG-013). A vitest guard (`src/test/boundaries.test.ts`) fails if any
+listed edge goes stale, so paid-down edges must be deleted.
+
+The allowlist is **tiered** (GAP-072): `ALLOWED_EDGES` is the union of two
+exported maps that eslint consumes together.
+
+- **`SANCTIONED_EDGES`** — stable, intentional architecture (audit-trail
+  widgets, user/contact pickers, dashboards aggregating downstream work). Not
+  expected to shrink; an entry changes only with a documented decision.
+- **`DEBT_EDGES`** — coupling we still intend to pay down. **Shrink-only**:
+  entries may be removed as debt clears, never added.
+
+Neither tier accepts new edges for new needs. New cross-feature code goes to
+`src/lib/domain/` (shared Zod schemas/labels), `src/lib/geo/` (taxonomy), or
+`src/components/` (shared UI). The measured feature graph has **no mutual
+(two-way) pairs**. Test files are exempt (cross-feature MSW handlers and
+scaffolding are fine there).
+
+**Geo/taxonomy is shared, not feature-owned (GAP-072).** Regions, collections
+and countries are reference data read by properties, availability, clients and
+quotations plus the shared `RegionPicker`/`CountryPicker`. Their read side —
+schemas, list fetchers, and the `useRegions`/`useCollections`/`useCountries`
+hooks — lives in `src/lib/geo/` so any feature can consume it without an
+allowlist edge. Country **CRUD** (create/update/delete + the detail fetch and
+write schema) stays in `features/admin/countries` — editing the catalog is an
+admin concern. Old feature homes (`properties/{schemas,api,hooks,regionOptions}`,
+`admin/countries/schemas`) re-export from `lib/geo` for intra-feature callers.
+
+rate-workbench is a `properties` sub-feature
+(`features/properties/rate-workbench/`), not a standalone feature (GAP-063
+decided fold over promotion: its 29 imports were one-way into properties).
+
 ### Zod-first types
 
 Every API response type is `z.infer<typeof schema>`, never hand-typed.
@@ -56,7 +100,11 @@ response type. Custom actions use colon-verb syntax:
   boot-level 401 handler all funnel through `resetAuthQueryCache`
   (`features/auth/resetAuthQueryCache.ts`) — never a hand-picked prefix
   allowlist, which leaks one user's cached data into the next session. Any new
-  auth transition must call it too.
+  auth transition must call it too. Feature-owned session **stores** clear via
+  `registerLogoutCleanup` (`lib/auth/logoutCleanup.ts`) — register at module
+  scope in an eagerly-imported module (reference: `owner-portal/ownerStore.ts`);
+  both session-drop paths (logout, expiry 401) run the registry. Never have
+  auth import a feature's store directly (GAP-063 boundary).
 
 ### Form dialog pattern (create / edit)
 

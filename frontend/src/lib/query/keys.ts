@@ -35,6 +35,7 @@ export const queryKeys = {
   },
   properties: {
     all: () => ["properties"] as const,
+    lists: () => ["properties", "list"] as const,
     list: <F>(filters: F) => ["properties", "list", filters] as const,
     detail: (idOrSlug: PropertyId) => ["properties", "detail", k(idOrSlug)] as const,
     descriptions: (idOrSlug: PropertyId) =>
@@ -64,6 +65,8 @@ export const queryKeys = {
       ["properties", "detail", k(propertyId), "availability"] as const,
     availabilityCalendar: (propertyId: number, from: string, to: string) =>
       ["properties", "detail", k(propertyId), "availability", from, to] as const,
+    bookingsRoot: (propertyId: number) =>
+      ["properties", "detail", k(propertyId), "bookings"] as const,
     bookingsInRange: (propertyId: number, from: string, to: string) =>
       ["properties", "detail", k(propertyId), "bookings", from, to] as const,
   },
@@ -71,6 +74,10 @@ export const queryKeys = {
     all: () => ["contacts"] as const,
     lists: () => ["contacts", "list"] as const,
     list: <F>(filters: F) => ["contacts", "list", filters] as const,
+    // Invalidation root covering every contact's detail subtree — for mutations
+    // whose payload carries no contact FK (bookings) but may affect any
+    // contact's sub-tabs.
+    details: () => ["contacts", "detail"] as const,
     detail: (id: ContactId) => ["contacts", "detail", k(id)] as const,
     properties: (id: ContactId) => ["contacts", "detail", k(id), "properties"] as const,
     enquiries: (id: ContactId) => ["contacts", "detail", k(id), "enquiries"] as const,
@@ -230,5 +237,9 @@ export const queryKeys = {
   nearbyPlaceTypes: {
     all: () => ["nearby-place-types"] as const,
     list: () => ["nearby-place-types", "list"] as const,
+  },
+  roomAttributes: {
+    all: () => ["room-attributes"] as const,
+    list: () => ["room-attributes", "list"] as const,
   },
 } as const;

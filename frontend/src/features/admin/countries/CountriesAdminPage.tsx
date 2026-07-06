@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
 import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
-import { useCountries, useDeleteCountry } from "./hooks";
+import { useCountries } from "@/lib/geo/hooks";
+import { useDeleteCountry } from "./hooks";
 import { countryColumns } from "./columns";
 import { CountryFormDialog } from "./components/CountryFormDialog";
 import type { Country } from "./schemas";

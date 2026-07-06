@@ -3,7 +3,7 @@ import {
   PROPERTY_AVAILABILITY_DEFAULTS,
   PROPERTY_CHANGEOVER_DAYS,
   PROPERTY_PRICE_BASES,
-} from "@/features/properties/schemas";
+} from "@/lib/domain/propertyEnums";
 
 // percent/fixed calc types shared by commission, deposit, interim and
 // security-deposit amounts (mirrors the backend *CalcType enums).

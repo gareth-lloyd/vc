@@ -19,7 +19,7 @@ class PropertiesConfig(AppConfig):
         from properties.models.geo import PropertyNearbyPlace
         from properties.models.images import PropertyImage
         from properties.models.property import Property
-        from properties.models.rooms import Room
+        from properties.models.rooms import Room, RoomAttributeAssignment
         from properties.models.services import PropertyService
 
         audit.track(
@@ -144,7 +144,26 @@ class PropertiesConfig(AppConfig):
         # contact/related identities sit behind FKs).
         audit.track(
             Room,
-            fields=("property_id", "name", "placement", "is_ensuite", "sort_order"),
+            fields=(
+                "property_id",
+                "name",
+                "placement",
+                "floor",
+                "placement_note",
+                "is_ensuite",
+                "ensuite_type",
+                "access",
+                "sort_order",
+            ),
+        )
+        # Ticking/unticking an amenity creates/hard-deletes an assignment row,
+        # so the link must leave a `__deleted__` tombstone naming what vanished
+        # (FG-017, same rationale as PropertyFeature). The trail rides
+        # pre_save/post_delete, so write paths must stay per-row — a
+        # bulk_create/queryset.delete() diff-writer would capture nothing.
+        audit.track(
+            RoomAttributeAssignment,
+            fields=("room_id", "attribute_id", "note"),
         )
         audit.track(
             PropertyImage,

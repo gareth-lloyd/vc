@@ -17,14 +17,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
-import { useCreatePropertyRoom, useUpdatePropertyRoom } from "../hooks";
+import { cn } from "@/lib/cn";
+import { useCreatePropertyRoom, useRoomAttributes, useUpdatePropertyRoom } from "../hooks";
 import {
+  ENSUITE_TYPES,
+  ROOM_ACCESS,
+  ROOM_FLOORS,
   ROOM_PLACEMENTS,
   propertyRoomWriteInputSchema,
+  type EnsuiteType,
   type PropertyRoom,
   type PropertyRoomWriteInput,
+  type RoomAccess,
+  type RoomFloor,
   type RoomPlacement,
 } from "../schemas";
 import { fieldErrorText } from "@/lib/forms/fieldError";
@@ -58,23 +66,47 @@ const EMPTY_BEDS = {
 
 const CREATE_DEFAULTS: PropertyRoomWriteInput = {
   name: "",
-  placement: "main_house",
+  // Blank = "not set" (GAP-065): a new room must not mint a defaulted
+  // main_house the user never chose.
+  placement: "",
+  floor: "",
   website_description: "",
   vc_notes: "",
   is_ensuite: false,
+  ensuite_type: "",
+  access: "",
   beds: EMPTY_BEDS,
+  attribute_links: [],
 };
 
 function defaultsFromRoom(room: PropertyRoom): PropertyRoomWriteInput {
   return {
     name: room.name,
     placement: room.placement,
+    floor: room.floor,
     website_description: room.website_description ?? "",
     vc_notes: room.vc_notes ?? "",
     is_ensuite: room.is_ensuite,
+    ensuite_type: room.ensuite_type ?? "",
+    access: room.access ?? "",
     beds: room.beds ?? { ...EMPTY_BEDS },
+    // Seed EVERY existing link — including retired (is_active=false) ones — so
+    // a full-list save never silently drops an assignment the user didn't
+    // untick (review-blocker B1).
+    attribute_links: (room.attribute_links ?? []).map((link) => ({
+      attribute: link.attribute,
+      note: link.note ?? "",
+    })),
   };
 }
+
+// shadcn/radix Select forbids an empty-string item value, so the blank
+// ("unknown" / "not specified") option rides a sentinel that maps to `""` on
+// the way in/out of the form.
+const ENSUITE_TYPE_NONE = "unknown";
+const ACCESS_NONE = "unspecified";
+const PLACEMENT_NONE = "not_set";
+const FLOOR_NONE = "unspecified";
 
 const BED_FIELDS = [
   "double",
@@ -100,6 +132,7 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
   const createMutation = useCreatePropertyRoom(propertyId);
   const updateMutation = useUpdatePropertyRoom(propertyId);
   const submitting = createMutation.isPending || updateMutation.isPending;
+  const attributesQuery = useRoomAttributes();
 
   useEffect(() => {
     if (open) {
@@ -130,8 +163,49 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
     }
   };
 
-  const placement = form.watch("placement");
+  const placement = form.watch("placement") ?? "";
+  const floor = form.watch("floor") ?? "";
   const isEnsuite = form.watch("is_ensuite") ?? false;
+  const ensuiteType = form.watch("ensuite_type") ?? "";
+  const access = form.watch("access") ?? "";
+  const attributeLinks = form.watch("attribute_links") ?? [];
+
+  // Render the active catalog ∪ the attributes already assigned to this room.
+  // Retired (is_active=false) but-assigned rows stay visible — muted, badged
+  // "Retired", and still ticked so the full-list save keeps them (B1).
+  const catalogRows = attributesQuery.data?.results ?? [];
+  const assignedLinks = isCreate ? [] : props.room.attribute_links;
+  const amenityRows: { id: number; name: string; is_active: boolean }[] = [];
+  for (const attr of catalogRows) {
+    if (attr.is_active) amenityRows.push({ id: attr.id, name: attr.name, is_active: true });
+  }
+  for (const link of assignedLinks) {
+    if (!amenityRows.some((row) => row.id === link.attribute)) {
+      amenityRows.push({ id: link.attribute, name: link.name, is_active: link.is_active });
+    }
+  }
+
+  const toggleAttribute = (attributeId: number, checked: boolean) => {
+    const current = form.getValues("attribute_links") ?? [];
+    if (checked) {
+      if (!current.some((l) => l.attribute === attributeId)) {
+        form.setValue("attribute_links", [...current, { attribute: attributeId, note: "" }]);
+      }
+    } else {
+      form.setValue(
+        "attribute_links",
+        current.filter((l) => l.attribute !== attributeId),
+      );
+    }
+  };
+
+  const setAttributeNote = (attributeId: number, note: string) => {
+    const current = form.getValues("attribute_links") ?? [];
+    form.setValue(
+      "attribute_links",
+      current.map((l) => (l.attribute === attributeId ? { ...l, note } : l)),
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -156,32 +230,130 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
             ) : null}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="property-room-placement">{t("rooms.dialog.fields.placement")}</Label>
-            <Select
-              value={placement}
-              onValueChange={(v) => form.setValue("placement", v as RoomPlacement)}
-            >
-              <SelectTrigger id="property-room-placement">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ROOM_PLACEMENTS.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {t(`rooms.placements.${p}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="property-room-placement">{t("rooms.dialog.fields.placement")}</Label>
+              <Select
+                value={placement === "" ? PLACEMENT_NONE : placement}
+                onValueChange={(v) =>
+                  form.setValue("placement", v === PLACEMENT_NONE ? "" : (v as RoomPlacement))
+                }
+              >
+                <SelectTrigger id="property-room-placement">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PLACEMENT_NONE}>{t("rooms.placements.not_set")}</SelectItem>
+                  {ROOM_PLACEMENTS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {t(`rooms.placements.${p}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="property-room-floor">{t("rooms.dialog.fields.floor")}</Label>
+              <Select
+                value={floor === "" ? FLOOR_NONE : floor}
+                onValueChange={(v) =>
+                  form.setValue("floor", v === FLOOR_NONE ? "" : (v as RoomFloor))
+                }
+              >
+                <SelectTrigger id="property-room-floor">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={FLOOR_NONE}>{t("rooms.floors.unspecified")}</SelectItem>
+                  {ROOM_FLOORS.map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {t(`rooms.floors.${f}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          {!isCreate && props.room.placement_note ? (
+            // Preserved legacy placement string (GAP-065) — display-only; the
+            // form never writes placement_note, so a PATCH leaves it untouched.
+            <p className="text-muted-foreground text-sm">
+              {t("rooms.dialog.placement_note_helper", { note: props.room.placement_note })}
+            </p>
+          ) : null}
 
           <div className="flex items-center gap-2">
             <Checkbox
               id="property-room-ensuite"
               checked={isEnsuite}
-              onCheckedChange={(v) => form.setValue("is_ensuite", v === true)}
+              onCheckedChange={(v) => {
+                const checked = v === true;
+                form.setValue("is_ensuite", checked);
+                // Unchecking ensuite makes a lingering ensuite type nonsense —
+                // and the server would flip is_ensuite straight back on.
+                if (!checked) form.setValue("ensuite_type", "");
+              }}
             />
             <Label htmlFor="property-room-ensuite">{t("rooms.dialog.fields.is_ensuite")}</Label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="property-room-ensuite-type">
+                {t("rooms.dialog.fields.ensuite_type")}
+              </Label>
+              <Select
+                value={ensuiteType === "" ? ENSUITE_TYPE_NONE : ensuiteType}
+                onValueChange={(v) => {
+                  if (v === ENSUITE_TYPE_NONE) {
+                    form.setValue("ensuite_type", "");
+                  } else {
+                    form.setValue("ensuite_type", v as EnsuiteType);
+                    // Mirror the server rule: a concrete ensuite type implies
+                    // the room IS ensuite.
+                    form.setValue("is_ensuite", true);
+                  }
+                }}
+              >
+                <SelectTrigger id="property-room-ensuite-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ENSUITE_TYPE_NONE}>
+                    {t("rooms.ensuite_types.unknown")}
+                  </SelectItem>
+                  {ENSUITE_TYPES.map((et) => (
+                    <SelectItem key={et} value={et}>
+                      {t(`rooms.ensuite_types.${et}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="property-room-access">{t("rooms.dialog.fields.access")}</Label>
+              <Select
+                value={access === "" ? ACCESS_NONE : access}
+                onValueChange={(v) =>
+                  form.setValue("access", v === ACCESS_NONE ? "" : (v as RoomAccess))
+                }
+              >
+                <SelectTrigger id="property-room-access">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ACCESS_NONE}>{t("rooms.access_types.unspecified")}</SelectItem>
+                  {ROOM_ACCESS.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {t(`rooms.access_types.${a}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <fieldset className="border-border space-y-2 rounded-md border p-3">
@@ -205,6 +377,50 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
               ))}
             </div>
           </fieldset>
+
+          {amenityRows.length > 0 ? (
+            <fieldset className="border-border space-y-2 rounded-md border p-3">
+              <legend className="text-foreground px-1 text-sm font-medium">
+                {t("rooms.dialog.fields.amenities")}
+              </legend>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {amenityRows.map((attr) => {
+                  const link = attributeLinks.find((l) => l.attribute === attr.id);
+                  return (
+                    <div key={attr.id} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`property-room-attribute-${attr.id}`}
+                          checked={!!link}
+                          onCheckedChange={(v) => toggleAttribute(attr.id, v === true)}
+                        />
+                        <Label
+                          htmlFor={`property-room-attribute-${attr.id}`}
+                          className={cn(!attr.is_active && "text-muted-foreground")}
+                        >
+                          {attr.name}
+                        </Label>
+                        {!attr.is_active ? (
+                          <Badge variant="outline" className="text-muted-foreground">
+                            {t("rooms.dialog.retired_badge")}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      {link ? (
+                        <Input
+                          className="h-8"
+                          aria-label={t("rooms.dialog.fields.amenity_note_placeholder")}
+                          placeholder={t("rooms.dialog.fields.amenity_note_placeholder")}
+                          value={link.note ?? ""}
+                          onChange={(e) => setAttributeNote(attr.id, e.target.value)}
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="property-room-website-description">

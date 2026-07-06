@@ -1,11 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
-import {
-  fetchCollections,
-  fetchProperties,
-  fetchRegions,
-  type RegionListFilters,
-} from "@/features/properties/api";
+import { fetchProperties } from "@/features/properties/api";
 import type { PropertyFilters } from "@/features/properties/schemas";
 import { fetchMultiAvailability, fetchWeeklyPrices } from "./api";
 import { hasAnyFilter, type TimelineFilters } from "./schemas";
@@ -60,15 +55,4 @@ export function useWeeklyPrices(propertyIds: number[], from: string, to: string)
     queryFn: () => fetchWeeklyPrices(propertyIds, from, to),
     enabled: propertyIds.length > 0,
   });
-}
-
-export function useRegions(filters?: RegionListFilters) {
-  return useQuery({
-    queryKey: queryKeys.regions.list(filters),
-    queryFn: () => fetchRegions(filters),
-  });
-}
-
-export function useCollections() {
-  return useQuery({ queryKey: queryKeys.collections.list(), queryFn: fetchCollections });
 }

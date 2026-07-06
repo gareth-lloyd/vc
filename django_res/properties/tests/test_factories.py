@@ -29,6 +29,26 @@ def test_region_factory_unique_across_runs() -> None:
     assert r1.slug != r2.slug
 
 
+def test_region_factory_is_idempotent_for_explicit_name() -> None:
+    """Seed stages mint a Region per property from a cycling villa manifest;
+    the same (country, name) must reuse the row, not duplicate it (the dev DB
+    held every region 3-4x over)."""
+    country = cast(models.Country, factories.CountryFactory())
+    r1 = cast(models.Region, factories.RegionFactory(country=country, name="Algarve"))
+    r2 = cast(models.Region, factories.RegionFactory(country=country, name="Algarve"))
+    assert r1.pk == r2.pk
+    assert models.Region.objects.filter(country=country, name="Algarve").count() == 1
+    assert r1.slug == "algarve"
+
+
+def test_region_factory_same_name_different_country_stays_distinct() -> None:
+    c1 = cast(models.Country, factories.CountryFactory(iso2="PT"))
+    c2 = cast(models.Country, factories.CountryFactory(iso2="ES"))
+    r1 = cast(models.Region, factories.RegionFactory(country=c1, name="Costa Verde"))
+    r2 = cast(models.Region, factories.RegionFactory(country=c2, name="Costa Verde"))
+    assert r1.pk != r2.pk
+
+
 def test_property_factory_builds_full_graph() -> None:
     prop = cast(models.Property, factories.PropertyFactory())
 

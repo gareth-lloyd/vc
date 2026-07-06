@@ -23,6 +23,8 @@
       "slug_help": "Used in the villa's URL. Auto-filled from the name — you can change it.",
       "category": "Category",
       "category_placeholder": "Select a category",
+      "country": "Country",
+      "country_placeholder": "Select a country",
       "region": "Region",
       "region_placeholder": "Select a region"
     },
@@ -499,6 +501,7 @@
       "edit": "Edit",
       "delete": "Delete",
       "ensuite": "Ensuite",
+      "ensuite_with_type": "Ensuite · {{type}}",
       "no_beds": "No beds configured",
       "beds_count": {
         "double": "{{count}} double",
@@ -525,11 +528,38 @@
       }
     },
     "placements": {
+      "not_set": "Not set",
       "main_house": "Main house",
       "guest_house": "Guest house",
       "pool_house": "Pool house",
-      "annex": "Annex",
+      "annex": "Annexe",
+      "cottage": "Cottage",
+      "bungalow": "Bungalow",
+      "studio": "Studio",
       "other": "Other"
+    },
+    "floors": {
+      "unspecified": "Not set",
+      "lower_ground": "Lower ground floor",
+      "ground": "Ground floor",
+      "first": "First floor",
+      "second": "Second floor",
+      "third_plus": "Third floor or above"
+    },
+    "groups": {
+      "label": "{{building}} · {{floor}}",
+      "unassigned": "No location set"
+    },
+    "ensuite_types": {
+      "unknown": "Unknown",
+      "shower": "Shower",
+      "bath": "Bath",
+      "both": "Bath & shower"
+    },
+    "access_types": {
+      "unspecified": "Not specified",
+      "inside": "Inside",
+      "outside": "Outside"
     },
     "beds": {
       "double": "Double",
@@ -562,11 +592,18 @@
         "name": "Name",
         "name_placeholder": "Master bedroom",
         "placement": "Placement",
+        "floor": "Floor",
         "is_ensuite": "Ensuite",
+        "ensuite_type": "Ensuite type",
+        "access": "Access",
         "beds": "Beds",
+        "amenities": "Amenities",
+        "amenity_note_placeholder": "Note (optional)",
         "website_description": "Website description",
         "vc_notes": "Internal notes"
       },
+      "retired_badge": "Retired",
+      "placement_note_helper": "Imported placement note: “{{note}}”",
       "actions": {
         "cancel": "Cancel",
         "save": "Save",
@@ -824,12 +861,16 @@
         "post_code": "Post code",
         "locality_town": "Town",
         "locality_region": "Region",
+        "listing_region": "Listing region",
         "country": "Country",
         "timezone": "Timezone",
         "latitude": "Latitude",
         "longitude": "Longitude"
       },
       "country_placeholder": "Select a country",
+      "listing_region_placeholder": "Select a region",
+      "listing_region_help": "The catalogue region used in search and list filters — separate from the postal address region above.",
+      "region_save_failed": "The address was saved, but the listing region was not — try again.",
       "timezone_placeholder": "Select a timezone",
       "save": "Save location",
       "saving": "Saving…",

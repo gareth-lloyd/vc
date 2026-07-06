@@ -1,14 +1,13 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
+import { TAXONOMY_PAGE_SIZE, fetchRegions, fetchCollections } from "@/lib/geo/api";
 import {
   availabilityCalendarResponseSchema,
   availabilityHoldsResponseSchema,
   availabilityHoldSchema,
   changeOverRuleSchema,
   changeOverRulesResponseSchema,
-  collectionsResponseSchema,
   propertyCategoriesResponseSchema,
-  regionsResponseSchema,
   discountsResponseSchema,
   extrasResponseSchema,
   propertyBookingsResponseSchema,
@@ -29,6 +28,7 @@ import {
   propertyServicesResponseSchema,
   propertyRoomSchema,
   propertyRoomsResponseSchema,
+  roomAttributesResponseSchema,
   propertySettingsSchema,
   ratePeriodSchema,
   ratePlanDetailSchema,
@@ -41,7 +41,6 @@ import {
   type AvailabilityHold,
   type ChangeOverRule,
   type ChangeOverRuleWriteInput,
-  type Collection,
   type DescriptionSection,
   type Discount,
   type Extra,
@@ -64,13 +63,13 @@ import {
   type PropertyListItem,
   type PropertyLocation,
   type PropertyLocationWriteInput,
-  type Region,
   type PropertyNearbyPlace,
   type PropertyNearbyPlaceWriteInput,
   type PropertyService,
   type PropertyServiceWriteInput,
   type PropertyRoom,
   type PropertyRoomWriteInput,
+  type RoomAttribute,
   type PropertySettings,
   type PropertySettingsWriteInput,
   type RatePeriod,
@@ -210,6 +209,15 @@ export async function reorderPropertyRooms(
 export async function fetchNearbyPlaceTypes(): Promise<Paginated<NearbyPlaceType>> {
   const data = await apiGet<unknown>("/nearby-place-types");
   return nearbyPlaceTypesResponseSchema.parse(data);
+}
+
+// GAP-064 amenity catalog (anonymously readable; serves inactive rows too so
+// retired-but-assigned amenities can still be labelled in the room form).
+export async function fetchRoomAttributes(): Promise<Paginated<RoomAttribute>> {
+  const data = await apiGet<unknown>("/room-attributes", {
+    query: { page_size: TAXONOMY_PAGE_SIZE },
+  });
+  return roomAttributesResponseSchema.parse(data);
 }
 
 export async function fetchPropertyNearbyPlaces(
@@ -364,34 +372,11 @@ export async function fetchPropertyContacts(
   return propertyContactsResponseSchema.parse(data);
 }
 
-// Filter dropdowns need every row in one request — the default page size of
-// 50 would silently truncate the lists as the portfolio grows. Exported for
-// callers whose fetch layer doesn't bake it in (e.g. the countries lookup).
-export const TAXONOMY_PAGE_SIZE = 500;
-
-export interface RegionListFilters {
-  // Only regions that actually hold properties (quote-builder criteria
-  // dropdown); server-side opt-in narrowing, false behaves like absent.
-  hasProperties?: boolean;
-}
-
-export async function fetchRegions(filters: RegionListFilters = {}): Promise<Paginated<Region>> {
-  const data = await apiGet<unknown>("/regions", {
-    query: {
-      ordering: "name",
-      page_size: TAXONOMY_PAGE_SIZE,
-      has_properties: filters.hasProperties || undefined,
-    },
-  });
-  return regionsResponseSchema.parse(data);
-}
-
-export async function fetchCollections(): Promise<Paginated<Collection>> {
-  const data = await apiGet<unknown>("/collections", {
-    query: { ordering: "name", page_size: TAXONOMY_PAGE_SIZE },
-  });
-  return collectionsResponseSchema.parse(data);
-}
+// Region/collection fetchers now live in lib/geo (GAP-072); re-exported here
+// for intra-feature consumers and the in-feature API tests. TAXONOMY_PAGE_SIZE
+// is imported at the top (fetchRoomAttributes pages with it) and re-exported.
+export { TAXONOMY_PAGE_SIZE, fetchRegions, fetchCollections };
+export type { RegionListFilters } from "@/lib/geo/schemas";
 
 export async function fetchPropertyCategories(): Promise<Paginated<PropertyCategory>> {
   // Model `Meta.ordering` already sorts by (sort_order, name); fetch the whole
@@ -584,6 +569,16 @@ export async function updatePropertyLocation(
 ): Promise<PropertyLocation> {
   const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}/location`, body);
   return propertyLocationSchema.parse(data);
+}
+
+// Root-resource PATCH — currently only the taxonomy region FK is edited this
+// way (the other editable facets live on nested sub-resources).
+export async function updateProperty(
+  propertyId: PropertyId,
+  body: { region: number },
+): Promise<PropertyDetail> {
+  const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}`, body);
+  return propertyDetailSchema.parse(data);
 }
 
 export async function updatePropertyFeatures(

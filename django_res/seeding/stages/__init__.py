@@ -32,6 +32,7 @@ from seeding.stages import (
     properties,  # noqa: F401
     property_lifecycle,  # noqa: F401
     refunds,  # noqa: F401
+    room_attributes,  # noqa: F401
     rooms,  # noqa: F401
     system_setup,  # noqa: F401
     users,  # noqa: F401

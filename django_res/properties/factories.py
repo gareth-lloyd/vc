@@ -24,6 +24,7 @@ import factory
 import yaml
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.utils.text import slugify
 from factory.django import DjangoModelFactory
 from faker import Faker
 from PIL import Image
@@ -39,7 +40,6 @@ from properties.enums import (
     PrefilledChangeOverDay,
     PropertyChannel,
     PropertyStatus,
-    RoomPlacement,
 )
 from properties.services.location import location_defaults
 
@@ -178,12 +178,18 @@ class CountryFactory(DjangoModelFactory):
 
 
 class RegionFactory(DjangoModelFactory):
+    """Idempotent on (country, slug), with slug derived from name — so seed
+    stages calling `RegionFactory(country=c, name="Algarve")` per property
+    reuse one row instead of duplicating it. The default name keeps the
+    RUN_TOKEN so bare calls stay process-unique (never aliased together)."""
+
     class Meta:
         model = models.Region
+        django_get_or_create = ("country", "slug")
 
     country = factory.SubFactory(CountryFactory)
-    name = factory.Faker("city")
-    slug = factory.Sequence(lambda n: f"region-{RUN_TOKEN}-{n}")
+    name = factory.Sequence(lambda n: f"Region {RUN_TOKEN} {n}")
+    slug = factory.LazyAttribute(lambda o: slugify(o.name))
 
 
 class PropertyCategoryFactory(DjangoModelFactory):
@@ -345,12 +351,23 @@ class RoomFactory(DjangoModelFactory):
 
     property = factory.SubFactory(PropertyFactory)
     name = factory.Sequence(lambda n: f"Bedroom {n}")
-    placement = RoomPlacement.MAIN_HOUSE
 
     @factory.post_generation
     def beds(obj: models.Room, create: bool, extracted: object, **kwargs: object) -> None:
         if create:
             models.RoomBeds.objects.create(room=obj, double=1)
+
+
+class RoomAttributeFactory(DjangoModelFactory):
+    """Catalog lookup: slugs are unique and migration-seeded rows exist, so
+    reuse by slug on rerun via get_or_create."""
+
+    class Meta:
+        model = models.RoomAttribute
+        django_get_or_create = ("slug",)
+
+    name = factory.Sequence(lambda n: f"Room attribute {RUN_TOKEN}-{n}")
+    slug = factory.Sequence(lambda n: f"room-attr-{RUN_TOKEN}-{n}")
 
 
 class NearbyPlaceTypeFactory(DjangoModelFactory):

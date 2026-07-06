@@ -222,7 +222,8 @@ export const router = createBrowserRouter([
                           {
                             path: "rate-workbench",
                             lazy: async () => {
-                              const m = await import("@/features/rate-workbench/RateWorkbenchPage");
+                              const m =
+                                await import("@/features/properties/rate-workbench/RateWorkbenchPage");
                               return { Component: m.RateWorkbenchPage };
                             },
                           },
@@ -379,8 +380,19 @@ export const router = createBrowserRouter([
                         // carries no section tab strip.
                         path: "/enquiries/:id",
                         lazy: async () => {
-                          const m = await import("@/features/enquiries/EnquiryDetailLayout");
-                          return { Component: m.EnquiryDetailLayout };
+                          // Compose the two features here so neither imports the
+                          // other (GAP-072): the enquiry workspace embeds the
+                          // quote builder via an injected slot, and the route is
+                          // the one place allowed to reach into both.
+                          const [layoutMod, builderMod] = await Promise.all([
+                            import("@/features/enquiries/EnquiryDetailLayout"),
+                            import("@/features/quotations/components/QuoteBuilder"),
+                          ]);
+                          const { EnquiryDetailLayout } = layoutMod;
+                          const { QuoteBuilder } = builderMod;
+                          return {
+                            Component: () => <EnquiryDetailLayout quoteBuilder={QuoteBuilder} />,
+                          };
                         },
                       },
                       {

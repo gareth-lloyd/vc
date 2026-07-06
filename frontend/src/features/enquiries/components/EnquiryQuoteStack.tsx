@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { formatMoney, parseMoney } from "@/lib/format/money";
-import { quotationStatusLabel, type QuotationDetail } from "@/features/quotations/schemas";
+import { quotationStatusLabel, type QuotationDetail } from "@/lib/domain/quotation";
 
 // A quotation's lines are alternative *options*, not a basket — so the headline
 // figure is the price range across them (min–max), never a sum. Each line is

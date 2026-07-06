@@ -1,21 +1,19 @@
 import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
+import { PROPERTY_CONTACT_ROLES } from "@/lib/domain/contactRoles";
+import {
+  PROPERTY_AVAILABILITY_DEFAULTS,
+  PROPERTY_CHANGEOVER_DAYS,
+  PROPERTY_PRICE_BASES,
+} from "@/lib/domain/propertyEnums";
 
-/**
- * Allowed contact-assignment roles. Mirrors the backend `accounts.ContactRole`
- * enum (`django_res/accounts/enums.py`); the model field is NOT NULL with these
- * choices, so the role is required and constrained to exactly these values.
- */
-export const PROPERTY_CONTACT_ROLES = [
-  "owner",
-  "manager",
-  "agent",
-  "villa_admin",
-  "management_company",
-  "housekeeper",
-  "owners_rep",
-] as const;
+// Re-exported for intra-feature use; the canonical list lives in lib/domain
+// (GAP-072) so contacts can allowlist property roles without an edge back here.
+export { PROPERTY_CONTACT_ROLES };
+// Property-config enum tuples likewise live in lib/domain so the
+// admin/property-defaults editor can consume them without a cross-feature edge.
+export { PROPERTY_AVAILABILITY_DEFAULTS, PROPERTY_CHANGEOVER_DAYS, PROPERTY_PRICE_BASES };
 
 export const propertyContactRoleSchema = z.enum(PROPERTY_CONTACT_ROLES, {
   error: () => i18n.t("properties:people.assignment_dialog.role_required"),
@@ -121,14 +119,68 @@ export {
 } from "@/features/admin/tags/schemas";
 export type { Feature as PropertyFeature, FeatureCategory } from "@/features/admin/tags/schemas";
 
+// GAP-065: the building axis. Blank means "unknown / not specified" (the
+// backend dropped the defaulted main_house lie). Tuple order doubles as the
+// grouped rooms-list display order.
 export const ROOM_PLACEMENTS = [
   "main_house",
   "guest_house",
   "pool_house",
   "annex",
+  "cottage",
+  "bungalow",
+  "studio",
   "other",
 ] as const;
 export type RoomPlacement = (typeof ROOM_PLACEMENTS)[number];
+export const roomPlacementSchema = z.enum(ROOM_PLACEMENTS);
+
+// GAP-065: the floor ladder, bottom→top; blank = unknown. Tuple order doubles
+// as the grouped rooms-list display order within a building.
+export const ROOM_FLOORS = ["lower_ground", "ground", "first", "second", "third_plus"] as const;
+export type RoomFloor = (typeof ROOM_FLOORS)[number];
+export const roomFloorSchema = z.enum(ROOM_FLOORS);
+
+// GAP-064 room facets. Blank means "unknown / not specified" on both — the
+// backend stores "" and a non-blank ensuite_type auto-refines `is_ensuite` to
+// true server-side (mirrored in the form UI).
+export const ENSUITE_TYPES = ["shower", "bath", "both"] as const;
+export type EnsuiteType = (typeof ENSUITE_TYPES)[number];
+export const ensuiteTypeSchema = z.enum(ENSUITE_TYPES);
+
+export const ROOM_ACCESS = ["inside", "outside"] as const;
+export type RoomAccess = (typeof ROOM_ACCESS)[number];
+export const roomAccessSchema = z.enum(ROOM_ACCESS);
+
+// GAP-064 amenity catalog row (`GET /room-attributes`). The endpoint serves
+// INACTIVE rows too, so retired-but-assigned amenities can still be labelled.
+export const roomAttributeSchema = z.object({
+  id: z.number(),
+  slug: z.string(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+  icon: z.string().nullable().optional(),
+  sort_order: z.number().int(),
+  is_active: z.boolean(),
+  implies_property_feature: z.number().nullable().optional(),
+});
+export type RoomAttribute = z.infer<typeof roomAttributeSchema>;
+
+export const roomAttributesResponseSchema = paginated(roomAttributeSchema);
+
+// Read shape of one room↔amenity link: the assignment row plus the catalog
+// row's display fields (incl. `is_active` so the form can badge retired rows
+// instead of silently dropping them on a full-list save).
+export const roomAttributeLinkSchema = z.object({
+  id: z.number(),
+  attribute: z.number(),
+  slug: z.string(),
+  name: z.string(),
+  icon: z.string().nullable().optional(),
+  is_active: z.boolean(),
+  note: z.string().optional().default(""),
+});
+export type RoomAttributeLink = z.infer<typeof roomAttributeLinkSchema>;
 
 export const roomBedsSchema = z.object({
   double: z.number().int().min(0),
@@ -145,12 +197,21 @@ export const propertyRoomSchema = z.object({
   id: z.number(),
   property: z.number(),
   name: z.string(),
-  placement: z.enum(ROOM_PLACEMENTS),
+  // GAP-065 location axes; blank = unknown. Defaulted so older fixtures parse.
+  placement: roomPlacementSchema.or(z.literal("")).optional().default(""),
+  floor: roomFloorSchema.or(z.literal("")).optional().default(""),
+  // Read-only preserved legacy placement string (GAP-065). API-writable but
+  // deliberately NOT in the write schema — the form only displays it.
+  placement_note: z.string().optional().default(""),
   website_description: z.string().nullable().optional(),
   vc_notes: z.string().nullable().optional(),
   is_ensuite: z.boolean(),
+  // GAP-064 facets; blank = unknown. Defaulted so older fixtures still parse.
+  ensuite_type: ensuiteTypeSchema.or(z.literal("")).optional().default(""),
+  access: roomAccessSchema.or(z.literal("")).optional().default(""),
   sort_order: z.number().int(),
   beds: roomBedsSchema.optional(),
+  attribute_links: z.array(roomAttributeLinkSchema).optional().default([]),
 });
 export type PropertyRoom = z.infer<typeof propertyRoomSchema>;
 
@@ -177,17 +238,6 @@ export const propertyNearbyPlaceSchema = z.object({
 export type PropertyNearbyPlace = z.infer<typeof propertyNearbyPlaceSchema>;
 
 export const propertyNearbyPlacesResponseSchema = paginated(propertyNearbyPlaceSchema);
-
-export const PROPERTY_CHANGEOVER_DAYS = [
-  "mon",
-  "tue",
-  "wed",
-  "thu",
-  "fri",
-  "sat",
-  "sun",
-  "any",
-] as const;
 
 export const changeOverRuleSchema = z.object({
   id: z.number(),
@@ -267,16 +317,30 @@ export type PropertyServiceWriteInput = z.infer<typeof propertyServiceWriteInput
 
 export const propertyRoomWriteInputSchema = z.object({
   name: z.string().trim().min(1, { message: "properties:errors.room_name_required" }).max(128),
-  placement: z.enum(ROOM_PLACEMENTS),
+  // GAP-065 location axes + GAP-064 facets: blank-able enums, NOT `.optional()`
+  // — PATCH must be able to send `""` to clear a previously-set value (same
+  // clearing trap as `website_description`/`vc_notes` below). `placement_note`
+  // is deliberately absent: the form never writes it (absent on PATCH ⇒
+  // untouched server-side).
+  placement: roomPlacementSchema.or(z.literal("")),
+  floor: roomFloorSchema.or(z.literal("")),
   website_description: z.string().trim(),
   vc_notes: z.string().trim(),
   is_ensuite: z.boolean(),
+  ensuite_type: ensuiteTypeSchema.or(z.literal("")),
+  access: roomAccessSchema.or(z.literal("")),
   // Optional to match the serializer (`RoomSerializer.beds` is `required=False`,
   // room.py:29): a room can be saved with just a name and filled in over time
   // (GAP-024). NOTE: `website_description`/`vc_notes` above stay `z.string()`
   // (not `.optional()`) — PATCH sends `""` to clear them; `.optional()` would
   // emit `undefined`, omit the field, and silently stop clearing.
   beds: roomBedsSchema.optional(),
+  // Full-list sync: submitting the list replaces the room's amenity set;
+  // ABSENT on PATCH leaves the links untouched (so absent ≠ clear — `[]`
+  // clears, `undefined` skips).
+  attribute_links: z
+    .array(z.object({ attribute: z.number(), note: z.string().optional() }))
+    .optional(),
 });
 export type PropertyRoomWriteInput = z.infer<typeof propertyRoomWriteInputSchema>;
 
@@ -291,26 +355,16 @@ export interface PropertyFilters {
   page?: number;
 }
 
-// Minimal taxonomy rows for filter dropdowns (`GET /regions`, `/collections`).
-export const regionSchema = z.object({
-  id: z.number(),
-  country: z.number().nullable().optional(),
-  country_iso2: z.string().nullable().optional(),
-  name: z.string(),
-  slug: z.string(),
-});
-export type Region = z.infer<typeof regionSchema>;
-
-export const regionsResponseSchema = paginated(regionSchema);
-
-export const collectionSchema = z.object({
-  id: z.number(),
-  name: z.string(),
-  slug: z.string(),
-});
-export type Collection = z.infer<typeof collectionSchema>;
-
-export const collectionsResponseSchema = paginated(collectionSchema);
+// Region/collection taxonomy now lives in lib/geo (GAP-072); re-exported here
+// for intra-feature consumers that still import from properties/schemas.
+export {
+  regionSchema,
+  regionsResponseSchema,
+  collectionSchema,
+  collectionsResponseSchema,
+  type Region,
+  type Collection,
+} from "@/lib/geo/schemas";
 
 // FK-picker rows for the create-property form (`GET /property-categories`).
 // Only `id` + `name` are needed to pick; Zod strips the other serializer
@@ -345,8 +399,6 @@ export const propertyCreateInputSchema = z.object({
   region: z.number().int().min(1, { message: "properties:create.errors.region_required" }),
 });
 export type PropertyCreateInput = z.infer<typeof propertyCreateInputSchema>;
-
-export const PROPERTY_PRICE_BASES = ["gross", "net"] as const;
 
 export const rateBandSchema = z.object({
   id: z.number(),
@@ -672,8 +724,6 @@ export const propertyImageCreateInputSchema = propertyImageMetadataSchema.extend
   image: z.instanceof(File, { message: "properties:errors.image_file_required" }),
 });
 export type PropertyImageCreateInput = z.infer<typeof propertyImageCreateInputSchema>;
-
-export const PROPERTY_AVAILABILITY_DEFAULTS = ["available", "unavailable", "on_request"] as const;
 
 export const ratePlanWriteInputSchema = z
   .object({

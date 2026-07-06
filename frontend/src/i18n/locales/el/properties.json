@@ -23,6 +23,8 @@
       "slug_help": "Χρησιμοποιείται στη διεύθυνση URL. Συμπληρώνεται αυτόματα από το όνομα — μπορείτε να το αλλάξετε.",
       "category": "Κατηγορία",
       "category_placeholder": "Επιλέξτε κατηγορία",
+      "country": "Χώρα",
+      "country_placeholder": "Επιλέξτε χώρα",
       "region": "Περιοχή",
       "region_placeholder": "Επιλέξτε περιοχή"
     },
@@ -499,6 +501,7 @@
       "edit": "Επεξεργασία",
       "delete": "Διαγραφή",
       "ensuite": "Με ιδιωτικό μπάνιο",
+      "ensuite_with_type": "Με ιδιωτικό μπάνιο · {{type}}",
       "no_beds": "Δεν έχουν διαμορφωθεί κρεβάτια",
       "beds_count": {
         "double": "{{count}} διπλό",
@@ -525,11 +528,38 @@
       }
     },
     "placements": {
+      "not_set": "Δεν έχει οριστεί",
       "main_house": "Κύρια κατοικία",
       "guest_house": "Ξενώνας",
       "pool_house": "Σπίτι πισίνας",
       "annex": "Παράρτημα",
+      "cottage": "Αγροικία",
+      "bungalow": "Μπανγκαλόου",
+      "studio": "Στούντιο",
       "other": "Άλλο"
+    },
+    "floors": {
+      "unspecified": "Δεν έχει οριστεί",
+      "lower_ground": "Ημιυπόγειο",
+      "ground": "Ισόγειο",
+      "first": "Πρώτος όροφος",
+      "second": "Δεύτερος όροφος",
+      "third_plus": "Τρίτος όροφος ή ψηλότερα"
+    },
+    "groups": {
+      "label": "{{building}} · {{floor}}",
+      "unassigned": "Χωρίς καθορισμένη θέση"
+    },
+    "ensuite_types": {
+      "unknown": "Άγνωστο",
+      "shower": "Ντους",
+      "bath": "Μπανιέρα",
+      "both": "Μπανιέρα & ντους"
+    },
+    "access_types": {
+      "unspecified": "Δεν έχει καθοριστεί",
+      "inside": "Εσωτερική",
+      "outside": "Εξωτερική"
     },
     "beds": {
       "double": "Διπλό",
@@ -562,11 +592,18 @@
         "name": "Όνομα",
         "name_placeholder": "Κύριο υπνοδωμάτιο",
         "placement": "Τοποθεσία",
+        "floor": "Όροφος",
         "is_ensuite": "Με ιδιωτικό μπάνιο",
+        "ensuite_type": "Τύπος ιδιωτικού μπάνιου",
+        "access": "Πρόσβαση",
         "beds": "Κρεβάτια",
+        "amenities": "Παροχές",
+        "amenity_note_placeholder": "Σημείωση (προαιρετικό)",
         "website_description": "Περιγραφή ιστότοπου",
         "vc_notes": "Εσωτερικές σημειώσεις"
       },
+      "retired_badge": "Αποσυρμένο",
+      "placement_note_helper": "Εισηγμένη σημείωση τοποθεσίας: «{{note}}»",
       "actions": {
         "cancel": "Ακύρωση",
         "save": "Αποθήκευση",
@@ -824,12 +861,16 @@
         "post_code": "Ταχυδρομικός κώδικας",
         "locality_town": "Πόλη",
         "locality_region": "Περιοχή",
+        "listing_region": "Περιοχή καταχώρισης",
         "country": "Χώρα",
         "timezone": "Ζώνη ώρας",
         "latitude": "Γεωγραφικό πλάτος",
         "longitude": "Γεωγραφικό μήκος"
       },
       "country_placeholder": "Επιλέξτε χώρα",
+      "listing_region_placeholder": "Επιλέξτε περιοχή",
+      "listing_region_help": "Η περιοχή καταλόγου που χρησιμοποιείται στην αναζήτηση και στα φίλτρα — ξεχωριστή από την περιοχή της ταχυδρομικής διεύθυνσης παραπάνω.",
+      "region_save_failed": "Η διεύθυνση αποθηκεύτηκε, αλλά η περιοχή καταχώρισης όχι — δοκιμάστε ξανά.",
       "timezone_placeholder": "Επιλέξτε ζώνη ώρας",
       "save": "Αποθήκευση τοποθεσίας",
       "saving": "Αποθήκευση…",

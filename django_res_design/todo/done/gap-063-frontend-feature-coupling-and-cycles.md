@@ -1,5 +1,19 @@
 # GAP-063 — Frontend feature boundaries leak: cross-feature imports + schema-level cycles, no enforced module contract
 
+> **✅ RESOLVED (2026-07-05)** — six units on local main (80f5004…73b376d).
+> `eslint-plugin-boundaries` now bans feature→feature imports outside the
+> shrink-only `ALLOWED_EDGES` ratchet (`frontend/boundaries.allowlist.js`,
+> 32 → 27 pairs), with a vitest staleness guard
+> (`src/test/boundaries.test.ts`) that fails when a paid-down edge's entry
+> lingers. rate-workbench folded into `features/properties/rate-workbench/`
+> (disposition recorded in `frontend/CLAUDE.md`). All four 2-cycles named
+> below are broken: properties⇄availability (geo hooks moved home),
+> enquiries⇄quotations (read-model → `src/lib/domain/quotation.ts`),
+> contacts⇄enquiries (status enums → `src/lib/domain/statuses.ts`),
+> auth⇄owner-portal (logout-cleanup registry in `src/lib/auth/`, run on both
+> logout and expiry-401). `src/lib/domain/` is the landing zone GAP-062's
+> shared money/country schemas should join.
+
 - **Severity:** Gap (frontend architecture) — the module boundaries exist by
   convention but nothing enforces them, so they are eroding.
 - **Source:** the 2026-07-02 frontend complexity audit (cross-cutting /

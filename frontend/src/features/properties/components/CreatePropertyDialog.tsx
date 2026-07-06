@@ -21,6 +21,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CountryPicker } from "@/components/form/CountryPicker";
+import { RegionPicker } from "@/components/form/RegionPicker";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
@@ -28,7 +30,6 @@ import { fieldErrorText } from "@/lib/forms/fieldError";
 import { slugify } from "@/lib/format/slug";
 import { propertyDetailsPath } from "@/lib/routes";
 import { useCreateProperty, usePropertyCategories } from "../hooks";
-import { useRegions } from "@/features/availability/hooks";
 import { propertyCreateInputSchema, type PropertyCreateInput } from "../schemas";
 
 interface CreatePropertyDialogProps {
@@ -57,19 +58,22 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
   const regionCtrl = useController({ control: form.control, name: "region" });
 
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
+  // Country is a picker aid, not part of the create payload (the API derives
+  // location from the region) — local state, the zod schema stays untouched.
+  const [country, setCountry] = useState<number | null>(null);
   // Once the operator hand-edits the slug / display name, stop auto-deriving
   // them from the villa name so we never clobber a deliberate value.
   const [slugEdited, setSlugEdited] = useState(false);
   const [displayNameEdited, setDisplayNameEdited] = useState(false);
 
   const categories = usePropertyCategories();
-  const regions = useRegions();
   const createMutation = useCreateProperty();
 
   useEffect(() => {
     if (open) {
       form.reset(CREATE_DEFAULTS);
       setTopLevelError(null);
+      setCountry(null);
       setSlugEdited(false);
       setDisplayNameEdited(false);
     }
@@ -104,7 +108,13 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
   };
 
   const categoryOptions = categories.data?.results ?? [];
-  const regionOptions = regions.data?.results ?? [];
+
+  const handleCountryChange = (countryId: number) => {
+    setCountry(countryId);
+    // A previously-picked region from another country can no longer be right;
+    // back to the unselected sentinel so the schema re-requires a choice.
+    form.setValue("region", 0);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -191,22 +201,24 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="create-country">{t("create.fields.country")}</Label>
+            <CountryPicker
+              id="create-country"
+              value={country}
+              onChange={handleCountryChange}
+              placeholder={t("create.fields.country_placeholder")}
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="create-region">{t("create.fields.region")}</Label>
-            <Select
-              value={regionCtrl.field.value ? String(regionCtrl.field.value) : ""}
-              onValueChange={(v) => regionCtrl.field.onChange(Number(v))}
-            >
-              <SelectTrigger id="create-region" aria-label={t("create.fields.region")}>
-                <SelectValue placeholder={t("create.fields.region_placeholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {regionOptions.map((r) => (
-                  <SelectItem key={r.id} value={String(r.id)}>
-                    {r.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <RegionPicker
+              id="create-region"
+              value={regionCtrl.field.value || null}
+              onChange={(regionId) => regionCtrl.field.onChange(regionId ?? 0)}
+              countryId={country}
+              placeholder={t("create.fields.region_placeholder")}
+            />
             {form.formState.errors.region ? (
               <p className="text-destructive text-sm" role="alert">
                 {fieldErrorText(t, form.formState.errors.region.message)}

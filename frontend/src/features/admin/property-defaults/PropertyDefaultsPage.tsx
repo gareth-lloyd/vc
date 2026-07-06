@@ -32,7 +32,7 @@ import {
   PROPERTY_AVAILABILITY_DEFAULTS,
   PROPERTY_CHANGEOVER_DAYS,
   PROPERTY_PRICE_BASES,
-} from "@/features/properties/schemas";
+} from "@/lib/domain/propertyEnums";
 import { usePropertyDefaults, useUpdatePropertyDefaults } from "./hooks";
 import {
   PROPERTY_DEFAULTS_CALC_TYPES,

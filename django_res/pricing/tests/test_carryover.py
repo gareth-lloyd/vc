@@ -309,6 +309,66 @@ def test_materialise_persists_single_day_sliver(property_: Property, gbp: Curren
 
 
 @pytest.mark.django_db
+def test_materialise_keeps_wider_party_remainder_on_collision(
+    property_: Property, gbp: Currency
+) -> None:
+    """BUG-016: when a lower-pk narrow band (party 1-4) claims a collided day,
+    the wider higher-pk band (party 1-8) must keep serving party 5-8 on that
+    day — the projection prices it, so the materialised twin must too. The old
+    claim loop gated on party overlap but subtracted only dates, silently
+    widening the winner's party claim to the loser's whole bracket."""
+    plan = RatePlan.objects.create(
+        property=property_,
+        name="2024",
+        currency=gbp,
+        effective_from=date(2024, 1, 1),
+        effective_to=date(2024, 12, 31),
+    )
+    # Lower pk, party 1-4, spans Feb 29: maps to [25 Feb - 1 Mar] 2025.
+    RateBand.objects.create(
+        period=RatePeriod.objects.create(
+            plan=plan, name="Late Feb", date_from=date(2024, 2, 25), date_to=date(2024, 2, 29)
+        ),
+        min_party=1,
+        max_party=4,
+        nightly=Decimal("100.00"),
+    )
+    # Higher pk, party 1-8, [1 Mar - 7 Mar] -> same dates 2025; collides on 1 Mar.
+    RateBand.objects.create(
+        period=RatePeriod.objects.create(
+            plan=plan, name="Early March", date_from=date(2024, 3, 1), date_to=date(2024, 3, 7)
+        ),
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("150.00"),
+    )
+
+    ctx = RateProjectionService.project(
+        property=property_, date_from=date(2025, 2, 1), currency=gbp, date_map=keep_calendar_date
+    )
+    assert ctx is not None
+    new_plan = RateCarryoverService.materialise(
+        property_, target_year=2025, currency=gbp, date_map=keep_calendar_date
+    )
+
+    # The contested day keeps a party-5-8 fragment of the wider band.
+    collided = RatePeriod.objects.get(plan=new_plan, date_from=date(2025, 3, 1))
+    assert collided.date_to == date(2025, 3, 1)
+    assert sorted(
+        collided.bands.values_list("min_party", "max_party", "nightly"),
+    ) == [(1, 4, Decimal("100.00")), (5, 8, Decimal("150.00"))]
+
+    # And a party-6 guest on that night prices identically in both paths.
+    mat_periods = list(RatePeriod.objects.filter(plan=new_plan, is_active=True))
+    mat_rules = {p.pk: list(p.bands.all()) for p in mat_periods}
+    projected = pick_band_for_night(ctx.periods, ctx.bands_by_period, date(2025, 3, 1), party=6)
+    materialised = pick_band_for_night(mat_periods, mat_rules, date(2025, 3, 1), party=6)
+    assert isinstance(projected, Picked)
+    assert isinstance(materialised, Picked)
+    assert rule_nightly(materialised.rule) == rule_nightly(projected.rule) == Decimal("150.00")
+
+
+@pytest.mark.django_db
 def test_materialise_matches_projection_night_by_night(property_: Property, gbp: Currency) -> None:
     """materialise's contract: the rows it writes price every night exactly as
     the in-memory projection would have. Collisions resolve to the lowest

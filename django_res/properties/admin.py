@@ -25,6 +25,7 @@ from properties.models import (
     PropertySettings,
     Region,
     Room,
+    RoomAttribute,
     RoomBeds,
 )
 
@@ -60,6 +61,18 @@ class PropertyDefaultsAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request: HttpRequest, obj: object = None) -> bool:
         return False
+
+
+@admin.register(RoomAttribute)
+class RoomAttributeAdmin(admin.ModelAdmin):
+    """Curation surface for the room-amenity catalog (GAP-064) — adding an
+    attribute is a data row here, not a code change."""
+
+    list_display = ("name", "slug", "is_active", "sort_order", "implies_property_feature")
+    list_select_related = ("implies_property_feature",)
+    list_filter = ("is_active",)
+    search_fields = ("name", "slug")
+    prepopulated_fields = {"slug": ("name",)}
 
 
 @admin.register(PropertyCalendarFeed)

@@ -1,12 +1,13 @@
 # GAP-068 — Seed group finance/settings defaults + new-villa starter set
 
-> **⚠️ SUPERSEDED by [GAP-070](gap-070-remove-groups-global-property-defaults.md)
-> (2026-07-03).** GAP-070 drops property groups and runtime inheritance, so there is
-> no `GroupFinance`/`GroupSettings` left to seed. The confirmed default **values** here
-> (deposit 30% / SD fixed / commission % / 16:30 / 10:30) carry forward as the seed for
-> GAP-070's global `PropertyDefaults` singleton; the included-features starter-set half
-> belongs with **GAP-067**. Do not build this as written — retire it when GAP-070 lands.
-> The "Villa Groups stay" context below is the stance GAP-070 reverses.
+> **❌ DROPPED (2026-07-06) — superseded by
+> [GAP-070](done/gap-070-remove-groups-global-property-defaults.md), now landed
+> (local `main` unpushed).** GAP-070 dropped property groups and runtime inheritance,
+> so there is no `GroupFinance`/`GroupSettings` left to seed. The confirmed default
+> **values** here (deposit 30% / SD fixed / commission % / 16:30 / 10:30) carried
+> forward as the seed for GAP-070's global `PropertyDefaults` singleton; the
+> included-features starter-set half belongs with **GAP-067**. Never built as written.
+> The "Villa Groups stay" context below is the stance GAP-070 reversed.
 
 - **Severity:** Build (seeding) — carries the group-defaults half of the
   superseded **Q-021**

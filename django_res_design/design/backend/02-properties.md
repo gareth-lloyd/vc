@@ -18,7 +18,8 @@ properties/
 │   ├── property.py     # Property, PropertyCategory
 │   ├── location.py     # PropertyLocation
 │   ├── capacity.py     # PropertyCapacity
-│   ├── settings.py     # PropertySettings, PropertyGroup, GroupSettings
+│   ├── settings.py     # PropertySettings
+│   ├── defaults.py     # PropertyDefaults (global creation-defaults singleton)
 │   ├── descriptions.py # PropertyDescription
 │   ├── rooms.py        # Room, RoomBeds
 │   ├── images.py       # PropertyImage
@@ -65,11 +66,6 @@ Editable lookup (villa, apartment, chalet, lodge…).
 - `slug` — SlugField
 - `sort_order` — int
 
-### `PropertyGroup(AuditedModel)`
-Organisational grouping (e.g. a brand sub-portfolio). Lifecycle: `is_active` boolean. Hard-deletion is blocked by `PROTECT` FK from `Property`.
-- `name` — CharField, unique
-- `description` — TextField(blank=True)
-
 ### `Property(AuditedModel)`
 Thin aggregate root. Lifecycle is the explicit `status` enum below — no soft delete. Retiring a property uses `status=ARCHIVED`; reviewing the catalogue uses `?status=` filtering, never a hidden manager.
 - `name` — CharField
@@ -79,14 +75,13 @@ Thin aggregate root. Lifecycle is the explicit `status` enum below — no soft d
 - `status` — `TextChoices` (`DRAFT`, `ACTIVE`, `ARCHIVED`) — three values only. `DRAFT` = work-in-progress, hidden from publish targets and search. `ACTIVE` = published, bookable, fanned out to integrations. `ARCHIVED` = retired (decommissioned, end-of-contract, sold). The legacy `live_offline` row collapses into `ARCHIVED`; operators reach the legacy "temporarily not bookable" effect by setting `PropertySettings.availability_default = UNAVAILABLE`, which is a separate axis. See reconciliation issue #23.
 - `channel` — `TextChoices` (`DIRECT`, `AGENT`, `WHITE_LABEL`, `INTERNAL`)
 - `category` — FK PropertyCategory PROTECT
-- `group` — FK PropertyGroup PROTECT
 - `region` — FK Region PROTECT
 - `features` — M2M to `Feature` (no through; plain)
 - `collections` — M2M to `Collection` through `CollectionMembership`
 - `nearby_places` — reverse via `PropertyNearbyPlace`
 - `legacy_id` — nullable, indexed
 
-Indexes: `slug` (unique), `status`, `(region, status)`, `group`.
+Indexes: `slug` (unique), `status`, `(region, status)`.
 
 Default ordering: `["name", "id"]`. The `id` tiebreaker gives a **total** order so page-number pagination over `GET /properties` never duplicates or skips rows when two properties share a `name` — the quote builder pages through this listing (see `workflows/08-quotation/construction.md`).
 
@@ -105,7 +100,7 @@ Owned by `Property` (CASCADE OneToOne) — no independent lifecycle. Hard-delete
 - `country` — FK Country PROTECT
 - `latitude` — DecimalField(9, 6, null=True, blank=True), validated to ±90
 - `longitude` — DecimalField(9, 6, null=True, blank=True), validated to ±180
-- `timezone` — CharField(max_length=64, default `"UTC"`), IANA name validated by `validate_iana_timezone`. A geographic fact of the *place* (follows `country`), not a property/group policy — hence it lives here, not on `PropertySettings`. See [FG-008](../../todo/done/fg-008-property-timezone.md).
+- `timezone` — CharField(max_length=64, default `"UTC"`), IANA name validated by `validate_iana_timezone`. A geographic fact of the *place* (follows `country`), not a configurable property policy — hence it lives here, not on `PropertySettings`. See [FG-008](../../todo/done/fg-008-property-timezone.md).
 
 Replaces lat/lng as `nvarchar(500)` in legacy.
 
@@ -125,12 +120,12 @@ Headline customer-facing counts, kept **independent** of the `Room` list (`Prope
 `min_guests` on `/properties` maps to `capacity__guests__gte`, so a property with **no capacity row or `guests = 0` is excluded from quote search**. The exclusion is intentional but no longer silent: the quote builder runs a lenient name search and surfaces a "capacity not set" hint linking to the property, and the capacity editor warns when `guests` is 0. The single source of that rule on the frontend is `isCapacityUnset()` in `features/properties/schemas.ts`.
 
 ### `PropertySettings(AuditedModel)`
-Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent. **Null means inherit from group.** Replaces the legacy `IsDefaultSetting*` boolean salad.
+Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent. Replaces the legacy `IsDefaultSetting*` boolean salad. Rows are **materialised from the global `PropertyDefaults` singleton at creation** (`properties/services/defaults.py::snapshot_defaults`); after the snapshot each field is a plain, independently-editable value. **`NULL` means genuinely unset** (no longer "inherit") — consumers apply a hardcoded final floor where one exists (`hold_duration_hours`→48, `changeover_day`→`ANY`, `prices_entered_as`→`GROSS`, `min_nights_rental`→1, `availability_default`→`AVAILABLE`, `bookings_require_pre_approval`→`False`; `currency` / `check_in_time` / `check_out_time` stay nullable with no floor).
 
 - `property` — OneToOne CASCADE primary_key
 - `availability_default` — TextChoices (`AVAILABLE`, `UNAVAILABLE`, `ON_REQUEST`), null=True
 - `bookings_require_pre_approval` — BooleanField(null=True)
-- `requires_enquiry_first` — BooleanField(null=True) — when True the property is listed and quotable but the public site hides direct-book affordances; guests are routed through enquiry intake instead. Captures the legacy "Available – Enquire" status (code 20) without giving up the 3-value `Property.status` enum. Null = inherit from group.
+- `requires_enquiry_first` — BooleanField(null=True) — when True the property is listed and quotable but the public site hides direct-book affordances; guests are routed through enquiry intake instead. Captures the legacy "Available – Enquire" status (code 20) without giving up the 3-value `Property.status` enum.
 - `currency` — FK pricing.Currency PROTECT, null=True
 - `check_in_time` — TimeField(null=True, blank=True)
 - `check_out_time` — TimeField(null=True, blank=True)
@@ -138,23 +133,16 @@ Owned by `Property` (CASCADE OneToOne). Hard-deleted with its parent. **Null mea
 - `min_nights_rental` — PositiveSmallInteger(null=True)
 - `min_nights_rental_note` — TextField(blank=True)
 - `prices_entered_as` — TextChoices (`GROSS`, `NET`), null=True
-- `hold_duration_hours` — PositiveSmallInteger(null=True) — default lifespan (in hours) of a `BookingHold` created without an explicit `expires_at`. Typical settings: 48 for strict-policy villas (most owners), longer for trusted owners who are relaxed about hold windows. Inherits from `GroupSettings`; resolved by `effective("hold_duration_hours")` at hold-creation time inside `HoldService`. Agents may still override `expires_at` directly on individual `BookingHold` rows for one-off relaxations. See decisions row "Hold duration is per-villa default + per-hold override" in `10-decisions.md`.
+- `hold_duration_hours` — PositiveSmallInteger(null=True) — default lifespan (in hours) of a `BookingHold` created without an explicit `expires_at`. Typical settings: 48 for strict-policy villas (most owners), longer for trusted owners who are relaxed about hold windows. `HoldService` resolves it at hold-creation time, falling back to the hardcoded 48-hour floor when `NULL`. Agents may still override `expires_at` directly on individual `BookingHold` rows for one-off relaxations. See decisions row "Hold duration is per-villa default + per-hold override" in `10-decisions.md`.
 
-Resolver lives on the model:
+Consumers that need a resolved value for a `NULL` column apply the hardcoded floor listed in the section intro at the point of use (e.g. `HoldService` for `hold_duration_hours`, `PricingEngine` for `prices_entered_as`). There is no model-level `effective()` resolver — the field's own value is the value, and `NULL` means genuinely unset.
 
-```python
-def effective(self, attr: str):
-    own = getattr(self, attr)
-    if own is not None:
-        return own
-    return getattr(self.property.group.settings, attr)
-```
+### `PropertyDefaults(AuditedModel)` — global creation-defaults singleton
+Lives in `models/defaults.py`. One row keyed by `pk=1` (`PropertyDefaults.get_solo()` creates it on first access — the same pattern as `core.SystemSettings`). Its field defaults are the seeded starter set; a fresh `get_solo()` and the seed migration agree.
 
-### `GroupSettings`
-Same fields as `PropertySettings` but **non-nullable with defaults** — the group is the inheritance floor and must provide a fallback for every inheritable field.
-- `group` — OneToOne PropertyGroup CASCADE primary_key
+At property creation (`PropertyViewSet.create` and `PropertyLifecycleService.duplicate`, both via `snapshot_defaults`) the singleton's values are copied **field-by-field** into the new property's concrete `PropertySettings` / `PropertyFinance` rows. After the snapshot the rows are independent — **editing a default never re-flows into existing properties**. It carries the settings-side columns above (minus `min_nights_rental_note`'s per-property note nuance) **plus** the finance-*policy* columns (see `03-finance-config.md`); it deliberately excludes per-owner finance data (`contact`, `bank_*`, `tax_number`), since a global default bank account stamped onto every new villa would be wrong.
 
-Created automatically with the `PropertyGroup` (`post_save` signal) and lives for the group's lifetime. Operator-exposed at `GET/PATCH /property-groups/{id}/settings` (no `POST`/`DELETE` — the row is bound to the group). See reconciliation issue #37.
+Operator-exposed at `GET/PATCH /property-defaults` (`IsReservationsWriter`; no `POST`/`DELETE` — the singleton always exists).
 
 ## Descriptions
 

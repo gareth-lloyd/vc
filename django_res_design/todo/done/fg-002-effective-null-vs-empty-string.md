@@ -1,5 +1,12 @@
 # FG-002 — `effective()` conflates `""` and `NULL` as "inherit"
 
+> **❌ DROPPED (2026-07-06) — mooted by
+> [GAP-070](done/gap-070-remove-groups-global-property-defaults.md), now landed
+> (local `main` unpushed).** GAP-070 deleted `effective()` (and the whole group
+> inheritance chain) outright, so there is no longer any code that conflates `""`
+> with `NULL` as "inherit". `NULL` now means *genuinely unset* and resolves to a
+> hardcoded floor / `_POLICY_FALLBACKS`; `""` is just an empty string. Nothing to fix.
+
 - **Severity:** 🟡 Smell — demoted from 🟠 Footgun by the 2026-05-27 critique
   (since cut; low real-world risk today: no inheritable field currently relies
   on distinguishing `""` from inherit).

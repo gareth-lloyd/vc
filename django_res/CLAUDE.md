@@ -89,13 +89,7 @@ rename) in `data_migration/loaders/`; one legacy row →
 
 When a legacy FK can't resolve, fall back to a sentinel rather than dropping
 the row — helpers in `data_migration/loaders/sentinels.py`
-(`unknown_country()`, `unknown_region()`, `unknown_group()`).
-
-### Inheritance — call `effective(field)`
-
-`PropertySettings.effective(attr)` / `PropertyFinance.effective(field)` are
-the canonical property→group resolvers. Don't hand-roll the chain — wrap them
-(see `_resolve_property_currency` in `data_migration/loaders/pricing.py`).
+(`unknown_country()`, `unknown_region()`).
 
 ### FK rewrite + hard-delete merge
 

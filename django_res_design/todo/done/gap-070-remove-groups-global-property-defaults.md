@@ -1,5 +1,34 @@
 # GAP-070 — Remove property groups + runtime inheritance; global defaults applied at creation
 
+> **✅ RESOLVED (2026-07-06, local `main` unpushed)** — shipped on `feat/gap-070`
+> in 9 units. **Problem:** `PropertyGroup` fused organisational grouping onto
+> per-group defaults inherited at runtime via `effective()` — unrealised value
+> (no operator UI, legacy only ever had a single global `VillaConfigPropertyDefault`)
+> at real architectural cost; owner twice asked to drop Villa Groups.
+> **Fix:** a global `PropertyDefaults` singleton (pk=1, `get_solo()`, mirrors
+> `core.SystemSettings`; `GET/PATCH /property-defaults`, IsReservationsWriter)
+> **snapshotted** field-by-field into concrete `PropertySettings`/`PropertyFinance`
+> at property creation + duplicate (`properties/services/defaults.py::snapshot_defaults`);
+> a freeze migration (`0027`) resolved every existing property's old `effective()`
+> outcome into concrete rows, then `PropertyGroup`/`GroupSettings`/`GroupFinance` +
+> `Property.group` + both `effective()` impls were deleted. NULL now means
+> *genuinely unset*: settings consumers use hardcoded floors (holds 48h, changeover
+> ANY, prices GROSS, min-nights 1, pre-approval False), finance NULLs resolve via
+> `_POLICY_FALLBACKS` (frozen pre-GAP-070 GroupFinance defaults, deliberately ≠
+> PropertyDefaults values). Cutover parity: new `property_defaults` loader (since-skips
+> with a warning) + owner-contact finance fallback (`PropertyFinanceLoader`) preserve
+> today's contact-default outcome. FE: groups removed from CreatePropertyDialog/schemas,
+> new admin `/admin/property-defaults` editor. Notable discovery: legacy changeover
+> columns store `ChangeOverDays.Code` (-1/0=Sun/1-6), not an Id — `_DAY_MAP` re-keyed.
+> **Commits:** `8cb4f33` (singleton+API) · `74a5556` (creation snapshot) · `f05aed4`
+> (freeze `0027`) · `65568d5` (consumer simplification) · `6adffa1`/`1a40e21` (drop
+> groups) · `5338d1e` (cutover parity) · `fe97bdd` (FE remove groups) · `31ad760`
+> (FE defaults editor) + docs close-out. **Subsumes GAP-068** (its default *values*
+> seed the singleton; its features-starter half → GAP-067); **moots FG-002** (deletes
+> `effective()`); **reverses FG-003**. Deferred: lightweight organisational tag to
+> replace the group facet (separate ticket, if a need resurfaces); NOT NULL column
+> tightening; SettingsTab "unset" UX polish (product call for Nick).
+
 - **Severity:** Gap / architecture change (model + migration + FE + docs). Reverses
   the "groups stay" stance of [GAP-068](gap-068-seed-group-finance-settings-defaults.md)
   and [Q-021](done/q-021-defaults-and-feature-taxonomy.md); **subsumes GAP-068**.

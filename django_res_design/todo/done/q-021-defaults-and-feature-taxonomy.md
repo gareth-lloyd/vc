@@ -7,12 +7,12 @@
 > property features from room attributes via a data-driven bridge); the
 > group-defaults + new-villa seeding half (deposit 30%, security deposit,
 > check-in/out times, starter included-features, housekeeping-frequency
-> vocabulary) → [GAP-068](../gap-068-seed-group-finance-settings-defaults.md).
+> vocabulary) → [GAP-068](gap-068-seed-group-finance-settings-defaults.md).
 > The "Villa Groups stay" decision below is preserved and carried into GAP-068.
 > No work remains here.
 >
 > **Note (2026-07-03):** the "Villa Groups stay" decision is later **reversed** by
-> [GAP-070](../gap-070-remove-groups-global-property-defaults.md) (drop groups +
+> [GAP-070](gap-070-remove-groups-global-property-defaults.md) (drop groups +
 > inheritance; global `PropertyDefaults` singleton applied at creation), which
 > supersedes GAP-068. The confirmed default values still carry into GAP-070's seed.
 

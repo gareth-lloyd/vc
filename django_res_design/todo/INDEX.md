@@ -15,7 +15,7 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-03, recounted from files): **118 done** (113 resolved + 5 dropped), **43 open**
+Scoreboard (2026-07-06, recounted from files): **121 done** (114 resolved + 7 dropped), **40 open**
 (incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
@@ -29,6 +29,10 @@ GAP-070 (remove property groups) already landed on this branch. GAP-071 (no manu
 security-deposit creation) from the `/bookings/383/payments` empty-state
 investigation. INV-006 harvests the still-open questions surfaced when the legacy
 workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` reorg)._
+
+_2026-07-06: **GAP-070** (remove property groups) landed on local `main` (unpushed),
+carrying **GAP-068** (dropped, its default values seed the new `PropertyDefaults`
+singleton) and **FG-002** (dropped, `effective()` deleted) with it._
 
 ---
 
@@ -57,7 +61,7 @@ workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` re
 
 | Id | Title | Status |
 |---|---|---|
-| [FG-002](fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ⏸ superseded-pending **GAP-070** (deletes `effective()` entirely) — demoted from footgun (low real-world risk); drop when GAP-070 lands |
+| [FG-002](done/fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ❌ dropped (2026-07-06) — mooted by **GAP-070** (deletes `effective()` entirely; `NULL` now = genuinely unset, resolves to a floor/`_POLICY_FALLBACKS`). Never a real-world risk |
 | [SMELL-001](smell-001-archived-vs-status.md) | `archived_at` is a second status | ⬜ |
 | [SMELL-008](smell-008-service-layer-contract-single-island.md) | Service-layer contract (perms / `log_operation` / idempotency) lives in one file | ⬜ |
 | [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |
@@ -145,9 +149,9 @@ workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` re
 | [GAP-065](gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ⬜ supersedes Q-019 (floor); data-loss bug on cutover; needs A2 owner steer (floor ladder) |
 | [GAP-066](gap-066-room-bed-size.md) | Bed **size** fidelity (King/Super-king/Emperor) + bed-type vocabulary | ⬜ surfaced from the legacy exhibit form + crammed free-text; needs owner steer (advertised or internal?) |
 | [GAP-067](gap-067-room-feature-taxonomy-cleanup.md) | Feature taxonomy cleanup + derive property features from room attributes (data-driven bridge) | ⬜ supersedes the taxonomy half of Q-021; de-dupe the ~300-row `VillaFeatures` list (5× aircon, junk rows) with link-remap |
-| [GAP-068](gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ⏸ superseded-pending **GAP-070** (which drops groups) — its defaults set/values carry into the global `PropertyDefaults` singleton, its features-starter half → GAP-067; drop when GAP-070 lands |
+| [GAP-068](done/gap-068-seed-group-finance-settings-defaults.md) | Seed group finance/settings defaults + new-villa starter set | ❌ dropped (2026-07-06) — superseded by **GAP-070** (dropped groups); its default **values** seed the global `PropertyDefaults` singleton, its features-starter half → GAP-067 |
 | [GAP-069](done/gap-069-workbench-carry-forward-affordance.md) | Rate-workbench carry-forward affordance — promote a projected year into editable rows | ✅ resolved (2026-07-03, local main unpushed) — FE-only; "Carry rates forward" button in the empty-year state (writer-gated, currency-code + non-past-year gated) → `CarryForwardDialog` (uplift %) → live `…:carry-forward` endpoint; on success new plan selected + year fills in place. No backend change. `f524142`/`e303050`/`62f5f14` |
-| [GAP-070](gap-070-remove-groups-global-property-defaults.md) | Remove property groups + runtime inheritance; global `PropertyDefaults` singleton + editor UI, snapshot at creation | ⬜ owner-requested (drop Villa Groups); **subsumes GAP-068**, moots FG-002, reverses FG-003; deletes `PropertyGroup`/`Group*Settings`/`effective()`; freeze-then-drop migration |
+| [GAP-070](done/gap-070-remove-groups-global-property-defaults.md) | Remove property groups + runtime inheritance; global `PropertyDefaults` singleton + editor UI, snapshot at creation | ✅ resolved (2026-07-06, local main unpushed) — 9 units on `feat/gap-070`: `PropertyDefaults` singleton (`get_solo`, `/property-defaults`) snapshotted into concrete `PropertySettings`/`PropertyFinance` at creation, freeze migration `0027`, `PropertyGroup`/`Group*Settings`/`effective()` deleted (NULL now = genuinely unset → floor/`_POLICY_FALLBACKS`), cutover parity loader + owner-contact finance fallback, FE groups removed + `/admin/property-defaults` editor. **Subsumes GAP-068**, mooted FG-002, reversed FG-003 |
 | [GAP-071](gap-071-manual-security-deposit-creation.md) | No way to create a security deposit — auto-creation at booking confirmation is the only path; empty state is a dead end | ⬜ from 2026-07-03 `/bookings/383/payments` investigation (follows `c9e5fac` 204 fix); needs new `SecurityDepositService.create_manual` + POST endpoint + FE empty-state action; 4 open product decisions |
 
 ## Open product questions

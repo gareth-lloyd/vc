@@ -1,9 +1,10 @@
 > **❌ DROPPED (2026-06-15)** — Problem: effective() was reported to crash when property.group is null. Fix: Dropped: Property.group is non-nullable, so the null case cannot occur.
 >
-> **Note (2026-07-03):** this ticket's whole premise — that `Property.group` is a
-> permanent non-nullable FK — is reversed by
-> [GAP-070](../gap-070-remove-groups-global-property-defaults.md), which deletes
-> `Property.group` and `effective()` outright. Kept in `done/` for history.
+> **Note (2026-07-06):** this ticket's whole premise — that `Property.group` is a
+> permanent non-nullable FK — was reversed by
+> [GAP-070](gap-070-remove-groups-global-property-defaults.md), now landed (local
+> `main` unpushed), which deleted `Property.group` and `effective()` outright.
+> Kept in `done/` for history.
 >
 > _Original ticket preserved below for context._
 
@@ -52,5 +53,5 @@ option 2 if not.
 
 ## Dependencies
 
-May fold into [FG-002](../fg-002-effective-null-vs-empty-string.md) since
+May fold into [FG-002](fg-002-effective-null-vs-empty-string.md) since
 both touch the same resolver — consider doing them together.

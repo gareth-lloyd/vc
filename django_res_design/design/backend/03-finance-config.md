@@ -5,19 +5,19 @@
 > [`../data-model-overview.md`](../data-model-overview.md) + the code in
 > `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
 
-Models the per-property and per-group financial configuration that the legacy `VillaFinance` god object embedded inline on `VillaMaster`. Lives inside the `properties` app under `models/finance.py`.
+Models the per-property financial configuration that the legacy `VillaFinance` god object embedded inline on `VillaMaster`. Lives inside the `properties` app under `models/finance.py`.
 
 ## Approach
 
 - One flat model — `PropertyFinance` — OneToOne with `Property`. All fields (commission, tax, bank account, payment schedule, security-deposit policy) sit directly on it as nullable columns.
-- One mirror — `GroupFinance` — OneToOne with `PropertyGroup`. Same field set but **non-nullable with sensible defaults**: the group is the floor.
-- **Inheritance via null fields**: leave a value `NULL` on the property-level model to fall back to the group's value. The `effective_*()` resolvers on `PropertyFinance` do the merge.
+- Rows are **materialised from the global `PropertyDefaults` singleton at creation** (`properties/services/defaults.py::snapshot_defaults`) — the finance-*policy* columns only; per-owner data (`contact`, `bank_*`, `tax_number`) has no global default and stays blank until the operator fills it in.
+- **`NULL` means genuinely unset** (no longer "inherit from a group"): a `NULL` policy column resolves to the frozen pre-GAP-070 legacy floor in the `_POLICY_FALLBACKS` dict (`models/finance.py`), applied by `PropertyFinance._policy(field)`. The `effective_*()` resolvers on `PropertyFinance` build the per-concern policy dicts on top of `_policy`. After freeze migration `0027` real rows carry concrete values; the fallback only covers rows created outside `snapshot_defaults` (factories, lazy `get_or_create`) where a column can still be `NULL`.
 
-Reconciliation note: an earlier draft split `PropertyFinance` into five OneToOne children (`Commission`, `TaxPolicy`, `BankAccount`, `PaymentSchedule`, `SecurityDepositPolicy`) plus five `Group*` mirrors. That split was justified solely by anticipated per-concern permissions (e.g. `can_view_bank_account` separate from `can_view_commission`). MVP staff roles (`ADMIN` / `RESERVATIONS` / `ACCOUNTS` / `VIEWER` per `01-accounts.md` and reconciliation issue #9) gate the finance form as a whole, not individual sub-concerns. The 5+5 split has been collapsed to 1+1. See reconciliation issue #36.
+Reconciliation note: an earlier draft split `PropertyFinance` into five OneToOne children (`Commission`, `TaxPolicy`, `BankAccount`, `PaymentSchedule`, `SecurityDepositPolicy`). That split was justified solely by anticipated per-concern permissions (e.g. `can_view_bank_account` separate from `can_view_commission`). MVP staff roles (`ADMIN` / `RESERVATIONS` / `ACCOUNTS` / `VIEWER` per `01-accounts.md` and reconciliation issue #9) gate the finance form as a whole, not individual sub-concerns. The 5+5 split has been collapsed to 1+1. See reconciliation issue #36.
 
 ## `PropertyFinance(AuditedModel)`
 
-OneToOne with `Property`. All operator-editable fields are nullable; `NULL` means "inherit from `GroupFinance`".
+OneToOne with `Property`. All operator-editable policy fields are nullable; `NULL` means *genuinely unset* and resolves to the frozen `_POLICY_FALLBACKS` floor via `_policy(field)`.
 
 ### Anchor
 - `property` — OneToOne Property CASCADE primary_key
@@ -36,7 +36,7 @@ OneToOne with `Property`. All operator-editable fields are nullable; `NULL` mean
 - `tax_is_exempt` — BooleanField(null=True)
 - `tax_percentage` — DecimalField(5, 2, null=True, blank=True)  # e.g. 20.00 = 20%
 
-`null` `tax_is_exempt` and `null` `tax_percentage` → inherit from `GroupFinance` / country default.
+`null` `tax_is_exempt` and `null` `tax_percentage` → the `_POLICY_FALLBACKS` floor (`is_exempt=False`, `percentage=0`).
 
 ### Bank account
 - `bank_account_name` — CharField(blank=True)
@@ -77,61 +77,50 @@ Cancellation refund mechanics. `workflows/09-booking/booking-cancellation.md` an
 - `cancellation_window_days` — PositiveSmallInteger(null=True, blank=True) — number of days before arrival inside which the fee applies. Cancellations earlier than this window may waive the fee entirely (operator-configurable via a future `pre_window_fee_percent` if needed; out of scope for v1, which uses a single window)
 - `cancellation_notes` — TextField(blank=True) — operator-facing free text the API exposes for display alongside the policy
 
-`null` on either fee component = "inherit from `GroupFinance`". Both null at every level = no fee (full refund). Currency is read from the booking, not duplicated here.
+`null` on either fee component resolves to the `_POLICY_FALLBACKS` floor (`0` for both fee components and the window) = no fee (full refund). Currency is read from the booking, not duplicated here.
 
-## `GroupFinance(AuditedModel)`
+## Global finance-policy defaults
 
-OneToOne with `PropertyGroup`. Same fields as `PropertyFinance`, **non-nullable with sensible defaults**. The group is the floor — every inheritable concern must resolve to a value at the group level.
+There is no per-group finance mirror. New properties are seeded from the global `PropertyDefaults` singleton (`properties/models/defaults.py`, exposed at `GET/PATCH /property-defaults`, `IsReservationsWriter`), which carries the finance-*policy* columns (`commission_*`, `tax_*`, `deposit_*` / `interim_*` / `days_*`, `security_deposit_*`, `cancellation_*`) but **not** the per-owner `bank_*` / `contact` / `tax_number` block — a global default payout account would be wrong. `snapshot_defaults` copies those policy columns into the concrete `PropertyFinance` row at property creation; after the snapshot each field is independently editable and changing a default never re-flows into existing properties. See `02-properties.md` "`PropertyDefaults`".
 
-- `group` — OneToOne PropertyGroup CASCADE primary_key
-- All `commission_*`, `tax_*`, `bank_*`, `deposit_*` / `interim_*` / `days_*` (payment-schedule), `security_deposit_*`, and `cancellation_*` fields above, but required (with TextChoices defaults and 0 / empty-string defaults for amount / note fields where domain-sensible). The cancellation policy in particular must resolve to a value at group level — a portfolio with no group-level cancellation policy effectively offers full refunds, which should be a deliberate choice.
-
-The `bank_account_*` block is the group's default payout account — overridden per property when a sub-portfolio uses a different one.
-
-`GroupFinance` rows are created automatically with the `PropertyGroup` (`post_save` signal) and live for the group's lifetime. The API exposes them at `/property-groups/{id}/finance` (read/patch only; no POST/DELETE — see reconciliation issue #38).
+Note the frozen floor (`_POLICY_FALLBACKS`) is **deliberately not identical** to the `PropertyDefaults` starter values — the singleton is the operator-editable seed for *new* properties (e.g. `security_deposit_required=True`, `deposit_amount=30`), while `_POLICY_FALLBACKS` is the behaviour-preserving pre-GAP-070 legacy floor for a `NULL` on a row created outside `snapshot_defaults` (e.g. `security_deposit_required=False`, `deposit_amount=30`).
 
 ## Resolver
 
-On `PropertyFinance`:
+`PropertyFinance` reads its own fields, falling back to `_POLICY_FALLBACKS` when a column is `NULL` (or `""` for a raw-written choice column):
 
 ```python
+def _policy(self, field: str):
+    own = getattr(self, field)
+    if own is not None and own != "":
+        return own
+    return _POLICY_FALLBACKS[field]
+
 def effective_commission(self) -> dict:
-    """Returns {calculation_type, amount, note} merged from property → group."""
+    """Returns {calculation_type, amount, note} from own fields + floor."""
     return {
-        "calculation_type": self.commission_calculation_type
-            or self.property.group.finance.commission_calculation_type,
-        "amount": self.commission_amount
-            if self.commission_amount is not None
-            else self.property.group.finance.commission_amount,
-        "note": self.commission_note or self.property.group.finance.commission_note,
+        "calculation_type": self._policy("commission_calculation_type"),
+        "amount": self._policy("commission_amount"),
+        "note": self.commission_note,
     }
 
 def effective_tax_policy(self) -> dict: ...
 def effective_payment_schedule(self) -> dict: ...
 def effective_security_deposit_policy(self) -> dict: ...
-def effective_bank_account(self) -> dict: ...
+def effective_bank_account(self) -> dict: ...       # own fields, no floor
+def effective_cancellation_policy(self) -> dict: ...
 ```
 
-Generic helper:
-
-```python
-def effective(self, field: str):
-    own = getattr(self, field)
-    if own is not None and own != "":
-        return own
-    return getattr(self.property.group.finance, field)
-```
-
-Pricing engine and booking flow call resolvers; nothing reads `getattr(finance, 'commission_amount')` directly.
+The `effective_*()` builder names are kept (payments / reservations / pricing call them, and the settings endpoint's GAP-035 rate-entry `commission` / `tax` blocks defer to `effective_commission()` / `effective_tax_policy()`); only their semantics changed — own-field + `_POLICY_FALLBACKS` instead of a property→group merge. Pricing engine and booking flow call the resolvers; nothing reads `getattr(finance, 'commission_amount')` directly.
 
 ## Lifecycle and audit history
 
 Finance configuration is "current state", not a transactional log. Edits update the row in place.
 
-- **No soft delete.** Per `00-conventions.md`, `PropertyFinance` and `GroupFinance` inherit from `AuditedModel` only. There is no `deleted_at` column, no hidden manager.
-- **Hard delete cascades** from `Property` / `PropertyGroup` to the owning finance row when the parent is hard-deleted. ARCHIVED properties keep their finance row intact so historical reporting still resolves them.
+- **No soft delete.** Per `00-conventions.md`, `PropertyFinance` inherits from `AuditedModel` only. There is no `deleted_at` column, no hidden manager.
+- **Hard delete cascades** from `Property` to the owning finance row when the parent is hard-deleted. ARCHIVED properties keep their finance row intact so historical reporting still resolves them.
 - **Financial history reconstruction** is the responsibility of `Booking.pricing_snapshot`. That JSONField captures the commission %, tax %, surcharges, and Extras resolved at booking-creation time via the `PricingEngine`. Owner-statement and reconciliation reports read from snapshots, not by looking up "the commission rate as of date X" from a history table. The live `PropertyFinance.commission_amount` is always "current state".
-- **"Who changed commission from 10% to 12%?"** is answered by `AuditLog` rows. The finance app calls `core.audit.track(PropertyFinance, fields=[...])` and `core.audit.track(GroupFinance, fields=[...])` in `apps.ready()`. A `pre_save` signal emits an `AuditLog` row keyed by content type + object id with `field_diffs` containing the before/after pair per changed field. Sensitive fields (`bank_account_number`, `bank_iban`, `bank_bic`, `bank_sort_code`) are tagged for redaction: the diff value is replaced with `"[REDACTED]"` before write, so the fact of the change is recorded without leaking the cleartext IBAN into the audit table. Encryption-at-rest on the live row continues to cover the PII concern.
+- **"Who changed commission from 10% to 12%?"** is answered by `AuditLog` rows. The finance app calls `core.audit.track(PropertyFinance, fields=[...])` in `apps.ready()`. A `pre_save` signal emits an `AuditLog` row keyed by content type + object id with `field_diffs` containing the before/after pair per changed field. Sensitive fields (`bank_account_number`, `bank_iban`, `bank_bic`, `bank_sort_code`) are tagged for redaction: the diff value is replaced with `"[REDACTED]"` before write, so the fact of the change is recorded without leaking the cleartext IBAN into the audit table. Encryption-at-rest on the live row continues to cover the PII concern.
 
 ## Why flat (not split)
 

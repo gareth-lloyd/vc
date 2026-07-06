@@ -21,7 +21,7 @@ model evolves. Known issues and planned changes live in
 | App | Domain | Anchor model(s) |
 |---|---|---|
 | `accounts` | Auth users, the unified `Person` identity (booking-side customers + owners/agents/managers), sessions, RBAC | `User`, `Person` |
-| `properties` | The villa catalogue + inheritable per-property settings/finance + geography | `Property` |
+| `properties` | The villa catalogue + per-property settings/finance (seeded from a global `PropertyDefaults` singleton) + geography | `Property` |
 | `pricing` | Three-tier price model + surcharges/discounts + FX | `RatePlan` → `RatePeriod` → `RateBand` |
 | `reservations` | Enquiry → Quotation → Booking lifecycle, plus guests, terms, holds, concierge | `Booking`, `Quotation` (customer = `accounts.Person`) |
 | `payments` | Unified payment ledger + events + refunds + webhooks + security deposit | `Payment` |
@@ -101,28 +101,41 @@ Each lifecycle model (`Booking`, `Payment`, `Quotation`, …) has:
   emitting a signal
 - `CheckConstraint`s enforcing date/status coherence
 
-### Inheritable settings
-Two parallel patterns, one for settings, one for finance. Every inheritable
-field on the property is nullable; `None` means "fall back to group":
+### Property settings/finance defaults (no runtime inheritance)
+There is no property-group inheritance. A global `PropertyDefaults` singleton
+(`properties/models/defaults.py`, `pk=1` via `get_solo()`, mirroring
+`core.SystemSettings`; `GET/PATCH /property-defaults`, `IsReservationsWriter`)
+holds the starter values for both `PropertySettings` and the finance-policy
+columns of `PropertyFinance`. At property creation those values are
+**snapshotted field-by-field** into the concrete rows
+(`properties/services/defaults.py::snapshot_defaults`, wired into
+`PropertyViewSet.create` and `PropertyLifecycleService.duplicate`); after the
+snapshot the rows are plain, independently-editable attributes and editing a
+default never re-flows into existing properties (GAP-070, dropped property
+groups + `effective()` inheritance).
 
-- `PropertySettings` / `GroupSettings` — resolution via
-  `PropertySettings.effective(attr)`.
-- `PropertyFinance` / `GroupFinance` — resolution via
-  `_FinanceFieldMixin.effective(field)`.
+`None` on a `PropertySettings` / `PropertyFinance` column now means *genuinely
+unset*, not "inherit":
 
-Both resolvers share the shape:
-```python
-def effective(self, attr):
-    own = getattr(self, attr)
-    if own is not None and own != "":
-        return own
-    return getattr(self.property.group.<settings|finance>, attr)
-```
+- `PropertySettings` consumers apply a hardcoded final floor at the point of
+  use where one exists (`hold_duration_hours`→48, `changeover_day`→`ANY`,
+  `prices_entered_as`→`GROSS`, `min_nights_rental`→1,
+  `availability_default`→`AVAILABLE`, `bookings_require_pre_approval`→`False`;
+  `currency` / check-in/out stay nullable). There is no model-level
+  `effective()` resolver.
+- `PropertyFinance` resolves a `NULL` policy column to the frozen pre-GAP-070
+  legacy floor via `PropertyFinance._policy(field)` reading the
+  `_POLICY_FALLBACKS` dict (deliberately *not* identical to the
+  `PropertyDefaults` starter values — e.g. `security_deposit_required` floor
+  `False` vs `True` in the singleton).
 
-`PropertyFinance` then exposes grouped resolvers like
+`PropertyFinance` still exposes the per-concern builder resolvers
 `effective_commission()`, `effective_tax_policy()`,
 `effective_payment_schedule()`, `effective_security_deposit_policy()`,
-`effective_bank_account()`.
+`effective_bank_account()`, and `effective_cancellation_policy()` — the names
+are kept (payments / reservations / pricing / the settings serializer call
+them), but they now read own fields + `_POLICY_FALLBACKS` rather than merging a
+group.
 
 ### Idempotency
 - ~~`IdempotencyRecord` table — used at the HTTP boundary~~ — dropped per

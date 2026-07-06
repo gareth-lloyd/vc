@@ -49,6 +49,15 @@ def test_migration_0026_collapses_factory_dupes_and_repoints_fks() -> None:
     pt = Country.objects.get(iso2="PT")
     es = Country.objects.get(iso2="ES")
 
+    # The two FK-holders (a Property + an Enquiry) are created at the migration
+    # LEAF, before any rollback: the real models carry columns the rolled-back
+    # 0026 schema lacks (e.g. Property.video_url, added in 0033), so creating
+    # them mid-rollback would INSERT a column that doesn't exist yet. Rolling
+    # back drops those columns but keeps the rows; below we only UPDATE their
+    # region FK and read it back column-scoped (mirrors the 0017/0027 tests).
+    prop = cast(Property, EnquiryFactory().property)
+    enquiry = cast(Enquiry, EnquiryFactory())
+
     try:
         _migrate(_BEFORE)
 
@@ -56,9 +65,8 @@ def test_migration_0026_collapses_factory_dupes_and_repoints_fks() -> None:
         keep = _region(pt, "Algarve", "region-aaaa-1")
         lose_a = _region(pt, "Algarve", "region-aaaa-21")
         lose_b = _region(pt, "Algarve", "region-aaaa-41")
-        prop = cast(Property, EnquiryFactory().property)
         Property.objects.filter(pk=prop.pk).update(region=lose_a)
-        enquiry = cast(Enquiry, EnquiryFactory(region=lose_b))
+        Enquiry.objects.filter(pk=enquiry.pk).update(region=lose_b)
 
         # Case 2 — factory row merges INTO the legacy row despite a higher id.
         factory_row = _region(es, "Ibiza", "region-bbbb-3")
@@ -85,7 +93,11 @@ def test_migration_0026_collapses_factory_dupes_and_repoints_fks() -> None:
         assert algarve.pk == keep.pk
         assert algarve.slug == "algarve"
         assert not Region.objects.filter(pk__in=[lose_a.pk, lose_b.pk]).exists()
-        assert Property.objects.get(pk=prop.pk).region_id == keep.pk
+        # Column-scoped: at state 0026 the real Property model's `video_url`
+        # (0033) column isn't in the schema, so a full-row fetch would fail.
+        assert Property.objects.filter(pk=prop.pk).values_list("region_id", flat=True).first() == (
+            keep.pk
+        )
         assert Enquiry.objects.get(pk=enquiry.pk).region_id == keep.pk
 
         # Case 2: legacy row canonical, factory row gone, legacy slug untouched.

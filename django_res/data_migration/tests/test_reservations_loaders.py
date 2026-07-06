@@ -20,23 +20,28 @@ from data_migration.loaders.reservations import ClientLoader, EnquiryLoader, _ro
 @pytest.mark.parametrize(
     "role_id,expected",
     [
-        (1, ContactRole.OWNER),
-        (2, ContactRole.AGENT),
-        (3, ContactRole.VILLA_ADMIN),
-        (4, ContactRole.MANAGER),
-        (5, ContactRole.MANAGEMENT_COMPANY),
+        # RoleId in the dump is the VillaRoles **Code** (10/20/40/50/80), not
+        # the Id (1-5). Verified against the live 24-Apr dump.
+        (10, ContactRole.OWNER),
+        (20, ContactRole.AGENT),
+        (40, ContactRole.VILLA_ADMIN),
+        (50, ContactRole.MANAGER),
+        (80, ContactRole.MANAGEMENT_COMPANY),
     ],
 )
 def test_role_for_maps_verified_legacy_villaroles(role_id: int, expected: str) -> None:
-    """Legacy VillaRoles ids (1=Owner 2=Agent 3=Villa Admin 4=Villa Manager
-    5=Management Company; see 07-api-schema-reconciliation.md) map 1:1."""
+    """Legacy VillaRoles codes (10=Owner 20=Agent 40=Villa Admin 50=Villa
+    Manager 80=Management Company; see 07-api-schema-reconciliation.md) map
+    1:1. The role FKs in the dump store the Code, not the Id."""
     assert _role_for(role_id) == expected
 
 
 def test_role_for_unmapped_or_null_defaults_to_owner() -> None:
-    # Legacy had exactly ids 1-5; a NULL/absent role mapping falls back to owner.
+    # A NULL/absent role mapping - and the old Id scale (1-5), which is NOT what
+    # the dump stores - all fall back to owner.
     assert _role_for(None) == ContactRole.OWNER
     assert _role_for(0) == ContactRole.OWNER
+    assert _role_for(1) == ContactRole.OWNER
     assert _role_for(99) == ContactRole.OWNER
 
 

@@ -36,23 +36,28 @@ from reservations.enums import (
 from reservations.models.enquiry import Enquiry
 from reservations.phone import to_e164
 
-# Legacy VillaRoles id -> ContactRole. Verified 1:1 against the legacy DB dump
-# (1=Owner, 2=Agent, 3=Villa Admin, 4=Villa Manager, 5=Management Company; see
-# django_res_design/design/history/api-schema-reconciliation.md). Ids 3 & 5
-# were previously collapsed to MANAGER / OWNERS_REPRESENTATIVE — a forward-only
-# correction (cutover has not run; next reload emits the right roles).
+# Legacy VillaRoles Code -> ContactRole. VillaRoles has BOTH an `Id` (1-5) and
+# a `Code` (10/20/40/50/80). The role FKs that appear in the dump —
+# `VillaContactRoleMapping.RoleId` (and `VillaContactMap.RoleId`) — store the
+# **Code**, not the Id (verified against the live 24-Apr dump: observed values
+# are exactly 10/20/40/50/80). Keying this map on the Id (1-5) meant `_role_for`
+# fell through to the OWNER fallback for every real row, silently flattening
+# ~197/335 assignments (all Agents, Villa Admins, Villa Managers and Management
+# Companies) to Owner. Fixed 2026-07-06 to key on Code:
+#   10 Owner · 20 Agent · 40 Villa Admin · 50 Villa Manager · 80 Mgmt Company.
 _ROLE_MAP = {
-    1: ContactRole.OWNER,
-    2: ContactRole.AGENT,
-    3: ContactRole.VILLA_ADMIN,
-    4: ContactRole.MANAGER,
-    5: ContactRole.MANAGEMENT_COMPANY,
+    10: ContactRole.OWNER,
+    20: ContactRole.AGENT,
+    40: ContactRole.VILLA_ADMIN,
+    50: ContactRole.MANAGER,
+    80: ContactRole.MANAGEMENT_COMPANY,
 }
 
 
 def _role_for(role_id: int | None) -> ContactRole:
-    """Map a legacy VillaRoles id to a ContactRole. The 5 ids are verified 1:1
-    (see _ROLE_MAP); a NULL/absent/unknown id falls back to OWNER.
+    """Map a legacy VillaRoles **Code** (10/20/40/50/80) to a ContactRole; a
+    NULL/absent/unknown code falls back to OWNER (see _ROLE_MAP for why Code,
+    not Id).
 
     CAVEAT (verify before cutover — CUTOVER.md §4f): this loader reads RoleId
     only from the LEFT-JOINed VillaContactRoleMapping (`r`). The schema doc

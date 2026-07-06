@@ -3,13 +3,15 @@
 A keyword pass over `Room.website_description` and the preserved legacy
 placement string `Room.placement_note` (GAP-065 — the legacy field crammed
 amenity facts like "First floor - King, hairdryer" into the location box)
-creates `RoomAttributeAssignment` rows for confident matches and fills
-`ensuite_type` from explicit "en-suite shower/bath" phrasing — only when the
-facet is currently unknown (`""`). It never infers an absence, never removes
-an assignment, and never overwrites curator data, so re-running (e.g. after
-a cutover delta load) is always safe. Source prose is retained on the Room,
-so a missed keyword loses nothing — this is convenience, not a correctness
-dependency.
+creates `RoomAttributeAssignment` rows for confident matches, fills
+`ensuite_type` from explicit "en-suite shower/bath" phrasing, and re-homes a
+hand-typed bed size (King / Super-king / Emperor) onto `RoomBeds.double_size`
+(GAP-066) — each only when the target facet is currently unknown (`""`) and,
+for bed size, only when the room actually has a double bed. It never infers an
+absence, never removes an assignment, and never overwrites curator data, so
+re-running (e.g. after a cutover delta load) is always safe. Source prose is
+retained on the Room, so a missed keyword loses nothing — this is convenience,
+not a correctness dependency.
 
 It also re-invokes `sync_room_attributes()` first, so the catalog's
 `implies_property_feature` candidate links (a no-op at migrate time — Features
@@ -24,8 +26,8 @@ from typing import Any
 
 from django.core.management.base import BaseCommand
 
-from properties.enums import EnsuiteType
-from properties.models import Room, RoomAttribute, RoomAttributeAssignment
+from properties.enums import BedSize, EnsuiteType
+from properties.models import Room, RoomAttribute, RoomAttributeAssignment, RoomBeds
 from properties.room_attribute_catalog import sync_room_attributes
 
 # slug -> alternation of confident phrasings (case-insensitive). Deliberately
@@ -41,6 +43,15 @@ _KEYWORDS: dict[str, str] = {
     "hairdryer": r"hair[- ]?dr[iy]er",
     "mini_fridge": r"mini[- ]?(?:fridge|bar)\b",
 }
+
+# Bed size (GAP-066), ordered: "super king" contains a standalone "king", so
+# SUPER_KING must be tested before the bare `\bking\b` (cf. `lower ground`
+# before `ground`). "superking"/"super-king"/"super king" all match the first.
+_BED_SIZE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"super[- ]?king", re.IGNORECASE), BedSize.SUPER_KING),
+    (re.compile(r"\bemperor\b", re.IGNORECASE), BedSize.EMPEROR),
+    (re.compile(r"\bking\b", re.IGNORECASE), BedSize.KING),
+]
 
 _ENSUITE = re.compile(r"en[- ]?suite", re.IGNORECASE)
 _SHOWER = re.compile(r"\bshower", re.IGNORECASE)
@@ -65,6 +76,14 @@ def _ensuite_type_from(text: str) -> str:
         return EnsuiteType.SHOWER
     if has_bath:
         return EnsuiteType.BATH
+    return ""
+
+
+def _bed_size_from(text: str) -> str:
+    """First matching bed size (super-king → emperor → king), "" when none."""
+    for pattern, size in _BED_SIZE_PATTERNS:
+        if pattern.search(text):
+            return size
     return ""
 
 
@@ -97,7 +116,11 @@ class Command(BaseCommand):
 
         assigned: Counter[str] = Counter()
         ensuite_set = 0
-        rooms = Room.objects.exclude(website_description="", placement_note="")
+        bed_size_set: Counter[str] = Counter()
+        # select_related("beds") — the bed-size pass reads room.beds per row.
+        rooms = Room.objects.exclude(website_description="", placement_note="").select_related(
+            "beds"
+        )
         for room in rooms.iterator():
             # Newline join = a sentence boundary for `_ensuite_type_from`, so
             # note vocabulary never merges into a trailing description
@@ -127,9 +150,24 @@ class Command(BaseCommand):
                         room.is_ensuite = True
                         room.save(update_fields=["ensuite_type", "is_ensuite"])
 
+            # Bed size (GAP-066): only for a room that has a double bed and no
+            # curated size yet. Not every room is guaranteed a beds row.
+            try:
+                beds = room.beds
+            except RoomBeds.DoesNotExist:
+                beds = None
+            if beds is not None and beds.double > 0 and beds.double_size == "":
+                bed_size = _bed_size_from(text)
+                if bed_size:
+                    bed_size_set[bed_size] += 1
+                    if not dry_run:
+                        beds.double_size = bed_size
+                        beds.save(update_fields=["double_size"])
+
         prefix = "[dry-run] would create" if dry_run else "created"
         for slug in _KEYWORDS:
             self.stdout.write(f"{prefix} {assigned[slug]:>5} x {slug}")
-        self.stdout.write(
-            f"{'[dry-run] would set' if dry_run else 'set'} ensuite_type on {ensuite_set} room(s)"
-        )
+        set_prefix = "[dry-run] would set" if dry_run else "set"
+        self.stdout.write(f"{set_prefix} ensuite_type on {ensuite_set} room(s)")
+        for _pattern, size in _BED_SIZE_PATTERNS:
+            self.stdout.write(f"{set_prefix} {bed_size_set[size]:>5} x double_size={size}")

@@ -155,6 +155,63 @@ class TestPlacementNoteSource:
         assert RoomAttributeAssignment.objects.count() == 0
 
 
+class TestBedSizeBackfill:
+    """GAP-066 — bed size (King / Super-king / Emperor) hand-typed into the
+    same preserved prose gets re-homed onto `RoomBeds.double_size`. Positives
+    only, gated on a present double bed, never overwriting a curated size."""
+
+    def test_sets_super_king_from_placement_note(self) -> None:
+        room = cast(Room, RoomFactory(placement_note="First floor. Superking bed."))
+        _call()
+        room.beds.refresh_from_db()
+        assert room.beds.double_size == "super_king"
+
+    def test_king_from_description(self) -> None:
+        room = _room("Master bedroom with a King bed.")
+        _call()
+        room.beds.refresh_from_db()
+        assert room.beds.double_size == "king"
+
+    def test_super_king_wins_over_bare_king(self) -> None:
+        # "Super king" contains a standalone "king"; the ordered scan must
+        # return SUPER_KING, not KING.
+        room = _room("Spacious room with a Super king bed.")
+        _call()
+        room.beds.refresh_from_db()
+        assert room.beds.double_size == "super_king"
+
+    def test_emperor_from_prose(self) -> None:
+        room = _room("Emperor bed in the master suite.")
+        _call()
+        room.beds.refresh_from_db()
+        assert room.beds.double_size == "emperor"
+
+    def test_not_set_without_a_double_bed(self) -> None:
+        # Size only qualifies a double; a room with no double bed is skipped
+        # even if the prose mentions "king".
+        room = _room("Twin room, King single beds.")
+        room.beds.double = 0
+        room.beds.save()
+        _call()
+        room.beds.refresh_from_db()
+        assert room.beds.double_size == ""
+
+    def test_never_overwrites_a_curated_size(self) -> None:
+        room = _room("King bed.")
+        room.beds.double_size = "emperor"
+        room.beds.save()
+        _call()
+        room.beds.refresh_from_db()
+        assert room.beds.double_size == "emperor"
+
+    def test_dry_run_counts_but_writes_nothing(self) -> None:
+        room = cast(Room, RoomFactory(placement_note="First floor. Emperor bed."))
+        out = _call("--dry-run")
+        assert "emperor" in out
+        room.beds.refresh_from_db()
+        assert room.beds.double_size == ""
+
+
 class TestSyncReinvocation:
     def test_links_implications_once_features_exist(self) -> None:
         feature = cast(Feature, FeatureFactory(slug="sea-view"))

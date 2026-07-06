@@ -506,7 +506,7 @@ full row set to detect deletions. `property_defaults` **skips entirely** on
 deliberately has no `legacy_id`), and a delta run must not clobber edits
 staff made through `PATCH /property-defaults` during the cutover window.
 
-## 6b. (Optional) Room-attribute backfill from prose (GAP-064/GAP-065)
+## 6b. (Optional) Room-attribute backfill from prose (GAP-064/GAP-065/GAP-066)
 
 Room amenity facts live in `website_description` prose in the legacy book
 (loaded byte-for-byte by `RoomLoader`) and crammed into the free-text
@@ -521,12 +521,14 @@ uv run python manage.py backfill_room_attrs
 
 It creates `RoomAttributeAssignment` rows for confident keyword matches,
 fills `ensuite_type` from explicit "en-suite shower/bath" phrasing (only when
-currently unknown), and first re-invokes `sync_room_attributes()` so the
-catalog's `implies_property_feature` links attach now that Features exist.
+currently unknown), re-homes a hand-typed bed size (King / Super-king /
+Emperor) onto `RoomBeds.double_size` (GAP-066 — only for a room with a double
+bed and no curated size yet), and first re-invokes `sync_room_attributes()` so
+the catalog's `implies_property_feature` links attach now that Features exist.
 It never infers absence, never removes assignments, never overwrites curator
 data — safe to re-run any time (e.g. after a delta load). There is no
 `reconcile_legacy` row for this: no legacy table exists to compare against;
-the command's per-slug counts are the reconcile signal. (Placement itself
+the command's per-slug and per-size counts are the reconcile signal. (Placement itself
 DOES have a reconcile row — "Room placement (GAP-065)" gates that every
 legacy `PlacementId` landed with a preserved `placement_note`.)
 

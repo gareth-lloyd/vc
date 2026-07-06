@@ -532,6 +532,29 @@ the command's per-slug and per-size counts are the reconcile signal. (Placement 
 DOES have a reconcile row — "Room placement (GAP-065)" gates that every
 legacy `PlacementId` landed with a preserved `placement_note`.)
 
+## 6c. (Optional) Derive property features from room attributes (GAP-067)
+
+Once §6b has attached `RoomAttributeAssignment` rows (and the catalog's
+`implies_property_feature` links are live), a room attribute that implies a
+property feature should surface that feature on the parent property. The room
+save-path does this live, but the backfill writes assignments in bulk without
+going through it, so run the sweep once — **after** the feature loader and the
+room-attribute backfill:
+
+```bash
+uv run python manage.py recompute_derived_features --dry-run   # inspect counts first
+uv run python manage.py recompute_derived_features
+```
+
+It reconciles each property's `is_derived=True` `PropertyFeature` links to the
+union of `implies_property_feature` across its rooms — adding implied features,
+removing no-longer-implied ones, and never touching manually curated links.
+Idempotent, so it is safe to re-run after a delta load. `--dry-run` runs the
+whole sweep inside a rolled-back transaction and reports the counts a real run
+would apply. There is no `reconcile_legacy` row: derived links have no legacy
+source table to compare against — the command's added/removed counts are the
+reconcile signal.
+
 ## 7. England → GB merge
 
 After Phase 1.1 added the canonical `GB` row, the legacy "England"

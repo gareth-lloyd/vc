@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, ClassVar
 
+import structlog
 from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
 from django.utils import timezone
@@ -52,6 +53,25 @@ from reservations.models.booking import Booking
 from reservations.models.enquiry import Enquiry
 from reservations.models.quotation import Quotation
 
+logger = structlog.get_logger(__name__)
+
+
+def zoho_id_column_exists(cursor: Any, table: str) -> bool:
+    """True when `table` carries a `ZohoId` column in the connected legacy DB.
+
+    The 24-Apr-2025 prod dump has no `ZohoId` on `VillaQuotationMaster` or
+    `VillaBooking` (only `VillaContact`, `VillaEnquire`, `VillaMaster` carry
+    it), even though older reference dumps had all five. Probe before querying
+    so both the loader and `reconcile_legacy`'s continuity section can skip
+    absent tables instead of crashing mid-run. `table` comes from the
+    hard-coded `SPECS` tuple, never user input.
+    """
+    cursor.execute(
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+        f"WHERE TABLE_NAME = '{table}' AND COLUMN_NAME = 'ZohoId'"
+    )
+    return bool(cursor.fetchone()[0])
+
 
 @dataclass(frozen=True)
 class _ZohoSpec:
@@ -60,11 +80,17 @@ class _ZohoSpec:
     `has_timestamps` is False for tables without `CreatedAt`/`UpdatedAt`
     (only `VillaContact`); those skip the `last_pushed_at` backfill and ignore
     `--since`.
+
+    `expected_gap` is the documented, accepted continuity gap for the table in
+    `reconcile_legacy`'s Zoho section (mirrors `_Check.expected_gap` in the
+    main row-count table): loaded-rows-with-a-ZohoId minus SyncRecords must
+    equal it exactly or the reconcile blocks.
     """
 
     table: str
     model: type[models.Model]
     has_timestamps: bool
+    expected_gap: int = 0
 
 
 class SyncRecordZohoLoader:
@@ -72,7 +98,21 @@ class SyncRecordZohoLoader:
 
     # Order mirrors the domain loaders that populate these models' `legacy_id`.
     SPECS: ClassVar[tuple[_ZohoSpec, ...]] = (
-        _ZohoSpec("VillaMaster", Property, has_timestamps=True),
+        _ZohoSpec(
+            "VillaMaster",
+            Property,
+            has_timestamps=True,
+            # Calibrated 2026-07-05: VillaMaster 88 ("Temenos Villa Templos")
+            # and 339 ("Temenos Villa Kioni") are DISTINCT villas that share one
+            # ZohoId (577032000002128026) — a source-side error in Zoho, not
+            # duplicate property records. Both properties migrate; only the
+            # external-ID link can attach to one target. Product decision
+            # 2026-07-06: ACCEPT — link the lower legacy Id (88, forced by the
+            # ORDER BY Id in `_query`) and flag the shared ZohoId to the CRM
+            # owner for a source-side fix. expected_gap=1 is permanent until
+            # Zoho is corrected (DRYRUN_LOG.md / CUTOVER §4b).
+            expected_gap=1,
+        ),
         _ZohoSpec("VillaContact", Person, has_timestamps=False),
         _ZohoSpec("VillaEnquire", Enquiry, has_timestamps=True),
         _ZohoSpec("VillaQuotationMaster", Quotation, has_timestamps=True),
@@ -88,6 +128,10 @@ class SyncRecordZohoLoader:
         query = f"SELECT {cols} FROM {spec.table}"
         if self.since and spec.has_timestamps:
             query = f"{query} WHERE UpdatedAt > '{legacy_datetime_literal(self.since)}'"
+        # Deterministic order so that when two source rows share one ZohoId
+        # (VillaMaster 88 & 339, see SPECS), the link always attaches to the
+        # lowest legacy Id and the duplicate is skipped reproducibly.
+        query = f"{query} ORDER BY Id"
         return query
 
     def load(self) -> LoadReport:
@@ -100,6 +144,13 @@ class SyncRecordZohoLoader:
         fetched: list[tuple[_ZohoSpec, dict[str, Any]]] = []
         with legacy_cursor() as cursor:
             for spec in self.SPECS:
+                # Not every dump carries ZohoId on every spec table (the live
+                # prod dump lacks it on VillaQuotationMaster/VillaBooking) —
+                # probe once per table and skip absent ones with a warning
+                # rather than crashing the whole backfill.
+                if not zoho_id_column_exists(cursor, spec.table):
+                    logger.warning("data_migration.zoho_column_missing", table=spec.table)
+                    continue
                 cursor.execute(self._query(spec))
                 fetched.extend((spec, row) for row in rows_as_dicts(cursor))
 
@@ -126,22 +177,26 @@ class SyncRecordZohoLoader:
         content_type = ContentType.objects.get_for_model(spec.model)
 
         # Guard the unique(provider, external_id) constraint explicitly: a
-        # legacy ZohoId that already maps to a different target is recorded as
-        # an error rather than allowed to raise IntegrityError and poison the
-        # surrounding transaction.
+        # legacy ZohoId that already maps to a different target must not raise
+        # IntegrityError and poison the surrounding transaction. Duplicate
+        # source rows sharing one ZohoId are a legacy data reality (VillaMaster
+        # 88 & 339 are both "Temenos"): keeping the record on the first loaded
+        # row is the correct outcome, so this is a counted skip with a warning
+        # — not a load failure that would fail every cutover run.
         clash = (
             SyncRecord.objects.filter(provider=SyncProvider.ZOHO_CRM, external_id=external_id)
             .exclude(content_type=content_type, object_id=local.pk)
             .first()
         )
         if clash is not None:
-            report.errors.append(
-                (
-                    f"{spec.table}:{legacy_id}",
-                    f"ZohoId {external_id!r} already mapped to "
-                    f"{clash.content_type.model}:{clash.object_id}",
-                )
+            logger.warning(
+                "data_migration.zoho_id_duplicate",
+                table=spec.table,
+                legacy_pk=legacy_id,
+                zoho_id=external_id,
+                existing_target=f"{clash.content_type.model}:{clash.object_id}",
             )
+            report.skipped += 1
             return
 
         last_pushed = row.get("UpdatedAt") or row.get("CreatedAt")

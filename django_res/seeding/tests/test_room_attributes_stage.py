@@ -11,8 +11,20 @@ from typing import cast
 
 import pytest
 
-from properties.factories import PropertyFactory, RoomFactory
-from properties.models import Property, Room, RoomAttributeAssignment
+from properties.factories import (
+    FeatureFactory,
+    PropertyFactory,
+    RoomAttributeFactory,
+    RoomFactory,
+)
+from properties.models import (
+    Feature,
+    Property,
+    PropertyFeature,
+    Room,
+    RoomAttribute,
+    RoomAttributeAssignment,
+)
 from seeding.context import _PROFILES, Profile, SeedContext
 from seeding.stages.room_attributes import _run
 
@@ -47,6 +59,22 @@ def test_assigns_attributes_to_rooms() -> None:
     # Per-room cap: at most 4 amenity tags.
     for room in rooms:
         assert room.attribute_links.count() <= 4
+
+
+def test_derives_property_features_from_implying_attributes() -> None:
+    """GAP-067 — after assigning attributes, the stage recomputes each seeded
+    property's derived features so seeded data matches API-created properties."""
+    # Retire the ambient catalog so our implying attribute is the only pick.
+    RoomAttribute.objects.update(is_active=False)
+    feature = cast(Feature, FeatureFactory())
+    RoomAttributeFactory(implies_property_feature=feature, is_active=True)
+    prop, _rooms = _seed_rooms(3)
+    ctx = _ctx([prop])
+    ctx.knobs = _PROFILES[Profile.MIXED].__class__(name="test", attributes_per_room=(1, 1))
+
+    _run(ctx)
+
+    assert PropertyFeature.objects.filter(property=prop, feature=feature, is_derived=True).exists()
 
 
 def test_facets_respect_the_ensuite_coherence_constraint() -> None:

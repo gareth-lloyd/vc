@@ -815,6 +815,11 @@
       "title": "No features selected",
       "description": "Use Add feature to build this property's feature list, then drag to reorder."
     },
+    "derived": {
+      "title": "From rooms",
+      "tooltip": "These features are set automatically from room attributes. To change them, edit the rooms.",
+      "badge": "From rooms"
+    },
     "row": {
       "drag_handle_label": "Drag to reorder feature",
       "remove_label": "Remove {{name}}",

@@ -199,7 +199,7 @@ class PropertiesConfig(AppConfig):
         # reorder logs only the moved rows and an addition logs its own row.
         audit.track(
             PropertyFeature,
-            fields=("property_id", "feature_id", "sort_order"),
+            fields=("property_id", "feature_id", "sort_order", "is_derived"),
         )
         # Included services carry guest-facing `copy` and an absolute date band;
         # staff edits (and hard deletes via the Destroy view) need a trail.

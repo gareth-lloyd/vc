@@ -7,8 +7,20 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from core.tests import assert_max_queries
-from properties.factories import PropertyFactory, RoomAttributeFactory, RoomFactory
-from properties.models import Property, Room, RoomAttribute, RoomAttributeAssignment
+from properties.factories import (
+    FeatureFactory,
+    PropertyFactory,
+    RoomAttributeFactory,
+    RoomFactory,
+)
+from properties.models import (
+    Feature,
+    Property,
+    PropertyFeature,
+    Room,
+    RoomAttribute,
+    RoomAttributeAssignment,
+)
 
 if TYPE_CHECKING:
     from rest_framework.test import APIClient
@@ -431,3 +443,82 @@ class TestRoomAttributeCatalogEndpoint:
     def test_write_is_staff_only(self, api_client: APIClient) -> None:
         resp = api_client.post("/api/v1/room-attributes", {"name": "X", "slug": "x"})
         assert resp.status_code in (403, 405)
+
+
+class TestDerivedFeaturesFromRoomAttributes:
+    """GAP-067 — ticking a room attribute that `implies_property_feature`
+    surfaces the feature on the parent property's `derived_feature_ids`; the
+    write hooks (create/update/delete) keep it in sync."""
+
+    def _property_derived(self, api_client: APIClient, prop: Property) -> list[int]:
+        body = api_client.get(f"/api/v1/properties/{prop.pk}").json()
+        return cast(list, body["derived_feature_ids"])
+
+    def test_post_room_with_implying_attribute_derives_feature(
+        self, api_client: APIClient, staff: User, prop: Property
+    ) -> None:
+        feature = cast(Feature, FeatureFactory())
+        attr = _attr(implies_property_feature=feature)
+
+        api_client.force_authenticate(staff)
+        resp = api_client.post(
+            _rooms_url(prop),
+            {"name": "Master", "attribute_links": [{"attribute": attr.pk}]},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert self._property_derived(api_client, prop) == [feature.pk]
+
+    def test_patch_dropping_the_link_removes_the_derived_feature(
+        self, api_client: APIClient, staff: User, room: Room
+    ) -> None:
+        feature = cast(Feature, FeatureFactory())
+        attr = _attr(implies_property_feature=feature)
+        api_client.force_authenticate(staff)
+        api_client.patch(
+            _room_url(room),
+            {"attribute_links": [{"attribute": attr.pk}]},
+            format="json",
+        )
+        assert self._property_derived(api_client, room.property) == [feature.pk]
+
+        # Untick the attribute — the derived feature must disappear.
+        api_client.patch(_room_url(room), {"attribute_links": []}, format="json")
+        assert self._property_derived(api_client, room.property) == []
+
+    def test_deleting_the_room_recomputes_away_the_derived_feature(
+        self, api_client: APIClient, staff: User, room: Room
+    ) -> None:
+        feature = cast(Feature, FeatureFactory())
+        attr = _attr(implies_property_feature=feature)
+        api_client.force_authenticate(staff)
+        api_client.patch(
+            _room_url(room),
+            {"attribute_links": [{"attribute": attr.pk}]},
+            format="json",
+        )
+        assert self._property_derived(api_client, room.property) == [feature.pk]
+
+        resp = api_client.delete(_room_url(room))
+        assert resp.status_code == 204, resp.content
+        assert self._property_derived(api_client, room.property) == []
+
+    def test_manual_feature_survives_room_recompute(
+        self, api_client: APIClient, staff: User, room: Room
+    ) -> None:
+        """A manual PropertyFeature is not clobbered when a room save triggers a
+        recompute for an unrelated implied feature."""
+        manual = cast(Feature, FeatureFactory())
+        implied = cast(Feature, FeatureFactory())
+        PropertyFeature.objects.create(property=room.property, feature=manual, sort_order=0)
+        attr = _attr(implies_property_feature=implied)
+
+        api_client.force_authenticate(staff)
+        api_client.patch(
+            _room_url(room),
+            {"attribute_links": [{"attribute": attr.pk}]},
+            format="json",
+        )
+        body = api_client.get(f"/api/v1/properties/{room.property_id}").json()
+        assert manual.pk in body["feature_ids"]
+        assert body["derived_feature_ids"] == [implied.pk]

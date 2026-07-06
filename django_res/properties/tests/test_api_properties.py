@@ -248,6 +248,30 @@ def test_duplicate_clones_feature_links(
     assert list(clone.features.values_list("pk", flat=True)) == [feature.pk]
 
 
+@pytest.mark.django_db
+def test_duplicate_clones_manual_features_only(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """`duplicate()` clones MANUAL features only (GAP-067). A derived feature on
+    the original must NOT become a permanent manual feature on the clone — the
+    clone has no rooms yet, so derivation rebuilds once the operator adds them."""
+    cat = _shared_category()
+    manual = _named_feature("Apple", "feat-a", cat)
+    derived = _named_feature("Mango", "feat-b", cat)
+    PropertyFeature.objects.create(property=property_, feature=manual, sort_order=0)
+    PropertyFeature.objects.create(
+        property=property_, feature=derived, sort_order=1, is_derived=True
+    )
+
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/properties/{property_.pk}:duplicate", format="json")
+    assert response.status_code == 201, response.content
+
+    clone = Property.objects.get(pk=response.json()["id"])
+    clone_links = {pf.feature_id: pf.is_derived for pf in clone.feature_links.all()}
+    assert clone_links == {manual.pk: False}
+
+
 # --- GAP-022: per-villa feature display order (sort_order) -------------------
 
 
@@ -433,6 +457,76 @@ def test_detail_feature_ids_query_count_is_constant(
     assert response.status_code == 200, response.content
     assert len(response.json()["feature_ids"]) == 6
     assert len(six_features.captured_queries) == len(one_feature.captured_queries)
+
+
+# --- GAP-067: derived features (is_derived) + write-path safety --------------
+
+
+@pytest.mark.django_db
+def test_property_feature_defaults_to_manual() -> None:
+    """A freshly-created `PropertyFeature` is manual (`is_derived=False`)."""
+    cat = _shared_category()
+    property_ = cast(Property, factories.PropertyFactory())
+    feature = _named_feature("Apple", "feat-a", cat)
+    link = PropertyFeature.objects.create(property=property_, feature=feature)
+    assert link.is_derived is False
+
+
+@pytest.mark.django_db
+def test_patch_features_preserves_derived_links(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """The manual editor's full-list sync must NOT delete a derived link absent
+    from the submitted list — the clobber hazard the flag guards against."""
+    cat = _shared_category()
+    manual = _named_feature("Apple", "feat-a", cat)
+    derived = _named_feature("Mango", "feat-b", cat)
+    PropertyFeature.objects.create(property=property_, feature=manual, sort_order=0)
+    PropertyFeature.objects.create(
+        property=property_, feature=derived, sort_order=1, is_derived=True
+    )
+
+    api_client.force_login(staff)
+    # Submit only the manual feature — the derived one is not in the list.
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}",
+        data={"features": [manual.pk]},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    # The derived link survives even though it wasn't resubmitted.
+    surviving = PropertyFeature.objects.get(property=property_, feature=derived)
+    assert surviving.is_derived is True
+    # feature_ids exposes ALL links (manual + derived); derived_feature_ids is
+    # the derived subset.
+    body = response.json()
+    assert set(body["feature_ids"]) == {manual.pk, derived.pk}
+    assert body["derived_feature_ids"] == [derived.pk]
+
+
+@pytest.mark.django_db
+def test_manual_add_promotes_existing_derived_link(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """Manually adding a feature that already has a derived link promotes it to
+    manual (`is_derived=False`) — no unique-constraint 500, no duplicate row."""
+    cat = _shared_category()
+    feature = _named_feature("Apple", "feat-a", cat)
+    PropertyFeature.objects.create(
+        property=property_, feature=feature, sort_order=0, is_derived=True
+    )
+
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}",
+        data={"features": [feature.pk]},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    links = PropertyFeature.objects.filter(property=property_, feature=feature)
+    assert links.count() == 1
+    assert links.get().is_derived is False
+    assert response.json()["derived_feature_ids"] == []
 
 
 @pytest.mark.django_db

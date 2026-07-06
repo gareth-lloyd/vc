@@ -143,6 +143,7 @@ class PropertyDetailSerializer(_CalendarSourceMixin, serializers.ModelSerializer
     """Full representation including small-cardinality nested collections."""
 
     feature_ids = serializers.SerializerMethodField()
+    derived_feature_ids = serializers.SerializerMethodField()
     hero_image_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -158,6 +159,7 @@ class PropertyDetailSerializer(_CalendarSourceMixin, serializers.ModelSerializer
             "category",
             "region",
             "feature_ids",
+            "derived_feature_ids",
             "hero_image_url",
             "has_active_ical_feed",
             "calendar_url",
@@ -174,10 +176,17 @@ class PropertyDetailSerializer(_CalendarSourceMixin, serializers.ModelSerializer
     def get_feature_ids(self, obj: Property) -> list[int]:
         # Per-villa order (GAP-022): walk the `PropertyFeature` through-links,
         # which `Meta.ordering` sorts by `sort_order`. NOT `obj.features.all()`,
-        # which would sort by Feature's global rank. This reads only the
-        # `feature_id` column already on each through-row, so it's a single
-        # ordered query regardless of feature count — no N+1, no prefetch needed.
+        # which would sort by Feature's global rank. `feature_ids` is the FULL
+        # set (manual + derived) so display consumers stay complete; the
+        # detail queryset prefetches `feature_links`, so this and
+        # `get_derived_feature_ids` share one ordered query (no N+1).
         return [link.feature_id for link in obj.feature_links.all()]
+
+    def get_derived_feature_ids(self, obj: Property) -> list[int]:
+        # The `is_derived=True` subset (GAP-067), so the manual editor can
+        # subtract it and render those features as read-only "from rooms" chips.
+        # Shares the prefetched `feature_links` cache with `get_feature_ids`.
+        return [link.feature_id for link in obj.feature_links.all() if link.is_derived]
 
     def get_hero_image_url(self, obj: Property) -> str | None:
         return obj.hero_image_url()
@@ -243,15 +252,25 @@ class PropertyWriteSerializer(serializers.ModelSerializer[Property]):
         """
         ordered_ids = list(dict.fromkeys(feature.pk for feature in features))
         with transaction.atomic():
-            existing = {link.feature_id: link for link in instance.feature_links.all()}
+            # Only MANUAL links are the editor's to manage — derived links
+            # (GAP-067) are owned by `recompute_derived_features` and must never
+            # be deleted here just because they're absent from the submitted list.
+            existing = {
+                link.feature_id: link for link in instance.feature_links.filter(is_derived=False)
+            }
             for feature_id, link in existing.items():
                 if feature_id not in ordered_ids:
                     link.delete()
             for position, feature_id in enumerate(ordered_ids):
                 existing_link = existing.get(feature_id)
                 if existing_link is None:
-                    PropertyFeature.objects.create(
-                        property=instance, feature_id=feature_id, sort_order=position
+                    # `update_or_create` (not `create`) so manually adding a
+                    # feature that already has a DERIVED row promotes it to manual
+                    # instead of hitting the unique `(property, feature)` 500.
+                    PropertyFeature.objects.update_or_create(
+                        property=instance,
+                        feature_id=feature_id,
+                        defaults={"sort_order": position, "is_derived": False},
                     )
                 elif existing_link.sort_order != position:
                     existing_link.sort_order = position

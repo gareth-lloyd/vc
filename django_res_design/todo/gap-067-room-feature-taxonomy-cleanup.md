@@ -1,5 +1,30 @@
 # GAP-067 — Feature taxonomy cleanup + derive property features from room attributes
 
+> **🟡 PARTIALLY RESOLVED (2026-07-06)** — The **derivation half** (the "enter
+> once" / triple-entry fix) shipped in 4 units on local `main` (unpushed);
+> **taxonomy curation remains open** (see below). Shipped:
+> `PropertyFeature.is_derived` (migration `0032`) + is_derived-aware
+> `_sync_feature_order` (clobber-proof, promote-on-manual-add) + read-only
+> `derived_feature_ids` + retrieve prefetch (`9265267`); `recompute_derived_features`
+> service reconciling derived links to the union of `RoomAttribute.implies_property_feature`
+> across a property's rooms, wired into every room create/update/delete + the
+> seeding stage, with `duplicate()` cloning manual-only features (`79d4bfb`);
+> `recompute_derived_features` management command (resumable real sweep,
+> rolled-back `--dry-run`) + CUTOVER §6c + `design/decisions.md` Live row
+> (`18a36e0`); FE read-only "From rooms" chips in FeaturesTab (manual list
+> excludes derived, save is manual-only) + en/el i18n (`771d12c`).
+> Data-driven bridge only — no hardcoded room→feature map.
+>
+> **Still open (deferred — a follow-up ticket):** the **taxonomy-curation** half
+> below (§"The property-level feature taxonomy is dirty" / Q-021) — merging the
+> duplicate/junk legacy `Feature` rows (`Aircon` ×5, `Wheelchair access`/`accessible`,
+> `TAGSSSSSSSSSSS`, …), remapping `PropertyFeature` links to survivors, and
+> recalibrating the `reconcile_legacy` `Feature` gap. It is gated on owner-steer
+> #1 (canonical wording) and only has real data to act on at cutover, so it was
+> split out. Canonical pattern when built: `Person.merge` / `merge_country.py`.
+> Also deferred: GAP-068 starter included-features seed; a live admin hook to
+> recompute when a curator edits `RoomAttribute.implies_property_feature`.
+
 - **Severity:** Build + content governance — answers the A1 "enter once" promise,
   supersedes the feature-taxonomy half of **Q-021** (seeding half → GAP-068)
 - **Files:** `properties/models/features.py` (`Feature`, `FeatureCategory`,

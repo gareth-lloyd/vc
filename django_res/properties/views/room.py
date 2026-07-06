@@ -19,6 +19,7 @@ from core.api import (
 )
 from properties.models import Property, Room, RoomAttribute, RoomAttributeAssignment
 from properties.serializers import RoomAttributeSerializer, RoomSerializer
+from properties.services.features import recompute_derived_features
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -73,6 +74,15 @@ class RoomDetailView(generics.RetrieveUpdateDestroyAPIView):
         # after an update, so re-fetch through the read queryset to keep the
         # response's link order and query count identical to GET.
         serializer.instance = self.get_queryset().get(pk=serializer.instance.pk)
+
+    def perform_destroy(self, instance: Room) -> None:
+        # Deleting the room drops its attribute links (CASCADE); recompute the
+        # property's derived features (GAP-067) so a feature implied only by
+        # this room disappears with it.
+        property_obj = instance.property
+        with transaction.atomic():
+            instance.delete()
+            recompute_derived_features(property_obj)
 
 
 class PropertyRoomReorderView(APIView):

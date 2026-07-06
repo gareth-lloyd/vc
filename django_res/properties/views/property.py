@@ -72,6 +72,15 @@ class PropertyViewSet(viewsets.ModelViewSet):
     # Property.Meta.ordering, so every paginated listing stays stable.
     permission_classes = [IsReservationsWriter]
 
+    def get_queryset(self) -> Any:
+        qs = super().get_queryset()
+        if self.action == "retrieve":
+            # `PropertyDetailSerializer.get_feature_ids` +
+            # `get_derived_feature_ids` both walk `feature_links`; prefetch so
+            # they share one ordered query instead of hitting the DB twice.
+            qs = qs.prefetch_related("feature_links")
+        return qs
+
     def get_permissions(self) -> list[Any]:
         if self.action in {"list", "retrieve"}:
             return [IsStaff()]

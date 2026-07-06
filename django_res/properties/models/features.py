@@ -72,6 +72,11 @@ class PropertyFeature(models.Model):
         related_name="+",
     )
     sort_order = models.PositiveIntegerField(default=0)
+    # True when this link was auto-created by `recompute_derived_features` from a
+    # room attribute's `implies_property_feature` (GAP-067). The recompute
+    # manages ONLY derived rows; the manual editor never touches them, and a
+    # manual add of the same feature promotes the row back to manual (False).
+    is_derived = models.BooleanField(default=False)
 
     class Meta:
         db_table = "properties_property_features"

@@ -57,7 +57,23 @@ class Command(BaseCommand):
             )
 
         since = options.get("since")
-        reports = [LOADERS[name](since=since).load() for name in names]
+
+        # Each loader runs in its own try/except so one crash (e.g. a legacy
+        # schema surprise) can't abort the run: the remaining loaders still
+        # execute, the sequence sync still happens for whatever loaded, and the
+        # summary still prints — the crash lands in that loader's errors column
+        # and the command exits non-zero after the summary.
+        reports: list[LoadReport] = []
+        for name in names:
+            try:
+                reports.append(LOADERS[name](since=since).load())
+            except Exception as exc:
+                report = LoadReport(loader=name)
+                report.errors.append(("<loader crashed>", repr(exc)))
+                reports.append(report)
+                self.stderr.write(
+                    self.style.ERROR(f"Loader {name!r} crashed ({exc!r}); continuing.")
+                )
 
         # Loaders set Quotation.number directly (preserving exact legacy digits),
         # which does not advance quotation_number_seq. Fast-forward it past the
@@ -69,6 +85,12 @@ class Command(BaseCommand):
         )
 
         self._print_summary(reports)
+
+        failed = [r.loader for r in reports if r.errors]
+        if failed:
+            raise CommandError(
+                f"{len(failed)} loader(s) crashed or reported errors: {', '.join(failed)}"
+            )
 
     def _print_summary(self, reports: list[LoadReport]) -> None:
         header = ("loader", "created", "updated", "skipped", "errors", "duration")

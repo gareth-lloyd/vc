@@ -321,6 +321,67 @@
       "save_failed": "Couldn't save settings."
     }
   },
+  "property_defaults": {
+    "title": "Property defaults",
+    "description": "Starter values every new property is created with. Changing a default never affects existing properties.",
+    "updated_at_label": "Last updated",
+    "sections": {
+      "operational": "Operational",
+      "commission_tax": "Commission & tax",
+      "payment_schedule": "Payment schedule",
+      "security_deposit": "Security deposit",
+      "cancellation": "Cancellation"
+    },
+    "fields": {
+      "availability_default": "Availability default",
+      "bookings_require_pre_approval": "Bookings require pre-approval",
+      "requires_enquiry_first": "Requires enquiry first",
+      "currency": "Currency",
+      "check_in_time": "Check-in time",
+      "check_out_time": "Check-out time",
+      "changeover_day": "Changeover day",
+      "min_nights_rental": "Minimum nights",
+      "min_nights_rental_note": "Minimum nights note",
+      "prices_entered_as": "Prices entered as",
+      "hold_duration_hours": "Hold duration (hours)",
+      "commission_calculation_type": "Commission type",
+      "commission_amount": "Commission amount",
+      "commission_note": "Commission note",
+      "tax_is_exempt": "Tax exempt",
+      "tax_percentage": "Tax %",
+      "deposit_required": "Deposit required",
+      "deposit_calculation_type": "Deposit type",
+      "deposit_amount": "Deposit amount",
+      "interim_required": "Interim payment required",
+      "interim_calculation_type": "Interim payment type",
+      "interim_amount": "Interim payment amount",
+      "days_interim_due_before_arrival": "Interim due days before arrival",
+      "days_balance_due_before_arrival": "Balance due days before arrival",
+      "security_deposit_required": "Security deposit required",
+      "security_deposit_calculation_type": "Security deposit type",
+      "security_deposit_amount": "Security deposit amount",
+      "security_deposit_days_due_before_arrival": "Due days before arrival",
+      "security_deposit_days_refunded_after_departure": "Refunded days after departure",
+      "security_deposit_payment_method": "Payment method",
+      "cancellation_fee_amount": "Cancellation fee amount",
+      "cancellation_fee_percent": "Cancellation fee %",
+      "cancellation_window_days": "Cancellation window (days)",
+      "cancellation_notes": "Cancellation notes"
+    },
+    "payment_methods": {
+      "card_hold": "Card hold",
+      "card_charge": "Card charge",
+      "bank_transfer": "Bank transfer"
+    },
+    "currency_placeholder": "No default currency",
+    "saved": "Property defaults saved",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "errors": {
+      "load_failed": "Couldn't load property defaults.",
+      "save_failed": "Couldn't save property defaults."
+    }
+  },
   "email_templates": {
     "title": "Email templates",
     "description": "Author the transactional emails sent to guests. Edits are validated and versioned before they go live.",

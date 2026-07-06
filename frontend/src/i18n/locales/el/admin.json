@@ -321,6 +321,67 @@
       "save_failed": "Δεν ήταν δυνατή η αποθήκευση ρυθμίσεων."
     }
   },
+  "property_defaults": {
+    "title": "Προεπιλογές ακινήτων",
+    "description": "Αρχικές τιμές με τις οποίες δημιουργείται κάθε νέο ακίνητο. Η αλλαγή μιας προεπιλογής δεν επηρεάζει ποτέ τα υπάρχοντα ακίνητα.",
+    "updated_at_label": "Τελευταία ενημέρωση",
+    "sections": {
+      "operational": "Λειτουργικά",
+      "commission_tax": "Προμήθεια & φόρος",
+      "payment_schedule": "Πρόγραμμα πληρωμών",
+      "security_deposit": "Εγγύηση",
+      "cancellation": "Ακύρωση"
+    },
+    "fields": {
+      "availability_default": "Προεπιλογή διαθεσιμότητας",
+      "bookings_require_pre_approval": "Οι κρατήσεις απαιτούν προέγκριση",
+      "requires_enquiry_first": "Απαιτεί αίτημα πρώτα",
+      "currency": "Νόμισμα",
+      "check_in_time": "Ώρα check-in",
+      "check_out_time": "Ώρα check-out",
+      "changeover_day": "Ημέρα αλλαγής",
+      "min_nights_rental": "Ελάχιστα βράδια",
+      "min_nights_rental_note": "Σημείωση ελάχιστων βραδιών",
+      "prices_entered_as": "Οι τιμές εισάγονται ως",
+      "hold_duration_hours": "Διάρκεια δέσμευσης (ώρες)",
+      "commission_calculation_type": "Τύπος προμήθειας",
+      "commission_amount": "Ποσό προμήθειας",
+      "commission_note": "Σημείωση προμήθειας",
+      "tax_is_exempt": "Απαλλασσόμενο φόρου",
+      "tax_percentage": "Φόρος %",
+      "deposit_required": "Απαιτείται προκαταβολή",
+      "deposit_calculation_type": "Τύπος προκαταβολής",
+      "deposit_amount": "Ποσό προκαταβολής",
+      "interim_required": "Απαιτείται ενδιάμεση πληρωμή",
+      "interim_calculation_type": "Τύπος ενδιάμεσης πληρωμής",
+      "interim_amount": "Ποσό ενδιάμεσης πληρωμής",
+      "days_interim_due_before_arrival": "Ημέρες ενδιάμεσης πληρωμής πριν την άφιξη",
+      "days_balance_due_before_arrival": "Ημέρες πληρωμής υπολοίπου πριν την άφιξη",
+      "security_deposit_required": "Απαιτείται εγγύηση",
+      "security_deposit_calculation_type": "Τύπος εγγύησης",
+      "security_deposit_amount": "Ποσό εγγύησης",
+      "security_deposit_days_due_before_arrival": "Ημέρες οφειλής πριν την άφιξη",
+      "security_deposit_days_refunded_after_departure": "Ημέρες επιστροφής μετά την αναχώρηση",
+      "security_deposit_payment_method": "Τρόπος πληρωμής",
+      "cancellation_fee_amount": "Ποσό χρέωσης ακύρωσης",
+      "cancellation_fee_percent": "Χρέωση ακύρωσης %",
+      "cancellation_window_days": "Περίοδος ακύρωσης (ημέρες)",
+      "cancellation_notes": "Σημειώσεις ακύρωσης"
+    },
+    "payment_methods": {
+      "card_hold": "Δέσμευση κάρτας",
+      "card_charge": "Χρέωση κάρτας",
+      "bank_transfer": "Τραπεζικό έμβασμα"
+    },
+    "currency_placeholder": "Χωρίς προεπιλεγμένο νόμισμα",
+    "saved": "Οι προεπιλογές ακινήτων αποθηκεύτηκαν",
+    "save": "Αποθήκευση αλλαγών",
+    "saving": "Αποθήκευση…",
+    "errors": {
+      "load_failed": "Δεν ήταν δυνατή η φόρτωση των προεπιλογών ακινήτων.",
+      "save_failed": "Δεν ήταν δυνατή η αποθήκευση των προεπιλογών ακινήτων."
+    }
+  },
   "email_templates": {
     "title": "Πρότυπα email",
     "description": "Συντάξτε τα συναλλακτικά email που αποστέλλονται στους επισκέπτες. Οι αλλαγές επικυρώνονται και εκδίδονται σε νέα έκδοση πριν τεθούν σε ισχύ.",

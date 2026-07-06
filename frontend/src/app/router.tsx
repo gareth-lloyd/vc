@@ -532,6 +532,14 @@ export const router = createBrowserRouter([
                               return { Component: m.SystemAdminPage };
                             },
                           },
+                          {
+                            path: "/admin/property-defaults",
+                            lazy: async () => {
+                              const m =
+                                await import("@/features/admin/property-defaults/PropertyDefaultsPage");
+                              return { Component: m.PropertyDefaultsPage };
+                            },
+                          },
                         ],
                       },
                       {

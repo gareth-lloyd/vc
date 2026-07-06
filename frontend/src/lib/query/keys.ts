@@ -224,6 +224,9 @@ export const queryKeys = {
   systemSettings: {
     all: () => ["system", "settings"] as const,
   },
+  propertyDefaults: {
+    all: () => ["property-defaults"] as const,
+  },
   nearbyPlaceTypes: {
     all: () => ["nearby-place-types"] as const,
     list: () => ["nearby-place-types", "list"] as const,

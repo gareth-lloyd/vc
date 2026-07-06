@@ -12,6 +12,7 @@ import {
   Mail,
   MessageSquare,
   Settings,
+  SlidersHorizontal,
   Tags,
   Users,
   UsersRound,
@@ -169,6 +170,12 @@ export function Sidebar() {
       label: t("nav.email_templates"),
       icon: Mail,
       prefetch: () => import("@/features/admin/email-templates/EmailTemplatesListPage"),
+    },
+    {
+      to: "/admin/property-defaults",
+      label: t("nav.property_defaults"),
+      icon: SlidersHorizontal,
+      prefetch: () => import("@/features/admin/property-defaults/PropertyDefaultsPage"),
     },
     {
       to: "/admin/system",

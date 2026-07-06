@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.db import models
 
 from core.models.base import AuditedModel, TimestampedModel
-from properties.enums import EnsuiteType, RoomAccess, RoomFloor, RoomPlacement
+from properties.enums import BedSize, EnsuiteType, RoomAccess, RoomFloor, RoomPlacement
 
 
 class Room(AuditedModel):
@@ -77,6 +77,15 @@ class RoomBeds(TimestampedModel):
         related_name="beds",
     )
     double = models.PositiveSmallIntegerField(default=0)
+    # Size of the double bed(s) (GAP-066): "" = unspecified. Only meaningful when
+    # `double > 0` — the form hides it otherwise (progressive disclosure); the
+    # field itself is a plain optional facet with no DB-level gate on `double`.
+    double_size = models.CharField(
+        max_length=16,
+        choices=BedSize.choices,
+        blank=True,
+        default="",
+    )
     twin_double = models.PositiveSmallIntegerField(default=0)
     twin = models.PositiveSmallIntegerField(default=0)
     single = models.PositiveSmallIntegerField(default=0)

@@ -273,6 +273,56 @@ class TestRoomWrite:
         assert room.ensuite_type == ""
 
 
+class TestRoomBedSize:
+    """GAP-066: optional bed size on the double count ("" = unspecified)."""
+
+    def test_default_double_size_is_blank(
+        self, api_client: APIClient, staff: User, prop: Property
+    ) -> None:
+        api_client.force_authenticate(staff)
+        resp = api_client.post(_rooms_url(prop), {"name": "Attic"}, format="json")
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["beds"]["double_size"] == ""
+
+    def test_post_with_double_size_round_trips(
+        self, api_client: APIClient, staff: User, prop: Property
+    ) -> None:
+        api_client.force_authenticate(staff)
+        resp = api_client.post(
+            _rooms_url(prop),
+            {"name": "Master", "beds": {"double": 1, "double_size": "super_king"}},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        data = resp.json()
+        assert data["beds"]["double"] == 1
+        assert data["beds"]["double_size"] == "super_king"
+
+    def test_patch_clears_double_size(self, api_client: APIClient, staff: User, room: Room) -> None:
+        room.beds.double_size = "king"
+        room.beds.save()
+        api_client.force_authenticate(staff)
+        resp = api_client.patch(
+            _room_url(room),
+            {"beds": {"double": 1, "double_size": ""}},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        room.beds.refresh_from_db()
+        assert room.beds.double_size == ""
+
+    def test_invalid_double_size_is_400(
+        self, api_client: APIClient, staff: User, prop: Property
+    ) -> None:
+        api_client.force_authenticate(staff)
+        resp = api_client.post(
+            _rooms_url(prop),
+            {"name": "Master", "beds": {"double": 1, "double_size": "queen"}},
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+
+
 class TestRoomLocationAPI:
     """GAP-065 — placement (building), floor and placement_note on the API."""
 

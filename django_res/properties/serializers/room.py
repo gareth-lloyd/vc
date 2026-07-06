@@ -31,6 +31,7 @@ class _RoomBedsSerializer(serializers.ModelSerializer[RoomBeds]):
         model = RoomBeds
         fields = [
             "double",
+            "double_size",
             "twin_double",
             "twin",
             "single",

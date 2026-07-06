@@ -78,6 +78,16 @@ class EnsuiteType(models.TextChoices):
     BOTH = "both", "Bath & shower"
 
 
+class BedSize(models.TextChoices):
+    """Size of a `RoomBeds.double` bed ("" = unspecified). Size only ever
+    qualifies a double (King/Super-king/Emperor); twins/singles are unqualified.
+    A plain double with a blank size reads simply as "Double" (GAP-066)."""
+
+    KING = "king", "King"
+    SUPER_KING = "super_king", "Super-king"
+    EMPEROR = "emperor", "Emperor"
+
+
 class RoomAccess(models.TextChoices):
     INSIDE = "inside", "Inside access"
     OUTSIDE = "outside", "Separate outside access"

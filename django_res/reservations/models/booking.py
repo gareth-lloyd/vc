@@ -769,6 +769,9 @@ class BookingHold(AuditedModel):
         default=BookingHoldReason.MANUAL,
     )
     notes = models.TextField(blank=True, default="")
+    # Migration metadata only (data_migration convention) — the availability
+    # loader keys its imported legacy-unavailability blocks `avail-*` here.
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         indexes = [

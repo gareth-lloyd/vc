@@ -39,6 +39,7 @@ from accounts.models import Organisation, Person, User
 from accounts.models.person import PersonEmail, PersonPhone
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
+from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
 from data_migration.loaders.integrations import SyncRecordZohoLoader
 from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX, UNKNOWN_CLIENT_LEGACY_ID
 from integrations.enums import SyncProvider
@@ -58,7 +59,7 @@ from properties.models.geo import Country, NearbyPlaceType, PropertyNearbyPlace,
 from properties.models.images import PropertyImage
 from properties.models.property import Property, PropertyCategory
 from properties.models.rooms import Room
-from reservations.models.booking import Booking
+from reservations.models.booking import Booking, BookingHold
 from reservations.models.charge_item import BookingChargeItem
 from reservations.models.enquiry import Enquiry
 from reservations.models.quotation import Quotation, QuotationLine
@@ -331,6 +332,35 @@ _CHECKS: list[_Check] = [
         # mechanism and coexist with imports — count only the legacy slice,
         # or any staff write during the cutover window turns this check RED.
         loaded_count=lambda m: m._default_manager.filter(legacy_id__isnull=False).count(),
+    ),
+    _Check(
+        # Future non-available DAYS, both sides. AvailabilityBlockLoader
+        # coalesces these day rows into one BookingHold per run; the loaded
+        # side re-expands each `avail-*` block back into days. The model's
+        # range is half-open `[date_from, date_to)`, so a block's day count is
+        # `(date_to - date_from).days` — no +1 (one grid day loads as
+        # `date_to = day + 1`). Both sides move with "today": the loader
+        # filters `AvailableDate >= localdate()` at LOAD time and this query
+        # uses GETDATE() at RECONCILE time, so run them the same day — a day
+        # crossing between the two ages rows out of the legacy side while
+        # they linger in the loaded blocks (a spurious negative gap).
+        "SELECT COUNT(*) FROM VillaAvailability "
+        "WHERE AvailableStatus IN (30, 40, 50, 60) "
+        "AND AvailableDate >= CAST(GETDATE() AS date)",
+        BookingHold,
+        "VillaAvailability (future days)",
+        # 0 holds on the 24-Apr-2025 dump: the single future run (property
+        # 133, booked 2026-07-25..2026-08-22, 29 days) sits on a property
+        # that loads. Caveat: future days on UNLOADED properties, or on a
+        # range an imported booking/live hold already occupies (the loader
+        # skips those), would widen this gap — recalibrate at cutover.
+        expected_gap=0,
+        loaded_count=lambda m: sum(
+            (hold.date_to - hold.date_from).days
+            for hold in m._default_manager.filter(
+                legacy_id__startswith=AVAILABILITY_LEGACY_PREFIX
+            ).only("date_from", "date_to")
+        ),
     ),
 ]
 

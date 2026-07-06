@@ -7,6 +7,7 @@ dependency-aware orchestration harder to reason about.
 from __future__ import annotations
 
 from data_migration.base import Loader
+from data_migration.loaders.availability import AvailabilityBlockLoader
 from data_migration.loaders.bookings import (
     BookingChargeItemLoader,
     BookingLoader,
@@ -99,6 +100,10 @@ LOADERS: dict[str, type[Loader]] = {
     # rows are already in place when the load (with the booking_total_changed
     # resync suppressed) writes on top of them.
     BookingChargeItemLoader.name: BookingChargeItemLoader,
+    # After the booking loaders: the availability-block loader skips any run
+    # whose range an imported booking already occupies, so the imported
+    # occupancy must be in place before it runs.
+    AvailabilityBlockLoader.name: AvailabilityBlockLoader,
     # External-ID backfill — registered last so every domain target row
     # (Property/Person/Enquiry/Quotation/Booking) already carries its
     # legacy_id when SyncRecord rows are written.

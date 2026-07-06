@@ -87,12 +87,18 @@ LOADERS: dict[str, type[Loader]] = {
     # customer via `person_for_client`, so the `client-{id}` Persons must already
     # exist when they run.
     ClientLoader.name: ClientLoader,
-    GuestPreferenceTypeLoader.name: GuestPreferenceTypeLoader,
-    GuestPreferenceLoader.name: GuestPreferenceLoader,
     EnquiryLoader.name: EnquiryLoader,
     PropertyFinanceLoader.name: PropertyFinanceLoader,
     QuotationLoader.name: QuotationLoader,
     QuotationLineLoader.name: QuotationLineLoader,
+    # Preferences resolve an OPTIONAL Quotation by legacy_id, so they must
+    # follow QuotationLoader. When they ran before it (pre-2026-07-05), a
+    # quotation-linked preference resolved `quotation=None` on a fresh single
+    # pass — either mis-linked or swallowed by the (person, type, quotation)
+    # duplicate collapse — and only converged on the SECOND full run (caught
+    # by the dry-run double-run check; see DRYRUN_LOG.md).
+    GuestPreferenceTypeLoader.name: GuestPreferenceTypeLoader,
+    GuestPreferenceLoader.name: GuestPreferenceLoader,
     BookingLoader.name: BookingLoader,
     PaymentLoader.name: PaymentLoader,
     # Charge lines resolve their parent Booking by legacy_id, so they must

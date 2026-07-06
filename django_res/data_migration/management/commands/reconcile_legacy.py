@@ -40,7 +40,7 @@ from accounts.models.person import PersonEmail, PersonPhone
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
 from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
-from data_migration.loaders.integrations import SyncRecordZohoLoader
+from data_migration.loaders.integrations import SyncRecordZohoLoader, zoho_id_column_exists
 from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX, UNKNOWN_CLIENT_LEGACY_ID
 from integrations.enums import SyncProvider
 from integrations.models import SyncRecord
@@ -62,6 +62,7 @@ from properties.models.rooms import Room
 from reservations.models.booking import Booking, BookingHold
 from reservations.models.charge_item import BookingChargeItem
 from reservations.models.enquiry import Enquiry
+from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.models.quotation import Quotation, QuotationLine
 
 
@@ -120,8 +121,28 @@ _CHECKS: list[_Check] = [
             legacy_id__startswith=CLIENT_LEGACY_PREFIX
         ).count(),
     ),
-    _Check("SELECT COUNT(*) FROM VillaContactEmail", PersonEmail, "PersonEmail"),
-    _Check("SELECT COUNT(*) FROM VillaContactTele", PersonPhone, "PersonPhone"),
+    _Check(
+        "SELECT COUNT(*) FROM VillaContactEmail",
+        PersonEmail,
+        "PersonEmail",
+        # GAP-045: ClientLoader also reconciles VillaClientDetails email
+        # columns onto the `client-` Person slice, but the legacy side here
+        # counts only VillaContactEmail — exclude client-owned channels
+        # (mirrors the "Person (owner/agent)" slice split above) or every
+        # client email shows as a negative gap (dry-run 1: 30 of them).
+        loaded_count=lambda m: m._default_manager.exclude(
+            contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX
+        ).count(),
+    ),
+    _Check(
+        "SELECT COUNT(*) FROM VillaContactTele",
+        PersonPhone,
+        "PersonPhone",
+        # Same client-slice exclusion as PersonEmail above.
+        loaded_count=lambda m: m._default_manager.exclude(
+            contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX
+        ).count(),
+    ),
     _Check(
         # GAP-046: every distinct (case/space-normalised) VillaContact.Company
         # becomes one Organisation(agency) via organisation_for_company_name, so
@@ -219,25 +240,26 @@ _CHECKS: list[_Check] = [
         " WHERE r.DeletedAt IS NULL AND r.IsExTra <> 1 AND r.IsOccupationPrice = 1)",
         RateBand,
         "RateBand",
-        # PLACEHOLDER — recalibrate at the first post-BUG-013 cutover dry-run
-        # against the live dump (no LEGACY_DATABASE_URL here to derive it). The
-        # true gap now nets four moving parts against the two-part legacy count
-        # above: MINUS synthetic base-weekly gap-fallback rules that have no
-        # legacy row, MINUS the GAP-056 ragged-rule fragments the period
-        # segmentation clones (a party-disjoint rule bisected by a sibling's date
-        # boundary becomes >1 RateBand), PLUS dropped priceless / invalid-band /
-        # overlap-covered rows and rows on the 67 unloaded seasons. The
-        # fragment-inflation mechanism is unchanged, but there is no longer a
-        # transitional `save()` shim or `backfill_plan_periods` pass: the
-        # `RateBandLoader._load_rows` builds each plan's disjoint `RatePeriod`
-        # date axis directly via the shared `flatten_rate_grid`. The old
-        # 3462+265 breakdown (see CUTOVER.md "Rate rule overlap resolution") no
-        # longer holds as-is. 3727 is also pre-BUG-016: the split-not-clip
-        # flattener keeps fragments the old clip-only resolver discarded
-        # (interior-collision far sides, single-day remainders, extra
-        # party-split brackets), shifting row counts again — recalibrate at the
-        # next legacy dry-run.
-        expected_gap=3727,
+        # Calibrated 2026-07-05 against the 24-Apr-2025 prod dump (DRYRUN_LOG
+        # run 1). Legacy 7333 = 7082 VillaSeasonRate parents + 251 occupancy
+        # children; loaded 3528 = 3265 simple + 27 #seg fragments + 235 occ-*
+        # bands + 1 occ-fb-* gap fallback. Itemised (balances exactly, zero
+        # residual):
+        #   +  108  occupancy-banded parents replaced by their band expansion
+        #   + 2477  priceless non-POA rows (2476 simple + 1 fallback with a
+        #           NULL parent base price)
+        #   +  985  rows on seasons with no RatePlan (654 on deleted/dangling
+        #           seasons + 331 on 59 of the 67 unloaded live seasons)
+        #   +  106  synthetic gap fallbacks emptied by capacity (bands
+        #           already cover 1..cap)
+        #   +  264  flattener-shadowed sources (248 simple + 16 duplicate occ
+        #           bands at identical price — no distinct price lost)
+        #   -  108  synthetic occ-fb-* fallback rows added by expansion
+        #   -   27  #seg fragments added by the flattener
+        # Junk dates / invalid occ children / resolver dedupe: all 0 on this
+        # dump. Recalibrate on a newer dump — the mix (especially priceless
+        # rows and unloaded seasons) moves with the data, not the code.
+        expected_gap=3805,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaContactMapping",
@@ -303,6 +325,24 @@ _CHECKS: list[_Check] = [
         QuotationLine,
         "QuotationLine (legacy + booking-synth)",
         expected_gap=-2,  # lines on the booking-synth quotations above.
+    ),
+    _Check(
+        "SELECT COUNT(*) FROM VillaClientPrefMaster",
+        GuestPreferenceType,
+        "GuestPreferenceType",
+    ),
+    _Check(
+        "SELECT COUNT(*) FROM ClientPreferenceDetails",
+        GuestPreference,
+        "GuestPreference",
+        # Calibrated 2026-07-05: duplicate (person, preference_type,
+        # quotation) triples collapse to the first occurrence (the legacy
+        # table has no unique constraint), plus rows whose client resolves to
+        # the no-identity sentinel path. Added when the double-run
+        # convergence check caught the loader silently under-loading 16
+        # quotation-linked rows (registry-order bug, since fixed — see
+        # registry.py comment).
+        expected_gap=93,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaBooking WHERE DeletedAt IS NULL",
@@ -450,10 +490,24 @@ class Command(BaseCommand):
         refreshes every external_id (`update_or_create`), but a value that
         drifted on a delta-only `--since` load whose `UpdatedAt` did not advance
         would not be caught here.
+
+        Not every dump carries ZohoId on every spec table (the 24-Apr-2025
+        prod dump lacks it on VillaQuotationMaster/VillaBooking): a table
+        without the column gets a clearly-marked "no ZohoId column" row —
+        there is nothing to backfill from, so it is informational, never a
+        blocker — and the loader skipped it the same way.
+
+        Each spec carries an `expected_gap` (default 0) mirroring the main
+        table's `_Check.expected_gap`: the row only blocks when the continuity
+        gap differs from the documented, accepted one (e.g. VillaMaster's
+        Temenos duplicate pair — see the calibration comment on `SPECS`).
         """
-        rows: list[tuple[str, int, int, int, int, str]] = []
+        rows: list[tuple[str, int | str, int | str, int | str, int | str, int | str, str]] = []
         blockers: list[str] = []
         for spec in SyncRecordZohoLoader.SPECS:
+            if not zoho_id_column_exists(cursor, spec.table):
+                rows.append((f"{spec.table}.ZohoId", "-", "-", "-", "-", "-", "no ZohoId column"))
+                continue
             cursor.execute(
                 f"SELECT Id FROM {spec.table} "
                 f"WHERE ZohoId IS NOT NULL AND LTRIM(RTRIM(ZohoId)) <> ''"
@@ -471,10 +525,10 @@ class Command(BaseCommand):
                 external_id__gt="",
             ).count()
             gap = loaded - sync_records
-            ok = gap == 0
+            ok = gap == spec.expected_gap
             if not ok:
                 blockers.append(
-                    f"{spec.table}.ZohoId: continuity gap {gap} "
+                    f"{spec.table}.ZohoId: continuity gap {gap} != expected {spec.expected_gap} "
                     f"({loaded} loaded with a ZohoId vs {sync_records} SyncRecord(s))"
                 )
             rows.append(
@@ -484,11 +538,20 @@ class Command(BaseCommand):
                     loaded,
                     sync_records,
                     gap,
+                    spec.expected_gap,
                     "OK" if ok else "BLOCKER",
                 )
             )
 
-        header = ("zoho source", "legacy ext id", "loaded", "sync records", "gap", "status")
+        header = (
+            "zoho source",
+            "legacy ext id",
+            "loaded",
+            "sync records",
+            "gap",
+            "expected",
+            "status",
+        )
         self.stdout.write("\n\nZoho external-ID continuity:\n")
         self.stdout.write(render_table(header, rows))
         return blockers

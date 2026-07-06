@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from data_migration.loaders.integrations import SyncRecordZohoLoader
 from data_migration.management.commands import reconcile_legacy
 from data_migration.management.commands.reconcile_legacy import _Check
 from integrations.enums import SyncProvider
@@ -67,6 +69,18 @@ def _patch(
     monkeypatch.setattr(reconcile_legacy, "legacy_cursor", _fake_cursor)
 
 
+def _zero_zoho_expected_gaps(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Zero the calibrated per-table continuity gaps (VillaMaster carries 1 for
+    the Temenos duplicate pair) so generic section tests can script arbitrary
+    legacy data without tripping the calibration. The calibrated value itself
+    is pinned by its own dedicated tests below."""
+    monkeypatch.setattr(
+        SyncRecordZohoLoader,
+        "SPECS",
+        tuple(replace(spec, expected_gap=0) for spec in SyncRecordZohoLoader.SPECS),
+    )
+
+
 def _integration_responses(
     *,
     master: list[str] | None = None,
@@ -77,14 +91,29 @@ def _integration_responses(
     booking_url: int = 0,
     syncdetail_rows: int = 0,
     syncdetail_sites: int = 0,
+    without_zoho_column: set[str] | None = None,
 ) -> dict[str, object]:
     """Scripted results for the --integrations sections.
 
     The five continuity values are the legacy Ids returned by
     `SELECT Id FROM <table> WHERE ZohoId ...`; the three WordPress values are
-    scalar COUNTs. Keys are distinctive query substrings.
+    scalar COUNTs. Keys are distinctive query substrings. Every table answers
+    the INFORMATION_SCHEMA ZohoId probe with 1 (column present) unless listed
+    in `without_zoho_column`.
     """
+    zoho_tables = (
+        "VillaMaster",
+        "VillaContact",
+        "VillaEnquire",
+        "VillaQuotationMaster",
+        "VillaBooking",
+    )
+    probes: dict[str, object] = {
+        f"TABLE_NAME = '{table}'": 0 if table in (without_zoho_column or set()) else 1
+        for table in zoho_tables
+    }
     return {
+        **probes,
         "VillaMaster WHERE ZohoId": master or [],
         "VillaContact WHERE ZohoId": contact or [],
         "VillaEnquire WHERE ZohoId": enquire or [],
@@ -255,6 +284,7 @@ def test_no_integration_sections_without_flag(monkeypatch: pytest.MonkeyPatch) -
 
 @pytest.mark.django_db
 def test_integrations_flag_renders_both_sections(monkeypatch: pytest.MonkeyPatch) -> None:
+    _zero_zoho_expected_gaps(monkeypatch)
     _patch(
         monkeypatch,
         [],
@@ -280,6 +310,7 @@ def test_zoho_id_on_loaded_row_without_sync_record_is_a_blocker(
     # SyncRecord exists for them → a real continuity gap that must block.
     for legacy_id in ("10", "11", "12"):
         PropertyFactory(legacy_id=legacy_id)
+    _zero_zoho_expected_gaps(monkeypatch)
     _patch(
         monkeypatch,
         [],
@@ -294,6 +325,7 @@ def test_zoho_id_on_loaded_row_without_sync_record_is_a_blocker(
 def test_zoho_continuity_ok_when_sync_record_present(monkeypatch: pytest.MonkeyPatch) -> None:
     prop = PropertyFactory(legacy_id="10")
     SyncRecordFactory(target=prop, provider=SyncProvider.ZOHO_CRM)  # non-blank external_id
+    _zero_zoho_expected_gaps(monkeypatch)
     _patch(monkeypatch, [], responses=_integration_responses(master=["10"]))
 
     output = _run("--integrations")
@@ -312,6 +344,7 @@ def test_unimported_zoho_row_is_not_a_continuity_blocker(
     # not imported. The continuity COUNT must reconcile against loaded rows only.
     prop = PropertyFactory(legacy_id="10")
     SyncRecordFactory(target=prop, provider=SyncProvider.ZOHO_CRM)
+    _zero_zoho_expected_gaps(monkeypatch)
     _patch(monkeypatch, [], responses=_integration_responses(master=["10", "99"]))
 
     output = _run("--integrations")
@@ -332,10 +365,125 @@ def test_blank_external_id_record_does_not_mask_a_missing_id(
     # one record and call it even (masking the miss); the gate must still block.
     enq = EnquiryFactory(legacy_id="100")
     SyncRecordFactory(target=enq, provider=SyncProvider.ZOHO_CRM, external_id="")
+    _zero_zoho_expected_gaps(monkeypatch)
     _patch(monkeypatch, [], responses=_integration_responses(enquire=["100"]))
 
     with pytest.raises(CommandError, match=r"VillaEnquire\.ZohoId: continuity gap 1"):
         _run("--integrations")
+
+
+@pytest.mark.django_db
+def test_missing_zoho_id_column_is_marked_not_a_blocker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 24-Apr-2025 prod dump has no ZohoId column on VillaQuotationMaster
+    or VillaBooking. The continuity section must render a clearly-marked
+    "no ZohoId column" row for those tables — never crash, never block —
+    while still checking the tables that do carry the column."""
+    prop = PropertyFactory(legacy_id="10")
+    SyncRecordFactory(target=prop, provider=SyncProvider.ZOHO_CRM)
+    _zero_zoho_expected_gaps(monkeypatch)
+    _patch(
+        monkeypatch,
+        [],
+        responses=_integration_responses(
+            master=["10"],
+            without_zoho_column={"VillaQuotationMaster", "VillaBooking"},
+        ),
+    )
+
+    output = _run("--integrations")
+
+    assert "no ZohoId column" in output
+    assert "VillaQuotationMaster.ZohoId" in output
+    assert "VillaBooking.ZohoId" in output
+    assert "BLOCKER" not in output
+
+
+@pytest.mark.django_db
+def test_missing_zoho_id_column_does_not_mask_real_blockers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A genuine continuity gap on a column-bearing table must still block even
+    # when other tables lack the column entirely.
+    PropertyFactory(legacy_id="10")  # loaded, but no SyncRecord backfilled
+    _zero_zoho_expected_gaps(monkeypatch)
+    _patch(
+        monkeypatch,
+        [],
+        responses=_integration_responses(
+            master=["10"],
+            without_zoho_column={"VillaQuotationMaster", "VillaBooking"},
+        ),
+    )
+
+    with pytest.raises(CommandError, match=r"VillaMaster\.ZohoId: continuity gap 1"):
+        _run("--integrations")
+
+
+@pytest.mark.django_db
+def test_calibrated_zoho_expected_gap_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """VillaMaster's calibrated continuity expected_gap=1 (the Temenos
+    duplicate pair — legacy 88 & 339 share one ZohoId, only the first loaded
+    row gets the SyncRecord) must pass without blocking, and the continuity
+    table must show the expected column like the main table does."""
+    first = PropertyFactory(legacy_id="88")
+    PropertyFactory(legacy_id="339")  # duplicate "Temenos" — no SyncRecord
+    SyncRecordFactory(target=first, provider=SyncProvider.ZOHO_CRM)
+    _patch(monkeypatch, [], responses=_integration_responses(master=["88", "339"]))
+
+    output = _run("--integrations")
+
+    assert "BLOCKER" not in output
+    # Pin the calibrated value where it is used, not just in the SPECS tuple.
+    master_spec = next(s for s in SyncRecordZohoLoader.SPECS if s.table == "VillaMaster")
+    assert master_spec.expected_gap == 1
+    assert all(s.expected_gap == 0 for s in SyncRecordZohoLoader.SPECS if s.table != "VillaMaster")
+    # The continuity table shows an expected column (header printed once for
+    # the section, alongside the main table's own).
+    zoho_section = output.split("Zoho external-ID continuity:")[1]
+    assert "expected" in zoho_section
+
+
+@pytest.mark.django_db
+def test_zoho_gap_beyond_calibrated_expected_still_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Two loaded VillaMaster rows with a ZohoId and no SyncRecord at all:
+    # gap 2 != the calibrated expected 1 → must still block.
+    PropertyFactory(legacy_id="88")
+    PropertyFactory(legacy_id="339")
+    _patch(monkeypatch, [], responses=_integration_responses(master=["88", "339"]))
+
+    with pytest.raises(CommandError, match=r"VillaMaster\.ZohoId: continuity gap 2 != expected 1"):
+        _run("--integrations")
+
+
+@pytest.mark.django_db
+def test_person_channel_checks_exclude_the_client_slice() -> None:
+    """Dry-run item 3: `ClientLoader` reconciles VillaClientDetails email/phone
+    columns onto `client-` Persons, but the legacy side of these checks counts
+    only VillaContactEmail/VillaContactTele. Channels owned by a client-Person
+    must be excluded from the loaded count (mirrors the "Person (owner/agent)"
+    slice split) or every client channel shows as a negative gap."""
+    from accounts.factories import PersonEmailFactory, PersonFactory, PersonPhoneFactory
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+
+    owner = PersonFactory(legacy_id="10")  # VillaContact slice
+    client = PersonFactory(legacy_id="client-55")  # VillaClientDetails slice
+    PersonEmailFactory(contact=owner, email="owner@example.com")
+    PersonEmailFactory(contact=client, email="client@example.com")  # excluded
+    PersonPhoneFactory(contact=owner, number="+44 1")
+    PersonPhoneFactory(contact=client, number="+44 2")  # excluded
+
+    by_label = {c.label: c for c in _CHECKS}
+    email_check = by_label["PersonEmail"]
+    phone_check = by_label["PersonPhone"]
+    assert email_check.loaded_count is not None
+    assert phone_check.loaded_count is not None
+
+    assert email_check.loaded_count(email_check.model) == 1
+    assert phone_check.loaded_count(phone_check.model) == 1
 
 
 @pytest.mark.django_db
@@ -394,9 +542,8 @@ def test_documented_expected_gaps_are_encoded() -> None:
     assert by_label["CollectionMembership"] == 308
     assert by_label["PropertyFinance"] == 1236
     assert by_label["Currency"] == 4
-    # Pre-BUG-016 placeholder: the split-not-clip flattener changes RateBand
-    # row counts — recalibrate at the next legacy dry-run (comment in
-    # reconcile_legacy._CHECKS), don't trust 3727.
-    assert by_label["RateBand"] == 3727
+    # Calibrated 2026-07-05 against the 24-Apr-2025 prod dump — itemised
+    # decomposition lives on the _CHECKS entry (reconcile_legacy).
+    assert by_label["RateBand"] == 3805
     assert by_label["Property"] == 1
     assert by_label["PropertyContactAssignment"] == 1

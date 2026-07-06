@@ -1,5 +1,29 @@
 # GAP-051 — itemise charge lines on the guest checkout page
 
+> **⛔ STILL BLOCKED (re-confirmed 2026-07-06)** — a `/ship gap-051` attempt
+> re-verified against the code that the prerequisite guest checkout surface
+> does not exist, so this ticket cannot be built as scoped:
+> - **No guest route.** Every frontend route sits behind `RequireAuth` →
+>   `RequireStaff`/`RequireOwner` (`frontend/src/app/router.tsx:100-636`). The
+>   only "payment" screens are staff/owner admin (`PaymentsTab`,
+>   `/bookings/:id/payments`). No public/guest checkout route or component.
+> - **No backing field.** The design
+>   (`django_res_design/legacy/workflows/10-payment/checkout-flow.md`) calls for
+>   a first-party SPA driven by `Booking.checkout_url`; that field does not
+>   exist (`grep checkout_url django_res` → nothing), and there is no guest
+>   checkout endpoint.
+> - **Service ready, unexposed.** `booking_charge_breakdown(booking)`
+>   (`django_res/reservations/services/charges.py:95`) is the layout contract
+>   (subtotal + signed charge lines + Discounts block + grand total, byte-equal
+>   to the scheduler, matching the GAP-018 confirmation email), but it is **not**
+>   on any DRF serializer — only email contexts (`comms/contexts.py:35`) and
+>   `payments/tasks.py:396` consume it. Once a checkout serializer exists it will
+>   need a new `charge_breakdown` read field wired to this service.
+>
+> **Do not start this ticket until the guest checkout page + its serializer
+> exist.** Exposing `charge_breakdown` on the staff booking serializer early was
+> considered and rejected as a currently-unconsumed field (KISS/YAGNI).
+
 - **Severity:** Gap (frontend; backend builder already shipped).
 - **Source:** GAP-018 split — the email half shipped 2026-06-21; the checkout
   half was deferred because the guest checkout SPA page does not exist yet

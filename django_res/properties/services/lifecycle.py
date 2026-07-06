@@ -18,6 +18,7 @@ from properties.models import (
     CollectionMembership,
     Property,
     PropertyDescription,
+    PropertyFeature,
     PropertyImage,
 )
 from properties.services.defaults import snapshot_defaults
@@ -80,7 +81,14 @@ class PropertyLifecycleService:
         `PropertyDefaults`, exactly like an API-created property (GAP-070).
         """
         original_pk = property.pk
-        features = list(property.features.values_list("pk", flat=True))
+        # Clone MANUAL features only (GAP-067): a derived feature must not become
+        # a permanent manual link on the clone. The clone has no rooms yet, so
+        # `recompute_derived_features` rebuilds its derived set once rooms exist.
+        features = list(
+            PropertyFeature.objects.filter(property=property, is_derived=False).values_list(
+                "feature_id", flat=True
+            )
+        )
         clone = Property.objects.get(pk=original_pk)
         clone.pk = None
         clone.slug = new_slug or f"{property.slug}-copy"

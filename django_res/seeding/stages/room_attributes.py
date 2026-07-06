@@ -17,6 +17,7 @@ import random
 
 from properties.enums import EnsuiteType, RoomAccess
 from properties.models import Room, RoomAttribute, RoomAttributeAssignment
+from properties.services.features import recompute_derived_features
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
 
@@ -53,6 +54,11 @@ def _run(ctx: SeedContext) -> int:
             room.ensuite_type = ensuite_type
             room.access = access
             room.save(update_fields=["ensuite_type", "access"])
+    # GAP-067: surface the property features implied by the attributes just
+    # assigned, so seeded properties match API-created ones (where the room
+    # save-path recomputes). Idempotent, so a re-run reconciles cleanly.
+    for prop in ctx.properties:
+        recompute_derived_features(prop)
     return made
 
 

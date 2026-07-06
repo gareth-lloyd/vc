@@ -9,6 +9,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from properties.models import Room, RoomAttribute, RoomAttributeAssignment, RoomBeds
+from properties.services.features import recompute_derived_features
 
 
 class RoomAttributeSerializer(serializers.ModelSerializer[RoomAttribute]):
@@ -107,6 +108,9 @@ class RoomSerializer(serializers.ModelSerializer[Room]):
             RoomBeds.objects.create(room=room, **(beds_data or {}))
             if links:
                 self._sync_attribute_links(room, links)
+            # Attribute links may imply property features (GAP-067) — recompute
+            # inside the same transaction so links + derived features commit atomically.
+            recompute_derived_features(room.property)
         return room
 
     def update(self, instance: Room, validated_data: dict[str, Any]) -> Room:
@@ -114,13 +118,18 @@ class RoomSerializer(serializers.ModelSerializer[Room]):
         # Absent on a partial PATCH → leave the existing links alone.
         has_links = "attribute_links" in validated_data
         links = validated_data.pop("attribute_links", None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        if beds_data is not None:
-            RoomBeds.objects.update_or_create(room=instance, defaults=beds_data)
-        if has_links:
-            self._sync_attribute_links(instance, links or [])
+        # One transaction so an attribute-link change and the property-feature
+        # recompute it triggers (GAP-067) commit together — `update()` has no
+        # ambient atomic of its own (unlike `create()`), so wrap it here.
+        with transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
+            if beds_data is not None:
+                RoomBeds.objects.update_or_create(room=instance, defaults=beds_data)
+            if has_links:
+                self._sync_attribute_links(instance, links or [])
+                recompute_derived_features(instance.property)
         return instance
 
     @staticmethod

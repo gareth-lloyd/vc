@@ -248,6 +248,30 @@ def test_duplicate_clones_feature_links(
     assert list(clone.features.values_list("pk", flat=True)) == [feature.pk]
 
 
+@pytest.mark.django_db
+def test_duplicate_clones_manual_features_only(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """`duplicate()` clones MANUAL features only (GAP-067). A derived feature on
+    the original must NOT become a permanent manual feature on the clone — the
+    clone has no rooms yet, so derivation rebuilds once the operator adds them."""
+    cat = _shared_category()
+    manual = _named_feature("Apple", "feat-a", cat)
+    derived = _named_feature("Mango", "feat-b", cat)
+    PropertyFeature.objects.create(property=property_, feature=manual, sort_order=0)
+    PropertyFeature.objects.create(
+        property=property_, feature=derived, sort_order=1, is_derived=True
+    )
+
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/properties/{property_.pk}:duplicate", format="json")
+    assert response.status_code == 201, response.content
+
+    clone = Property.objects.get(pk=response.json()["id"])
+    clone_links = {pf.feature_id: pf.is_derived for pf in clone.feature_links.all()}
+    assert clone_links == {manual.pk: False}
+
+
 # --- GAP-022: per-villa feature display order (sort_order) -------------------
 
 

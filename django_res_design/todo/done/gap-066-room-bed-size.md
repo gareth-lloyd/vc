@@ -1,3 +1,15 @@
+> **✅ RESOLVED (2026-07-06)** — Shipped in 3 units on local `main` (unpushed):
+> `BedSize` enum + optional `RoomBeds.double_size` facet (blank = unspecified,
+> no `STANDARD` member — house facet convention) + migration `0031` + serializer
+> (`ed40b3d`); positives-only bed-size backfill folded into the GAP-064/065
+> `backfill_room_attrs` prose pass — ordered super-king→king, gated on a present
+> double bed, `select_related`+guard, per-size reconcile counts, CUTOVER 6b
+> updated (`2623316`); frontend `roomDoubleSizeSchema` + a `double_size` `<Select>`
+> shown only when `double > 0`, en+el i18n (`509112a`). Bed **counts** unchanged
+> (full parity). **Deferred:** full `Bed{type,size,count}` child table (Zip &
+> link), public-site A3 rendering, `10-decisions.md` owner-steer write-up.
+> Feature-taxonomy cleanup is **GAP-067** (next).
+
 # GAP-066 — Bed size fidelity + bed-type vocabulary
 
 - **Severity:** Build (with one owner steer) — surfaced from legacy, not in A1/A2

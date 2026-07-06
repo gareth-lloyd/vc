@@ -484,6 +484,7 @@ describe("roomAttributeSchema — GAP-064 catalog", () => {
 describe("propertyRoomWriteInputSchema", () => {
   const beds = {
     double: 1,
+    double_size: "" as const,
     twin_double: 0,
     twin: 0,
     single: 0,
@@ -506,6 +507,28 @@ describe("propertyRoomWriteInputSchema", () => {
   it("accepts a fully specified room", () => {
     const result = propertyRoomWriteInputSchema.parse(valid);
     expect(result.beds).toEqual(beds);
+  });
+
+  it("accepts a double bed size, tolerates omission, rejects junk (GAP-066)", () => {
+    const withSize = propertyRoomWriteInputSchema.parse({
+      ...valid,
+      beds: { ...beds, double_size: "super_king" },
+    });
+    expect(withSize.beds?.double_size).toBe("super_king");
+    // Blank = unspecified — a plain double parses cleanly.
+    expect(
+      propertyRoomWriteInputSchema.parse({ ...valid, beds: { ...beds, double_size: "" } }).beds
+        ?.double_size,
+    ).toBe("");
+    // Optional (pre-GAP-066 fixtures omit it): omission parses, no size.
+    const bedsNoSize = { ...beds } as Record<string, unknown>;
+    delete bedsNoSize.double_size;
+    expect(
+      propertyRoomWriteInputSchema.parse({ ...valid, beds: bedsNoSize }).beds?.double_size,
+    ).toBeUndefined();
+    expect(() =>
+      propertyRoomWriteInputSchema.parse({ ...valid, beds: { ...beds, double_size: "queen" } }),
+    ).toThrow();
   });
 
   it("saves a room with just a name (beds omitted, GAP-024)", () => {

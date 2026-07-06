@@ -561,6 +561,12 @@
       "inside": "Εσωτερική",
       "outside": "Εξωτερική"
     },
+    "double_sizes": {
+      "unspecified": "Δεν έχει καθοριστεί",
+      "king": "King",
+      "super_king": "Super-king",
+      "emperor": "Emperor"
+    },
     "beds": {
       "double": "Διπλό",
       "twin_double": "Μονό/διπλό",
@@ -597,6 +603,7 @@
         "ensuite_type": "Τύπος ιδιωτικού μπάνιου",
         "access": "Πρόσβαση",
         "beds": "Κρεβάτια",
+        "double_size": "Μέγεθος διπλού κρεβατιού",
         "amenities": "Παροχές",
         "amenity_note_placeholder": "Σημείωση (προαιρετικό)",
         "website_description": "Περιγραφή ιστότοπου",

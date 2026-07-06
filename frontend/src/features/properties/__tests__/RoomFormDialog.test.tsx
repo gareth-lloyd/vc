@@ -185,6 +185,46 @@ describe("RoomFormDialog", () => {
     useAuthStore.getState().clear();
   });
 
+  it("shows the double-bed-size select when a double bed is present and posts it (edit)", async () => {
+    setReservationsUser();
+    let patchBody: { beds?: { double_size?: string } } | null = null;
+    server.use(
+      http.patch("/api/v1/properties/7/rooms/200", async ({ request }) => {
+        patchBody = (await request.json()) as { beds?: { double_size?: string } };
+        return HttpResponse.json(existingRoom);
+      }),
+    );
+    renderWithProviders(
+      <RoomFormDialog
+        propertyId={7}
+        open
+        mode="edit"
+        room={existingRoom}
+        onOpenChange={() => {}}
+      />,
+    );
+    await choose(/double bed size/i, /^super-king$/i);
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(patchBody).not.toBeNull());
+    expect(patchBody!.beds?.double_size).toBe("super_king");
+    useAuthStore.getState().clear();
+  });
+
+  it("hides the double-bed-size select when there is no double bed", async () => {
+    setReservationsUser();
+    const noDouble: PropertyRoom = {
+      ...existingRoom,
+      beds: { ...existingRoom.beds!, double: 0 },
+    };
+    renderWithProviders(
+      <RoomFormDialog propertyId={7} open mode="edit" room={noDouble} onOpenChange={() => {}} />,
+    );
+    // Wait for the dialog to be interactive (Name field present) before asserting absence.
+    await screen.findByLabelText(/^Name$/i);
+    expect(screen.queryByRole("combobox", { name: /double bed size/i })).toBeNull();
+    useAuthStore.getState().clear();
+  });
+
   it("auto-checks Ensuite when a type is picked; unchecking Ensuite resets the type", async () => {
     setReservationsUser();
     renderWithProviders(

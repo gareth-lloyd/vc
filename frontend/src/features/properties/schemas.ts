@@ -152,6 +152,12 @@ export const ROOM_ACCESS = ["inside", "outside"] as const;
 export type RoomAccess = (typeof ROOM_ACCESS)[number];
 export const roomAccessSchema = z.enum(ROOM_ACCESS);
 
+// GAP-066 bed size on the double count; blank = unspecified. Only meaningful
+// when `double > 0` — the form gates visibility, the schema stays permissive.
+export const ROOM_DOUBLE_SIZES = ["king", "super_king", "emperor"] as const;
+export type RoomDoubleSize = (typeof ROOM_DOUBLE_SIZES)[number];
+export const roomDoubleSizeSchema = z.enum(ROOM_DOUBLE_SIZES);
+
 // GAP-064 amenity catalog row (`GET /room-attributes`). The endpoint serves
 // INACTIVE rows too, so retired-but-assigned amenities can still be labelled.
 export const roomAttributeSchema = z.object({
@@ -184,6 +190,11 @@ export type RoomAttributeLink = z.infer<typeof roomAttributeLinkSchema>;
 
 export const roomBedsSchema = z.object({
   double: z.number().int().min(0),
+  // GAP-066 size of the double bed; blank = unspecified. `.optional()` (no
+  // `.default`) so pre-GAP-066 beds fixtures still parse AND the input/output
+  // types stay aligned for react-hook-form. The form always emits it (from
+  // EMPTY_BEDS), so a PATCH can still send "" to clear a previously-set size.
+  double_size: roomDoubleSizeSchema.or(z.literal("")).optional(),
   twin_double: z.number().int().min(0),
   twin: z.number().int().min(0),
   single: z.number().int().min(0),

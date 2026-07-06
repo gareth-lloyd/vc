@@ -25,6 +25,7 @@ import { useCreatePropertyRoom, useRoomAttributes, useUpdatePropertyRoom } from 
 import {
   ENSUITE_TYPES,
   ROOM_ACCESS,
+  ROOM_DOUBLE_SIZES,
   ROOM_FLOORS,
   ROOM_PLACEMENTS,
   propertyRoomWriteInputSchema,
@@ -32,6 +33,7 @@ import {
   type PropertyRoom,
   type PropertyRoomWriteInput,
   type RoomAccess,
+  type RoomDoubleSize,
   type RoomFloor,
   type RoomPlacement,
 } from "../schemas";
@@ -56,6 +58,7 @@ type RoomFormDialogProps = CreateProps | EditProps;
 
 const EMPTY_BEDS = {
   double: 0,
+  double_size: "" as const,
   twin_double: 0,
   twin: 0,
   single: 0,
@@ -107,6 +110,7 @@ const ENSUITE_TYPE_NONE = "unknown";
 const ACCESS_NONE = "unspecified";
 const PLACEMENT_NONE = "not_set";
 const FLOOR_NONE = "unspecified";
+const DOUBLE_SIZE_NONE = "unspecified";
 
 const BED_FIELDS = [
   "double",
@@ -168,6 +172,10 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
   const isEnsuite = form.watch("is_ensuite") ?? false;
   const ensuiteType = form.watch("ensuite_type") ?? "";
   const access = form.watch("access") ?? "";
+  // GAP-066: bed size only shows when the room has a double bed (progressive
+  // disclosure — don't ask for a king size on a twin-only room).
+  const doubleCount = form.watch("beds.double") ?? 0;
+  const doubleSize = form.watch("beds.double_size") ?? "";
   const attributeLinks = form.watch("attribute_links") ?? [];
 
   // Render the active catalog ∪ the attributes already assigned to this room.
@@ -376,6 +384,36 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
                 </div>
               ))}
             </div>
+            {doubleCount > 0 ? (
+              <div className="space-y-1">
+                <Label htmlFor="property-room-double-size" className="text-xs">
+                  {t("rooms.dialog.fields.double_size")}
+                </Label>
+                <Select
+                  value={doubleSize === "" ? DOUBLE_SIZE_NONE : doubleSize}
+                  onValueChange={(v) =>
+                    form.setValue(
+                      "beds.double_size",
+                      v === DOUBLE_SIZE_NONE ? "" : (v as RoomDoubleSize),
+                    )
+                  }
+                >
+                  <SelectTrigger id="property-room-double-size">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={DOUBLE_SIZE_NONE}>
+                      {t("rooms.double_sizes.unspecified")}
+                    </SelectItem>
+                    {ROOM_DOUBLE_SIZES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {t(`rooms.double_sizes.${s}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </fieldset>
 
           {amenityRows.length > 0 ? (

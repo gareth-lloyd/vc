@@ -561,6 +561,12 @@
       "inside": "Inside",
       "outside": "Outside"
     },
+    "double_sizes": {
+      "unspecified": "Not specified",
+      "king": "King",
+      "super_king": "Super-king",
+      "emperor": "Emperor"
+    },
     "beds": {
       "double": "Double",
       "twin_double": "Twin/double",
@@ -597,6 +603,7 @@
         "ensuite_type": "Ensuite type",
         "access": "Access",
         "beds": "Beds",
+        "double_size": "Double bed size",
         "amenities": "Amenities",
         "amenity_note_placeholder": "Note (optional)",
         "website_description": "Website description",

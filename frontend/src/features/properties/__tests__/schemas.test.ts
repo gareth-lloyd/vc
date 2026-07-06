@@ -187,6 +187,26 @@ describe("propertyDetailSchema", () => {
     });
     expect(parsed.feature_ids).toEqual([]);
   });
+
+  it("defaults derived_feature_ids when omitted (older fixtures) (GAP-067)", () => {
+    const parsed = propertyDetailSchema.parse({
+      id: 5,
+      name: "Villa Azul",
+      status: "active",
+    });
+    expect(parsed.derived_feature_ids).toEqual([]);
+  });
+
+  it("carries derived_feature_ids as a subset of feature_ids (GAP-067)", () => {
+    const parsed = propertyDetailSchema.parse({
+      id: 5,
+      name: "Villa Azul",
+      status: "active",
+      feature_ids: [11, 13],
+      derived_feature_ids: [13],
+    });
+    expect(parsed.derived_feature_ids).toEqual([13]);
+  });
 });
 
 describe("propertyContactAssignmentWriteInputSchema", () => {

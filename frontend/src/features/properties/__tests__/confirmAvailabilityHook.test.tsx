@@ -21,6 +21,7 @@ function makeDetail(overrides: Partial<PropertyDetail> = {}): PropertyDetail {
     channel: "direct",
     has_active_ical_feed: false,
     feature_ids: [],
+    derived_feature_ids: [],
     availability_owner_updated_at: null,
     availability_confirmed_at: "2026-07-01T09:00:00Z",
     availability_confirmed_by_name: "Sam Staffer",

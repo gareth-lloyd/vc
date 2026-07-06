@@ -81,6 +81,10 @@ export type PropertyListItem = z.infer<typeof propertyListItemSchema>;
 
 export const propertyDetailSchema = propertyListItemSchema.extend({
   feature_ids: z.array(z.number()).optional().default([]),
+  // GAP-067: the subset of `feature_ids` auto-derived from room attributes.
+  // The editor renders these as read-only "from rooms" chips and excludes them
+  // from the manual (draggable) list and the save payload.
+  derived_feature_ids: z.array(z.number()).optional().default([]),
   hero_image_url: z.string().nullable().optional(),
   legacy_id: z.union([z.string(), z.number()]).nullable().optional(),
 });

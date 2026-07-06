@@ -201,6 +201,46 @@ describe("FeaturesTab", () => {
     expect(patchedBody!.features).toEqual([]);
   });
 
+  it("shows derived features as read-only chips, out of the sortable list and save payload (GAP-067)", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    // Wi-Fi(13) is derived from a room attribute; Pool(11) is manual.
+    let patchedBody: { features?: number[] } | null = null;
+    server.use(
+      http.get("/api/v1/properties/casa-sur", () =>
+        HttpResponse.json({ ...propertyFixture, feature_ids: [11, 13], derived_feature_ids: [13] }),
+      ),
+      http.patch("/api/v1/properties/7", async ({ request }) => {
+        patchedBody = (await request.json()) as { features?: number[] };
+        return HttpResponse.json({ ...propertyFixture, feature_ids: patchedBody?.features ?? [] });
+      }),
+    );
+    setup();
+
+    // Pool(11) is an editable sortable row; Wi-Fi(13) is NOT in the sortable list.
+    await waitFor(() => expect(featureRow(11)).toBeInTheDocument());
+    expect(screen.queryByTestId("property-feature-row-13")).not.toBeInTheDocument();
+
+    // Wi-Fi(13) renders as a read-only derived chip with no remove control.
+    const chip = screen.getByTestId("property-derived-feature-13");
+    expect(within(chip).getByText("Wi-Fi")).toBeInTheDocument();
+    expect(within(chip).queryByRole("button")).not.toBeInTheDocument();
+
+    // Filtering the derived id out must NOT make the tab look dirty.
+    const save = screen.getByRole("button", { name: /save changes/i });
+    expect(save).toBeDisabled();
+
+    // A derived feature is not offered again in the Add menu.
+    await userEvent.click(screen.getByRole("button", { name: /add feature/i }));
+    expect(screen.queryByRole("menuitem", { name: /wi-fi/i })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("menuitem", { name: /bbq/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(patchedBody).not.toBeNull());
+    // Manual-only payload: derived id 13 is excluded.
+    expect(patchedBody!.features).toEqual([11, 12]);
+  });
+
   it("reverts local edits on Reset", async () => {
     setReservationsUser();
     installBaseHandlers();

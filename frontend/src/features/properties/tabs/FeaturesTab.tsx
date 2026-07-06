@@ -106,10 +106,24 @@ export function FeaturesTab() {
   const saveMutation = useUpdatePropertyFeatures(property.id);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  // The ORDERED list of selected feature ids is the source of truth — its index
+  // Features auto-derived from room attributes (GAP-067) are read-only here:
+  // the recompute owns them, so the editor renders them as chips and keeps them
+  // out of the manual (draggable) list AND the save payload. `feature_ids` is
+  // the full set; subtract the derived subset to get the manual list.
+  const derivedSet = useMemo(
+    () => new Set(property.derived_feature_ids ?? []),
+    [property.derived_feature_ids],
+  );
+  const manualFeatureIds = (p: PropertyDetail, derived: Set<number>) =>
+    (p.feature_ids ?? []).filter((id) => !derived.has(id));
+
+  // The ORDERED list of MANUAL feature ids is the source of truth — its index
   // becomes each link's `sort_order` server-side (GAP-022). Reordering is a real
   // edit, so `isDirty` is order-sensitive (unlike the old Set-based grid).
-  const initialOrder = useMemo(() => property.feature_ids ?? [], [property.feature_ids]);
+  const initialOrder = useMemo(
+    () => manualFeatureIds(property, derivedSet),
+    [property, derivedSet],
+  );
   const [order, setOrder] = useState<number[]>(initialOrder);
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
@@ -118,7 +132,7 @@ export function FeaturesTab() {
   // in-flight edits. After Save the server echoes the persisted order, so
   // `initialOrder` catches up and `isDirty` settles to false on its own.
   useEffect(() => {
-    setOrder(property.feature_ids ?? []);
+    setOrder(manualFeatureIds(property, derivedSet));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [property.id]);
 
@@ -148,14 +162,20 @@ export function FeaturesTab() {
       (categories.data?.results ?? []).map((c) => [c.id, c.sort_order] as const),
     );
     return (features.data?.results ?? [])
-      .filter((f) => f.is_active && !selectedSet.has(f.id))
+      .filter((f) => f.is_active && !selectedSet.has(f.id) && !derivedSet.has(f.id))
       .sort(
         (a, b) =>
           (catSort.get(a.category) ?? 0) - (catSort.get(b.category) ?? 0) ||
           a.sort_order - b.sort_order ||
           a.name.localeCompare(b.name),
       );
-  }, [features.data?.results, categories.data?.results, selectedSet]);
+  }, [features.data?.results, categories.data?.results, selectedSet, derivedSet]);
+
+  // Read-only derived features, preserving the API's order.
+  const derivedFeatures = useMemo(
+    () => (property.derived_feature_ids ?? []).map((id) => ({ id, feature: featuresById.get(id) })),
+    [property.derived_feature_ids, featuresById],
+  );
 
   const hasCatalogue = useMemo(
     () => (features.data?.results ?? []).some((f) => f.is_active),
@@ -313,6 +333,45 @@ export function FeaturesTab() {
           </SortableContext>
         </DndContext>
       )}
+
+      {derivedSet.size > 0 ? (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-muted-foreground text-sm font-medium">
+              {t("features.derived.title")}
+            </h3>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="text-muted-foreground cursor-help text-xs select-none"
+                  aria-label={t("features.derived.tooltip")}
+                >
+                  ⓘ
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t("features.derived.tooltip")}</TooltipContent>
+            </Tooltip>
+          </div>
+          <ul className="flex flex-wrap gap-2">
+            {derivedFeatures.map(({ id, feature }) => (
+              <li
+                key={id}
+                data-testid={`property-derived-feature-${id}`}
+                className="border-border bg-muted/40 flex items-center gap-2 rounded-md border px-2 py-1"
+              >
+                <FeatureIcon
+                  name={feature?.icon ?? ""}
+                  className="text-muted-foreground size-4 shrink-0"
+                />
+                <span className="truncate text-sm">
+                  {feature?.name ?? t("features.row.unknown_feature")}
+                </span>
+                <Badge variant="outline">{t("features.derived.badge")}</Badge>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <FormErrorAlert message={topLevelError} />
     </div>

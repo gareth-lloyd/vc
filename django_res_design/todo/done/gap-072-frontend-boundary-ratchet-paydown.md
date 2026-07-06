@@ -1,3 +1,26 @@
+> **✅ RESOLVED (2026-07-06)** — shipped on local `main` (ff `fbf6263`,
+> unpushed; work commits `fdfad2b`, `45ef467`, `c43bc0e`, `218a9a0`,
+> `a25658d`). Both mutual UI cycles are gone: `contacts→properties` broke by
+> lifting `PROPERTY_CONTACT_ROLES` to `lib/domain/contactRoles`, and
+> `enquiries→quotations` broke by injecting `QuoteBuilder` as a route-level
+> slot (`quoteBuilder` prop on `EnquiryDetailLayout`, composed in
+> `app/router.tsx`) — `quotations→enquiries` stays as the sanctioned
+> downstream direction. Geo/taxonomy read side (schemas, list fetchers,
+> `useRegions`/`useCollections`/`useCountries`, `regionOptionsForCountry`,
+> `TAXONOMY_PAGE_SIZE`) promoted to `src/lib/geo/`; country CRUD stays in
+> `admin/countries`; old feature homes re-export shims for intra-feature
+> callers. Two bonus one-symbol edges killed (`PERSON_TAGS`,
+> `bookingStatusLabel` → `lib/domain`). The allowlist is now **tiered**:
+> `SANCTIONED_EDGES` (18, stable architecture) + `DEBT_EDGES` (2, shrink-only:
+> `enquiries→bookings` ReasonFormDialog, `quotations→bookings`
+> bookingDetailSchema pending GAP-062) merged into `ALLOWED_EDGES` that eslint
+> consumes unchanged. `boundaries.test.ts` gained per-tier liveness +
+> tier-disjointness + union checks. **20 edges total, zero mutual pairs**, debt
+> tier of 2 (was 27 flat). Deferred (recorded, not done): `properties→contacts`
+> people-management (8 imports, tiered SANCTIONED); re-homing `EnquiryDetail`
+> and `bookingDetailSchema` into `lib/domain` (GAP-062 codegen territory).
+> Frontend gate green: 1814 vitest passing, tsc/eslint/prettier clean.
+
 # GAP-072 — Pay down the remaining frontend boundary-ratchet edges (2 cycles + the sanctioned-edge tier)
 
 - **Severity:** Gap (frontend architecture, debt pay-down) — the boundary

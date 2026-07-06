@@ -8,6 +8,12 @@ against a recent dump. The goal is to land every legacy row that has a
 schema home in the new system, with zero unexplained gaps in
 `reconcile_legacy`.
 
+Companion documents: `ACCEPTANCE.md` defines what "the migration succeeded"
+means (the S1–S7 standards and the verdict procedure this runbook feeds);
+`COVERAGE.md` classifies every table in the live dump (loaded / joined /
+dropped-with-justification); `DRYRUN_LOG.md` records dry-run results and
+calibration evidence.
+
 ## 0. Prerequisites
 
 - A read-only Azure SQL Edge container holding the latest production dump
@@ -49,7 +55,28 @@ uv run python manage.py loadlegacy --all
 
 Expect this to finish in ~2 minutes on the live snapshot. Watch for any
 non-zero `errors` column in the per-loader summary; investigate before
-proceeding.
+proceeding. Since 2026-07-05 the command is strict and crash-isolated: a
+loader that raises no longer aborts the run (its failure lands in the
+summary as `<loader crashed>`, remaining loaders still run, the sequence
+sync still happens) and the command **exits non-zero if any loader crashed
+or reported errors** — so "step passes iff exit 0" now holds here too.
+
+Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
+
+- **Legacy `IsDefault*` flag resolution is DEFERRED** (separate finance
+  investigation — GAP-073 owner decision 2026-07-06). Legacy overrode a
+  flagged row's stored column with the `VillaConfigPropertyDefault` value at
+  read time (min-nights 7, EUR currency, 20% commission, payment-schedule and
+  security-deposit defaults); reproducing that — plus the related
+  commission/deposit type-code re-key (`10=Percentage / 20=Fixed`) and the
+  VillaCurrency duplicate-code resolver — was built on `feat/legacy-loader`
+  but NOT landed here, pending confirmation that GAP-070's `PropertyDefaults`
+  snapshot doesn't already cover it. Until then finance/settings values load
+  from the stored VillaMaster columns as before.
+- **`availability_block`** ports future non-available legacy calendar runs
+  into `BookingHold(reason=MANUAL)` rows (see the reconcile table below).
+  Like `rate_rule` it ignores `--since` and full-replaces its own
+  `avail-*` slice per run.
 
 ## 4b. Capture external IDs into `SyncRecord` (Zoho)
 
@@ -57,6 +84,22 @@ This step **captures** the external ids Zoho already issued against legacy
 rows into `integrations.SyncRecord`, while the legacy DB is still readable.
 The `syncrecord_zoho` loader runs as part of `loadlegacy --all` in step 4,
 so there is nothing extra to run here — this step is the verification.
+
+> **Live-schema reality (2026-07-05 dry run):** only `VillaContact`,
+> `VillaEnquire` and `VillaMaster` actually carry a `ZohoId` column in the
+> prod dump — `VillaQuotationMaster` and `VillaBooking` do **not** (the
+> five-table list below was aspirational). The loader and the reconcile
+> section probe `INFORMATION_SCHEMA` per table and skip/annotate absent
+> columns, so a schema-vintage difference can no longer crash the run.
+> Known accepted gap: `VillaMaster` continuity expects gap **1** — legacy
+> rows 88 (*Temenos Villa Templos*) and 339 (*Temenos Villa Kioni*) are two
+> **distinct** villas that share one `ZohoId` (`577032000002128026`), a
+> source-side error in Zoho, not duplicate Property records. **Product
+> decision 2026-07-06: ACCEPT.** Both villas migrate; the SyncRecord attaches
+> to the lower legacy Id (88, forced by `ORDER BY Id` in the loader query so
+> it is reproducible), and the shared `ZohoId` is flagged to the CRM owner for
+> a source-side fix. The gap stays **1** until Zoho is corrected — no property
+> merge is warranted.
 
 Why it is time-critical even though nothing syncs yet: the legacy DB is the
 only home of these ids and it is decommissioned 24–48h after cutover (step
@@ -243,16 +286,14 @@ next full `loadlegacy` emits the right roles, so no back-migration is needed.
 never emitted by the loader. An unmapped/NULL legacy `RoleId` falls back to
 `owner`.
 
-> ⚠️ **Verify before cutover — role source completeness.** The loader sources
-> `RoleId` only from the LEFT-JOINed `VillaContactRoleMapping`. The schema doc
-> (`07-api-schema-reconciliation.md`) notes `VillaRoles` is *also* FK'd from the
-> base `VillaContactMapping`. If any mapping carries its own `RoleId` with **no**
-> child role-mapping row, it currently imports as `owner` (the NULL fallback),
-> silently dropping the real role. **Count** `VillaContactMapping` rows with a
-> non-null `RoleId` but no `VillaContactRoleMapping` child against the dump; if
-> non-zero, source the role via `COALESCE(r.RoleId, m.RoleId)` in the loader's
-> `legacy_query`. This is a pre-existing loader gap surfaced (not introduced) by
-> the GAP-048 remap.
+> ✅ **Resolved 2026-07-05 (dry run against the live dump):** the live
+> `VillaContactMapping` has **no `RoleId` column at all** — the schema doc's
+> claim was wrong for this vintage; roles live only in the child
+> `VillaContactRoleMapping`, exactly where the loader reads them. 3 of 335
+> mappings have no role child and fall back to `owner` (accepted). The
+> mapping's `GroupId`, all 12 `IsAccess*`/`IsNotify*` flags and `Notes` are
+> zero-use in the dump, so the loader dropping them loses nothing. No
+> COALESCE change needed.
 
 ## 4g. Chargeable Extras → `BookingChargeItem` (GAP-017)
 
@@ -316,6 +357,24 @@ Zero-`Price` legacy rows are skipped (counted in `skipped`).
 - Imported bookings are DRAFT and the charge service's state gate rejects
   DRAFT, so imported lines are API-immutable — desirable for historical data.
 
+## 4h. Open product decision — property-level POA (DEFERRED)
+
+`VillaWebsitePricing.IsPOA` is a curator-set, property-wide "price on
+application" flag on **18 live villas**. It is **not** derivable from the
+rate-level `RateBand.is_poa` (COVERAGE item 4), and the new schema has no
+property-level home for it. **Decision 2026-07-06: DEFERRED** pending a call
+on whether to add a `Property.is_poa` flag.
+
+- **Impact if cutover proceeds un-resolved:** those 18 villas will show a
+  computed price on the customer site instead of the legacy "price on
+  application / enquire" treatment — a customer-facing behavioural regression
+  (`feedback_follow_legacy_customer_facing`). This is a **tracked open item**,
+  not a silent drop.
+- **To resolve:** add `Property.is_poa = BooleanField(default=False)` +
+  migration, extend `PropertyLoader` to read `VillaWebsitePricing.IsPOA`
+  (MAX(Id) per `VillaId`), and have the guest-side price surface honour it.
+  Then move this from "deferred" to "loaded" in COVERAGE item 4.
+
 ## 5. Verify with `reconcile_legacy`
 
 ```bash
@@ -336,11 +395,12 @@ is where the dry-run calibration happens), not just here.
 | `VillaCollectionsMappings`| 308          | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
 | `VillaFinance`            | 1236 *(placeholder)* | **Recalibrate at the first post-GAP-070 dry-run.** 1236 was exact while loaded matched the `VillaId IS NOT NULL` universe 1:1 (413 contact-default template rows + 676 parent-child override rows, neither with a per-villa home). The GAP-070 owner-contact fallback now also *creates* a `PropertyFinance` row for each financeless villa with a live OWNER assignment, so the true gap is 1236 minus that fallback count — only derivable against the live dump. |
 | `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
-| `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 3727 *(placeholder)* | **BUG-013**: RateRule now loads from two legacy sources, so the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents (see [Occupancy-band pricing](#occupancy-band-pricing-bug-013)). `3727` is a **placeholder to recalibrate at the first post-BUG-013 dry-run** — it can only be derived against the live dump. The true gap nets synthetic base-weekly gap-fallback rules (no legacy row) against dropped priceless/invalid-band/overlap-covered rows and rows on the 67 unloaded seasons; the old 3462 + 265 breakdown no longer holds as-is. |
+| `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 3805 *(calibrated 2026-07-05)* | **BUG-013**: the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents. Fully itemised in `reconcile_legacy.py` (balances to zero residual): dominated by 2477 priceless non-POA rows and 985 rows on seasons with no RatePlan; occupancy expansion and flattener fragments net off. Recalibrate on a newer dump — the mix moves with the data. |
 | `VillaMaster`             | 1            | One row with empty `Name`. |
 | `VillaContactMapping`     | 1            | Composite legacy_id collapse. |
 | `VillaClientDetails`      | 1            | One row with neither `FirstName` nor `LastName` (no identity to import). Loads to the `client-` slice of `Person` (GAP-045). |
-| `VillaBookingDetails`     | 0 *(placeholder)* | **GAP-017**: recalibrate at the first dry-run. The legacy side already excludes zero-price rows and rows on deleted bookings; the loaded side counts only imported rows (`legacy_id IS NOT NULL`), so staff-created charge lines never skew it. Error/skip rows widen the gap until fixed: no-rate FX rows, unresolvable non-zero `CurrencyId`, conversions quantising to zero, unresolvable bookings — see [4g](#4g-chargeable-extras--bookingchargeitem-gap-017). |
+| `VillaBookingDetails`     | 0 *(confirmed at 2026-07-05 dry-run)* | **GAP-017**: the legacy side already excludes zero-price rows and rows on deleted bookings; the loaded side counts only imported rows (`legacy_id IS NOT NULL`), so staff-created charge lines never skew it. Error/skip rows widen the gap until fixed: no-rate FX rows, unresolvable non-zero `CurrencyId`, conversions quantising to zero, unresolvable bookings — see [4g](#4g-chargeable-extras--bookingchargeitem-gap-017). |
+| `VillaAvailability` (future days) | 0 | New `availability_block` loader (2026-07-05): future non-available day rows (statuses 30/40/50/60, `AvailableDate >= today`) coalesce into `BookingHold(reason=MANUAL)` rows; the check compares future day counts to the summed day-span of loaded `avail-*` holds. Both sides move with "today" — run load and reconcile the same day. Skips (unloaded property / range occupied by an imported booking or staff hold) widen the gap; recalibrate against the final dump if non-zero and explained. |
 
 Any other gap is a **blocker**. Track it down before proceeding.
 
@@ -531,6 +591,14 @@ data — safe to re-run any time (e.g. after a delta load). There is no
 the command's per-slug and per-size counts are the reconcile signal. (Placement itself
 DOES have a reconcile row — "Room placement (GAP-065)" gates that every
 legacy `PlacementId` landed with a preserved `placement_note`.)
+
+## 6c. Provision the SMTP profile (manual, deliberate)
+
+Legacy `VillaConfigEmail` is **not** loaded (19 of its 20 rows are UAT junk;
+secrets shouldn't ride a data migration). Create the single production
+`comms.SmtpProfile` (SYSTEM scope) by hand at cutover — the real legacy row
+is the office365 profile for info@villacollective.com; fetch the current
+credentials from the ops secret store, not from the dump.
 
 ## 7. England → GB merge
 

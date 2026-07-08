@@ -47,7 +47,17 @@ def _seed(
     ]
     if not dashboard:
         args.append("--no-dashboard-activity")
-    call_command("seed_dev", *args, stdout=StringIO())
+    out = StringIO()
+    call_command("seed_dev", *args, stdout=out)
+    # `seed_dev` swallows each stage's exception into its summary rather than
+    # raising (see `seeding.runner.run_stages`), so a failed `properties`/
+    # `bookings` stage silently yields an empty graph that later surfaces as a
+    # baffling "0 arrivals". Most often the cause is a stale `--reuse-db` worker
+    # DB missing a column from an unapplied migration — the fix is `pytest
+    # --create-db`. Fail loudly with the real stage error instead of the
+    # downstream count assertion.
+    report = out.getvalue()
+    assert "Errors in" not in report, f"seed_dev reported stage errors:\n{report}"
 
 
 def _assert_staff_dashboard_populated(today: date) -> None:

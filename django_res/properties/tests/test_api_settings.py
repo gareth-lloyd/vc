@@ -265,6 +265,46 @@ def test_patch_settings_null_clears_calendar_url(
 
 
 @pytest.mark.django_db
+def test_patch_settings_sets_currency(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency
+) -> None:
+    """The property base currency is settable through the settings endpoint
+    (the Settings → Operational picker's write path). PATCH persists the FK and
+    the representation echoes both the id and the derived ISO code."""
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}/settings",
+        data={"currency": gbp.pk},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["currency"] == gbp.pk
+    assert response.json()["currency_code"] == "GBP"
+
+    get_response = api_client.get(f"/api/v1/properties/{property_.pk}/settings")
+    assert get_response.json()["currency"] == gbp.pk
+    assert get_response.json()["currency_code"] == "GBP"
+
+
+@pytest.mark.django_db
+def test_patch_settings_null_clears_currency(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency
+) -> None:
+    """Clearing the currency is the real FE path: the picker's "unset" option
+    submits `null`, which must clear the FK (not 400) so EUR fallback resumes."""
+    PropertySettings.objects.update_or_create(property=property_, defaults={"currency": gbp})
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}/settings",
+        data={"currency": None},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["currency"] is None
+    assert response.json()["currency_code"] is None
+
+
+@pytest.mark.django_db
 def test_patch_settings_null_clears_min_nights_rental_note(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:

@@ -110,6 +110,11 @@ const REGIONS = [
   { id: 32, country: 2, country_iso2: "IT", name: "Tuscany", slug: "tuscany", is_active: true },
 ];
 
+const CURRENCIES = [
+  { id: 42, code: "EUR", name: "Euro", symbol: "€", decimal_places: 2, is_active: true },
+  { id: 43, code: "GBP", name: "British Pound", symbol: "£", decimal_places: 2, is_active: true },
+];
+
 function setReservationsUser() {
   useAuthStore.getState().setMe(
     {
@@ -164,6 +169,9 @@ function installBaseHandlers(property = makeProperty()) {
     http.get("/api/v1/properties/9/location", () => HttpResponse.json(makeLocation())),
     http.get("/api/v1/countries", () => HttpResponse.json(drfPage(COUNTRIES))),
     http.get("/api/v1/regions", () => HttpResponse.json(drfPage(REGIONS))),
+    // The CurrencyPicker renders on every Operational form, so the list must be
+    // mocked for ALL SettingsTab tests (global onUnhandledRequest: "error").
+    http.get("/api/v1/currencies", () => HttpResponse.json(drfPage(CURRENCIES))),
   );
 }
 
@@ -206,9 +214,15 @@ describe("SettingsTab", () => {
 
     let lastPatchBody: Record<string, unknown> | null = null;
     server.use(
+      // Seed a base currency so we can prove an unrelated edit preserves it in
+      // the whole-object PATCH (guards against `currency` being dropped from
+      // settingsDefaults).
+      http.get("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(makeSettings({ currency: 43, currency_code: "GBP" })),
+      ),
       http.patch("/api/v1/properties/9/settings", async ({ request }) => {
         lastPatchBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(makeSettings({ min_nights_rental: 5 }));
+        return HttpResponse.json(makeSettings({ min_nights_rental: 5, currency: 43 }));
       }),
     );
 
@@ -222,6 +236,8 @@ describe("SettingsTab", () => {
 
     await waitFor(() => expect(lastPatchBody).not.toBeNull());
     expect((lastPatchBody as unknown as Record<string, unknown>).min_nights_rental).toBe(5);
+    // The untouched currency FK rides along, not silently cleared.
+    expect((lastPatchBody as unknown as Record<string, unknown>).currency).toBe(43);
     useAuthStore.getState().clear();
   });
 
@@ -255,6 +271,68 @@ describe("SettingsTab", () => {
 
     await waitFor(() => expect(lastPatchBody).not.toBeNull());
     expect((lastPatchBody as unknown as Record<string, unknown>).availability_default).toBeNull();
+    useAuthStore.getState().clear();
+  });
+
+  it("reflects the seeded base currency and PATCHes the chosen currency id", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    let lastPatchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(makeSettings({ currency: 43, currency_code: "GBP" })),
+      ),
+      http.patch("/api/v1/properties/9/settings", async ({ request }) => {
+        lastPatchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeSettings({ currency: 42, currency_code: "EUR" }));
+      }),
+    );
+
+    setup();
+    // Populate direction: the seeded GBP FK shows the currency, not the placeholder.
+    const currency = await screen.findByRole("combobox", { name: /base currency/i });
+    await waitFor(() => expect(currency).toHaveTextContent(/GBP/));
+
+    // Change to EUR and save — the FK id rides the settings PATCH.
+    await userEvent.click(currency);
+    await userEvent.click(await screen.findByRole("option", { name: /Euro/ }));
+    const save = screen.getByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(lastPatchBody).not.toBeNull());
+    expect((lastPatchBody as unknown as Record<string, unknown>).currency).toBe(42);
+    useAuthStore.getState().clear();
+  });
+
+  it("PATCHes explicit null when the base currency is reset to '—'", async () => {
+    setReservationsUser();
+    installBaseHandlers();
+    let lastPatchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/v1/properties/9/settings", () =>
+        HttpResponse.json(makeSettings({ currency: 43, currency_code: "GBP" })),
+      ),
+      http.patch("/api/v1/properties/9/settings", async ({ request }) => {
+        lastPatchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(makeSettings({ currency: null, currency_code: null }));
+      }),
+    );
+
+    setup();
+    const currency = await screen.findByRole("combobox", { name: /base currency/i });
+    await waitFor(() => expect(currency).toHaveTextContent(/GBP/));
+
+    // Choosing "—" clears the FK: an explicit null must ride the PATCH, not a
+    // dropped key or the sentinel string.
+    await userEvent.click(currency);
+    await userEvent.click(await screen.findByRole("option", { name: "—" }));
+    const save = screen.getByRole("button", { name: /save settings/i });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(lastPatchBody).not.toBeNull());
+    expect((lastPatchBody as unknown as Record<string, unknown>).currency).toBeNull();
     useAuthStore.getState().clear();
   });
 

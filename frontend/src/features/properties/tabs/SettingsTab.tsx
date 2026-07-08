@@ -43,6 +43,7 @@ import {
 } from "../hooks";
 import { CountryPicker } from "@/components/form/CountryPicker";
 import { RegionPicker } from "@/components/form/RegionPicker";
+import { CurrencyPicker } from "../components/CurrencyPicker";
 import {
   PROPERTY_AVAILABILITY_DEFAULTS,
   PROPERTY_CHANGEOVER_DAYS,
@@ -84,6 +85,9 @@ function settingsDefaults(s: PropertySettings): PropertySettingsWriteInput {
     min_nights_rental: s.min_nights_rental ?? null,
     min_nights_rental_note: s.min_nights_rental_note ?? "",
     prices_entered_as: s.prices_entered_as ?? null,
+    // Numeric FK or null; the CurrencyPicker's unset option submits null, which
+    // `blankToNull` leaves untouched (it only maps "" → null).
+    currency: s.currency ?? null,
     // Empty string in the input; `blankToNull` turns a cleared field into null
     // on submit so the URL can be removed (the server accepts null).
     calendar_url: s.calendar_url ?? "",
@@ -174,6 +178,7 @@ function OperationalForm({
   const availability = form.watch("availability_default") ?? null;
   const changeoverDay = form.watch("changeover_day") ?? null;
   const pricesAs = form.watch("prices_entered_as") ?? null;
+  const currency = form.watch("currency") ?? null;
   const preApproval = form.watch("bookings_require_pre_approval");
   const enquiryFirst = form.watch("requires_enquiry_first");
 
@@ -300,6 +305,22 @@ function OperationalForm({
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="prop-settings-currency">
+            {t("settings.operational.fields.currency")}
+          </Label>
+          <CurrencyPicker
+            id="prop-settings-currency"
+            value={currency}
+            placeholder={t("settings.operational.fields.currency_placeholder")}
+            onChange={(v) => form.setValue("currency", v, { shouldDirty: true })}
+            allowUnset
+            unsetLabel={t("common.unset")}
+            onUnset={() => form.setValue("currency", null, { shouldDirty: true })}
+            disabled={!canWrite}
+          />
         </div>
       </div>
 

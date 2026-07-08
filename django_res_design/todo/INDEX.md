@@ -15,8 +15,8 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-06, recounted from files): **124 done** (117 resolved + 7 dropped), **38 open**
-(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending). Recently-resolved tickets stay
+Scoreboard (2026-07-08, recounted from files): **124 done** (117 resolved + 7 dropped), **45 open**
+(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
 (superseded Q-019/Q-021); GAP-030–037 availability/commission/region/services; GAP-038–044
@@ -33,6 +33,18 @@ workflow specs were frozen into `../legacy/` (2026-07-03 `django_res_design/` re
 _2026-07-06: **GAP-070** (remove property groups) landed on local `main` (unpushed),
 carrying **GAP-068** (dropped, its default values seed the new `PropertyDefaults`
 singleton) and **FG-002** (dropped, `effective()` deleted) with it._
+
+_2026-07-08 additions from the Nick/Gareth res-rebuild call (each checked against
+the codebase before filing): **GAP-074/075** (nightly / ad-hoc-flexible quoting
+for no-changeover villas), **GAP-076/077/079** (booking-finance cluster —
+non-commissionable extras, per-component gross/net split, commission-after-VAT;
+GAP-076 is the critical path), **GAP-078** (quote grouping by country/region +
+weekly-vs-nightly section break), **GAP-080** (currency obviousness in the
+builder UI). Call also confirmed already-built: per-line quote notes, structured
+room features (GAP-064/067), direct-booking-via-unsent-quote (GAP-020 dropped),
+Greek UI. Leads-stage-before-enquiry and Zoho/WordPress integration were
+discussed but not filed here (leads = extend `EnquiryStatus`, tracked via GAP-005/
+GAP-050; Zoho blocked on external spec, GAP-028)._
 
 ---
 
@@ -155,6 +167,13 @@ singleton) and **FG-002** (dropped, `effective()` deleted) with it._
 | [GAP-071](gap-071-manual-security-deposit-creation.md) | No way to create a security deposit — auto-creation at booking confirmation is the only path; empty state is a dead end | ⬜ from 2026-07-03 `/bookings/383/payments` investigation (follows `c9e5fac` 204 fix); needs new `SecurityDepositService.create_manual` + POST endpoint + FE empty-state action; 4 open product decisions |
 | [GAP-072](gap-072-frontend-boundary-ratchet-paydown.md) | Pay down the remaining boundary-ratchet edges — last 2 mutual cycles (properties⇄contacts, UI-level enquiries⇄quotations), sanctioned-vs-debt allowlist tiering, geo/taxonomy home decision | ⬜ GAP-063 residue (2026-07-05); incremental, one edge-group per commit; coordinates `lib/domain` lifts with GAP-062 |
 | [GAP-073](done/gap-073-legacy-loader-bulletproofing-reconcile.md) | Legacy-loader bullet-proofing — land the remainder + reconcile the branch against post-GAP-070/065 main | ✅ done (2026-07-07) — reconciled onto `main` as 6 TDD units (web-copy, Zoho/Temenos, availability loader, loadlegacy crash-isolation, reconcile calibration + guest-pref order, standards docs). GroupMap expansion dropped + finance IsDefault* deferred (owner calls). Live dry-run on the 24-Apr dump: `loadlegacy --all` exit 0, every GAP-073 reconcile check green. Surfaced 3 pre-existing follow-ups (not GAP-073): reconcile blockers `Room placement (GAP-065)` gap 49 + `PropertyFinance (GAP-070)` off-by-one, and the `test_dashboard_activity` full-parallel-suite isolation flake |
+| [GAP-074](gap-074-nightly-price-quoting-no-changeover.md) | Nightly-price quoting for no-fixed-changeover villas (full available range + per-night, banded) | ⬜ from 2026-07-08 Nick call; engine has per-night data, no output path; **⚠️ owner/Debbie call gates build** (two-tier weekly-vs-nightly presentation) |
+| [GAP-075](gap-075-per-line-flexible-min-nights-override.md) | Per-quote-line ad-hoc flexible stay (min-nights + nightly), independent of property changeover | ⬜ from 2026-07-08 Nick call (late-season "flexible from now, with a minimum"); depends on GAP-074 |
+| [GAP-076](gap-076-non-commissionable-extras.md) | `commissionable` flag on `Extra` (+ `BookingChargeItem`) — non-commissionable extras reduce commission base but stay in guest total | ⬜ from 2026-07-08 Nick call, **top near-term finance ask**; chef-cost/pool-heating cases; entirely missing today |
+| [GAP-077](gap-077-deposit-balance-gross-net-split.md) | Gross/net/commission split per payment component (deposit & balance), not just whole-booking | ⬜ from 2026-07-08 Nick call ("current system doesn't support net"); depends on GAP-076 |
+| [GAP-078](gap-078-quote-property-ordering-country-region.md) | Quote property ordering — group picker + email by country/region + weekly-vs-nightly section break | ⬜ from 2026-07-08 Nick call; picker is alphabetical, email is insertion-order; email section needs GAP-074/075 |
+| [GAP-079](gap-079-commission-after-local-vat.md) | Commission-after-local-VAT — verify GROSS branch matches real villa numbers + per-villa policy | ⬜ from 2026-07-08 Nick call; **mostly already in the engine** (verify-and-extend); coupled to GAP-076/077 |
+| [GAP-080](gap-080-currency-obvious-in-quote-builder.md) | Make currency unmistakable in the quote **builder** UI (email already shows codes) | ⬜ from 2026-07-08 Nick call; FE-only; builder `formatMoney` is symbol-only for £/€/$ |
 
 ## Open product questions
 

@@ -287,20 +287,29 @@
   },
   "system": {
     "title": "System settings",
-    "description": "Free-form key/value configuration used by the platform.",
+    "description": "Configuration used by the platform.",
     "updated_at_label": "Last updated",
-    "key": "Key",
+    "key": "Setting",
     "value": "Value",
+    "catalog": {
+      "quotation_no_prefix": {
+        "label": "Quotation number prefix",
+        "description": "Leading letters on every quotation reference (e.g. QVC in QVC1042)."
+      },
+      "booking_no_prefix": {
+        "label": "Booking number prefix",
+        "description": "Leading letters on every booking reference (e.g. VC in VC1042)."
+      }
+    },
     "add_key_dialog": {
       "title": "Add setting",
-      "key_label": "Key",
+      "key_label": "Setting",
       "value_label": "Value",
-      "key_placeholder": "feature_flag.new_dashboard",
-      "value_placeholder": "true",
+      "key_placeholder": "Select a setting",
+      "value_placeholder": "Value",
       "submit": "Add",
       "errors": {
-        "key_required": "Key is required",
-        "key_duplicate": "Key already exists"
+        "key_required": "Select a setting"
       }
     },
     "actions": {
@@ -314,7 +323,7 @@
     },
     "empty": {
       "title": "No settings yet",
-      "description": "Add a key to get started."
+      "description": "Add a setting to get started."
     },
     "errors": {
       "load_failed": "Couldn't load settings.",

@@ -59,6 +59,49 @@ describe("SystemAdminPage", () => {
     expect(screen.getByText("max_guests")).toBeInTheDocument();
   });
 
+  it("shows the human-readable label for a known catalog key", async () => {
+    server.use(
+      http.get("/api/v1/system/settings", () =>
+        HttpResponse.json({
+          settings: { quotation_no_prefix: "QVC" },
+          updated_at: "2025-01-01T00:00:00Z",
+        }),
+      ),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/admin/system" element={<SystemAdminPage />} />
+      </Routes>,
+      { route: "/admin/system" },
+    );
+    // Friendly label is the primary heading; the raw key stays as a hint.
+    expect(await screen.findByText("Quotation number prefix")).toBeInTheDocument();
+    expect(screen.getByText("quotation_no_prefix")).toBeInTheDocument();
+  });
+
+  it("adds a setting by picking it from the catalog dropdown", async () => {
+    server.use(
+      http.get("/api/v1/system/settings", () =>
+        HttpResponse.json({ settings: {}, updated_at: null }),
+      ),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/admin/system" element={<SystemAdminPage />} />
+      </Routes>,
+      { route: "/admin/system" },
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /add setting/i }));
+    // Open the catalog dropdown and pick a known setting by its friendly label.
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.click(await screen.findByRole("option", { name: "Booking number prefix" }));
+    // The value pre-fills with the platform default.
+    expect(await screen.findByDisplayValue("VC")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    // The new row lands with its friendly label.
+    expect(await screen.findByText("Booking number prefix")).toBeInTheDocument();
+  });
+
   it("PATCHes settings on save", async () => {
     let patchBody: Record<string, unknown> | null = null;
     server.use(

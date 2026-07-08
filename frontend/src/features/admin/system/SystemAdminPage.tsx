@@ -12,12 +12,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { formatDateTime } from "@/lib/format/date";
 import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
 import { useSystemSettings, useUpdateSystemSettings } from "./hooks";
+import { SETTINGS_CATALOG, getSettingDefinition, type SettingDefinition } from "./catalog";
 
 type Row = { key: string; value: string };
 
@@ -100,6 +108,12 @@ export function SystemAdminPage() {
 
   const handleDiscard = () => setRows(initialRows);
 
+  const existingKeys = useMemo(() => new Set(rows.map((r) => r.key)), [rows]);
+  const availableCatalog = useMemo(
+    () => SETTINGS_CATALOG.filter((d) => !existingKeys.has(d.key)),
+    [existingKeys],
+  );
+
   const actions = (
     <div className="flex items-center gap-2">
       {dirty ? (
@@ -112,7 +126,12 @@ export function SystemAdminPage() {
           {t("system.actions.discard")}
         </Button>
       ) : null}
-      <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} disabled={!canWrite}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => setAddOpen(true)}
+        disabled={!canWrite || availableCatalog.length === 0}
+      >
         {t("system.actions.add_key")}
       </Button>
       <Button
@@ -124,8 +143,6 @@ export function SystemAdminPage() {
       </Button>
     </div>
   );
-
-  const existingKeys = useMemo(() => new Set(rows.map((r) => r.key)), [rows]);
 
   return (
     <AdminPageShell
@@ -155,37 +172,49 @@ export function SystemAdminPage() {
         <EmptyState title={t("system.empty.title")} description={t("system.empty.description")} />
       ) : (
         <div className="space-y-2">
-          {rows.map((row, index) => (
-            <div
-              key={`${row.key}-${index}`}
-              className="grid grid-cols-[200px_1fr_auto] items-center gap-3"
-            >
-              <Label htmlFor={`sys-${row.key}`} className="font-mono text-sm">
-                {row.key}
-              </Label>
-              <Input
-                id={`sys-${row.key}`}
-                value={row.value}
-                onChange={(e) => updateRow(index, e.target.value)}
-                disabled={!canWrite}
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeRow(index)}
-                disabled={!canWrite}
+          {rows.map((row, index) => {
+            const def = getSettingDefinition(row.key);
+            return (
+              <div
+                key={`${row.key}-${index}`}
+                className="grid grid-cols-[200px_1fr_auto] items-center gap-3"
               >
-                {t("system.actions.delete_row")}
-              </Button>
-            </div>
-          ))}
+                {def ? (
+                  <div className="flex flex-col">
+                    <Label htmlFor={`sys-${row.key}`} className="text-sm font-medium">
+                      {t(def.labelKey)}
+                    </Label>
+                    <span className="text-muted-foreground font-mono text-xs">{row.key}</span>
+                  </div>
+                ) : (
+                  <Label htmlFor={`sys-${row.key}`} className="font-mono text-sm">
+                    {row.key}
+                  </Label>
+                )}
+                <Input
+                  id={`sys-${row.key}`}
+                  value={row.value}
+                  onChange={(e) => updateRow(index, e.target.value)}
+                  disabled={!canWrite}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeRow(index)}
+                  disabled={!canWrite}
+                >
+                  {t("system.actions.delete_row")}
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
 
       {addOpen ? (
         <AddKeyDialog
           open={addOpen}
-          existingKeys={existingKeys}
+          available={availableCatalog}
           onOpenChange={setAddOpen}
           onAdd={addRow}
         />
@@ -198,12 +227,12 @@ function AddKeyDialog({
   open,
   onOpenChange,
   onAdd,
-  existingKeys,
+  available,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (key: string, value: string) => void;
-  existingKeys: Set<string>;
+  available: readonly SettingDefinition[];
 }) {
   const { t } = useTranslation("admin");
   const [key, setKey] = useState("");
@@ -218,17 +247,21 @@ function AddKeyDialog({
     }
   }, [open]);
 
+  const selected = getSettingDefinition(key);
+
+  const handleSelect = (nextKey: string) => {
+    setKey(nextKey);
+    setError(null);
+    // Pre-fill the value with the platform default so common cases are one click.
+    setValue(getSettingDefinition(nextKey)?.defaultValue ?? "");
+  };
+
   const handleSubmit = () => {
-    const trimmed = key.trim();
-    if (!trimmed) {
+    if (!key) {
       setError(t("system.add_key_dialog.errors.key_required"));
       return;
     }
-    if (existingKeys.has(trimmed)) {
-      setError(t("system.add_key_dialog.errors.key_duplicate"));
-      return;
-    }
-    onAdd(trimmed, value);
+    onAdd(key, value);
     onOpenChange(false);
   };
 
@@ -241,12 +274,21 @@ function AddKeyDialog({
         <div className="space-y-3">
           <div className="space-y-2">
             <Label htmlFor="add-key">{t("system.add_key_dialog.key_label")}</Label>
-            <Input
-              id="add-key"
-              placeholder={t("system.add_key_dialog.key_placeholder")}
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-            />
+            <Select value={key} onValueChange={handleSelect}>
+              <SelectTrigger id="add-key">
+                <SelectValue placeholder={t("system.add_key_dialog.key_placeholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {available.map((def) => (
+                  <SelectItem key={def.key} value={def.key}>
+                    {t(def.labelKey)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selected ? (
+              <p className="text-muted-foreground text-sm">{t(selected.descriptionKey)}</p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="add-value">{t("system.add_key_dialog.value_label")}</Label>
@@ -267,7 +309,9 @@ function AddKeyDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("common:actions.cancel")}
           </Button>
-          <Button onClick={handleSubmit}>{t("system.add_key_dialog.submit")}</Button>
+          <Button onClick={handleSubmit} disabled={!key}>
+            {t("system.add_key_dialog.submit")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

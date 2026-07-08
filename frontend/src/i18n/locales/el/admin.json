@@ -287,20 +287,29 @@
   },
   "system": {
     "title": "Ρυθμίσεις συστήματος",
-    "description": "Ελεύθερης μορφής διαμόρφωση κλειδιού/τιμής που χρησιμοποιείται από την πλατφόρμα.",
+    "description": "Διαμόρφωση που χρησιμοποιείται από την πλατφόρμα.",
     "updated_at_label": "Τελευταία ενημέρωση",
-    "key": "Κλειδί",
+    "key": "Ρύθμιση",
     "value": "Τιμή",
+    "catalog": {
+      "quotation_no_prefix": {
+        "label": "Πρόθεμα αριθμού προσφοράς",
+        "description": "Αρχικά γράμματα σε κάθε αναφορά προσφοράς (π.χ. QVC στο QVC1042)."
+      },
+      "booking_no_prefix": {
+        "label": "Πρόθεμα αριθμού κράτησης",
+        "description": "Αρχικά γράμματα σε κάθε αναφορά κράτησης (π.χ. VC στο VC1042)."
+      }
+    },
     "add_key_dialog": {
       "title": "Προσθήκη ρύθμισης",
-      "key_label": "Κλειδί",
+      "key_label": "Ρύθμιση",
       "value_label": "Τιμή",
-      "key_placeholder": "feature_flag.new_dashboard",
-      "value_placeholder": "true",
+      "key_placeholder": "Επιλέξτε ρύθμιση",
+      "value_placeholder": "Τιμή",
       "submit": "Προσθήκη",
       "errors": {
-        "key_required": "Το κλειδί είναι υποχρεωτικό",
-        "key_duplicate": "Το κλειδί υπάρχει ήδη"
+        "key_required": "Επιλέξτε ρύθμιση"
       }
     },
     "actions": {
@@ -314,7 +323,7 @@
     },
     "empty": {
       "title": "Δεν υπάρχουν ρυθμίσεις ακόμα",
-      "description": "Προσθέστε ένα κλειδί για να ξεκινήσετε."
+      "description": "Προσθέστε μια ρύθμιση για να ξεκινήσετε."
     },
     "errors": {
       "load_failed": "Δεν ήταν δυνατή η φόρτωση ρυθμίσεων.",

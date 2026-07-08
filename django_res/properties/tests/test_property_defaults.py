@@ -57,12 +57,12 @@ def test_save_pins_pk_1() -> None:
 
 
 @pytest.mark.django_db
-def test_seeded_with_gap068_confirmed_set() -> None:
-    """Migration seeds the GAP-068 starter set; unlisted fields keep the old
-    Group* model defaults; currency stays null until the operator sets it."""
-    # The row must ALREADY exist from migration 0026's seed — get_solo() would
-    # lazily recreate it and mask a broken/dropped RunPython seed.
-    assert PropertyDefaults.objects.filter(pk=1).exists()
+def test_get_solo_carries_gap068_confirmed_set() -> None:
+    """The singleton row carries the GAP-068 starter set; unlisted fields keep
+    the old Group* model defaults; currency stays null until the operator sets
+    it. These are the model FIELD defaults (see the model docstring), so a fresh
+    `get_solo()` and the historical seed migration agree — which is why the seed
+    RunPython was safe to drop in the migration flatten."""
     obj = PropertyDefaults.get_solo()
     assert obj.check_in_time == time(16, 30)
     assert obj.check_out_time == time(10, 30)

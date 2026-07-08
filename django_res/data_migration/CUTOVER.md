@@ -53,6 +53,14 @@ uv run python manage.py migrate           # applies pending schema migrations
 uv run python manage.py loadlegacy --all
 ```
 
+> **Migration graph flattened (2026-07-08).** The ~150 incremental migrations
+> were collapsed to a fresh `0001_initial` per app (plus a handful of hand-kept
+> extension/sequence/EXCLUDE/seed migrations). This is transparent to the
+> `migrate`-then-`loadlegacy` fresh-rebuild path documented here — the resulting
+> schema is byte-identical. Only the historical **in-place-upgrade** paths that
+> referenced specific old migration numbers (`reservations/0035`,
+> `accounts/0012`) are gone; those were never needed for a fresh cutover.
+
 Expect this to finish in ~2 minutes on the live snapshot. Watch for any
 non-zero `errors` column in the per-loader summary; investigate before
 proceeding. Since 2026-07-05 the command is strict and crash-isolated: a
@@ -203,8 +211,11 @@ resolves it.
 `Person`; there is no `Guest` table, no `_guest_post_save` mirror signal, and no
 `link_person_fks` command anymore.
 
-**One-shot re-key migration.** Reservations migration
-`0035_remove_guestpreference_guest_remove_booking_guest_and_more` does two
+**One-shot re-key migration.** _(Historical — folded into the flattened
+`0001_initial` on 2026-07-08; a fresh DB has no `guest-` rows so there is
+nothing to re-key. Retained here as the record of what the one-shot did.)_
+Reservations migration
+`0035_remove_guestpreference_guest_remove_booking_guest_and_more` did two
 things, in order: (1) re-keys every legacy guest-mirror Person from
 `legacy_id="guest-{pk}"` onto the unified `client-{VillaClientDetails.Id}`
 namespace (or NULL when the source Guest had no legacy id — never the literal
@@ -251,8 +262,12 @@ It never merges; fold a confirmed duplicate with `POST /organisations/{id}:merge
 (distinct normalised `VillaContact.Company` vs loaded agency count) so a silent
 "zero orgs created" regression turns the cutover RED.
 
-**Existing-DB upgrade (no fresh rebuild):** migration
-`accounts/0012_drop_person_company` is the company→agency backfill for an
+**Existing-DB upgrade (no fresh rebuild):** _(Historical — this in-place-upgrade
+migration was folded into the flattened `0001_initial` on 2026-07-08 and no
+longer exists as a standalone step. A fresh rebuild via the loaders above
+already populates `Person.agency` directly. Retained as the record of the
+one-shot backfill's contract.)_ migration
+`accounts/0012_drop_person_company` was the company→agency backfill for an
 already-loaded DB. Its `RunPython` recomputes the SAME `company_dedup_key`
 (a frozen, sync-tested copy of `accounts.services.organisations.company_dedup_key`)
 to get-or-create the deduped agency `Organisation` and link `Person.agency`, then

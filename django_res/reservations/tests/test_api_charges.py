@@ -141,6 +141,42 @@ def test_charge_crud(api_client: APIClient, staff: User, booking: Booking) -> No
 
 
 @pytest.mark.django_db
+def test_charge_commissionable_round_trips_and_defaults_true(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """GAP-076: the flag round-trips through create/patch; omitted → True."""
+    api_client.force_login(staff)
+
+    default_create = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/charge-items",
+        {"label": "Late checkout", "amount": "150.00"},
+        format="json",
+    )
+    assert default_create.status_code == 201, default_create.data
+    assert default_create.data["commissionable"] is True
+
+    create = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/charge-items",
+        {"label": "Pool heating", "amount": "300.00", "commissionable": False},
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    assert create.data["commissionable"] is False
+    item = BookingChargeItem.objects.get(pk=create.data["id"])
+    assert item.commissionable is False
+
+    patch = api_client.patch(
+        f"/api/v1/bookings/{booking.pk}/charge-items/{item.pk}",
+        {"commissionable": True},
+        format="json",
+    )
+    assert patch.status_code == 200, patch.data
+    assert patch.data["commissionable"] is True
+    item.refresh_from_db()
+    assert item.commissionable is True
+
+
+@pytest.mark.django_db
 def test_viewer_can_read_but_not_write(
     api_client: APIClient, staff: User, viewer: User, booking: Booking, gbp: Currency
 ) -> None:

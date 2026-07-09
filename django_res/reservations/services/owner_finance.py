@@ -12,11 +12,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from reservations.services.charges import (
-    charges_total_for,
-    effective_commission_for,
-    owner_effect,
-)
+from reservations.services.charges import charges_owner_adjustments
 
 if TYPE_CHECKING:
     from reservations.models import Booking
@@ -59,18 +55,12 @@ def owner_money_for_booking(booking: Booking) -> OwnerMoney | None:
     money = owner_money_from_snapshot(booking.pricing_snapshot)
     if money is None:
         return None
-    charges_total = charges_total_for(booking)
-    if not charges_total:
+    adjust = charges_owner_adjustments(booking)
+    if not any(adjust):
         return money
-    commission_cfg = effective_commission_for(booking) or {}
-    effect = owner_effect(
-        charges_total,
-        commission_cfg.get("calculation_type"),
-        commission_cfg.get("amount"),
-    )
     return {
-        "gross_total": money["gross_total"] + charges_total,
-        "commission": money["commission"] + effect.commission_on_charges,
+        "gross_total": money["gross_total"] + adjust.gross_delta,
+        "commission": money["commission"] + adjust.commission_delta,
         "tax": money["tax"],
-        "net_to_owner": money["net_to_owner"] + effect.owner_delta,
+        "net_to_owner": money["net_to_owner"] + adjust.net_delta,
     }

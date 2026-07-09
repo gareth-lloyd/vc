@@ -133,6 +133,7 @@ class BookingChargeItemFactory(DjangoModelFactory):
     label = factory.Faker("sentence", nb_words=3)
     amount = Decimal("100.00")
     currency = None  # required: provided by caller (must equal booking.currency)
+    commissionable = True
     notes = ""
 
 

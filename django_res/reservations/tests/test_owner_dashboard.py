@@ -196,6 +196,44 @@ def test_ytd_net_includes_charge_owner_effect(
     assert body["ytd"]["gross_revenue"] == "1400.00"
 
 
+def test_ytd_net_non_commissionable_charge_passes_through(
+    api_client: APIClient,
+    gbp: Currency,
+    terms: TermsVersion,
+    customer: Person,
+    property_: Property,
+) -> None:
+    """GAP-076: a non-commissionable charge adds its full amount to YTD net."""
+    user = _owner_with_full_money_grant(property_)
+    PropertyFinance.objects.create(
+        property=property_,
+        commission_calculation_type=CommissionCalcType.PERCENT.value,
+        commission_amount=Decimal("12.50"),
+    )
+    booking = _make_booking(
+        property_=property_,
+        gbp=gbp,
+        terms=terms,
+        customer=customer,
+        date_from=date(timezone.localdate().year, 1, 10),
+        rental_price="1400.00",
+        status=BookingStatus.BALANCE_PAID.value,
+        snapshot={"total": "1400.00", "commission": "200.00", "tax": "100.00"},
+    )
+    BookingChargeItem.objects.create(
+        booking=booking,
+        label="Pool heating",
+        amount=Decimal("200.00"),
+        currency=gbp,
+        commissionable=False,
+    )
+
+    api_client.force_authenticate(user)
+    body = api_client.get(URL).json()
+    # net = (1400 - 200 - 100) + 200 pass-through = 1300
+    assert body["ytd"]["net_to_owner"] == "1300.00"
+
+
 def test_net_is_null_without_full_money_grant(
     api_client: APIClient,
     gbp: Currency,

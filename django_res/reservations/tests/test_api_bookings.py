@@ -1076,6 +1076,129 @@ def test_net_to_owner_includes_charges_under_percent_commission(
 
 
 @pytest.mark.django_db
+def test_net_to_owner_non_commissionable_charge_passes_through(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """GAP-076: a non-commissionable charge bills the guest but adds no
+    commission — the full amount lands on owner net."""
+    booking.pricing_snapshot = _snapshot()  # total 1700, commission 180, tax 70
+    booking.save(update_fields=["pricing_snapshot"])
+    _make_finance(
+        booking.property,
+        calc_type=CommissionCalcType.PERCENT.value,
+        amount=Decimal("12.50"),
+    )
+    BookingChargeItem.objects.create(
+        booking=booking,
+        label="Pool heating",
+        amount=Decimal("200.00"),
+        currency=gbp,
+        commissionable=False,
+    )
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    block = response.data["net_to_owner"]
+    assert block["gross_total"] == "1900.00"
+    assert block["commission"] == "180.00"  # snapshot commission only
+    assert block["tax"] == "70.00"
+    assert block["net_to_owner"] == "1650.00"  # 1450 + 200 pass-through
+
+
+@pytest.mark.django_db
+def test_net_to_owner_mixed_charges_split_per_line(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """GAP-076: per-line flags — commissionable lines enter the base, the
+    non-commissionable line passes through untouched."""
+    booking.pricing_snapshot = _snapshot()
+    booking.save(update_fields=["pricing_snapshot"])
+    _make_finance(
+        booking.property,
+        calc_type=CommissionCalcType.PERCENT.value,
+        amount=Decimal("12.50"),
+    )
+    _add_charge(booking, gbp, "200.00")  # commissionable (default)
+    BookingChargeItem.objects.create(
+        booking=booking,
+        label="Chef",
+        amount=Decimal("100.00"),
+        currency=gbp,
+        commissionable=False,
+    )
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    block = response.data["net_to_owner"]
+    assert block["gross_total"] == "2000.00"  # 1700 + 200 + 100
+    assert block["commission"] == "205.00"  # 180 + 12.5% of 200 only
+    # 1450 + (200 - 25) + 100 = 1725
+    assert block["net_to_owner"] == "1725.00"
+
+
+@pytest.mark.django_db
+def test_net_to_owner_non_commissionable_credit_flows_to_owner_in_full(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """GAP-076 sign symmetry: a non-commissionable credit reduces owner net
+    by its full amount — the agency never shares it."""
+    booking.pricing_snapshot = _snapshot()
+    booking.save(update_fields=["pricing_snapshot"])
+    _make_finance(
+        booking.property,
+        calc_type=CommissionCalcType.PERCENT.value,
+        amount=Decimal("12.50"),
+    )
+    BookingChargeItem.objects.create(
+        booking=booking,
+        label="Goodwill credit",
+        amount=Decimal("-100.00"),
+        currency=gbp,
+        commissionable=False,
+    )
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    block = response.data["net_to_owner"]
+    assert block["gross_total"] == "1600.00"
+    assert block["commission"] == "180.00"
+    assert block["net_to_owner"] == "1350.00"  # 1450 - 100
+
+
+@pytest.mark.django_db
+def test_net_to_owner_flag_is_noop_under_fixed_commission(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """GAP-076: FIXED commission already routes charges fully to the owner,
+    so commissionable=False provably changes nothing."""
+    booking.pricing_snapshot = _snapshot()
+    booking.save(update_fields=["pricing_snapshot"])
+    _make_finance(
+        booking.property,
+        calc_type=CommissionCalcType.FIXED.value,
+        amount=Decimal("180.00"),
+    )
+    BookingChargeItem.objects.create(
+        booking=booking,
+        label="Pool heating",
+        amount=Decimal("200.00"),
+        currency=gbp,
+        commissionable=False,
+    )
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    block = response.data["net_to_owner"]
+    assert block["gross_total"] == "1900.00"
+    assert block["commission"] == "180.00"
+    assert block["net_to_owner"] == "1650.00"  # identical to the fixed test above
+
+
+@pytest.mark.django_db
 def test_net_to_owner_includes_charges_under_fixed_commission(
     api_client: APIClient, staff: User, booking: Booking, gbp: Currency
 ) -> None:

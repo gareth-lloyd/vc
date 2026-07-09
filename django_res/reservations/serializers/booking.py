@@ -14,7 +14,11 @@ from properties.enums import PriceBasis
 from properties.models import PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
 from reservations.serializers._contact_reads import contact_email, contact_name
-from reservations.services.charges import charges_total_for, effective_commission_for, owner_effect
+from reservations.services.charges import (
+    charges_owner_adjustments,
+    charges_total_for,
+    effective_commission_for,
+)
 
 
 class BookingListSerializer(serializers.ModelSerializer[Booking]):
@@ -263,17 +267,12 @@ class BookingDetailSerializer(BookingListSerializer):
                 net = (total - commission - tax).quantize(Decimal("0.01"))
         else:
             net = (total - commission - tax).quantize(Decimal("0.01"))
-        charges_total = self._charges_total(obj)
-        if charges_total:
-            effective = self._effective_commission(obj) or {}
-            effect = owner_effect(
-                charges_total,
-                effective.get("calculation_type"),
-                effective.get("amount"),
-            )
-            total += charges_total
-            commission += effect.commission_on_charges
-            net += effect.owner_delta
+        # GAP-076: the charge arithmetic is shared with the owner API
+        # (`charges_owner_adjustments`) so the two surfaces always agree.
+        adjust = charges_owner_adjustments(obj)
+        total += adjust.gross_delta
+        commission += adjust.commission_delta
+        net += adjust.net_delta
         currency_code = obj.currency.code if obj.currency_id else None
         return {
             "currency_code": currency_code,

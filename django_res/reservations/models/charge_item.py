@@ -31,6 +31,9 @@ class BookingChargeItem(AuditedModel):
         on_delete=models.PROTECT,
         related_name="+",
     )
+    # False = bills the guest as normal but is excluded from the commission
+    # split — the amount flows to the owner verbatim (GAP-076).
+    commissionable = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 

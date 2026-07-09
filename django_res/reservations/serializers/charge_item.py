@@ -23,6 +23,7 @@ class BookingChargeItemSerializer(serializers.ModelSerializer[BookingChargeItem]
             "amount",
             "currency",
             "currency_code",
+            "commissionable",
             "notes",
             "created_at",
             "updated_at",
@@ -40,6 +41,7 @@ class BookingChargeItemWriteSerializer(serializers.ModelSerializer[BookingCharge
             "label",
             "amount",
             "currency",
+            "commissionable",
             "notes",
         ]
         extra_kwargs = {"currency": {"required": False}}

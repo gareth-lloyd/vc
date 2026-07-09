@@ -233,6 +233,70 @@ def test_detail_money_charges_flow_to_owner_without_commission_config(
     assert detail["net_to_owner"] == "1300.00"
 
 
+def test_detail_money_non_commissionable_charge_passes_through(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, customer: Person, property_: Property
+) -> None:
+    """GAP-076: a non-commissionable charge adds no commission — the owner
+    receives it in full even under percent commission."""
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_full_money=True)
+    PropertyFinance.objects.create(
+        property=property_,
+        commission_calculation_type=CommissionCalcType.PERCENT.value,
+        commission_amount=Decimal("12.50"),
+    )
+    booking = _make_booking(
+        property_=property_, gbp=gbp, terms=terms, person=customer, snapshot=_SNAPSHOT
+    )
+    BookingChargeItem.objects.create(
+        booking=booking,
+        label="Pool heating",
+        amount=Decimal("200.00"),
+        currency=gbp,
+        commissionable=False,
+    )
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+    assert detail["gross_total"] == "1600.00"
+    assert detail["commission"] == "200.00"  # snapshot commission only
+    assert detail["net_to_owner"] == "1300.00"  # 1100 + 200 pass-through
+
+
+def test_detail_money_mixed_charges_split_per_line(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, customer: Person, property_: Property
+) -> None:
+    """GAP-076: only the commissionable line feeds the percent skim."""
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_full_money=True)
+    PropertyFinance.objects.create(
+        property=property_,
+        commission_calculation_type=CommissionCalcType.PERCENT.value,
+        commission_amount=Decimal("12.50"),
+    )
+    booking = _make_booking(
+        property_=property_, gbp=gbp, terms=terms, person=customer, snapshot=_SNAPSHOT
+    )
+    BookingChargeItem.objects.create(
+        booking=booking, label="Late checkout", amount=Decimal("200.00"), currency=gbp
+    )
+    BookingChargeItem.objects.create(
+        booking=booking,
+        label="Chef",
+        amount=Decimal("100.00"),
+        currency=gbp,
+        commissionable=False,
+    )
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+    assert detail["gross_total"] == "1700.00"  # 1400 + 200 + 100
+    assert detail["commission"] == "225.00"  # 200 + 12.5% of 200 only
+    assert detail["net_to_owner"] == "1375.00"  # 1100 + 175 + 100
+
+
 def test_guest_contact_hidden_by_default(
     api_client: APIClient, gbp: Currency, terms: TermsVersion, customer: Person, property_: Property
 ) -> None:

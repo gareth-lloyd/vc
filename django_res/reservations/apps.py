@@ -135,6 +135,7 @@ class ReservationsConfig(AppConfig):
                 "label",
                 "amount",
                 "currency_id",
+                "commissionable",
                 "notes",
             ],
         )

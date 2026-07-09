@@ -51,12 +51,25 @@ def with_charges_total(qs: QuerySet[Booking]) -> QuerySet[Booking]:
         .annotate(s=models.Sum("amount"))
         .values("s")
     )
+    # GAP-076: the non-commissionable slice rides along as a second Subquery
+    # so the owner-effect split costs annotated paths zero extra queries.
+    noncomm_sum = (
+        BookingChargeItem.objects.filter(booking=models.OuterRef("pk"), commissionable=False)
+        .values("booking")
+        .annotate(s=models.Sum("amount"))
+        .values("s")
+    )
     return qs.annotate(
         charges_total=Coalesce(
             models.Subquery(charge_sum),
             models.Value(Decimal("0")),
             output_field=models.DecimalField(max_digits=12, decimal_places=2),
-        )
+        ),
+        charges_noncomm_total=Coalesce(
+            models.Subquery(noncomm_sum),
+            models.Value(Decimal("0")),
+            output_field=models.DecimalField(max_digits=12, decimal_places=2),
+        ),
     )
 
 
@@ -71,6 +84,27 @@ def charges_total_for(booking: Booking) -> Decimal:
     if total is None:
         total = booking.charge_items.aggregate(total=models.Sum("amount"))["total"]
     return Decimal(total or 0)
+
+
+def charges_split_for(booking: Booking) -> tuple[Decimal, Decimal]:
+    """Split the booking's charge lines by flag: `(commissionable, non_commissionable)`.
+
+    Reads the `with_charges_total` annotations when present (zero extra
+    queries on annotated list paths); falls back to one combined aggregate.
+    Guest-facing totals never split — this feeds the owner-effect side only
+    (GAP-076).
+    """
+    total = getattr(booking, "charges_total", None)
+    noncomm = getattr(booking, "charges_noncomm_total", None)
+    if total is None or noncomm is None:
+        agg = booking.charge_items.aggregate(
+            total=models.Sum("amount"),
+            noncomm=models.Sum("amount", filter=models.Q(commissionable=False)),
+        )
+        total, noncomm = agg["total"], agg["noncomm"]
+    total = Decimal(total or 0)
+    noncomm = Decimal(noncomm or 0)
+    return total - noncomm, noncomm
 
 
 def _money(amount: Decimal) -> str:
@@ -175,9 +209,45 @@ def owner_effect(
     return OwnerEffect(ZERO, charges_total)
 
 
+class ChargesOwnerAdjustments(NamedTuple):
+    """How a booking's charge lines move the owner-facing money block."""
+
+    gross_delta: Decimal
+    commission_delta: Decimal
+    net_delta: Decimal
+
+
+def charges_owner_adjustments(booking: Booking) -> ChargesOwnerAdjustments:
+    """The single owner-side charge arithmetic (GAP-076), shared by the staff
+    booking serializer and `owner_money_for_booking` so the two APIs can never
+    disagree: only commissionable lines enter the `owner_effect` split;
+    non-commissionable lines pass through to the owner verbatim. The gross
+    delta is always the full signed sum — the guest pays every line.
+    """
+    comm_charges, noncomm_charges = charges_split_for(booking)
+    if not comm_charges and not noncomm_charges:
+        return ChargesOwnerAdjustments(ZERO, ZERO, ZERO)
+    commission_cfg = effective_commission_for(booking) or {}
+    effect = owner_effect(
+        comm_charges,
+        commission_cfg.get("calculation_type"),
+        commission_cfg.get("amount"),
+    )
+    return ChargesOwnerAdjustments(
+        gross_delta=comm_charges + noncomm_charges,
+        commission_delta=effect.commission_on_charges,
+        net_delta=effect.owner_delta + noncomm_charges,
+    )
+
+
 def _snapshot_fields(item: BookingChargeItem) -> dict[str, Any]:
     """The before/after payload BookingEvent meta carries per mutation."""
-    return {"label": item.label, "amount": f"{item.amount:.2f}", "notes": item.notes}
+    return {
+        "label": item.label,
+        "amount": f"{item.amount:.2f}",
+        "commissionable": item.commissionable,
+        "notes": item.notes,
+    }
 
 
 class ChargeItemService:
@@ -192,6 +262,7 @@ class ChargeItemService:
         label: str,
         amount: Decimal,
         currency: Currency | None = None,
+        commissionable: bool = True,
         notes: str = "",
         actor: Any = None,
     ) -> BookingChargeItem:
@@ -205,6 +276,7 @@ class ChargeItemService:
             label=label,
             amount=amount,
             currency=currency,
+            commissionable=commissionable,
             notes=notes,
         )
         cls._write_event(booking, item, actor=actor, action="created", before=None)

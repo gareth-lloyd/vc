@@ -1,5 +1,22 @@
 # GAP-079 — Commission-after-local-VAT: confirm ordering + per-villa policy
 
+> **✅ RESOLVED (2026-07-09)** — verify-only close: the ordering Nick described
+> is the engine's existing GROSS branch (`tax = base×rate`, then
+> `commission = (base−tax)×pct`), verified against legacy
+> `RatesModel.Calculate()` (tax L201, commission on the post-tax remainder
+> L223-228); NET (commission gross-up, then tax on net+commission) is legacy
+> parity too. **No per-villa "commission after tax" toggle added** — legacy has
+> none; ordering is a function of `price_basis` alone (decision row:
+> `design/decisions.md`). A **constructed** worked example (13% VAT / 20%
+> commission / 10,000 gross → tax 1,300, commission 1,740, owner net 6,960;
+> deposit 3,000 / balance 7,000 off the snapshot total) is pinned in
+> `pricing/tests/test_engine_price_basis.py` (GAP-079 section) and
+> `payments/tests/test_payment_scheduler.py`, and documented in
+> `design/backend/04-pricing.md` — **re-reconcile against a real villa
+> statement when Nick provides one** (no real numbers existed at close).
+> The non-taxable-extras interaction is deferred to GAP-076 via a coordination
+> note in that ticket.
+
 - **Severity:** 🟢 Gap (mostly **verify-and-extend** — the engine largely already
   does this). Backend.
 - **Source:** 2026-07-08 Nick / Gareth res-rebuild call. Nick: some villas take

@@ -8,7 +8,7 @@
   chef's a grand, commission on the nine[teen] grand"); (b) a **pool-heating**
   add-on is non-commissionable but still added to the guest **balance/total**.
   Nick also framed mandatory local VAT as "a mandatory extra, same principle"
-  (see [GAP-079](gap-079-commission-after-local-vat.md)).
+  (see [GAP-079](done/gap-079-commission-after-local-vat.md)).
 - **Files touched (best-guess):**
   - `django_res/pricing/models/extra.py` — `Extra` has
     `kind/calc/amount/is_mandatory/…` but **no `commissionable` field**.
@@ -58,6 +58,17 @@ This blocks accurate owner economics for a large slice of real villas.
 
 - Interacts with **GAP-079** (commission-after-VAT — decide whether
   non-commissionable extras are also non-taxable, per villa).
+  > **GAP-079 coordination note (2026-07-09).** GAP-079 closed as
+  > verify-only: the VAT-then-commission ordering is the existing GROSS
+  > branch (legacy parity, no per-villa toggle — see
+  > `design/decisions.md`). What it leaves for THIS ticket: when adding
+  > `commissionable` to `Extra`/`BookingChargeItem`, settle taxability in
+  > the same unit — either a parallel `taxable` flag or an explicit
+  > "non-commissionable ⇒ still taxable" default — because today the
+  > entire base (all extras) feeds the VAT base
+  > (`04-pricing.md` step 8 note; pinned by
+  > `test_gross_extras_and_discount_fold_into_base`). Don't ship the
+  > commission carve-out with taxability left implicit.
 - Feeds **GAP-077** (per-component deposit/balance net split reads the same
   commission base).
 - Builds on **BUG-009** (price_basis engine, done) and **GAP-035** (net↔gross

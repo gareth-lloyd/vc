@@ -16,7 +16,7 @@ from decimal import Decimal
 import pytest
 
 from pricing.enums import DiscountKind, ExtraCalc, ExtraKind, PriceBasis, RuleKind
-from pricing.models import Currency, Discount, Extra, RateBand, RatePlan
+from pricing.models import Currency, Discount, Extra, RateBand, RatePeriod, RatePlan
 from pricing.services import PricingEngine
 from pricing.services.quote import Quote
 from properties.enums import CommissionCalcType
@@ -25,12 +25,19 @@ from properties.models import Property, PropertyFinance
 pytestmark = pytest.mark.django_db
 
 
-def _quote(property_: Property, currency: Currency, *, discount_code: str | None = None) -> Quote:
-    """A 7-night stay (10-17 Jun 2026) for party 4 — 7 x the fixture nightly."""
+def _quote(
+    property_: Property,
+    currency: Currency,
+    *,
+    discount_code: str | None = None,
+    date_to: date = date(2026, 6, 17),
+) -> Quote:
+    """A stay from 10 Jun 2026 for party 4 — 7 nights x the fixture nightly
+    unless ``date_to`` stretches it."""
     return PricingEngine.quote(
         property=property_,
         date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 17),
+        date_to=date_to,
         party=4,
         currency=currency,
         discount_code=discount_code,
@@ -303,6 +310,68 @@ def test_zero_base_after_full_discount_yields_zero_commission_and_tax(
     assert quote.commission == Decimal("0.00")
     assert quote.tax == Decimal("0.00")
     assert quote.total == Decimal("0.00")
+
+
+# --- GAP-079 — commission after local VAT (worked example) -------------------
+#
+# Confirms the ordering Nick described (2026-07-08 call): local VAT (13%)
+# comes off the gross FIRST, then commission off the remainder. This is the
+# GROSS branch's existing behaviour, matching legacy `RatesModel.Calculate()`;
+# ordering is a function of `price_basis` alone — no per-villa toggle.
+# Constructed example (13% VAT, 20% commission, 10,000 gross week); to be
+# re-reconciled against a real villa statement when Nick provides one.
+# Extras fold into the VAT base (pinned above by
+# `test_gross_extras_and_discount_fold_into_base`); GAP-076 will revisit
+# whether non-commissionable extras are also non-taxable.
+
+_GAP079_CHECKOUT = date(2026, 6, 18)  # 8 nights from 10 Jun
+
+
+def _gap079_band(period: RatePeriod) -> RateBand:
+    """1,250.00/night so the 8-night stay yields an exact 10,000.00 base.
+
+    (10,000 over the shared 7-night `rule` fixture is unrepresentable — the
+    weekly rate derives via a per-night 0.01 quantize, landing on 9,999.99.)
+    """
+    return RateBand.objects.create(
+        period=period,
+        min_party=1,
+        max_party=8,
+        nightly=Decimal("1250.00"),
+    )
+
+
+def test_gap079_gross_takes_commission_after_local_vat(
+    property_: Property, gbp: Currency, period: RatePeriod
+) -> None:
+    """13% VAT off the gross first, then 20% commission off the remainder."""
+    _finance(property_, commission_amount="20", tax_percentage="13")
+    _gap079_band(period)
+
+    quote = _quote(property_, gbp, date_to=_GAP079_CHECKOUT)
+
+    assert quote.rate_subtotal == Decimal("10000.00")
+    assert quote.tax == Decimal("1300.00")  # 10,000 x 13% — VAT first
+    assert quote.commission == Decimal("1740.00")  # (10,000 - 1,300) x 20%
+    assert quote.total == Decimal("10000.00")  # guest still pays the gross
+    assert quote.net_to_owner == Decimal("6960.00")  # 10,000 - 1,300 - 1,740
+
+
+def test_gap079_net_grosses_up_commission_then_vat(
+    property_: Property, gbp: Currency, period: RatePeriod
+) -> None:
+    """NET reverses the ordering (legacy parity): commission grosses up off
+    the net first, then VAT on (net + commission)."""
+    _finance(property_, commission_amount="20", tax_percentage="13")
+    band = _gap079_band(period)
+    _set_basis(band.period.plan, PriceBasis.NET)
+
+    quote = _quote(property_, gbp, date_to=_GAP079_CHECKOUT)
+
+    assert quote.commission == Decimal("2500.00")  # 10,000/0.8 - 10,000
+    assert quote.tax == Decimal("1867.82")  # 12,500/0.87 - 12,500
+    assert quote.total == Decimal("14367.82")
+    assert quote.net_to_owner == Decimal("10000.00")
 
 
 # --- Projection carries the basis --------------------------------------------

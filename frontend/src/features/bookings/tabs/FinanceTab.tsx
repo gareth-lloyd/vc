@@ -242,7 +242,14 @@ export function FinanceTab() {
               <tbody className="divide-border divide-y">
                 {chargeRows.map((item) => (
                   <tr key={item.id}>
-                    <td className="px-4 py-2 font-medium">{item.label}</td>
+                    <td className="px-4 py-2 font-medium">
+                      {item.label}
+                      {item.commissionable === false ? (
+                        <span className="text-muted-foreground ml-2 text-xs font-normal italic">
+                          {t("finance.charges.non_commissionable")}
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="text-muted-foreground px-4 py-2">{item.notes || "—"}</td>
                     <td className="px-4 py-2 text-right tabular-nums">
                       {formatMoney(item.amount, currency)}

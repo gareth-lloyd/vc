@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -43,10 +44,20 @@ interface EditProps extends CommonProps {
 
 type Props = CreateProps | EditProps;
 
-const createDefaults: ChargeItemWriteInput = { label: "", amount: "", notes: "" };
+const createDefaults: ChargeItemWriteInput = {
+  label: "",
+  amount: "",
+  notes: "",
+  commissionable: true,
+};
 
 function defaultsFromItem(item: BookingChargeItem): ChargeItemWriteInput {
-  return { label: item.label, amount: item.amount, notes: item.notes ?? "" };
+  return {
+    label: item.label,
+    amount: item.amount,
+    notes: item.notes ?? "",
+    commissionable: item.commissionable ?? true,
+  };
 }
 
 export function ChargeItemFormDialog(props: Props) {
@@ -59,6 +70,7 @@ export function ChargeItemFormDialog(props: Props) {
     defaultValues: isCreate ? createDefaults : defaultsFromItem(props.item),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
+  const commissionable = form.watch("commissionable") ?? true;
 
   const createMutation = useCreateChargeItem(bookingId);
   const updateMutation = useUpdateChargeItem(bookingId);
@@ -155,6 +167,17 @@ export function ChargeItemFormDialog(props: Props) {
           <div className="space-y-2">
             <Label htmlFor="charge-notes">{t("finance.charges.form_dialog.fields.notes")}</Label>
             <Textarea id="charge-notes" rows={2} {...form.register("notes")} />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="charge-commissionable"
+              checked={commissionable}
+              onCheckedChange={(v) => form.setValue("commissionable", v === true)}
+            />
+            <Label htmlFor="charge-commissionable">
+              {t("finance.charges.form_dialog.fields.commissionable")}
+            </Label>
           </div>
 
           {topLevelError ? (

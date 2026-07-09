@@ -483,6 +483,17 @@ describe("bookingChargeItemSchema", () => {
     expect(parsed.amount).toBe("-500.00");
     expect(parsed.notes).toBe("");
   });
+
+  it("round-trips commissionable and leaves it undefined when absent", () => {
+    const base = { id: 9, label: "Chef", amount: "100.00", currency: 1 };
+    expect(bookingChargeItemSchema.parse({ ...base, commissionable: false }).commissionable).toBe(
+      false,
+    );
+    expect(bookingChargeItemSchema.parse({ ...base, commissionable: true }).commissionable).toBe(
+      true,
+    );
+    expect(bookingChargeItemSchema.parse(base).commissionable).toBeUndefined();
+  });
 });
 
 describe("chargeItemWriteInputSchema", () => {
@@ -508,6 +519,13 @@ describe("chargeItemWriteInputSchema", () => {
 
   it("requires a label", () => {
     expect(chargeItemWriteInputSchema.safeParse({ ...base, label: " " }).success).toBe(false);
+  });
+
+  it("round-trips commissionable and leaves it undefined when absent", () => {
+    const withFlag = chargeItemWriteInputSchema.parse({ ...base, commissionable: false });
+    expect(withFlag.commissionable).toBe(false);
+    const without = chargeItemWriteInputSchema.parse(base);
+    expect(without.commissionable).toBeUndefined();
   });
 });
 

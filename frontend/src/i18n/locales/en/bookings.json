@@ -727,6 +727,7 @@
       "empty_description": "Add a charge or credit to adjust what the guest owes.",
       "charges_total": "Charges total",
       "total_with_charges": "Total incl. charges",
+      "non_commissionable": "Non-commissionable",
       "load_failed_title": "Could not load charges",
       "load_failed_body": "Something went wrong fetching the manual charges.",
       "role_required_tooltip": "You need the Reservations role to manage charges",
@@ -753,6 +754,7 @@
           "label": "Label",
           "amount": "Amount",
           "notes": "Notes",
+          "commissionable": "Commissionable",
           "currency": "Currency"
         },
         "submit_create": "Add charge"

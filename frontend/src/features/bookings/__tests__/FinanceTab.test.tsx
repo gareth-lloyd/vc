@@ -231,6 +231,25 @@ describe("FinanceTab — manual charges", () => {
     expect(screen.getAllByText(/£1,150\.00/).length).toBeGreaterThan(0);
   });
 
+  it("marks non-commissionable charges and leaves default rows unmarked", async () => {
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () => HttpResponse.json(bookingFixture({}))),
+    );
+    useCharges([
+      chargeItem({ id: 1, label: "Late checkout", amount: "150.00" }),
+      chargeItem({ id: 2, label: "Chef pass-through", amount: "300.00", commissionable: false }),
+    ]);
+    setup();
+
+    expect(await screen.findByText("Chef pass-through")).toBeInTheDocument();
+    expect(screen.getAllByText(/non-commissionable/i)).toHaveLength(1);
+    const flaggedRow = screen.getByText("Chef pass-through").closest("tr");
+    expect(flaggedRow).not.toBeNull();
+    expect(flaggedRow!.textContent).toMatch(/non-commissionable/i);
+    const defaultRow = screen.getByText("Late checkout").closest("tr");
+    expect(defaultRow!.textContent).not.toMatch(/non-commissionable/i);
+  });
+
   it("renders and operates without a pricing snapshot (legacy bookings)", async () => {
     server.use(
       http.get(`/api/v1/bookings/${BOOKING_ID}`, () => HttpResponse.json(bookingFixture({}))),

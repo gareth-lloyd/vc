@@ -67,7 +67,30 @@ describe("ChargeItemFormDialog (create)", () => {
     await userEvent.click(screen.getByRole("button", { name: /add charge/i }));
 
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
-    expect(receivedBody).toMatchObject({ label: "Late checkout", amount: "150.00" });
+    expect(receivedBody).toMatchObject({
+      label: "Late checkout",
+      amount: "150.00",
+      commissionable: true,
+    });
+  });
+
+  it("sends commissionable: false when the checkbox is unticked", async () => {
+    let receivedBody: unknown = null;
+    server.use(
+      http.post(`/api/v1/bookings/${BOOKING_ID}/charge-items`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json(makeItem({ id: 101, commissionable: false }), { status: 201 });
+      }),
+    );
+    setupCreate();
+
+    await userEvent.type(screen.getByLabelText(/label/i), "Chef pass-through");
+    await userEvent.type(screen.getByLabelText(/amount/i), "300.00");
+    await userEvent.click(screen.getByRole("checkbox", { name: /commissionable/i }));
+    await userEvent.click(screen.getByRole("button", { name: /add charge/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(receivedBody).toMatchObject({ commissionable: false });
   });
 
   it("shows the booking currency as static text", () => {
@@ -151,5 +174,31 @@ describe("ChargeItemFormDialog (edit)", () => {
 
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(receivedBody).toMatchObject({ label: "Late checkout", amount: "-75.00" });
+  });
+
+  it("seeds the commissionable checkbox from the item", async () => {
+    let receivedBody: unknown = null;
+    server.use(
+      http.patch(`/api/v1/bookings/${BOOKING_ID}/charge-items/7`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json(makeItem({ commissionable: false }));
+      }),
+    );
+    renderWithProviders(
+      <ChargeItemFormDialog
+        mode="edit"
+        bookingId={BOOKING_ID}
+        currencyCode="GBP"
+        item={makeItem({ commissionable: false })}
+        open
+        onOpenChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: /commissionable/i })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(receivedBody).toMatchObject({ commissionable: false });
   });
 });

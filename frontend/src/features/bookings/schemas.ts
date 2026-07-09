@@ -577,6 +577,7 @@ export const bookingChargeItemSchema = z.object({
   currency: z.number(),
   currency_code: z.string().nullable().optional(),
   notes: z.string().optional().default(""),
+  commissionable: z.boolean().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
 });
@@ -594,6 +595,7 @@ export const chargeItemWriteInputSchema = z.object({
     .regex(/^-?\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.signed_decimal_format"))
     .refine((v) => Number(v) !== 0, i18n.t("bookings:schema_errors.amount_nonzero")),
   notes: z.string().trim().max(2000),
+  commissionable: z.boolean().optional(),
 });
 export type ChargeItemWriteInput = z.infer<typeof chargeItemWriteInputSchema>;
 

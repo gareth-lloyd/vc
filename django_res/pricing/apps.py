@@ -85,6 +85,7 @@ class PricingConfig(AppConfig):
                 "amount",
                 "currency_id",
                 "is_mandatory",
+                "commissionable",
                 "applies_from",
                 "applies_to",
                 "is_active",

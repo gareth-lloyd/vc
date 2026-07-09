@@ -25,6 +25,7 @@ class ExtraSerializer(serializers.ModelSerializer[Extra]):
             "currency",
             "currency_code",
             "is_mandatory",
+            "commissionable",
             "applies_from",
             "applies_to",
             "min_party",

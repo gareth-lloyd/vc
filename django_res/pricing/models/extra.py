@@ -27,6 +27,10 @@ class Extra(AuditedModel):
         related_name="extras",
     )
     is_mandatory = models.BooleanField(default=True)
+    # False = stays in the guest total but is excluded from the commission and
+    # tax bases; the amount passes through to the owner verbatim (GAP-076).
+    # Per-villa taxability policy for these extras is deferred to GAP-079.
+    commissionable = models.BooleanField(default=True)
     applies_from = models.DateField(null=True, blank=True)
     applies_to = models.DateField(null=True, blank=True)
     min_party = models.PositiveSmallIntegerField(null=True, blank=True)

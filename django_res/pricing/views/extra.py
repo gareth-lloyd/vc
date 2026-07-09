@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 class PropertyExtraListCreateView(generics.ListCreateAPIView):
     serializer_class = ExtraSerializer
     permission_classes = [IsReservationsWriter]
-    filterset_fields = ["kind", "is_mandatory", "is_active"]
+    filterset_fields = ["kind", "is_mandatory", "commissionable", "is_active"]
 
     def get_queryset(self) -> QuerySet[Extra]:
         return Extra.objects.filter(property_id=self.kwargs["property_id"]).select_related(

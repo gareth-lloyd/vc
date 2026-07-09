@@ -305,6 +305,232 @@ def test_zero_base_after_full_discount_yields_zero_commission_and_tax(
     assert quote.total == Decimal("0.00")
 
 
+# --- Non-commissionable extras (GAP-076) --------------------------------------
+
+
+def _extra(
+    property_: Property,
+    gbp: Currency,
+    *,
+    name: str = "Chef",
+    amount: str = "1000.00",
+    commissionable: bool = False,
+    is_mandatory: bool = True,
+) -> Extra:
+    return Extra.objects.create(
+        property=property_,
+        currency=gbp,
+        name=name,
+        kind=ExtraKind.OTHER,
+        calc=ExtraCalc.FIXED_PER_STAY,
+        is_mandatory=is_mandatory,
+        amount=Decimal(amount),
+        commissionable=commissionable,
+        is_active=True,
+    )
+
+
+def test_gross_non_commissionable_extra_passes_through_to_owner(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """GROSS: the extra bills the guest but never enters commission/tax bases."""
+    _finance(property_)  # 15% commission, 10% tax
+    _extra(property_, gbp)
+
+    quote = _quote(property_, gbp)
+
+    assert quote.tax == Decimal("140.00")  # on 1400 only
+    assert quote.commission == Decimal("189.00")  # (1400 - 140) x 15%
+    assert quote.total == Decimal("2400.00")  # guest still pays the chef
+    assert quote.net_to_owner == Decimal("2071.00")  # 1071 + 1000 pass-through
+    assert quote.extras_total == Decimal("1000.00")
+    assert quote.breakdown["commission_base"] == "1400.00"
+    assert quote.breakdown["extras_non_commissionable_total"] == "1000.00"
+    assert quote.breakdown["extras"][0]["commissionable"] is False
+
+
+def test_net_non_commissionable_extra_passes_through_to_owner(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """NET: gross-up applies to the commissionable base only; extra rides on top."""
+    _finance(property_)
+    _set_basis(rule.period.plan, PriceBasis.NET)
+    _extra(property_, gbp)
+
+    quote = _quote(property_, gbp)
+
+    assert quote.commission == Decimal("247.06")  # 1400/0.85 - 1400
+    assert quote.tax == Decimal("183.01")
+    assert quote.total == Decimal("2830.07")  # 1830.07 + 1000
+    assert quote.net_to_owner == Decimal("2400.00")  # 1400 net + 1000 pass-through
+    assert quote.breakdown["commission_base"] == "1400.00"
+    assert quote.breakdown["extras_non_commissionable_total"] == "1000.00"
+
+
+def test_mixed_extras_split_between_bases(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """Commissionable extras fold into the base; non-commissionable ride on top."""
+    _finance(property_)
+    _extra(property_, gbp, name="Cleaning", amount="150.00", commissionable=True)
+    _extra(property_, gbp)
+
+    quote = _quote(property_, gbp)
+
+    # commission base = 1400 + 150 = 1550
+    assert quote.tax == Decimal("155.00")
+    assert quote.commission == Decimal("209.25")  # (1550 - 155) x 15%
+    assert quote.total == Decimal("2550.00")
+    assert quote.net_to_owner == Decimal("2185.75")
+    assert quote.extras_total == Decimal("1150.00")  # full guest-facing sum
+    assert quote.breakdown["commission_base"] == "1550.00"
+    assert quote.breakdown["extras_non_commissionable_total"] == "1000.00"
+
+
+def test_percent_discount_computes_on_commissionable_subtotal_only(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """A percent discount never discounts the pass-through extra (GAP-076)."""
+    _finance(property_)
+    _extra(property_, gbp, name="Cleaning", amount="150.00", commissionable=True)
+    _extra(property_, gbp)
+    Discount.objects.create(
+        property=property_,
+        name="Promo",
+        code="TEN",
+        rule_kind=RuleKind.PROMO_CODE,
+        kind=DiscountKind.PERCENT,
+        amount=Decimal("10.00"),
+        valid_from=date(2026, 1, 1),
+        valid_to=date(2026, 12, 31),
+        is_active=True,
+    )
+
+    quote = _quote(property_, gbp, discount_code="TEN")
+
+    # discount = 10% x (1400 + 150) = 155, NOT 10% x 2550 = 255
+    assert quote.discount == Decimal("155.00")
+    # commission base = 1400 + 150 - 155 = 1395
+    assert quote.tax == Decimal("139.50")
+    # (1395 - 139.50) x 15% = 188.325 → 188.32 (banker's rounding, GAP-035 pin)
+    assert quote.commission == Decimal("188.32")
+    assert quote.total == Decimal("2395.00")
+    assert quote.net_to_owner == Decimal("2067.18")
+    assert quote.breakdown["commission_base"] == "1395.00"
+
+
+def test_zero_commissionable_base_still_bills_non_commissionable_extra(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """Guard pin: comped stay + pass-through extra → no commission/tax, extra survives."""
+    _finance(property_)
+    _extra(property_, gbp)
+    Discount.objects.create(
+        property=property_,
+        name="Comp stay",
+        code="FREE100",
+        rule_kind=RuleKind.PROMO_CODE,
+        kind=DiscountKind.PERCENT,
+        amount=Decimal("100.00"),
+        valid_from=date(2026, 1, 1),
+        valid_to=date(2026, 12, 31),
+        is_active=True,
+    )
+
+    quote = _quote(property_, gbp, discount_code="FREE100")
+
+    assert quote.commission == Decimal("0.00")
+    assert quote.tax == Decimal("0.00")
+    assert quote.total == Decimal("1000.00")
+    assert quote.net_to_owner == Decimal("1000.00")
+    assert quote.breakdown["commission_base"] == "0.00"
+
+
+def test_over_discount_erodes_pass_through_extra_not_guest_total(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """Deliberate pin: a discount beyond the commissionable subtotal drives the
+    base negative and nets against the pass-through extra — the guest total is
+    IDENTICAL to the pre-GAP-076 fold for the same inputs (customer-facing money
+    never moves), so the erosion lands on the owner side, not the guest's bill.
+    """
+    _finance(property_)
+    _extra(property_, gbp)  # non-commissionable 1000
+    Discount.objects.create(
+        property=property_,
+        name="Mega promo",
+        code="MEGA",
+        rule_kind=RuleKind.PROMO_CODE,
+        kind=DiscountKind.FIXED,
+        amount=Decimal("2000.00"),
+        valid_from=date(2026, 1, 1),
+        valid_to=date(2026, 12, 31),
+        is_active=True,
+    )
+
+    quote = _quote(property_, gbp, discount_code="MEGA")
+
+    assert quote.commission == Decimal("0.00")  # base <= 0 guard
+    assert quote.tax == Decimal("0.00")
+    assert quote.total == Decimal("400.00")  # 1400 + 1000 - 2000, as before GAP-076
+    assert quote.net_to_owner == Decimal("400.00")
+    assert quote.breakdown["commission_base"] == "-600.00"  # recorded truthfully
+
+
+def test_opt_in_non_commissionable_extra_passes_through(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """A non-mandatory non-commissionable extra behaves the same once opted in."""
+    _finance(property_)
+    optional = _extra(property_, gbp, is_mandatory=False)
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+        opt_in_extras=[optional.pk],
+    )
+
+    assert quote.commission == Decimal("189.00")
+    assert quote.total == Decimal("2400.00")
+    assert quote.net_to_owner == Decimal("2071.00")
+
+
+def test_tax_exempt_with_non_commissionable_extra(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    _finance(property_, tax_is_exempt=True)
+    _extra(property_, gbp)
+
+    quote = _quote(property_, gbp)
+
+    assert quote.tax == Decimal("0.00")
+    assert quote.commission == Decimal("210.00")  # (1400 - 0) x 15%
+    assert quote.total == Decimal("2400.00")
+    assert quote.net_to_owner == Decimal("2190.00")
+
+
+def test_commissionable_extras_keep_existing_snapshot_shape(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """Regression: default-flag extras reproduce the old maths; new keys are sane."""
+    _finance(property_)
+    _extra(property_, gbp, name="Cleaning", amount="150.00", commissionable=True)
+
+    quote = _quote(property_, gbp)
+
+    # Identical to the old base = 1400 + 150 fold.
+    assert quote.tax == Decimal("155.00")
+    assert quote.commission == Decimal("209.25")
+    assert quote.total == Decimal("1550.00")
+    assert quote.net_to_owner == Decimal("1185.75")
+    assert quote.breakdown["commission_base"] == "1550.00"
+    assert quote.breakdown["extras_non_commissionable_total"] == "0.00"
+    assert quote.breakdown["extras"][0]["commissionable"] is True
+
+
 # --- Projection carries the basis --------------------------------------------
 
 

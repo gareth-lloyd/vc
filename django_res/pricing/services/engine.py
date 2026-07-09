@@ -259,16 +259,25 @@ class PricingEngine:
                     kind=extra.kind,
                     calc=extra.calc,
                     computed_amount=computed,
+                    commissionable=extra.commissionable,
                 )
             )
 
         extras_total = sum((ax.computed_amount for ax in extras_applied), Decimal("0")).quantize(
             Decimal("0.01")
         )
+        # GAP-076: non-commissionable extras bill the guest but never enter the
+        # commission/tax bases (nor the discount subtotal) — they pass through
+        # to the owner verbatim. Per-villa taxability is deferred to GAP-079.
+        extras_non_commissionable_total = sum(
+            (ax.computed_amount for ax in extras_applied if not ax.commissionable),
+            Decimal("0"),
+        ).quantize(Decimal("0.01"))
+        extras_commissionable_total = extras_total - extras_non_commissionable_total
 
         discount_total = cls._apply_discounts(
             property=property,
-            subtotal=rate_subtotal + extras_total,
+            subtotal=rate_subtotal + extras_commissionable_total,
             party=party,
             date_from=date_from,
             date_to=date_to,
@@ -281,7 +290,9 @@ class PricingEngine:
         # Services steps 8-10): a GROSS rate already includes them (carve out,
         # total == base), a NET rate is the owner net (gross up, total = base +
         # commission + tax). `plan.price_basis` is the sole pricing authority.
-        base = rate_subtotal + extras_total - discount_total
+        # The base is the COMMISSIONABLE base (GAP-076); non-commissionable
+        # extras are added back into the guest total after derivation.
+        base = rate_subtotal + extras_commissionable_total - discount_total
         commission, tax = cls._derive_commission_and_tax(
             basis=plan.price_basis,
             base=base,
@@ -289,9 +300,11 @@ class PricingEngine:
             tax_rate=cls._resolve_tax_policy(property, as_of),
         )
         if plan.price_basis == PriceBasis.NET:
-            total = (base + commission + tax).quantize(Decimal("0.01"))
+            total = (base + commission + tax + extras_non_commissionable_total).quantize(
+                Decimal("0.01")
+            )
         else:
-            total = base.quantize(Decimal("0.01"))
+            total = (base + extras_non_commissionable_total).quantize(Decimal("0.01"))
         # Owner-net is captured at quote-time so downstream consumers (the
         # booking detail serializer, owner statements) never have to re-derive
         # it from the breakdown. See `09-departures.md`: serializers should
@@ -308,6 +321,13 @@ class PricingEngine:
             "rate_subtotal": str(rate_subtotal),
             "extras": [ax.to_dict() for ax in extras_applied],
             "extras_total": str(extras_total),
+            # GAP-076: the commission base and the pass-through slice are
+            # recorded explicitly so downstream consumers (GAP-077) never
+            # re-derive them from the other keys. NOTE the base's meaning is
+            # basis-dependent (GROSS: the gross; NET: the owner net), so read
+            # it alongside `price_basis` — commission ≠ base x pct under NET.
+            "commission_base": str(base.quantize(Decimal("0.01"))),
+            "extras_non_commissionable_total": str(extras_non_commissionable_total),
             "discount": str(discount_total),
             "commission": str(commission),
             "tax": str(tax),
@@ -362,6 +382,8 @@ class PricingEngine:
             rate_subtotal=rate_subtotal,
             extras=extras_applied,
             extras_total=extras_total,
+            commission_base=base.quantize(Decimal("0.01")),
+            extras_non_commissionable_total=extras_non_commissionable_total,
             discount=discount_total,
             commission=commission,
             tax=tax,

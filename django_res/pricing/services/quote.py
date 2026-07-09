@@ -34,13 +34,18 @@ class QuoteLine:
 
 @dataclass
 class AppliedExtra:
-    """An Extra row that was applied at quote time, plus its computed amount."""
+    """An Extra row that was applied at quote time, plus its computed amount.
+
+    `commissionable=False` (GAP-076) means the amount bills the guest but is
+    excluded from the commission/tax bases and passes through to the owner.
+    """
 
     extra_id: int
     name: str
     kind: str
     calc: str
     computed_amount: Decimal
+    commissionable: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -49,6 +54,7 @@ class AppliedExtra:
             "kind": self.kind,
             "calc": self.calc,
             "computed_amount": str(self.computed_amount),
+            "commissionable": self.commissionable,
         }
 
 
@@ -65,6 +71,11 @@ class Quote:
     rate_subtotal: Decimal
     extras: list[AppliedExtra]
     extras_total: Decimal
+    # GAP-076: the base commission/tax were derived from (basis-dependent — the
+    # gross under GROSS, the owner net under NET) and the pass-through slice of
+    # `extras_total` that was excluded from it.
+    commission_base: Decimal
+    extras_non_commissionable_total: Decimal
     discount: Decimal
     commission: Decimal
     tax: Decimal

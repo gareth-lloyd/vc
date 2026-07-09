@@ -121,6 +121,7 @@ describe("InspectorPanel", () => {
       amount: "50",
       currency: 1,
       is_mandatory: false,
+      commissionable: true,
       applies_from: null,
       applies_to: null,
       is_active: true,

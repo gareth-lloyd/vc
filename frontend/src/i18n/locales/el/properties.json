@@ -1165,7 +1165,8 @@
         "owner_heading": "Οικονομικά ιδιοκτήτη",
         "net_to_owner": "Καθαρό ιδιοκτήτη",
         "commission": "Προμήθεια",
-        "tax": "Φόρος"
+        "tax": "Φόρος",
+        "non_commissionable": "Χωρίς προμήθεια"
       }
     },
     "inspector": {
@@ -1184,6 +1185,7 @@
       "empty_discounts": "Δεν υπάρχουν εκπτώσεις ακόμη.",
       "mandatory": "Υποχρεωτικό",
       "optional": "Προαιρετικό",
+      "non_commissionable": "Χωρίς προμήθεια",
       "fields": {
         "name": "Όνομα",
         "code": "Κωδικός",
@@ -1204,6 +1206,7 @@
         "threshold_days_last_minute": "Μέγ. ημέρες πριν από την άφιξη",
         "max_uses": "Μέγ. χρήσεις",
         "is_mandatory": "Υποχρεωτικό",
+        "commissionable": "Υπόκειται σε προμήθεια",
         "is_active": "Ενεργό"
       },
       "enums": {

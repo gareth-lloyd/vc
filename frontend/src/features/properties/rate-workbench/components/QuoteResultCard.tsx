@@ -114,7 +114,14 @@ export function QuoteResultCard({ quote, periodLabel }: QuoteResultCardProps) {
           <ul className="text-muted-foreground space-y-0.5 text-xs">
             {quote.extras.map((ex) => (
               <li key={ex.extra_id} className="flex justify-between gap-4">
-                <span>{ex.name}</span>
+                <span className="flex items-baseline gap-1.5">
+                  {ex.name}
+                  {ex.commissionable === false ? (
+                    <span className="text-muted-foreground/70 italic">
+                      {t("rate_workbench.probe.result.non_commissionable")}
+                    </span>
+                  ) : null}
+                </span>
                 <span className="tabular-nums">{formatMoney(ex.computed_amount, currency)}</span>
               </li>
             ))}

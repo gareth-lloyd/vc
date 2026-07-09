@@ -285,6 +285,7 @@ function ExtrasSection({
       e.is_mandatory
         ? t("rate_workbench.inspector.mandatory")
         : t("rate_workbench.inspector.optional"),
+      e.commissionable === false ? t("rate_workbench.inspector.non_commissionable") : null,
       dateRange(e.applies_from, e.applies_to),
     ].filter(Boolean);
     return parts.length ? parts.join(" · ") : null;

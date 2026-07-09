@@ -570,6 +570,7 @@ export const extraSchema = z.object({
   currency: z.number().nullable().optional(),
   currency_code: z.string().nullable().optional(),
   is_mandatory: z.boolean().optional(),
+  commissionable: z.boolean().optional(),
   applies_from: z.string().nullable().optional(),
   applies_to: z.string().nullable().optional(),
   min_party: z.number().nullable().optional(),

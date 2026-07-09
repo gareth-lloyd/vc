@@ -95,6 +95,65 @@ describe("ExtraFormDialog currency default", () => {
   });
 });
 
+describe("ExtraFormDialog commissionable (GAP-076)", () => {
+  function installPost(posted: Array<Record<string, unknown>>) {
+    server.use(
+      http.post("/api/v1/properties/7/extras", async ({ request }) => {
+        posted.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ id: 12, property: 7, name: "Cleaning", amount: "50" });
+      }),
+    );
+  }
+
+  it("defaults to commissionable and sends commissionable: true on create", async () => {
+    installReads(5);
+    const posted: Array<Record<string, unknown>> = [];
+    installPost(posted);
+
+    const user = userEvent.setup();
+    renderWithProviders(
+      <ExtraFormDialog
+        propertyId={7}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="GBP"
+        defaultCurrencyId={5}
+      />,
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("checkbox", { name: "Commissionable" })).toBeChecked();
+    await fillAndSave(user);
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ commissionable: true });
+  });
+
+  it("sends commissionable: false when the checkbox is unticked", async () => {
+    installReads(5);
+    const posted: Array<Record<string, unknown>> = [];
+    installPost(posted);
+
+    const user = userEvent.setup();
+    renderWithProviders(
+      <ExtraFormDialog
+        propertyId={7}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="GBP"
+        defaultCurrencyId={5}
+      />,
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("checkbox", { name: "Commissionable" }));
+    await fillAndSave(user);
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ commissionable: false });
+  });
+});
+
 describe("ExtraFormDialog currency mismatch hint", () => {
   function renderCreate(planCurrencyIds: number[] | undefined) {
     installReads(5);

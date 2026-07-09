@@ -1165,7 +1165,8 @@
         "owner_heading": "Owner economics",
         "net_to_owner": "Net to owner",
         "commission": "Commission",
-        "tax": "Tax"
+        "tax": "Tax",
+        "non_commissionable": "Non-commissionable"
       }
     },
     "inspector": {
@@ -1184,6 +1185,7 @@
       "empty_discounts": "No discounts yet.",
       "mandatory": "Mandatory",
       "optional": "Optional",
+      "non_commissionable": "Non-commissionable",
       "fields": {
         "name": "Name",
         "code": "Code",
@@ -1204,6 +1206,7 @@
         "threshold_days_last_minute": "Max days before arrival",
         "max_uses": "Max uses",
         "is_mandatory": "Mandatory",
+        "commissionable": "Commissionable",
         "is_active": "Active"
       },
       "enums": {

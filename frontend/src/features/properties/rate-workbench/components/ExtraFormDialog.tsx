@@ -71,6 +71,7 @@ function createDefaults(currencyId: number | null): ExtraWriteInput {
     amount: "",
     currency: currencyId ?? 0,
     is_mandatory: false,
+    commissionable: true,
     applies_from: "",
     applies_to: "",
     is_active: true,
@@ -86,6 +87,7 @@ function defaultsFromExtra(extra: Extra): ExtraWriteInput {
     amount: extra.amount ?? "",
     currency: extra.currency ?? 0,
     is_mandatory: extra.is_mandatory ?? false,
+    commissionable: extra.commissionable ?? true,
     applies_from: extra.applies_from ?? "",
     applies_to: extra.applies_to ?? "",
     is_active: extra.is_active ?? true,
@@ -173,6 +175,7 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
   const currencyMismatch =
     !!currency && !!planCurrencyIds?.length && !planCurrencyIds.includes(currency);
   const isMandatory = form.watch("is_mandatory") ?? false;
+  const commissionable = form.watch("commissionable") ?? true;
   const isActive = form.watch("is_active") ?? true;
 
   return (
@@ -309,6 +312,17 @@ export function ExtraFormDialog(props: ExtraFormDialogProps) {
             />
             <Label htmlFor="extra-is-mandatory">
               {t("rate_workbench.inspector.fields.is_mandatory")}
+            </Label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="extra-commissionable"
+              checked={commissionable}
+              onCheckedChange={(v) => form.setValue("commissionable", v === true)}
+            />
+            <Label htmlFor="extra-commissionable">
+              {t("rate_workbench.inspector.fields.commissionable")}
             </Label>
           </div>
 

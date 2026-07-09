@@ -94,6 +94,20 @@ describe("QuoteResultCard", () => {
     expect(screen.getByText("£495.22")).toBeInTheDocument();
   });
 
+  it("marks a non-commissionable applied extra, leaving commissionable ones unmarked (GAP-076)", () => {
+    const withExtras: PriceQuote = {
+      ...grossQuote,
+      extras: [
+        { extra_id: 1, name: "Cleaning", computed_amount: "100", commissionable: false },
+        { extra_id: 2, name: "Linen", computed_amount: "50", commissionable: true },
+      ],
+    };
+    renderWithProviders(<QuoteResultCard quote={withExtras} />);
+    expect(screen.getByText("Cleaning")).toBeInTheDocument();
+    expect(screen.getByText("Linen")).toBeInTheDocument();
+    expect(screen.getAllByText("Non-commissionable")).toHaveLength(1);
+  });
+
   it("hides owner economics when the response carries no owner fields (legacy shape)", () => {
     const legacy: PriceQuote = { ...grossQuote };
     delete (legacy as { commission?: string }).commission;

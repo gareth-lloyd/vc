@@ -41,6 +41,15 @@ describe("extraWriteInputSchema", () => {
     expect(extraWriteInputSchema.safeParse({ ...validExtra, currency: 0 }).success).toBe(false);
   });
 
+  it("round-trips commissionable and leaves it undefined when absent (GAP-076)", () => {
+    const withFlag = extraWriteInputSchema.parse({ ...validExtra, commissionable: false });
+    expect(withFlag.commissionable).toBe(false);
+    const withTrue = extraWriteInputSchema.parse({ ...validExtra, commissionable: true });
+    expect(withTrue.commissionable).toBe(true);
+    const without = extraWriteInputSchema.parse(validExtra);
+    expect(without.commissionable).toBeUndefined();
+  });
+
   it("rejects an end date before the start date", () => {
     expect(
       extraWriteInputSchema.safeParse({

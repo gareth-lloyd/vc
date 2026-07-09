@@ -78,6 +78,7 @@ export const extraWriteInputSchema = z
       .int()
       .min(1, { message: "properties:rate_workbench.inspector.errors.extra_currency_required" }),
     is_mandatory: z.boolean().optional(),
+    commissionable: z.boolean().optional(),
     applies_from: z.string().nullable().optional(),
     applies_to: z.string().nullable().optional(),
     is_active: z.boolean().optional(),
@@ -214,6 +215,7 @@ export const appliedExtraSchema = z
     kind: z.string().nullable().optional(),
     calc: z.string().nullable().optional(),
     computed_amount: z.string(),
+    commissionable: z.boolean().optional(),
   })
   .passthrough();
 

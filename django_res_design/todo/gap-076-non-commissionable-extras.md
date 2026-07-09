@@ -8,7 +8,7 @@
   chef's a grand, commission on the nine[teen] grand"); (b) a **pool-heating**
   add-on is non-commissionable but still added to the guest **balance/total**.
   Nick also framed mandatory local VAT as "a mandatory extra, same principle"
-  (see [GAP-079](gap-079-commission-after-local-vat.md)).
+  (see [GAP-079](done/gap-079-commission-after-local-vat.md)).
 - **Files touched (best-guess):**
   - `django_res/pricing/models/extra.py` — `Extra` has
     `kind/calc/amount/is_mandatory/…` but **no `commissionable` field**.

@@ -1,5 +1,40 @@
 # GAP-076 — Non-commissionable charges: `commissionable` flag on extras (+ charge items)
 
+> **✅ RESOLVED (2026-07-10)** — shipped on `feat/gap-076` in 5 units
+> (`3c6932a`, `ebf7399`, `eaac29c`, `4df5b67`, `2578c89`).
+> - `Extra.commissionable` + `BookingChargeItem.commissionable`
+>   (`BooleanField(default=True)`, migrations `pricing/0004` +
+>   `reservations/0004`, serializers, filterset, audit `track()` lists).
+> - **Engine split** (`pricing/services/engine.py`): the commission base is
+>   `rate_subtotal + commissionable extras − discounts`; non-commissionable
+>   extras bill the guest verbatim, ride on top of `total` in both GROSS and
+>   NET branches, and pass through to the owner untouched. **Full
+>   pass-through semantics** (user decision): excluded from the commission
+>   **and** tax bases, and never discounted (percent discounts compute on the
+>   commissionable subtotal only). Snapshot gains explicit `commission_base`
+>   (basis-dependent — read with `price_basis`) + `extras_non_commissionable_total`
+>   keys and per-extra `commissionable` flags; `Quote` mirrors them as typed
+>   fields for GAP-077.
+> - **Charge items**: `charges_owner_adjustments` (services/charges.py) is the
+>   single shared owner-side arithmetic — only commissionable lines enter the
+>   `owner_effect` percent skim; non-commissionable lines (and credits,
+>   symmetric) flow to the owner in full. Staff `get_net_to_owner`, owner
+>   booking serializer and owner-dashboard YTD all ride it; guest-facing
+>   totals/schedules never split. `with_charges_total` annotates the
+>   non-commissionable slice via a second SELECT-only Subquery (no new
+>   queries on list paths).
+> - **FE**: "Commissionable" checkbox (default ticked) in the rate-workbench
+>   Extra dialog + booking ChargeItem dialog; "Non-commissionable" tags in
+>   the extras list, price-probe result card and FinanceTab charge rows;
+>   en+el locales.
+> - Deliberately pinned: over-discount beyond the commissionable subtotal
+>   erodes the pass-through extra, keeping the guest total identical to
+>   pre-GAP-076 (`test_over_discount_erodes_pass_through_extra_not_guest_total`).
+> - Per-villa/per-extra **taxability** toggle NOT added (GAP-079 coordination
+>   closed: full pass-through, no toggle); the quotations operator-discount
+>   snapshot-clobber (`quotations.py`) is pre-existing and recorded for
+>   GAP-077.
+
 - **Severity:** 🟢 Gap (pricing/finance model + engine). Backend-led, FE
   follow-through. **Nick's top near-term finance ask.**
 - **Source:** 2026-07-08 Nick / Gareth res-rebuild call. Two real cases:

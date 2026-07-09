@@ -462,17 +462,17 @@ Steps:
 5. Apply mandatory `Extra`s whose date window intersects the stay and whose party-size window includes the party (calc methods: per-stay, per-night, per-person, per-person-per-night, percent-of-subtotal).
 6. Apply caller-supplied opt-in `Extra`s (the `opt_in_extras` argument).
 7. Apply `Discount` rules that match the winning card (`card_id`) or the property (when `card` is null) — auto-apply rule_kinds (LENGTH_OF_STAY, EARLY_BIRD, LAST_MINUTE) plus optional PROMO_CODE. `REPEAT_GUEST` is a recognised enum member but **not implemented in v1** (no repeat-guest detection exists yet); the engine excludes it at the queryset so it can never silently mis-apply (see GAP-009).
-8. **Derive commission and tax `price_basis`-aware (BUG-009).** Read the resolved `RatePlan.price_basis` (authoritative — see "Which basis field" below). The rate is either the guest-facing gross or the owner net, and commission/tax are derived differently in each mode, with **mode-dependent bases**, mirroring legacy `RatesModel.Calculate()` (`ResSystem/NewResSystem.Core/Services/Properties/RatesModel.cs:112-252`). Let `base = rate_subtotal + extras − discounts`.
+8. **Derive commission and tax `price_basis`-aware (BUG-009).** Read the resolved `RatePlan.price_basis` (authoritative — see "Which basis field" below). The rate is either the guest-facing gross or the owner net, and commission/tax are derived differently in each mode, with **mode-dependent bases**, mirroring legacy `RatesModel.Calculate()` (`ResSystem/NewResSystem.Core/Services/Properties/RatesModel.cs:112-252`). Let `base = rate_subtotal + commissionable extras − discounts` — the **commission base**. Non-commissionable extras (GAP-076, `Extra.commissionable=False`) are excluded from this base (and from the discount subtotal) and are added back into `total` after derivation: they bill the guest verbatim and pass through to the owner untouched by commission **and** tax (full pass-through; per-villa taxability was examined and closed as "no toggle" territory — see the GAP-079 callout below). The snapshot records `commission_base` and `extras_non_commissionable_total` explicitly (GAP-077 reads them).
    - **GROSS** — the rate already includes tax and commission; **carve them out, never add on top**:
      - `tax = base × tax_rate/100` (tax base = the gross `base`)
      - `commission = (base − tax) × commission_pct/100` (commission base = gross − tax)
-     - `total = base` (the guest pays the gross); `net_to_owner = base − tax − commission`
+     - `total = base + non-commissionable extras` (the guest pays the gross plus pass-throughs); `net_to_owner = total − tax − commission`
    - **NET** — the rate is the owner net; **gross up**:
      - `commission = base/(1 − commission_pct/100) − base` (commission base = net)
      - `tax = (base + commission)/(1 − tax_rate/100) − (base + commission)` (tax base = net + commission)
-     - `total = base + commission + tax`; `net_to_owner = base`
+     - `total = base + commission + tax + non-commissionable extras`; `net_to_owner = total − tax − commission`
 
-   Legacy applied the mode maths per rate row (on the weekly/nightly figure), not to extras; the rebuild applies them to the combined `base` — revisit if extras must ever be tax-exempt (finance rewrite). The tax base and the commission base differ by mode (note the order: GROSS taxes the gross then commissions the post-tax remainder; NET commissions the net then taxes net+commission).
+   Legacy applied the mode maths per rate row (on the weekly/nightly figure), not to extras; the rebuild applies them to the combined `base`. The "extras must be tax-exempt" question this note used to defer is now answered per line: `commissionable=False` extras sit outside both bases (GAP-076). The tax base and the commission base differ by mode (note the order: GROSS taxes the gross then commissions the post-tax remainder; NET commissions the net then taxes net+commission).
 
    **Quantization order:** the **raw** (unquantized) commission feeds the NET tax base, and the raw tax feeds the GROSS commission base; each component quantizes to 0.01 only at the end. This is the same order as the GAP-035 entry-form hint (`frontend/src/lib/pricing/netGross.ts`), so the two agree to the cent (quantize-first differs by a cent on e.g. 7 × 100.51 @ 15.25%/9.50%).
 
@@ -515,9 +515,11 @@ Steps:
 > 12,500 → 1,867.82, total 14,367.82, owner net 10,000.00. Pinned in
 > `pricing/tests/test_engine_price_basis.py` (GAP-079 section) and
 > `payments/tests/test_payment_scheduler.py`. The open extras question —
-> whether non-commissionable extras are also non-taxable per villa — is
-> GAP-076's to answer (see the step-8 note above: extras currently fold into
-> the VAT base).
+> whether non-commissionable extras are also non-taxable per villa — was
+> answered by GAP-076 (resolved 2026-07-10): they are **fully pass-through**
+> (excluded from the commission and tax bases alike, never discounted); a
+> per-villa taxability toggle was deliberately not added — revisit only if a
+> real villa statement demands mixed treatment.
 
 #### Rate entry: net↔gross derivation (GAP-035)
 

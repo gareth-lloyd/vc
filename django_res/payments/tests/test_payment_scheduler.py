@@ -89,6 +89,85 @@ def test_create_for_booking__deposit_plus_balance_conserves_total(
 
 
 @pytest.mark.django_db
+def test_create_for_booking__gap079_deposit_and_balance_reconcile_engine_total(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """GAP-079 acceptance: the commission-after-local-VAT worked example
+    reconciles end-to-end for BOTH deposit and balance.
+
+    The engine prices a GROSS 13%-VAT / 20%-commission villa (10,000 over
+    8 nights — see the pins in `pricing/tests/test_engine_price_basis.py`);
+    its breakdown becomes the booking snapshot, and the scheduler splits the
+    engine total (the guest-facing gross, out of which VAT and commission
+    were carved) 30/70. Owner money is derived upstream by the engine, not
+    by the schedule.
+    """
+    from datetime import timedelta
+
+    from pricing.models import RateBand, RatePeriod, RatePlan
+    from pricing.services import PricingEngine
+    from reservations.models import Booking
+
+    finance = _ensure_finance(property_)
+    finance.commission_calculation_type = "percent"
+    finance.commission_amount = Decimal("20")
+    finance.tax_percentage = Decimal("13")
+    finance.tax_is_exempt = False
+    # Deposit fields stay NULL → 30% PERCENT policy floor.
+    finance.save(
+        update_fields=[
+            "commission_calculation_type",
+            "commission_amount",
+            "tax_percentage",
+            "tax_is_exempt",
+        ]
+    )
+
+    stay_from = booking.date_from
+    stay_to = stay_from + timedelta(days=8)  # 8 x 1,250.00 = exactly 10,000
+    plan = RatePlan.objects.create(
+        property=property_,
+        name="GAP-079",
+        currency=booking.currency,
+        effective_from=stay_from - timedelta(days=30),
+        effective_to=stay_to + timedelta(days=30),
+    )
+    period = RatePeriod.objects.create(plan=plan, name="Stay", date_from=stay_from, date_to=stay_to)
+    RateBand.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("1250.00"))
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=stay_from,
+        date_to=stay_to,
+        party=2,
+        currency=booking.currency,
+    )
+    # The engine-derived worked example (13% VAT first, then 20% commission).
+    assert quote.breakdown["total"] == "10000.00"
+    assert quote.breakdown["tax"] == "1300.00"
+    assert quote.breakdown["commission"] == "1740.00"
+    assert quote.breakdown["net_to_owner"] == "6960.00"
+
+    # The scheduler reads only the snapshot total; date_to/balance_due are
+    # updated so the booking rows stay coherent with the priced stay.
+    booking.date_to = stay_to
+    booking.pricing_snapshot = quote.breakdown
+    booking.balance_due = quote.total
+    booking.save(update_fields=["date_to", "pricing_snapshot", "balance_due"])
+    # Re-fetch so the property's cached `.finance` reflects the new row.
+    booking = Booking.objects.get(pk=booking.pk)
+
+    created = PaymentScheduler.create_for_booking(booking)
+
+    deposit = next(p for p in created if p.purpose == PaymentPurpose.DEPOSIT.value)
+    balance = next(p for p in created if p.purpose == PaymentPurpose.BALANCE.value)
+    assert deposit.amount == Decimal("3000.00")  # 30% of the engine total
+    assert balance.amount == Decimal("7000.00")
+    assert deposit.amount + balance.amount == Decimal("10000.00")
+
+
+@pytest.mark.django_db
 def test_create_for_booking__conserves_total_for_zero_dp_currency(
     booking: Any,
     property_: Property,

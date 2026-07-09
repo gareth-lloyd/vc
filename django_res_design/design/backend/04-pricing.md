@@ -493,6 +493,32 @@ Steps:
 > its remaining `prices_entered_as` read is a display label, not a pricing input
 > (GAP-035 territory). `RatePlan.price_basis` is canonical for pricing.
 
+> **Commission after local VAT (GAP-079, resolved 2026-07-09).** Some villas
+> take local VAT off the gross **first**, then commission off the remainder
+> (2026-07-08 Nick call, "13% VAT then commission"). That is exactly the GROSS
+> ordering in step 8 — already implemented and legacy-verified
+> (`RatesModel.Calculate()` computes `TaxAmount` at L201, then commission on
+> the post-tax remainder at L223-228) — so **no per-villa
+> "commission-after-tax" toggle exists or is needed**: ordering is a function
+> of `price_basis` alone, in the rebuild and in legacy alike.
+>
+> Worked example (constructed from the call's figures — re-reconcile against a
+> real villa statement when one arrives): GROSS plan, 10,000 gross week,
+> 13% VAT, 20% commission →
+> `tax = 10,000 × 13% = 1,300.00`;
+> `commission = (10,000 − 1,300) × 20% = 1,740.00`;
+> `total = 10,000.00` (guest pays the gross); `net_to_owner = 6,960.00`.
+> Deposit/balance need no separate reconciliation: `PaymentScheduler` sizes
+> both off the snapshot `total` (30% floor → deposit 3,000.00, balance
+> 7,000.00; commission and tax never enter the split). NET at the same
+> percentages grosses up the other way: commission 2,500.00, then VAT on
+> 12,500 → 1,867.82, total 14,367.82, owner net 10,000.00. Pinned in
+> `pricing/tests/test_engine_price_basis.py` (GAP-079 section) and
+> `payments/tests/test_payment_scheduler.py`. The open extras question —
+> whether non-commissionable extras are also non-taxable per villa — is
+> GAP-076's to answer (see the step-8 note above: extras currently fold into
+> the VAT base).
+
 #### Rate entry: net↔gross derivation (GAP-035)
 
 Owners quote rates as either net or gross. The rate-band form lets staff type one
@@ -511,7 +537,7 @@ double-count. Commission/tax inputs are `PropertyFinance.effective_commission()`
 `effective_tax_policy()` resolved property→group, surfaced read-only on the
 **settings** endpoint (`commission`, `tax`, `prices_entered_as_effective`). The
 helper is `frontend/src/lib/pricing/netGross.ts`; the form wiring is
-`RateRuleFormDialog`. (Decision row: `10-decisions.md`, 2026-06-22.)
+`RateRuleFormDialog`. (Decision row: `../decisions.md`, 2026-06-22.)
 
 **Breakdown enrichment (2026-06 quote-builder rework).** The breakdown additionally carries plan/card metadata the quote builder renders on each result line — all from data already in memory at quote time, zero extra queries: `inclusion` (the joined guest-facing `copy` of the property's active `PropertyService` rows whose band overlaps the stay — GAP-037; formerly the winning plan's `inclusion` text — which still seeds `QuotationLine.inclusions` at line creation, legacy `ResService.cs:1241` parity), `changeover_day` (the effective day code, `null` when unconstrained), `min_nights`/`max_nights` (the winning card's bounds, `null` on an all-fallback stay), and `occupancy_pricing` (true when the winning card has >1 distinct party band, i.e. the price moves with party size).
 

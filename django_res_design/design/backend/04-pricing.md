@@ -514,7 +514,12 @@ Steps:
 > percentages grosses up the other way: commission 2,500.00, then VAT on
 > 12,500 → 1,867.82, total 14,367.82, owner net 10,000.00. Pinned in
 > `pricing/tests/test_engine_price_basis.py` (GAP-079 section) and
-> `payments/tests/test_payment_scheduler.py`. The open extras question —
+> `payments/tests/test_payment_scheduler.py`. GAP-077 (resolved 2026-07-10)
+> layers the per-component owner view on top: deposit 3,000 → 522.00
+> commission / 390.00 tax / 2,088.00 net and balance 7,000 → 1,218.00 /
+> 910.00 / 4,872.00, derived on read by `payment_component_splits`
+> (pro-rata by scheduled gross, residual to BALANCE — see
+> `07-payments.md` §PaymentScheduler). The open extras question —
 > whether non-commissionable extras are also non-taxable per villa — was
 > answered by GAP-076 (resolved 2026-07-10): they are **fully pass-through**
 > (excluded from the commission and tax bases alike, never discounted); a

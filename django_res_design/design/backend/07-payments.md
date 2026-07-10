@@ -294,6 +294,38 @@ def create_for_booking(cls, booking) -> list[Payment]:
     return payments
 ```
 
+#### Per-component owner money — `payment_component_splits` (GAP-077)
+
+The schedule rows themselves stay guest-facing gross. The per-component
+gross/commission/tax/net-to-owner view lives in
+`reservations/services/owner_finance.py::payment_component_splits(booking)`
+— **derive-on-read** (SMELL-020: no second money store; a re-price rewrites
+the snapshot and resyncs the schedule, and the split follows):
+
+- Whole-booking owner money = `owner_money_for_booking` (snapshot figures,
+  2dp-quantized at the boundary, + the GAP-076 `charges_owner_adjustments`
+  overlay), allocated **pro-rata by each component's scheduled gross**, the
+  rounding residual landing on BALANCE (mirrors the scheduler's odd cent).
+- Component gross/status/due_at mirror `TrackSerializer` semantics
+  (scheduled = status ∉ {cancelled, expired, failed}; latest row by
+  `(created_at, pk)`; earliest due incl. settled rows). The vocabulary is
+  duplicated as string literals (reservations sits below payments) and
+  set-equality-pinned by `payments/tests/test_component_splits_parity.py`
+  against `TERMINAL_NON_ACTIVE_STATUSES` / `_SCHEDULE_PURPOSES`.
+- Σ component gross ≠ booking gross is a routine state (partial
+  `:mark-paid`, manual track rows, resync residual): allocation runs over
+  the scheduled gross so Σ commission/tax always reproduce the
+  whole-booking figures and every row satisfies
+  `net = gross − commission − tax`; Σ net then drifts by exactly the
+  schedule delta — the staff FinanceTab renders a caveat, nothing
+  reconciles.
+- Exposure: staff booking **detail** (`payment_splits`, riding a payments
+  prefetch), owner booking **detail only** (inside the
+  `view_full_money`-gated money block; the owner list path keeps its
+  pinned query budget). Guest surfaces never split. INTERIM slots in with
+  zero rework once it becomes a first-class purpose
+  (`allocate_proportionally` is N-component).
+
 ### `RefundService` (in `payments/services.py`)
 Coordinates the `Refund` workflow. The `Refund` model is the workflow object; this service owns the transitions, permission checks, and the creation of downstream `Payment(purpose=REFUND)` rows at `:execute` time.
 

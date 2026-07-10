@@ -52,6 +52,20 @@ def test_login_returns_user_when_tfa_disabled(
     assert body["user"]["email"] == user.email
 
 
+@pytest.mark.django_db
+def test_login_email_is_case_insensitive(api_client: APIClient, user: User, password: str) -> None:
+    """The email-as-username lookup must ignore case: users type their address
+    with arbitrary capitalisation, while creates normalise to lowercase."""
+    response = api_client.post(
+        "/api/v1/auth/login",
+        {"email": "OPS@Example.COM", "password": password},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["email"] == user.email
+
+
 def _enrol_totp(user: User) -> None:
     user.tfa_method = TfaMethod.TOTP
     user.tfa_secret = pyotp.random_base32()

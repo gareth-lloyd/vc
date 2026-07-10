@@ -8,6 +8,12 @@ from django.contrib.auth.base_user import BaseUserManager
 class UserManager(BaseUserManager["User"]):  # type: ignore[name-defined]
     use_in_migrations = True
 
+    def get_by_natural_key(self, username: str | None) -> Any:
+        # Email-as-username is case-insensitive: creates normalise to lowercase
+        # (see _create_user), but login must accept whatever casing the user
+        # types. ModelBackend routes authenticate() through this lookup.
+        return self.get(**{f"{self.model.USERNAME_FIELD}__iexact": username})
+
     def _create_user(self, email: str, password: str | None, **extra_fields: Any) -> Any:
         if not email:
             raise ValueError("Email is required")

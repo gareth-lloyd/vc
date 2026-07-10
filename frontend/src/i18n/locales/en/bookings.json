@@ -759,6 +759,24 @@
         },
         "submit_create": "Add charge"
       }
+    },
+    "component_splits": {
+      "title": "Payment schedule split",
+      "columns": {
+        "component": "Component",
+        "gross": "Gross",
+        "commission": "Commission",
+        "tax": "Tax",
+        "net_to_owner": "Net to owner"
+      },
+      "purpose": {
+        "deposit": "Deposit",
+        "balance": "Balance"
+      },
+      "totals": "Totals",
+      "waived": "Waived",
+      "due": "Due {{date}}",
+      "caveat": "The schedule does not currently sum to the booking total."
     }
   },
   "owner": {

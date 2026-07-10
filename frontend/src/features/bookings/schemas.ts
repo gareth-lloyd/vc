@@ -121,6 +121,47 @@ export const bookingNetToOwnerSchema = z
   .nullable();
 export type BookingNetToOwner = z.infer<typeof bookingNetToOwnerSchema>;
 
+// Payment vocabulary shared by the tracks section below and the GAP-077
+// split rows (defined up here because Zod consts must exist before use).
+export const paymentTrackStatusSchema = z.enum([
+  "pending",
+  "processing",
+  "succeeded",
+  "failed",
+  "refunded",
+  "cancelled",
+  "expired",
+  "waived",
+  "none",
+]);
+export type PaymentTrackStatus = z.infer<typeof paymentTrackStatusSchema>;
+
+export const paymentPurposeSchema = z.enum([
+  "deposit",
+  "balance",
+  "security_deposit",
+  "concierge",
+  "refund",
+  "adjustment",
+]);
+export type PaymentPurpose = z.infer<typeof paymentPurposeSchema>;
+
+// GAP-077 — per-component (deposit / balance) owner-money split of the payment
+// schedule. Mirrors `net_to_owner`'s presence: null when the booking has no
+// owner money, [] when money exists but no schedule, else deposit-then-balance
+// rows whose commission/tax always sum to the whole-booking block (gross may
+// drift when the schedule has been reshaped — the UI caveats that case).
+export const paymentComponentSplitSchema = z.object({
+  purpose: paymentPurposeSchema,
+  status: paymentTrackStatusSchema,
+  due_at: z.string().nullable(),
+  gross: z.string(),
+  commission: z.string(),
+  tax: z.string(),
+  net_to_owner: z.string(),
+});
+export type PaymentComponentSplit = z.infer<typeof paymentComponentSplitSchema>;
+
 export const bookingDetailSchema = bookingListItemSchema.extend({
   quotation_line: z.number().nullable().optional(),
   pricing_snapshot: z.unknown().optional(),
@@ -135,6 +176,7 @@ export const bookingDetailSchema = bookingListItemSchema.extend({
   owner: bookingOwnerSchema.optional(),
   commission: bookingCommissionSchema.optional(),
   net_to_owner: bookingNetToOwnerSchema.optional(),
+  payment_splits: z.array(paymentComponentSplitSchema).nullable().optional(),
 });
 export type BookingDetail = z.infer<typeof bookingDetailSchema>;
 
@@ -602,29 +644,6 @@ export type ChargeItemWriteInput = z.infer<typeof chargeItemWriteInputSchema>;
 // ----------------------------------------------------------------------
 // Payment tracks (deposit / balance / security)
 // ----------------------------------------------------------------------
-
-export const paymentTrackStatusSchema = z.enum([
-  "pending",
-  "processing",
-  "succeeded",
-  "failed",
-  "refunded",
-  "cancelled",
-  "expired",
-  "waived",
-  "none",
-]);
-export type PaymentTrackStatus = z.infer<typeof paymentTrackStatusSchema>;
-
-export const paymentPurposeSchema = z.enum([
-  "deposit",
-  "balance",
-  "security_deposit",
-  "concierge",
-  "refund",
-  "adjustment",
-]);
-export type PaymentPurpose = z.infer<typeof paymentPurposeSchema>;
 
 export const paymentTrackSchema = z.object({
   booking: z.number(),

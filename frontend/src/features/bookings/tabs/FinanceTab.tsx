@@ -10,13 +10,15 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney } from "@/lib/format/money";
+import { formatMoney, parseMoney } from "@/lib/format/money";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { useBookingChargeItems, useDeleteChargeItem } from "../hooks";
 import { ChargeItemFormDialog } from "../components/ChargeItemFormDialog";
 import {
   pricingSnapshotSchema,
   type BookingChargeItem,
+  type BookingNetToOwner,
+  type PaymentComponentSplit,
   type PricingSnapshot,
   type PricingSnapshotLine,
 } from "../schemas";
@@ -145,6 +147,131 @@ function SnapshotSection({
   );
 }
 
+// The API guarantees 2-dp decimal strings, so integer cents keep the totals
+// row exact where float addition of the raw numbers could drift.
+function toCents(value: string): number {
+  const parsed = parseMoney(value);
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : Number.NaN;
+}
+
+// GAP-077 — per-component (deposit / balance) owner-money split of the payment
+// schedule. Commission renders only under its explicit "Commission" header
+// (finance.ts rule: never folded into another figure).
+function PaymentSplitSection({
+  splits,
+  netToOwner,
+  currency,
+}: {
+  splits: PaymentComponentSplit[];
+  netToOwner: BookingNetToOwner | undefined;
+  currency: string | null;
+}) {
+  const { t } = useTranslation("bookings");
+
+  const purposeLabel = (purpose: PaymentComponentSplit["purpose"]): string => {
+    if (purpose === "deposit") return t("finance.component_splits.purpose.deposit");
+    if (purpose === "balance") return t("finance.component_splits.purpose.balance");
+    return purpose;
+  };
+
+  const sum = (field: "gross" | "commission" | "tax" | "net_to_owner") =>
+    splits.reduce((acc, row) => acc + toCents(row[field]), 0);
+  const totals = {
+    gross: sum("gross"),
+    commission: sum("commission"),
+    tax: sum("tax"),
+    net_to_owner: sum("net_to_owner"),
+  };
+  // Σ split net can drift from the whole-booking net when the schedule has
+  // been reshaped (partial mark-paid, manual rows) — caveat, don't reconcile.
+  const netDrifted =
+    netToOwner != null &&
+    Number.isFinite(totals.net_to_owner) &&
+    totals.net_to_owner !== toCents(netToOwner.net_to_owner);
+
+  return (
+    <section className="space-y-2">
+      <h3 className="text-foreground text-base font-semibold">
+        {t("finance.component_splits.title")}
+      </h3>
+      <div className="border-border bg-card overflow-hidden rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="border-border bg-muted/40 border-b">
+            <tr>
+              <th className="px-4 py-2 text-left font-medium">
+                {t("finance.component_splits.columns.component")}
+              </th>
+              <th className="px-4 py-2 text-right font-medium">
+                {t("finance.component_splits.columns.gross")}
+              </th>
+              <th className="px-4 py-2 text-right font-medium">
+                {t("finance.component_splits.columns.commission")}
+              </th>
+              <th className="px-4 py-2 text-right font-medium">
+                {t("finance.component_splits.columns.tax")}
+              </th>
+              <th className="px-4 py-2 text-right font-medium">
+                {t("finance.component_splits.columns.net_to_owner")}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-border divide-y">
+            {splits.map((row) => (
+              <tr key={row.purpose}>
+                <td className="px-4 py-2 font-medium">
+                  {purposeLabel(row.purpose)}
+                  {row.status === "waived" ? (
+                    <span className="text-muted-foreground ml-2 text-xs font-normal italic">
+                      {t("finance.component_splits.waived")}
+                    </span>
+                  ) : null}
+                  {row.due_at ? (
+                    <div className="text-muted-foreground text-xs font-normal">
+                      {t("finance.component_splits.due", { date: formatDate(row.due_at) })}
+                    </div>
+                  ) : null}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums">
+                  {formatMoney(row.gross, currency)}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums">
+                  {formatMoney(row.commission, currency)}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums">
+                  {formatMoney(row.tax, currency)}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums">
+                  {formatMoney(row.net_to_owner, currency)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="border-border bg-muted/40 border-t">
+            <tr>
+              <td className="px-4 py-2 font-medium">{t("finance.component_splits.totals")}</td>
+              <td className="px-4 py-2 text-right font-medium tabular-nums">
+                {formatMoney(totals.gross / 100, currency)}
+              </td>
+              <td className="px-4 py-2 text-right font-medium tabular-nums">
+                {formatMoney(totals.commission / 100, currency)}
+              </td>
+              <td className="px-4 py-2 text-right font-medium tabular-nums">
+                {formatMoney(totals.tax / 100, currency)}
+              </td>
+              <td className="px-4 py-2 text-right font-medium tabular-nums">
+                {formatMoney(totals.net_to_owner / 100, currency)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {netDrifted ? (
+        <p className="text-muted-foreground text-sm">{t("finance.component_splits.caveat")}</p>
+      ) : null}
+    </section>
+  );
+}
+
 export function FinanceTab() {
   const { t } = useTranslation("bookings");
   const { booking } = useOutletContext<BookingOutletContext>();
@@ -184,6 +311,16 @@ export function FinanceTab() {
       ) : (
         <EmptyState title={t("finance.empty.title")} description={t("finance.empty.description")} />
       )}
+
+      {/* GAP-077: absent (not empty-stated) when null/[] — a schedule-less or
+          no-owner-money booking simply has nothing to split. */}
+      {booking.payment_splits && booking.payment_splits.length > 0 ? (
+        <PaymentSplitSection
+          splits={booking.payment_splits}
+          netToOwner={booking.net_to_owner}
+          currency={booking.net_to_owner?.currency_code ?? currency}
+        />
+      ) : null}
 
       {/* Manual charges live outside the immutable snapshot, so this section
           renders snapshot-or-not — legacy-imported bookings (no snapshot) are

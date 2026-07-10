@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
@@ -203,6 +203,130 @@ describe("FinanceTab — pricing snapshot", () => {
     await waitFor(() =>
       expect(screen.getByText(/Pricing snapshot not available/i)).toBeInTheDocument(),
     );
+  });
+});
+
+// GAP-077 — per-component (deposit/balance) owner-money split of the schedule.
+const netToOwnerBlock = {
+  currency_code: "GBP",
+  gross_total: "2500.00",
+  commission: "500.00",
+  tax: "325.00",
+  net_to_owner: "1675.00",
+};
+
+const depositSplit = {
+  purpose: "deposit",
+  status: "succeeded",
+  due_at: "2026-05-15T12:00:00Z",
+  gross: "750.00",
+  commission: "150.00",
+  tax: "97.50",
+  net_to_owner: "502.50",
+};
+
+const balanceSplit = {
+  purpose: "balance",
+  status: "pending",
+  due_at: "2026-06-01T12:00:00Z",
+  gross: "1750.00",
+  commission: "350.00",
+  tax: "227.50",
+  net_to_owner: "1172.50",
+};
+
+function useBooking(overrides: Record<string, unknown>) {
+  server.use(
+    http.get(`/api/v1/bookings/${BOOKING_ID}`, () =>
+      HttpResponse.json(bookingFixture({}, overrides)),
+    ),
+  );
+}
+
+describe("FinanceTab — payment schedule split", () => {
+  it("renders one row per component plus a totals row, all money formatted", async () => {
+    useBooking({ payment_splits: [depositSplit, balanceSplit], net_to_owner: netToOwnerBlock });
+    useCharges([]);
+    setup();
+
+    const heading = await screen.findByText("Payment schedule split");
+    const section = within(heading.closest("section")!);
+
+    // Purpose labels + per-row due dates.
+    expect(section.getByText("Deposit")).toBeInTheDocument();
+    expect(section.getByText("Balance")).toBeInTheDocument();
+    expect(section.getByText("Due 15 May 2026")).toBeInTheDocument();
+    expect(section.getByText("Due 1 Jun 2026")).toBeInTheDocument();
+
+    // Commission figures appear only under an explicit "Commission" header.
+    expect(section.getByText("Commission")).toBeInTheDocument();
+
+    // Row cells.
+    const depositRow = section.getByText("Deposit").closest("tr")!;
+    expect(depositRow.textContent).toContain("£750.00");
+    expect(depositRow.textContent).toContain("£150.00");
+    expect(depositRow.textContent).toContain("£97.50");
+    expect(depositRow.textContent).toContain("£502.50");
+    const balanceRow = section.getByText("Balance").closest("tr")!;
+    expect(balanceRow.textContent).toContain("£1,750.00");
+    expect(balanceRow.textContent).toContain("£1,172.50");
+
+    // Totals row sums the decimal strings exactly.
+    const totalsRow = section.getByText("Totals").closest("tr")!;
+    expect(totalsRow.textContent).toContain("£2,500.00");
+    expect(totalsRow.textContent).toContain("£500.00");
+    expect(totalsRow.textContent).toContain("£325.00");
+    expect(totalsRow.textContent).toContain("£1,675.00");
+
+    // Splits sum to the booking net — no drift caveat.
+    expect(
+      screen.queryByText(/schedule does not currently sum to the booking total/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("is absent when payment_splits is an empty array", async () => {
+    useBooking({ payment_splits: [], net_to_owner: netToOwnerBlock });
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    expect(screen.queryByText("Payment schedule split")).not.toBeInTheDocument();
+  });
+
+  it("is absent when payment_splits is null or missing", async () => {
+    useBooking({ payment_splits: null });
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    expect(screen.queryByText("Payment schedule split")).not.toBeInTheDocument();
+  });
+
+  it("shows the drift caveat when split nets do not sum to the booking net", async () => {
+    // Only the deposit component exists — Σ net (502.50) ≠ block net (1675.00).
+    useBooking({ payment_splits: [depositSplit], net_to_owner: netToOwnerBlock });
+    useCharges([]);
+    setup();
+
+    await screen.findByText("Payment schedule split");
+    expect(
+      screen.getByText(/schedule does not currently sum to the booking total/i),
+    ).toBeInTheDocument();
+  });
+
+  it("badges a waived component", async () => {
+    useBooking({
+      payment_splits: [depositSplit, { ...balanceSplit, status: "waived" }],
+      net_to_owner: netToOwnerBlock,
+    });
+    useCharges([]);
+    setup();
+
+    await screen.findByText("Payment schedule split");
+    const balanceRow = screen.getByText("Balance").closest("tr")!;
+    expect(within(balanceRow as HTMLElement).getByText("Waived")).toBeInTheDocument();
+    const depositRow = screen.getByText("Deposit").closest("tr")!;
+    expect(depositRow.textContent).not.toMatch(/waived/i);
   });
 });
 

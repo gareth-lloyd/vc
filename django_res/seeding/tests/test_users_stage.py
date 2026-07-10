@@ -17,6 +17,7 @@ import pytest
 from accounts.enums import TfaMethod
 from accounts.models import User
 from accounts.services.two_factor import TwoFactorService
+from core.enums import StaffRole
 from seeding.context import _PROFILES, Profile, SeedContext
 from seeding.stages.users import _DEV_TFA_SECRET, _run
 
@@ -68,6 +69,25 @@ def test_nick_superuser_stays_password_only() -> None:
     nick = User.objects.get(email="nick@villacollective.com")
     assert nick.tfa_method == TfaMethod.NONE
     assert nick.tfa_secret == ""
+
+
+def test_ben_superuser_stays_password_only() -> None:
+    _run(_ctx())
+
+    ben = User.objects.get(email="ben@mojomedia.co.uk")
+    assert ben.is_superuser is True
+    assert ben.tfa_method == TfaMethod.NONE
+    assert ben.tfa_secret == ""
+
+
+def test_bryony_superuser_has_full_access_and_stays_password_only() -> None:
+    _run(_ctx())
+
+    bryony = User.objects.get(email="bryony@villacollective.com")
+    assert bryony.is_superuser is True
+    assert bryony.is_staff is True
+    assert bryony.role == StaffRole.ADMIN
+    assert bryony.tfa_method == TfaMethod.NONE
 
 
 def test_reseeding_is_idempotent_and_preserves_enrolment() -> None:

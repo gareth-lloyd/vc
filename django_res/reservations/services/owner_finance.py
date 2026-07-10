@@ -51,17 +51,25 @@ class ComponentSplit(TypedDict):
 def owner_money_from_snapshot(snapshot: dict[str, Any] | None) -> OwnerMoney | None:
     snapshot = snapshot or {}
     try:
-        total = Decimal(str(snapshot["total"]))
-        commission = Decimal(str(snapshot["commission"]))
-        tax = Decimal(str(snapshot["tax"]))
+        # Quantize to the engine's 2dp grain at the boundary (half-even):
+        # consumers do arithmetic on these figures (dashboard sums, GAP-077
+        # split allocation), so sub-cent hand-written/imported values must
+        # not leak past here. A no-op for engine snapshots (already 2dp);
+        # a non-finite value (e.g. "Infinity") can't quantize and is treated
+        # as "no usable money" rather than a 500.
+        total = Decimal(str(snapshot["total"])).quantize(CENT)
+        commission = Decimal(str(snapshot["commission"])).quantize(CENT)
+        tax = Decimal(str(snapshot["tax"])).quantize(CENT)
     except (KeyError, InvalidOperation, TypeError):
         return None
+    net = total - commission - tax  # exact 2dp by construction
     raw_net = snapshot.get("net_to_owner")
-    net = total - commission - tax
     if raw_net is not None:
         try:
-            net = Decimal(str(raw_net))
+            net = Decimal(str(raw_net)).quantize(CENT)
         except (InvalidOperation, TypeError):
+            # Unparseable or unquantizable explicit net: keep the computed
+            # fallback (the pre-consolidation serializer behaviour).
             pass
     return {"gross_total": total, "commission": commission, "tax": tax, "net_to_owner": net}
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -714,11 +714,19 @@ def test_detail_query_count_bound_with_owner_and_commission(
         calc_type=CommissionCalcType.PERCENT.value,
         amount=Decimal("12.50"),
     )
+    # GAP-077: give the pin snapshot money + schedule rows so it walks the
+    # `payment_splits` data path (payments prefetch + owner-money overlay),
+    # not just the null branch.
+    booking.pricing_snapshot = _snapshot_with_net()
+    booking.save(update_fields=["pricing_snapshot"])
+    _make_schedule_payment(booking, purpose="deposit", amount="510.00")
+    _make_schedule_payment(booking, purpose="balance", amount="1190.00")
     api_client.force_login(staff)
 
     with assert_max_queries(14):
         response = api_client.get(f"/api/v1/bookings/{booking.pk}")
     assert response.status_code == 200
+    assert len(response.data["payment_splits"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -1407,3 +1415,118 @@ def test_bookings_have_no_direct_create(api_client: APIClient, staff: User) -> N
     api_client.force_login(staff)
     response = api_client.post("/api/v1/bookings", {}, format="json")
     assert response.status_code == 405
+
+
+# ---------------------------------------------------------------------------
+# GAP-077 — per-component payment splits on the staff booking detail.
+# `payment_splits` derives from `payment_component_splits` (owner money
+# allocated pro-rata across the deposit/balance schedule); the whole-booking
+# `net_to_owner` block and the splits ride the same `owner_money_for_booking`
+# figures, so the two can never disagree.
+# ---------------------------------------------------------------------------
+
+
+def _make_schedule_payment(
+    booking: Booking,
+    *,
+    purpose: str,
+    amount: str,
+    status: str = "pending",
+    due_at: datetime | None = None,
+) -> None:
+    from payments.models import Payment
+
+    Payment.objects.create(
+        booking=booking,
+        purpose=purpose,
+        status=status,
+        amount=Decimal(amount),
+        currency=booking.currency,
+        due_at=due_at,
+    )
+
+
+@pytest.mark.django_db
+def test_detail_payment_splits_worked_example(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """GAP-079 worked example through the API: 10,000 GROSS villa split
+    30/70 renders per-component gross/commission/tax/net that sum to the
+    whole-booking `net_to_owner` block."""
+    booking.pricing_snapshot = {
+        "total": "10000.00",
+        "commission": "1740.00",
+        "tax": "1300.00",
+        "net_to_owner": "6960.00",
+    }
+    booking.save(update_fields=["pricing_snapshot"])
+    deposit_due = timezone.now()
+    balance_due = timezone.now() + timedelta(days=30)
+    _make_schedule_payment(booking, purpose="deposit", amount="3000.00", due_at=deposit_due)
+    _make_schedule_payment(booking, purpose="balance", amount="7000.00", due_at=balance_due)
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["payment_splits"] == [
+        {
+            "purpose": "deposit",
+            "status": "pending",
+            "due_at": deposit_due,
+            "gross": "3000.00",
+            "commission": "522.00",
+            "tax": "390.00",
+            "net_to_owner": "2088.00",
+        },
+        {
+            "purpose": "balance",
+            "status": "pending",
+            "due_at": balance_due,
+            "gross": "7000.00",
+            "commission": "1218.00",
+            "tax": "910.00",
+            "net_to_owner": "4872.00",
+        },
+    ]
+    # The splits and the whole-booking block ride the same money.
+    block = response.data["net_to_owner"]
+    splits = response.data["payment_splits"]
+    assert sum(Decimal(s["commission"]) for s in splits) == Decimal(block["commission"])
+    assert sum(Decimal(s["tax"]) for s in splits) == Decimal(block["tax"])
+    assert sum(Decimal(s["net_to_owner"]) for s in splits) == Decimal(block["net_to_owner"])
+
+
+@pytest.mark.django_db
+def test_detail_payment_splits_null_when_snapshot_missing(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """Legacy/imported `{}` snapshot: no owner money, splits render null —
+    mirroring the `net_to_owner` block."""
+    booking.pricing_snapshot = {}
+    booking.save(update_fields=["pricing_snapshot"])
+    _make_schedule_payment(booking, purpose="deposit", amount="420.00")
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["payment_splits"] is None
+    assert response.data["net_to_owner"] is None
+
+
+@pytest.mark.django_db
+def test_detail_payment_splits_empty_when_no_schedule(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """Money exists but no schedule rows (financeless property): `[]`,
+    distinct from null."""
+    booking.pricing_snapshot = _snapshot_with_net()
+    booking.save(update_fields=["pricing_snapshot"])
+
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert response.status_code == 200
+    assert response.data["payment_splits"] == []
+    assert response.data["net_to_owner"] is not None

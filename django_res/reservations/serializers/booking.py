@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from django.db import models
@@ -14,10 +14,11 @@ from properties.enums import PriceBasis
 from properties.models import PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
 from reservations.serializers._contact_reads import contact_email, contact_name
-from reservations.services.charges import (
-    charges_owner_adjustments,
-    charges_total_for,
-    effective_commission_for,
+from reservations.services.charges import charges_total_for, effective_commission_for
+from reservations.services.owner_finance import (
+    OwnerMoney,
+    owner_money_for_booking,
+    payment_component_splits,
 )
 
 
@@ -127,6 +128,7 @@ class BookingDetailSerializer(BookingListSerializer):
     commission = serializers.SerializerMethodField()
     prices_entered_as = serializers.SerializerMethodField()
     net_to_owner = serializers.SerializerMethodField()
+    payment_splits = serializers.SerializerMethodField()
     charges_total = serializers.SerializerMethodField()
 
     class Meta(BookingListSerializer.Meta):
@@ -146,6 +148,7 @@ class BookingDetailSerializer(BookingListSerializer):
             "commission",
             "prices_entered_as",
             "net_to_owner",
+            "payment_splits",
         ]
 
     # ------------------------------------------------------------------
@@ -237,50 +240,61 @@ class BookingDetailSerializer(BookingListSerializer):
     def get_prices_entered_as(self, obj: Booking) -> str | None:
         return self._effective_prices_entered_as(obj)
 
-    def get_net_to_owner(self, obj: Booking) -> dict[str, Any] | None:
-        """Render owner-net from `Booking.pricing_snapshot` + charge items.
+    def _owner_money(self, obj: Booking) -> OwnerMoney | None:
+        """`owner_money_for_booking`, once per instance — `net_to_owner` and
+        `payment_splits` both read it, and the charge overlay inside it
+        costs queries on un-annotated instances. Keyed on `id(obj)` (not
+        pk) so hand-constructed unsaved bookings never alias; the serializer
+        holds `.instance` alive, so ids are stable for the render."""
+        cache: dict[int, OwnerMoney | None] = self.__dict__.setdefault("_owner_money_cache", {})
+        key = id(obj)
+        if key not in cache:
+            cache[key] = owner_money_for_booking(obj)
+        return cache[key]
 
-        `PricingEngine.quote` writes `net_to_owner` directly into the
-        snapshot, so the primary path just reads it. The serializer never
-        recomputes snapshot money — but manual charge items live outside
-        the immutable snapshot, so their owner/agency split (legacy-style:
-        charges enter the commissionable base, see `services.charges`) is
-        layered on at read time.
+    def get_net_to_owner(self, obj: Booking) -> dict[str, Any] | None:
+        """Render owner-net from the shared `owner_money_for_booking` figures.
+
+        GAP-077 consolidation (SMELL-020 direction): the serializer used to
+        duplicate the module's snapshot arithmetic near-verbatim; it now
+        rides the same function as the owner API and the payment splits, so
+        the three surfaces can never disagree. The serializer's own job is
+        presentation only — currency_code plus 2dp strings.
         """
-        snapshot = obj.pricing_snapshot or {}
-        try:
-            total = Decimal(str(snapshot["total"]))
-            commission = Decimal(str(snapshot["commission"]))
-            tax = Decimal(str(snapshot["tax"]))
-        except (KeyError, InvalidOperation, TypeError):
+        money = self._owner_money(obj)
+        if money is None:
             return None
-        # Legacy-snapshot fallback: rows imported by `data_migration` carry
-        # `pricing_snapshot = {}` (handled above by the KeyError guard) and
-        # any rebuild-era snapshot pre-dating this engine change lacks the
-        # `net_to_owner` key. Compute it from `total - commission - tax` so
-        # those bookings still render. New snapshots take the fast path.
-        raw_net = snapshot.get("net_to_owner")
-        if raw_net is not None:
-            try:
-                net = Decimal(str(raw_net)).quantize(Decimal("0.01"))
-            except (InvalidOperation, TypeError):
-                net = (total - commission - tax).quantize(Decimal("0.01"))
-        else:
-            net = (total - commission - tax).quantize(Decimal("0.01"))
-        # GAP-076: the charge arithmetic is shared with the owner API
-        # (`charges_owner_adjustments`) so the two surfaces always agree.
-        adjust = charges_owner_adjustments(obj)
-        total += adjust.gross_delta
-        commission += adjust.commission_delta
-        net += adjust.net_delta
-        currency_code = obj.currency.code if obj.currency_id else None
         return {
-            "currency_code": currency_code,
-            "gross_total": f"{total:.2f}",
-            "commission": f"{commission:.2f}",
-            "tax": f"{tax:.2f}",
-            "net_to_owner": f"{net:.2f}",
+            "currency_code": obj.currency.code if obj.currency_id else None,
+            "gross_total": f"{money['gross_total']:.2f}",
+            "commission": f"{money['commission']:.2f}",
+            "tax": f"{money['tax']:.2f}",
+            "net_to_owner": f"{money['net_to_owner']:.2f}",
         }
+
+    def get_payment_splits(self, obj: Booking) -> list[dict[str, Any]] | None:
+        """GAP-077: the deposit/balance schedule with per-component owner
+        money (gross/commission/tax/net_to_owner), derived on read by
+        `payment_component_splits`. Null when the booking has no owner money
+        (mirrors `net_to_owner`), `[]` when it has money but no schedule."""
+        money = self._owner_money(obj)
+        if money is None:
+            return None
+        # `money` is non-None here, so the service can't return None —
+        # only the two documented shapes remain (rows, or [] for no schedule).
+        splits = payment_component_splits(obj, money=money) or []
+        return [
+            {
+                "purpose": s["purpose"],
+                "status": s["status"],
+                "due_at": s["due_at"],
+                "gross": f"{s['gross']:.2f}",
+                "commission": f"{s['commission']:.2f}",
+                "tax": f"{s['tax']:.2f}",
+                "net_to_owner": f"{s['net_to_owner']:.2f}",
+            }
+            for s in splits
+        ]
 
 
 class BookingWriteSerializer(serializers.ModelSerializer[Booking]):

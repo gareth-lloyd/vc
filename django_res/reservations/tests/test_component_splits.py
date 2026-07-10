@@ -537,3 +537,44 @@ def test_splits__zero_gross_schedule_allocates_zero(booking: Booking, property_:
         assert s["commission"] == Decimal("0.00")
         assert s["tax"] == Decimal("0.00")
         assert s["net_to_owner"] == Decimal("0.00")
+
+
+# ----------------------------------------------------------------------
+# owner_money_from_snapshot — 2dp quantization (GAP-077 consolidation)
+# ----------------------------------------------------------------------
+def test_owner_money_from_snapshot__quantizes_all_figures() -> None:
+    """The staff serializer used to quantize net itself; now the module
+    quantizes every figure at the boundary (half-even), so serializer/
+    owner-API/splits all do arithmetic on identical 2dp values even for
+    sub-cent hand-written or imported snapshots."""
+    from reservations.services.owner_finance import owner_money_from_snapshot
+
+    money = owner_money_from_snapshot(
+        {"total": "100.005", "commission": "10.005", "tax": "5.004", "net_to_owner": "99.005"}
+    )
+    assert money is not None
+    assert money["gross_total"] == Decimal("100.00")
+    assert money["commission"] == Decimal("10.00")
+    assert money["tax"] == Decimal("5.00")
+    assert money["net_to_owner"] == Decimal("99.00")
+
+    fallback = owner_money_from_snapshot({"total": "100.005", "commission": "0.00", "tax": "0.00"})
+    assert fallback is not None
+    assert fallback["net_to_owner"] == Decimal("100.00")
+
+
+def test_owner_money_from_snapshot__non_finite_values_never_raise() -> None:
+    """An unquantizable explicit net falls back to the subtraction (the
+    pre-consolidation serializer behaviour); unquantizable total/commission/
+    tax mean "no usable money" (None), never a 500 — this guards every
+    consumer (staff detail, owner API, dashboard KPI, splits)."""
+    from reservations.services.owner_finance import owner_money_from_snapshot
+
+    weird_net = owner_money_from_snapshot(
+        {"total": "100.00", "commission": "10.00", "tax": "5.00", "net_to_owner": "Infinity"}
+    )
+    assert weird_net is not None
+    assert weird_net["net_to_owner"] == Decimal("85.00")
+
+    assert owner_money_from_snapshot({"total": "Infinity", "commission": "0", "tax": "0"}) is None
+    assert owner_money_from_snapshot({"total": "1E+30", "commission": "0", "tax": "0"}) is None

@@ -88,6 +88,9 @@ def _detail_owner_qs(qs: QuerySet[Booking]) -> QuerySet[Booking]:
         "property__settings",
     ).prefetch_related(
         "person__emails",
+        # GAP-077: `payment_splits` walks the schedule rows in Python, so a
+        # plain prefetch satisfies it (see `payment_component_splits`).
+        "payments",
         Prefetch(
             "property__finance__contact__emails",
             queryset=PersonEmail.objects.filter(is_primary=True),

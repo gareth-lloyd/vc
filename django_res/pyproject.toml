@@ -42,6 +42,7 @@ dependencies = [
     # Runtime (not dev-only): staging runs `seed_dev`, which drives the
     # factory-boy builders.
     "factory-boy>=3.3",
+    "django-extensions>=4.1",
 ]
 
 [dependency-groups]

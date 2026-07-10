@@ -7,7 +7,21 @@ from typing import Any
 
 from rest_framework import serializers
 
-from payments.enums import PaymentMethod, PaymentProvider
+from payments.enums import PaymentMethod, PaymentProvider, PaymentStatus
+
+# Statuses whose rows no longer count toward a track's scheduled amount.
+# NOT the complement of `ACTIVE_PAYMENT_STATUSES`: REFUNDED and WAIVED rows
+# still count as scheduled money. The GAP-077 component split duplicates
+# this set as string literals in `reservations.services.owner_finance`
+# (spine: reservations must not import payments) — set equality is pinned
+# by `payments/tests/test_component_splits_parity.py`.
+TERMINAL_NON_ACTIVE_STATUSES = frozenset(
+    {
+        PaymentStatus.CANCELLED.value,
+        PaymentStatus.EXPIRED.value,
+        PaymentStatus.FAILED.value,
+    }
+)
 
 
 class ManualPaymentCreateSerializer(serializers.Serializer[dict[str, Any]]):
@@ -75,18 +89,16 @@ class TrackSerializer(serializers.Serializer[dict[str, Any]]):
         aggregates in Python — every track GET runs through this so the
         single-query budget matters.
         """
-        from payments.enums import PaymentStatus
         from payments.models import Payment
 
+        # `-pk` tie-break: same-microsecond `created_at` pairs (bulk loads,
+        # cancel+replace in one transaction) must resolve the "latest row"
+        # deterministically, and identically to the GAP-077 component split
+        # (`payment_component_splits` keys on (created_at, pk)).
         rows = list(
-            Payment.objects.filter(booking=booking, purpose=purpose).order_by("-created_at")
+            Payment.objects.filter(booking=booking, purpose=purpose).order_by("-created_at", "-pk")
         )
-        terminal_non_active = {
-            PaymentStatus.CANCELLED.value,
-            PaymentStatus.EXPIRED.value,
-            PaymentStatus.FAILED.value,
-        }
-        scheduled = [p for p in rows if p.status not in terminal_non_active]
+        scheduled = [p for p in rows if p.status not in TERMINAL_NON_ACTIVE_STATUSES]
         scheduled_amount = sum((Decimal(p.amount) for p in scheduled), start=Decimal("0"))
         paid_amount = sum(
             (Decimal(p.amount) for p in rows if p.status == PaymentStatus.SUCCEEDED.value),

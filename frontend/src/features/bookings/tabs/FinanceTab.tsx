@@ -227,7 +227,10 @@ function PaymentSplitSection({
                   ) : null}
                   {row.due_at ? (
                     <div className="text-muted-foreground text-xs font-normal">
-                      {t("finance.component_splits.due", { date: formatDate(row.due_at) })}
+                      {/* due_at is stored midnight-UTC; render the UTC day. */}
+                      {t("finance.component_splits.due", {
+                        date: formatDate(row.due_at.slice(0, 10)),
+                      })}
                     </div>
                   ) : null}
                 </td>

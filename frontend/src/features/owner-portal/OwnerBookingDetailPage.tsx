@@ -13,6 +13,69 @@ import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import { BookingApprovalActions } from "./BookingApprovalActions";
 import { useOwnerBooking } from "./hooks";
+import type { OwnerPaymentSplit } from "./schemas";
+
+// GAP-077 — one card per scheduled component (deposit / balance) with the
+// owner-money breakdown. Lean owner-portal rendering of the staff FinanceTab
+// split table (bookings is off-limits per the GAP-063 boundary).
+function PaymentSplitCard({
+  split,
+  currency,
+}: {
+  split: OwnerPaymentSplit;
+  currency: string | null;
+}) {
+  const { t } = useTranslation("owner");
+  const label =
+    split.purpose === "deposit"
+      ? t("booking_detail.payment_schedule.deposit")
+      : t("booking_detail.payment_schedule.balance");
+
+  return (
+    <div
+      className="bg-card shadow-card rounded-lg border"
+      data-testid={`payment-split-${split.purpose}`}
+    >
+      <div className="border-border flex items-baseline justify-between gap-4 border-b px-4 py-2 text-sm">
+        <span className="font-medium">
+          {label}
+          {split.status === "waived" ? (
+            <span className="text-muted-foreground ml-2 text-xs font-normal italic">
+              {t("booking_detail.payment_schedule.waived")}
+            </span>
+          ) : null}
+        </span>
+        {split.due_at ? (
+          <span className="text-muted-foreground text-xs">
+            {/* due_at is stored midnight-UTC; render the UTC day, not the
+                viewer's local one (west-of-UTC would show the day before). */}
+            {t("booking_detail.payment_schedule.due", {
+              date: formatDate(split.due_at.slice(0, 10)),
+            })}
+          </span>
+        ) : null}
+      </div>
+      <FactList>
+        <FactRow
+          label={t("booking_detail.payment_schedule.gross")}
+          value={formatMoney(split.gross, currency)}
+        />
+        <FactRow
+          label={t("booking_detail.payment_schedule.commission")}
+          value={formatMoney(split.commission, currency)}
+        />
+        <FactRow
+          label={t("booking_detail.payment_schedule.tax")}
+          value={formatMoney(split.tax, currency)}
+        />
+        <FactRow
+          label={t("booking_detail.net_to_owner")}
+          value={formatMoney(split.net_to_owner, currency)}
+        />
+      </FactList>
+    </div>
+  );
+}
 
 export function OwnerBookingDetailPage() {
   const { t } = useTranslation("owner");
@@ -151,6 +214,27 @@ export function OwnerBookingDetailPage() {
             </div>
           </Section>
         ) : null}
+
+        {/* GAP-077: per-component owner-money split of the payment schedule.
+            Absent (not empty-stated) without the view_full_money grant or
+            when there is no schedule to split. */}
+        {(() => {
+          // Unknown future purposes (e.g. a planned INTERIM instalment) are
+          // dropped rather than mislabelled — the schema stays loose so an
+          // additive backend change can never kill the whole page.
+          const splits = (booking.payment_splits ?? []).filter(
+            (s) => s.purpose === "deposit" || s.purpose === "balance",
+          );
+          return splits.length > 0 ? (
+            <Section title={t("booking_detail.payment_schedule.title")}>
+              <div className="space-y-4">
+                {splits.map((split) => (
+                  <PaymentSplitCard key={split.purpose} split={split} currency={currency} />
+                ))}
+              </div>
+            </Section>
+          ) : null;
+        })()}
       </div>
     </div>
   );

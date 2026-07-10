@@ -76,6 +76,67 @@ describe("ownerBookingDetailSchema", () => {
     expect(parsed.net_to_owner).toBe("1600.00");
     expect(parsed.guest_contact?.email).toBe("ada@example.com");
   });
+
+  it("parses a detail with payment_splits ABSENT (no grant / no owner money)", () => {
+    const parsed = ownerBookingDetailSchema.parse(baseBookingRow);
+    expect(parsed.payment_splits).toBeUndefined();
+  });
+
+  it("parses payment_splits rows (empty and populated)", () => {
+    const empty = ownerBookingDetailSchema.parse({ ...baseBookingRow, payment_splits: [] });
+    expect(empty.payment_splits).toEqual([]);
+
+    const parsed = ownerBookingDetailSchema.parse({
+      ...baseBookingRow,
+      gross_total: "2000.00",
+      commission: "400.00",
+      net_to_owner: "1600.00",
+      payment_splits: [
+        {
+          purpose: "deposit",
+          status: "succeeded",
+          due_at: "2026-05-15T12:00:00Z",
+          gross: "800.00",
+          commission: "160.00",
+          tax: "40.00",
+          net_to_owner: "600.00",
+        },
+        {
+          purpose: "balance",
+          status: "waived",
+          due_at: null,
+          gross: "1200.00",
+          commission: "240.00",
+          tax: "60.00",
+          net_to_owner: "1000.00",
+        },
+      ],
+    });
+    expect(parsed.payment_splits).toHaveLength(2);
+    expect(parsed.payment_splits?.[0].purpose).toBe("deposit");
+    expect(parsed.payment_splits?.[1].due_at).toBeNull();
+  });
+
+  it("accepts an unknown split purpose (page filters, parse never fails)", () => {
+    // Customer-facing surface: an additive backend purpose (a future
+    // INTERIM instalment) must degrade to a dropped row at render, never a
+    // full-page parse failure.
+    const result = ownerBookingDetailSchema.safeParse({
+      ...baseBookingRow,
+      payment_splits: [
+        {
+          purpose: "interim",
+          status: "pending",
+          due_at: null,
+          gross: "100.00",
+          commission: "0.00",
+          tax: "0.00",
+          net_to_owner: "100.00",
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("ownerDashboardSchema", () => {

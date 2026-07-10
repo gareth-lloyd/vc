@@ -86,7 +86,17 @@
     "net_to_owner": "Το μερίδιό σας",
     "approval_pending": "Αναμένει την έγκρισή σας",
     "approve": "Έγκριση",
-    "decline": "Απόρριψη"
+    "decline": "Απόρριψη",
+    "payment_schedule": {
+      "title": "Πρόγραμμα πληρωμών",
+      "deposit": "Προκαταβολή",
+      "balance": "Υπόλοιπο",
+      "gross": "Μικτό",
+      "commission": "Προμήθεια",
+      "tax": "Φόρος",
+      "waived": "Εξαιρέθηκε",
+      "due": "Λήγει {{date}}"
+    }
   },
   "blocks": {
     "request_button": "Δέσμευση ημερομηνιών",

@@ -86,7 +86,17 @@
     "net_to_owner": "Your share",
     "approval_pending": "Awaiting your approval",
     "approve": "Approve",
-    "decline": "Decline"
+    "decline": "Decline",
+    "payment_schedule": {
+      "title": "Payment schedule",
+      "deposit": "Deposit",
+      "balance": "Balance",
+      "gross": "Gross",
+      "commission": "Commission",
+      "tax": "Tax",
+      "waived": "Waived",
+      "due": "Due {{date}}"
+    }
   },
   "blocks": {
     "request_button": "Block dates",

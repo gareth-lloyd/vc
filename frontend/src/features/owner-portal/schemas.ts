@@ -124,11 +124,32 @@ export const ownerGuestContactSchema = z.object({
 });
 export type OwnerGuestContact = z.infer<typeof ownerGuestContactSchema>;
 
+// GAP-077 — per-component (deposit / balance) owner-money split of the payment
+// schedule. Feature-local duplicate of the staff shape (features/bookings) —
+// owner-portal may not import from bookings (GAP-063 boundary). purpose and
+// status stay loose like the booking status above: this surface is
+// customer-facing, so an additive backend purpose (a future INTERIM) must
+// degrade to a dropped row, never a full-page parse failure. The page
+// filters to the purposes it can label.
+export const ownerPaymentSplitSchema = z.object({
+  purpose: z.string(),
+  status: z.string(),
+  due_at: z.string().nullable(),
+  gross: z.string(),
+  commission: z.string(),
+  tax: z.string(),
+  net_to_owner: z.string(),
+});
+export type OwnerPaymentSplit = z.infer<typeof ownerPaymentSplitSchema>;
+
 export const ownerBookingDetailSchema = ownerBookingListItemSchema.extend({
   // view_full_money grant only.
   gross_total: z.string().optional(),
   commission: z.string().optional(),
   net_to_owner: z.string().optional(),
+  // view_full_money grant only — absent without the grant or without owner
+  // money, [] when money exists but no schedule.
+  payment_splits: z.array(ownerPaymentSplitSchema).optional(),
   // view_guest_details grant only.
   guest_contact: ownerGuestContactSchema.optional(),
 });

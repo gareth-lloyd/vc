@@ -27,7 +27,11 @@ from reservations.serializers._contact_reads import (
     contact_name,
     contact_phone,
 )
-from reservations.services.owner_finance import owner_money_for_booking
+from reservations.services.owner_finance import (
+    format_component_split,
+    owner_money_for_booking,
+    payment_component_splits,
+)
 
 if TYPE_CHECKING:
     from accounts.models import Person
@@ -107,6 +111,14 @@ class OwnerBookingListSerializer(serializers.Serializer):
         data["gross_total"] = f"{money['gross_total']:.2f}"
         data["commission"] = f"{money['commission']:.2f}"
         data["net_to_owner"] = f"{money['net_to_owner']:.2f}"
+        # GAP-077: the deposit/balance schedule with per-component owner
+        # money — detail-only (the list path has no payments prefetch and a
+        # pinned query budget). Same derive-on-read service as the staff
+        # API; `money` is passed through so the charge overlay isn't
+        # recomputed.
+        data["payment_splits"] = [
+            format_component_split(s) for s in payment_component_splits(obj, money=money) or []
+        ]
 
 
 class OwnerBookingDetailSerializer(OwnerBookingListSerializer):

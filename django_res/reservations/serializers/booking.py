@@ -17,6 +17,7 @@ from reservations.serializers._contact_reads import contact_email, contact_name
 from reservations.services.charges import charges_total_for, effective_commission_for
 from reservations.services.owner_finance import (
     OwnerMoney,
+    format_component_split,
     owner_money_for_booking,
     payment_component_splits,
 )
@@ -282,19 +283,7 @@ class BookingDetailSerializer(BookingListSerializer):
             return None
         # `money` is non-None here, so the service can't return None —
         # only the two documented shapes remain (rows, or [] for no schedule).
-        splits = payment_component_splits(obj, money=money) or []
-        return [
-            {
-                "purpose": s["purpose"],
-                "status": s["status"],
-                "due_at": s["due_at"],
-                "gross": f"{s['gross']:.2f}",
-                "commission": f"{s['commission']:.2f}",
-                "tax": f"{s['tax']:.2f}",
-                "net_to_owner": f"{s['net_to_owner']:.2f}",
-            }
-            for s in splits
-        ]
+        return [format_component_split(s) for s in payment_component_splits(obj, money=money) or []]
 
 
 class BookingWriteSerializer(serializers.ModelSerializer[Booking]):

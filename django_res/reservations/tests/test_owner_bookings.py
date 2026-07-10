@@ -560,3 +560,116 @@ def test_owner_list_person_reads_stay_within_query_budget(
     with assert_max_queries(12):
         response = api_client.get(LIST_URL)
     assert len(response.json()["results"]) == 4
+
+
+# ---------------------------------------------------------------------------
+# GAP-077 — per-component payment splits on the owner booking DETAIL only.
+# Same derive-on-read service as the staff API; gated by `view_full_money`;
+# never on the list path (its query budget is pinned above).
+# ---------------------------------------------------------------------------
+
+
+def _schedule_payment(booking: Booking, *, purpose: str, amount: str) -> None:
+    from payments.enums import PaymentStatus
+    from payments.models import Payment
+
+    Payment.objects.create(
+        booking=booking,
+        purpose=purpose,
+        status=PaymentStatus.PENDING.value,
+        amount=Decimal(amount),
+        currency=booking.currency,
+    )
+
+
+def test_detail_payment_splits_render_and_sum(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, customer: Person, property_: Property
+) -> None:
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_full_money=True)
+    booking = _make_booking(
+        property_=property_, gbp=gbp, terms=terms, person=customer, snapshot=_SNAPSHOT
+    )
+    _schedule_payment(booking, purpose="deposit", amount="420.00")
+    _schedule_payment(booking, purpose="balance", amount="980.00")
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+
+    splits = detail["payment_splits"]
+    assert [s["purpose"] for s in splits] == ["deposit", "balance"]
+    deposit, balance = splits
+    # 200 commission / 100 tax allocated 30/70 by gross share.
+    assert deposit["gross"] == "420.00"
+    assert deposit["commission"] == "60.00"
+    assert deposit["tax"] == "30.00"
+    assert deposit["net_to_owner"] == "330.00"
+    assert deposit["status"] == "pending"
+    assert deposit["due_at"] is None
+    assert balance["gross"] == "980.00"
+    assert balance["commission"] == "140.00"
+    assert balance["tax"] == "70.00"
+    assert balance["net_to_owner"] == "770.00"
+    assert sum(Decimal(s["net_to_owner"]) for s in splits) == Decimal(detail["net_to_owner"])
+
+
+def test_detail_payment_splits_hidden_without_money_grant(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, customer: Person, property_: Property
+) -> None:
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_full_money=False)
+    booking = _make_booking(
+        property_=property_, gbp=gbp, terms=terms, person=customer, snapshot=_SNAPSHOT
+    )
+    _schedule_payment(booking, purpose="deposit", amount="420.00")
+
+    api_client.force_authenticate(user)
+    detail = _detail(api_client, booking)
+
+    assert "payment_splits" not in detail
+
+
+def test_list_never_includes_payment_splits(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, customer: Person, property_: Property
+) -> None:
+    """Splits are detail-only — the list path has no payments prefetch and a
+    pinned query budget, so the key must never appear there."""
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_full_money=True)
+    booking = _make_booking(
+        property_=property_, gbp=gbp, terms=terms, person=customer, snapshot=_SNAPSHOT
+    )
+    _schedule_payment(booking, purpose="deposit", amount="420.00")
+
+    api_client.force_authenticate(user)
+    rows = api_client.get(LIST_URL).json()["results"]
+
+    assert rows and all("payment_splits" not in row for row in rows)
+
+
+def test_detail_query_budget_with_splits(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, customer: Person, property_: Property
+) -> None:
+    """The detail path prefetches payments + charge annotations + finance, so
+    the splits render stays inside a constant budget."""
+    from core.tests import assert_max_queries
+
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_full_money=True)
+    booking = _make_booking(
+        property_=property_, gbp=gbp, terms=terms, person=customer, snapshot=_SNAPSHOT
+    )
+    BookingChargeItem.objects.create(
+        booking=booking, label="Chef", amount=Decimal("100.00"), currency=gbp
+    )
+    _schedule_payment(booking, purpose="deposit", amount="450.00")
+    _schedule_payment(booking, purpose="balance", amount="1050.00")
+
+    api_client.force_authenticate(user)
+    with assert_max_queries(12):
+        detail = _detail(api_client, booking)
+    assert len(detail["payment_splits"]) == 2

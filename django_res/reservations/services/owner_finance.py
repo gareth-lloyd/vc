@@ -97,6 +97,25 @@ def owner_money_for_booking(booking: Booking) -> OwnerMoney | None:
     }
 
 
+def format_component_split(split: ComponentSplit) -> dict[str, Any]:
+    """The wire shape of one split row — 2dp strings, raw status/due_at.
+
+    Shared by the staff and owner serializers so the two APIs can never
+    drift on formatting (they already share the figures via
+    `payment_component_splits`). Presentation in a service module is a
+    deliberate exception, mirroring why the arithmetic lives here.
+    """
+    return {
+        "purpose": split["purpose"],
+        "status": split["status"],
+        "due_at": split["due_at"],
+        "gross": f"{split['gross']:.2f}",
+        "commission": f"{split['commission']:.2f}",
+        "tax": f"{split['tax']:.2f}",
+        "net_to_owner": f"{split['net_to_owner']:.2f}",
+    }
+
+
 def allocate_proportionally(
     *, commission: Decimal, tax: Decimal, grosses: Sequence[Decimal]
 ) -> list[tuple[Decimal, Decimal]]:

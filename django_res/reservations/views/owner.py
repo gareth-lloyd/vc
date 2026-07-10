@@ -185,7 +185,7 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
                 person_id=OuterRef("person_id"), property_id__in=property_ids
             ).exclude(pk=OuterRef("pk"))
         )
-        return (
+        qs: QuerySet[Booking] = (
             Booking.objects.filter(property_id__in=property_ids, is_archived=False)
             .exclude(status=BookingStatus.DRAFT.value)
             .select_related(
@@ -198,6 +198,21 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
             .annotate(is_repeat_guest=repeat)
             .order_by("-date_from")
         )
+        if self.action == "retrieve":
+            # GAP-077: the financial detail (`_add_financial_detail`) walks
+            # the charge overlay + finance config + schedule rows. Detail-only
+            # on purpose — the list serializer never renders it, and the list
+            # path's query budget is pinned. Do NOT widen this gate to
+            # approve/decline: their transitions CREATE schedule rows after
+            # get_object() runs, so a payments prefetch there would serve a
+            # stale empty cache and the response would render splits as [].
+            # (Their un-prefetched render re-queries and stays correct.)
+            qs = (
+                with_charges_total(qs)
+                .select_related("property__finance")
+                .prefetch_related("payments")
+            )
+        return qs
 
     def get_serializer_context(self) -> dict[str, Any]:
         user = cast("User", self.request.user)

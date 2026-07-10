@@ -37,6 +37,7 @@ _SUPERUSERS: tuple[tuple[str, str, str, str, str | None], ...] = (
     ("glloyd@gmail.com", "fiery-kite-pumpkin-eton", "Gareth", "Lloyd", _DEV_TFA_SECRET),
     ("nick@villacollective.com", "purple-octagon-ferry-palace", "Nick", "Villa", None),
     ("ben@mojomedia.co.uk", "cobalt-heron-marble-quay", "Ben", "Mojo", None),
+    ("bryony@villacollective.com", "juniper-falcon-atlas-mint", "Bryony", "Villa", None),
 )
 
 

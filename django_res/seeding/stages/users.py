@@ -36,6 +36,7 @@ _DEV_TFA_SECRET = "HORSTX4N5AA4IKSUR3USHIMQJMLU6OUO"  # 32-char base32
 _SUPERUSERS: tuple[tuple[str, str, str, str, str | None], ...] = (
     ("glloyd@gmail.com", "fiery-kite-pumpkin-eton", "Gareth", "Lloyd", _DEV_TFA_SECRET),
     ("nick@villacollective.com", "purple-octagon-ferry-palace", "Nick", "Villa", None),
+    ("ben@mojomedia.co.uk", "cobalt-heron-marble-quay", "Ben", "Mojo", None),
 )
 
 

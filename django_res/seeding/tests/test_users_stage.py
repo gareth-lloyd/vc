@@ -70,6 +70,15 @@ def test_nick_superuser_stays_password_only() -> None:
     assert nick.tfa_secret == ""
 
 
+def test_ben_superuser_stays_password_only() -> None:
+    _run(_ctx())
+
+    ben = User.objects.get(email="ben@mojomedia.co.uk")
+    assert ben.is_superuser is True
+    assert ben.tfa_method == TfaMethod.NONE
+    assert ben.tfa_secret == ""
+
+
 def test_reseeding_is_idempotent_and_preserves_enrolment() -> None:
     _run(_ctx())
     _run(_ctx())  # additive re-seed against a live DB must not duplicate or reset

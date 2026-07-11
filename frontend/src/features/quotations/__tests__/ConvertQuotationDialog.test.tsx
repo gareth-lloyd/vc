@@ -38,6 +38,7 @@ const lines = {
       adults: 2,
       children: 0,
       total: "1200.00",
+      currency: "EUR",
       is_selected: false,
       is_manual: false,
       notes: "",
@@ -84,6 +85,9 @@ describe("ConvertQuotationDialog", () => {
     setup();
     expect(await screen.findByLabelText(/property #12/i)).not.toBeChecked();
     expect(await screen.findByLabelText(/property #14/i)).toBeChecked();
+    // Line totals carry the explicit ISO code (GAP-080) — a quote can mix
+    // per-line currencies (GAP-014), so the commit step must be unambiguous.
+    expect(screen.getByText(/€1,200\.00 EUR/)).toBeInTheDocument();
   });
 
   it("prefers an explicit initialLineId over the selected-line default", async () => {

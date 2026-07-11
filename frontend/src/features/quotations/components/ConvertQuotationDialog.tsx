@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { ApiError } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney } from "@/lib/format/money";
+import { formatMoneyWithCode } from "@/lib/format/money";
 import { useConvertQuotation, useQuotationLines } from "../hooks";
 import { ChangeoverShiftedNote } from "./ChangeoverShiftedNote";
 import type { QuotationDetail, QuotationLine } from "../schemas";
@@ -152,7 +152,7 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation, initialL
                             adults: line.adults ?? 0,
                             children: line.children ?? 0,
                           })}{" "}
-                          · {formatMoney(line.total ?? null, line.currency ?? null)}
+                          · {formatMoneyWithCode(line.total ?? null, line.currency ?? null)}
                         </span>
                         <ChangeoverShiftedNote
                           from={line.changeover_shifted_from}

@@ -1,5 +1,18 @@
 # GAP-080 — Make currency unmistakable in the quote builder UI
 
+> **✅ RESOLVED (2026-07-11)** — new `formatMoneyWithCode` formatter
+> (`frontend/src/lib/format/money.ts`) renders the ISO code explicitly for
+> every currency ("£4,500.00 GBP"; CHF not duplicated; unmapped codes already
+> trailed; "—" fallback undecorated), swapped into all 8 quotations-feature
+> money-display sites: builder (`QuoteShortlistLine`, `QuoteResultLine`) plus
+> saved-quote detail (`QuotationLineCard`) and `ConvertQuotationDialog`.
+> Shared `withCurrency`/`formatMoney` untouched (app-wide blast radius).
+> ~50 test assertions updated/strengthened incl. previously-vacuous substring
+> regexes and a first money assertion for the convert dialog. Email templates
+> unchanged (already print codes). Deferred: currency grouping → GAP-078;
+> enquiry-rail `EnquiryQuoteStack` stays symbol-only. Commits
+> f957bcb/48f39f0/f72ae0c.
+
 - **Severity:** 🟢 Gap (FE polish). Frontend-only.
 - **Source:** 2026-07-08 Nick / Gareth res-rebuild call. Nick: a quote can mix
   property base currencies; clients "assume everything's in euros" and get a

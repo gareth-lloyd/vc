@@ -15,7 +15,7 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-08 recount + GAP-076/077/079 close-outs to 2026-07-10): **127 done** (120 resolved + 7 dropped), **42 open**
+Scoreboard (2026-07-08 recount + GAP-076/077/079 close-outs to 2026-07-10; BUG-017 deleted outright 2026-07-10): **127 done** (120 resolved + 7 dropped), **41 open**
 (incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
@@ -61,7 +61,6 @@ GAP-050; Zoho blocked on external spec, GAP-028)._
 | [BUG-018](bug-018-frontend-cache-staleness-missing-invalidations.md) | Frontend cache staleness — booking mutations skip the availability calendar; contact sub-tabs never invalidate | ⬜ from 2026-07-02 frontend complexity audit; per-mutation hand-listed invalidations have drifted → operator sees stale dates/history |
 | [BUG-015](bug-015-scattered-state-machines-false-409.md) | State machines hand-rolled 4 ways; SD's bare `ValueError` → false 409s; `BookingHold`/`DamageClaim` lifecycles unguarded | ⬜ from 2026-07-02 complexity audit; shape depends on Q-024 |
 | [BUG-016](done/bug-016-rate-grid-disjointness-reimplemented.md) | Rate-grid disjointness/precedence reimplemented by 4 producers — projected quote can price ≠ its materialised twin | ✅ resolved (2026-07-05) — ONE canonical flattener (`pricing/services/flattening.py` + shared `intervals.py`) consumed by projection (now eager, parity by construction via `map_anchor_sources`), carryover, the legacy loader (split-not-clip; deltas disclosed in CUTOVER.md) and the 0013 backfill; cross-producer equivalence suite pins 9 grids pointwise + byte-identical. Party-widening money bug fixed |
-| [BUG-017](bug-017-refund-approval-permissions-ungoverned.md) | Refund approve/execute perms declared but granted to nobody — SoD split governed by untracked config | ⬜ **high priority** from 2026-07-02 complexity audit; refunds un-approvable in a fresh env; affects BUG-010/GAP-057 |
 
 ## 🟠 Footguns
 

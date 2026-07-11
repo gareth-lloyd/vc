@@ -81,9 +81,9 @@ describe("QuoteShortlist", () => {
     expect(screen.getByText("Villa Azul")).toBeInTheDocument();
     // Each line carries its own price; the shortlist never sums them, because the
     // guest picks one villa from the shortlist — not all of them.
-    expect(screen.getByText("$4,500.00")).toBeInTheDocument();
-    expect(screen.getByText("$7,200.00")).toBeInTheDocument();
-    expect(screen.queryByText("$11,700.00")).not.toBeInTheDocument();
+    expect(screen.getByText("$4,500.00 USD")).toBeInTheDocument();
+    expect(screen.getByText("$7,200.00 USD")).toBeInTheDocument();
+    expect(screen.queryByText("$11,700.00 USD")).not.toBeInTheDocument();
   });
 
   it("renders mixed-currency lines each in their own currency", () => {
@@ -101,8 +101,8 @@ describe("QuoteShortlist", () => {
         ]}
       />,
     );
-    expect(screen.getByText("£4,500.00")).toBeInTheDocument();
-    expect(screen.getByText("€7,200.00")).toBeInTheDocument();
+    expect(screen.getByText("£4,500.00 GBP")).toBeInTheDocument();
+    expect(screen.getByText("€7,200.00 EUR")).toBeInTheDocument();
   });
 
   it("applies a discount to the line total", async () => {
@@ -122,8 +122,8 @@ describe("QuoteShortlist", () => {
     await userEvent.type(discount, "500");
 
     // 4500 − 500 = 4000 on the line; the other line is untouched.
-    expect(screen.getByText("$4,000.00")).toBeInTheDocument();
-    expect(screen.getByText("$7,200.00")).toBeInTheDocument();
+    expect(screen.getByText("$4,000.00 USD")).toBeInTheDocument();
+    expect(screen.getByText("$7,200.00 USD")).toBeInTheDocument();
   });
 
   it("targets update, remove and expand at a single week-line when two lines share a property (GAP-043)", async () => {
@@ -156,13 +156,13 @@ describe("QuoteShortlist", () => {
     // …and a discount typed there nets off only that week's total.
     await userEvent.clear(discount);
     await userEvent.type(discount, "200");
-    expect(screen.getByText("$5,000.00")).toBeInTheDocument();
-    expect(screen.getByText("$4,500.00")).toBeInTheDocument();
+    expect(screen.getByText("$5,000.00 USD")).toBeInTheDocument();
+    expect(screen.getByText("$4,500.00 USD")).toBeInTheDocument();
 
     // Removing the first week keeps the second.
     await userEvent.click(screen.getAllByRole("button", { name: /^remove$/i })[0]);
     expect(screen.getAllByText("Villa Sol")).toHaveLength(1);
-    expect(screen.getByText("$5,000.00")).toBeInTheDocument();
+    expect(screen.getByText("$5,000.00 USD")).toBeInTheDocument();
   });
 
   it("blocks the commit actions until a manual override has a total and reason", async () => {

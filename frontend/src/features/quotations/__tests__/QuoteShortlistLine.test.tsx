@@ -67,12 +67,12 @@ function Harness({ initial, expanded = false }: { initial: StagedLine; expanded?
 describe("QuoteShortlistLine — banded (GAP-044)", () => {
   it("renders each band's price and flags the POA band, with no single total", () => {
     renderWithProviders(<Harness initial={bandedLine()} />);
-    expect(screen.getByText("$4,500.00")).toBeInTheDocument();
-    expect(screen.getByText("$6,200.00")).toBeInTheDocument();
+    expect(screen.getByText("$4,500.00 USD")).toBeInTheDocument();
+    expect(screen.getByText("$6,200.00 USD")).toBeInTheDocument();
     // The POA band shows flagged, not priced.
     expect(screen.getByText(/on application/i)).toBeInTheDocument();
     // No summed / headline total for the villa.
-    expect(screen.queryByText("$10,700.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("$10,700.00 USD")).not.toBeInTheDocument();
   });
 
   it("toggles a band's checked state via its checkbox", async () => {

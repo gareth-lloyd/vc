@@ -271,6 +271,103 @@ def test_render_quotation_html_contains_line_and_terms(
     assert "<strong>" in html
 
 
+def _geo_property(name: str, *, iso2: str, region_name: str) -> Property:
+    """A property in a specific (seeded) country + region, for GAP-078 grouping."""
+    from django.utils.text import slugify
+
+    from properties.models import Country, PropertyCategory, Region
+
+    country, _ = Country.objects.get_or_create(iso2=iso2, defaults={"name": iso2, "iso3": iso2})
+    region, _ = Region.objects.get_or_create(
+        country=country, slug=slugify(region_name), defaults={"name": region_name}
+    )
+    category, _ = PropertyCategory.objects.get_or_create(slug="villa", defaults={"name": "Villa"})
+    return Property.objects.create(
+        name=name,
+        display_name=name,
+        slug=slugify(name),
+        category=category,
+        region=region,
+    )
+
+
+def _add_line(quotation: Quotation, property_: Property, gbp: Currency) -> QuotationLine:
+    return QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        currency=gbp,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+        adults=2,
+        total=Decimal("1000.00"),
+        pricing_snapshot={"total": "1000.00"},
+    )
+
+
+@pytest.mark.django_db
+def test_lines_ordered_and_grouped_by_geography(
+    priced_quotation: Quotation,
+    gbp: Currency,
+) -> None:
+    """GAP-078: lines render bunched country → region → property name (not
+    insertion order), and `line_groups` exposes the contiguous groups the
+    templates iterate. The flat `lines` key stays, reordered to match."""
+    # Insertion order deliberately unsorted: UK (fixture), then Spain, Greece.
+    _add_line(priced_quotation, _geo_property("Villa Sol", iso2="ES", region_name="Ibiza"), gbp)
+    _add_line(priced_quotation, _geo_property("Villa Zeus", iso2="GR", region_name="Crete"), gbp)
+
+    ctx = build_quotation_context(priced_quotation)
+
+    assert [line["country_name"] for line in ctx["lines"]] == [
+        "Greece",
+        "Spain",
+        "United Kingdom",
+    ]
+    assert [line["region_name"] for line in ctx["lines"]] == ["Crete", "Ibiza", "South West"]
+
+    groups = ctx["line_groups"]
+    assert [g["label"] for g in groups] == [
+        "Greece · Crete",
+        "Spain · Ibiza",
+        "United Kingdom · South West",
+    ]
+    # Groups partition the flat list, in the same order.
+    assert [line for g in groups for line in g["lines"]] == ctx["lines"]
+
+
+@pytest.mark.django_db
+def test_single_group_renders_no_geo_header(
+    priced_quotation: Quotation,
+) -> None:
+    """One (country, region) group → no header row: a lone label is noise."""
+    ctx = build_quotation_context(priced_quotation)
+    assert len(ctx["line_groups"]) == 1
+
+    html = render_quotation_html(priced_quotation)
+    assert "United Kingdom · South West" not in html
+
+
+@pytest.mark.django_db
+def test_render_html_groups_by_geography(
+    priced_quotation: Quotation,
+    gbp: Currency,
+) -> None:
+    """GAP-078: the preview/copy-to-clipboard surface shows the same geo
+    section headers the email does (byte-for-byte contract)."""
+    _add_line(priced_quotation, _geo_property("Villa Sol", iso2="ES", region_name="Ibiza"), gbp)
+    _add_line(priced_quotation, _geo_property("Villa Zeus", iso2="GR", region_name="Crete"), gbp)
+
+    html = render_quotation_html(priced_quotation)
+
+    greece = html.index("Greece · Crete")
+    spain = html.index("Spain · Ibiza")
+    uk = html.index("United Kingdom · South West")
+    assert greece < spain < uk
+    # Each property renders inside its group: after its own header, before the next.
+    assert greece < html.index("Villa Zeus") < spain
+    assert spain < html.index("Villa Sol") < uk
+
+
 @pytest.mark.django_db
 def test_mixed_currency_lines_each_render_their_own_code(
     priced_quotation: Quotation,

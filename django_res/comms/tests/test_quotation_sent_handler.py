@@ -125,3 +125,49 @@ def test_quotation_sent_email_contains_line_and_total(
     # Plaintext alternative carries the quote too.
     assert expected_name in log.rendered_body
     assert "GBP 1,234.00" in log.rendered_body
+    # GAP-078: a single (country, region) group renders NO geo header —
+    # a lone label is noise.
+    assert "United Kingdom · South West" not in log.rendered_body_html
+
+
+@pytest.mark.django_db
+def test_quotation_sent_email_groups_lines_by_geography(
+    system_profile: SmtpProfile,
+    quotation_with_line: Quotation,
+    gbp: Currency,
+) -> None:
+    """GAP-078: a multi-country quotation email bunches lines under
+    country · region section headers (the single-group no-header case is
+    asserted in test_quotation_sent_email_contains_line_and_total)."""
+    from properties.models import Country, PropertyCategory, Region
+
+    greece, _ = Country.objects.get_or_create(iso2="GR", defaults={"name": "Greece", "iso3": "GRC"})
+    crete = Region.objects.create(country=greece, name="Crete", slug="crete")
+    category = PropertyCategory.objects.get(slug="villa")
+    zeus = Property.objects.create(
+        name="Villa Zeus",
+        display_name="Villa Zeus",
+        slug="villa-zeus",
+        category=category,
+        region=crete,
+    )
+    QuotationLine.objects.create(
+        quotation=quotation_with_line,
+        property=zeus,
+        currency=gbp,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+        adults=2,
+        total=Decimal("2000.00"),
+        pricing_snapshot={"total": "2000.00"},
+    )
+    sync_templates()
+
+    quotation_sent_handler(sender=Quotation, quotation=quotation_with_line)
+
+    log = EmailLog.objects.get(template_key="quotation.sent")
+    body = log.rendered_body_html
+    greece_at = body.index("Greece · Crete")
+    uk_at = body.index("United Kingdom · South West")
+    assert greece_at < body.index("Villa Zeus") < uk_at
+    assert uk_at < body.index("Test Villa")

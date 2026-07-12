@@ -9,9 +9,10 @@ Idempotent. Discovers every ``<key>.subject.txt`` under
   a new row at the next version (preserving the unique-active and
   unique (key, version) constraints).
 
-The same function is called by the data migration in
-``comms/migrations/0003_seed_templates.py`` so a fresh DB is fully
-populated by ``migrate`` alone — no operator step required.
+The same function is called by the seed data migrations
+(``comms/migrations/0002_seed_templates.py`` and every later
+``000N_seed_*`` re-sync) so a fresh DB is fully populated by ``migrate``
+alone — no operator step required.
 """
 
 from __future__ import annotations

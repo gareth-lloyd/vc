@@ -8,6 +8,7 @@ band)`. `RateBand` carries no `date_from/date_to` — those live on its parent
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from django.db import models
@@ -74,9 +75,22 @@ def _coverage_gaps(bands: list[RateBand], cap: int | None) -> list[list[int]]:
 
 
 class RateBandSerializer(serializers.ModelSerializer[RateBand]):
-    """A partyxprice band. Dates are inherited from its `period` (GAP-056)."""
+    """A partyxprice band. Dates are inherited from its `period` (GAP-056).
+
+    Q-018: `nightly`/`weekly` are the **base** prices; a reduction (percent XOR
+    fixed new amounts) is stored alongside and the quoted `effective_*` prices
+    are derived, never written.
+    """
 
     period: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(read_only=True)
+    # Model properties, so declared explicitly; mirror the base fields' shape
+    # (DRF renders them as the same "0.00" strings the FE money schemas expect).
+    effective_nightly = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True, allow_null=True
+    )
+    effective_weekly = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True, allow_null=True
+    )
 
     class Meta:
         model = RateBand
@@ -87,12 +101,19 @@ class RateBandSerializer(serializers.ModelSerializer[RateBand]):
             "max_party",
             "nightly",
             "weekly",
+            "reduction_percent",
+            "reduced_nightly",
+            "reduced_weekly",
+            "reduced_at",
+            "reduction_reason",
+            "effective_nightly",
+            "effective_weekly",
             "is_poa",
             "is_locked",
             "is_approved",
             "notes",
         ]
-        read_only_fields = ["id", "period"]
+        read_only_fields = ["id", "period", "effective_nightly", "effective_weekly"]
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Mirror the band's DB constraints as 400s, plus party-overlap.
@@ -130,6 +151,8 @@ class RateBandSerializer(serializers.ModelSerializer[RateBand]):
                 {"nightly": "Set a nightly or weekly price, or mark the rule POA."},
             )
 
+        self._validate_reduction(attrs, effective)
+
         period = self._resolve_period()
         guard_period_editable(period)
         if period is not None and self.instance is None and not period.plan.prices_by_occupancy:
@@ -162,6 +185,117 @@ class RateBandSerializer(serializers.ModelSerializer[RateBand]):
                     },
                 )
         return attrs
+
+    def _validate_reduction(self, attrs: dict[str, Any], effective: Callable[[str], Any]) -> None:
+        """Q-018: mirror the reduction CheckConstraints as friendly 400s.
+
+        Works on the merged (stored + incoming) values, so both a bad reduction
+        write and a base edit that clashes with a stored reduction (review M2 —
+        the MatrixCell inline editors PATCH only `nightly`/`weekly`) land here
+        rather than as an `IntegrityError` 500. Every error is keyed on a field
+        the client actually sent, so form UIs can attach it to a live input.
+        """
+        nightly, weekly, is_poa = effective("nightly"), effective("weekly"), effective("is_poa")
+        percent = effective("reduction_percent")
+        reduced_nightly = effective("reduced_nightly")
+        reduced_weekly = effective("reduced_weekly")
+        has_fixed = reduced_nightly is not None or reduced_weekly is not None
+        has_reduction = percent is not None or has_fixed
+
+        def sent(*fields: str) -> str:
+            """The first of `fields` present in the request, else the first."""
+            return next((f for f in fields if f in attrs), fields[0])
+
+        if has_reduction and is_poa:
+            raise serializers.ValidationError(
+                {
+                    sent("is_poa", "reduction_percent", "reduced_nightly", "reduced_weekly"): (
+                        "A POA band has no price, so it cannot carry a reduction."
+                    ),
+                },
+            )
+        if percent is not None and has_fixed:
+            raise serializers.ValidationError(
+                {
+                    sent("reduction_percent", "reduced_nightly", "reduced_weekly"): (
+                        "Use a percentage reduction OR fixed reduced amounts, not both."
+                    ),
+                },
+            )
+        if percent is not None and not (0 < percent < 100):
+            raise serializers.ValidationError(
+                {"reduction_percent": "The reduction must be between 0 and 100% (exclusive)."},
+            )
+
+        pairs = (
+            ("reduced_nightly", "nightly", reduced_nightly, nightly),
+            ("reduced_weekly", "weekly", reduced_weekly, weekly),
+        )
+        for reduced_field, base_field, reduced_value, base_value in pairs:
+            if reduced_value is None:
+                continue
+            if base_value is None:
+                if base_field in attrs and reduced_field not in attrs:
+                    # The client is clearing the base under a stored reduction.
+                    raise serializers.ValidationError(
+                        {
+                            base_field: (
+                                f"This band still has a reduced {base_field} "
+                                f"({reduced_value}) — clear the reduction before "
+                                f"removing the {base_field} price."
+                            ),
+                        },
+                    )
+                raise serializers.ValidationError(
+                    {reduced_field: f"This band has no {base_field} price to reduce."},
+                )
+            if not (0 < reduced_value < base_value):
+                # A base edit clashing with a stored reduction surfaces on the
+                # base input (M2); a bad reduction write on the reduced input.
+                key = (
+                    base_field
+                    if (base_field in attrs and reduced_field not in attrs)
+                    else reduced_field
+                )
+                raise serializers.ValidationError(
+                    {
+                        key: (
+                            f"The reduced {base_field} ({reduced_value}) must be above zero "
+                            f"and below the base {base_field} ({base_value}). Adjust the "
+                            "price or clear the reduction first."
+                        ),
+                    },
+                )
+
+        # Decision 6b: quoting prefers the nightly price, so a fixed reduction
+        # must cover EVERY base price the band carries — a partial pair would
+        # be a silent no-op (or an accidental cut). Checked after the per-pair
+        # errors so "nothing to reduce" wins on the field the client sent.
+        if has_fixed:
+            for reduced_field, base_field, reduced_value, base_value in pairs:
+                if reduced_value is None and base_value is not None:
+                    raise serializers.ValidationError(
+                        {
+                            reduced_field: (
+                                "A fixed reduction must cover every base price on this "
+                                f"band — set a reduced {base_field} too, or clear both "
+                                "reduced amounts to remove the reduction."
+                            ),
+                        },
+                    )
+
+        if not has_reduction:
+            # Explicitly-sent metadata with nothing to annotate is a mistake —
+            # reject it rather than silently dropping the client's values.
+            if attrs.get("reduced_at") is not None or attrs.get("reduction_reason"):
+                key = "reduced_at" if attrs.get("reduced_at") is not None else "reduction_reason"
+                raise serializers.ValidationError(
+                    {key: "There is no reduction on this band to annotate — set one first."},
+                )
+            # No reduction left → no stale metadata: clear the audit companions.
+            if effective("reduced_at") is not None or effective("reduction_reason"):
+                attrs["reduced_at"] = None
+                attrs["reduction_reason"] = ""
 
     def _resolve_period(self) -> RatePeriod | None:
         """The period comes from the stored row (PATCH) or the nested-create URL."""

@@ -17,6 +17,7 @@ partial update can't sneak a stored+incoming combination past a constraint.
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -296,3 +297,221 @@ def test_occupancy_plan_accepts_second_band(api_client: APIClient, period: RateP
         format="json",
     )
     assert second.status_code == 201, second.content
+
+
+# --- Q-018: reduction fields ---------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_patch_percent_reduction_succeeds_and_exposes_effective(
+    api_client: APIClient, rule: RateBand
+) -> None:
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={
+            "reduction_percent": "20.00",
+            "reduced_at": "2026-05-01",
+            "reduction_reason": "Slow June",
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    payload = response.json()
+    assert payload["reduction_percent"] == "20.00"
+    assert payload["effective_nightly"] == "160.00"
+    assert payload["effective_weekly"] is None
+    rule.refresh_from_db()
+    assert rule.reduction_percent == Decimal("20.00")
+    assert rule.reduction_reason == "Slow June"
+
+
+@pytest.mark.django_db
+def test_patch_fixed_pair_reduction_succeeds(api_client: APIClient, rule: RateBand) -> None:
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={
+            "weekly": "1300.00",
+            "reduced_nightly": "150.00",
+            "reduced_weekly": "1000.00",
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    payload = response.json()
+    assert payload["effective_nightly"] == "150.00"
+    assert payload["effective_weekly"] == "1000.00"
+
+
+@pytest.mark.django_db
+def test_reduction_percent_and_fixed_are_mutually_exclusive(
+    api_client: APIClient, rule: RateBand
+) -> None:
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"reduction_percent": "20.00", "reduced_nightly": "150.00"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "reduction_percent" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("pct", ["0.00", "100.00", "-5.00"])
+def test_reduction_percent_must_be_between_0_and_100_exclusive(
+    api_client: APIClient, rule: RateBand, pct: str
+) -> None:
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"reduction_percent": pct},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "reduction_percent" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("amount", ["200.00", "250.00", "0.00", "-10.00"])
+def test_fixed_reduction_must_be_between_zero_and_base(
+    api_client: APIClient, rule: RateBand, amount: str
+) -> None:
+    """Base nightly is 200.00 — the reduced amount must sit strictly inside (0, base)."""
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"reduced_nightly": amount},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "reduced_nightly" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_fixed_reduction_without_matching_base_rejected(
+    api_client: APIClient, rule: RateBand
+) -> None:
+    """`rule` has no weekly price, so a reduced weekly has nothing to reduce."""
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"reduced_weekly": "100.00"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "reduced_weekly" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_poa_band_cannot_carry_reduction(api_client: APIClient, rule: RateBand) -> None:
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"is_poa": True, "nightly": None, "weekly": None, "reduction_percent": "20.00"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "is_poa" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_fixed_reduction_must_cover_every_base_price(api_client: APIClient, rule: RateBand) -> None:
+    """Decision 6b: quoting prefers nightly, so a weekly-only fixed reduction on a
+    two-price band would be a silent no-op — force the pair to be complete."""
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"weekly": "1300.00", "reduced_weekly": "1000.00"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "reduced_nightly" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_patch_lowering_base_below_stored_reduction_is_friendly_400(
+    api_client: APIClient, rule: RateBand
+) -> None:
+    """Review M2: the MatrixCell inline editor PATCHes only `nightly` — the clash
+    with a stored reduced amount must key its error on the field being edited."""
+    rule.reduced_nightly = Decimal("150.00")
+    rule.save()
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"nightly": "100.00"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "nightly" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_removing_last_reduction_value_clears_metadata(
+    api_client: APIClient, rule: RateBand
+) -> None:
+    rule.reduction_percent = Decimal("20.00")
+    rule.reduced_at = date(2026, 5, 1)
+    rule.reduction_reason = "Slow June"
+    rule.save()
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"reduction_percent": None},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    rule.refresh_from_db()
+    assert rule.reduction_percent is None
+    assert rule.reduced_at is None
+    assert rule.reduction_reason == ""
+
+
+@pytest.mark.django_db
+def test_effective_prices_are_read_only(api_client: APIClient, rule: RateBand) -> None:
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"effective_nightly": "1.00"},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["effective_nightly"] == "200.00"
+    rule.refresh_from_db()
+    assert rule.nightly == Decimal("200.00")
+
+
+@pytest.mark.django_db
+def test_fixed_onto_stored_percent_keys_error_on_sent_field(
+    api_client: APIClient, rule: RateBand
+) -> None:
+    """M2 routing: the 400 must land on a field the client actually sent."""
+    rule.reduction_percent = Decimal("20.00")
+    rule.save()
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"reduced_nightly": "150.00"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "reduced_nightly" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_clearing_base_with_stored_reduction_keys_error_on_base_field(
+    api_client: APIClient, rule: RateBand
+) -> None:
+    """Moving a band to weekly-only pricing while a stored nightly reduction
+    exists must complain on `nightly` — the field the editor rendered."""
+    rule.reduced_nightly = Decimal("150.00")
+    rule.save()
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"nightly": None, "weekly": "1300.00"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "nightly" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_metadata_without_reduction_rejected(api_client: APIClient, rule: RateBand) -> None:
+    """Explicitly-sent metadata with no reduction is a 400, not a silent drop."""
+    response = api_client.patch(
+        f"/api/v1/bands/{rule.pk}",
+        data={"reduction_reason": "Owner agreed cut"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert "reduction_reason" in response.json()["field_errors"]

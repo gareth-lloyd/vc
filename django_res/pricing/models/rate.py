@@ -7,9 +7,12 @@ one cell. The old `RateCard` precedence level is gone (no prod villa used it).
 
 from __future__ import annotations
 
+from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import RangeBoundary, RangeOperators
 from django.db import models
 from django.utils import timezone
 
+from core.fields import DateRangeFunc, Int4RangeFunc
 from core.models.base import AuditedModel
 from pricing.enums import PriceBasis
 
@@ -105,6 +108,26 @@ class RatePeriod(AuditedModel):
                 condition=~models.Q(name=""),
                 name="rateperiod_name_not_blank",
             ),
+            # Inclusive '[]' bounds: date_to is the last priced day, so
+            # adjacent periods must not share a boundary date. The pricing
+            # engine iterates half-open [from, to) *nights* and checks each
+            # against inclusive period dates (pricing/services/engine.py) —
+            # the two conventions meet only there; don't change one without
+            # the other.
+            ExclusionConstraint(
+                name="rateperiod_no_overlap",
+                expressions=[
+                    ("plan", RangeOperators.EQUAL),
+                    (
+                        DateRangeFunc(
+                            "date_from",
+                            "date_to",
+                            RangeBoundary(inclusive_lower=True, inclusive_upper=True),
+                        ),
+                        RangeOperators.OVERLAPS,
+                    ),
+                ],
+            ),
         ]
         indexes = [
             models.Index(fields=["plan", "date_from", "date_to"]),
@@ -164,6 +187,22 @@ class RateBand(AuditedModel):
                     | (models.Q(nightly__isnull=True) & models.Q(weekly__isnull=True))
                 ),
                 name="rateband_poa_excludes_price",
+            ),
+            # Inclusive '[]' party bounds: min_party..max_party are both
+            # bookable sizes, so bands on one period must not share a size.
+            ExclusionConstraint(
+                name="rateband_bands_no_overlap",
+                expressions=[
+                    ("period", RangeOperators.EQUAL),
+                    (
+                        Int4RangeFunc(
+                            "min_party",
+                            "max_party",
+                            RangeBoundary(inclusive_lower=True, inclusive_upper=True),
+                        ),
+                        RangeOperators.OVERLAPS,
+                    ),
+                ],
             ),
         ]
         indexes = [

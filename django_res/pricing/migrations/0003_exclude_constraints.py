@@ -1,55 +1,73 @@
-"""Postgres-only EXCLUDE constraints making the rate grid honest.
+"""btree_gist EXCLUDE constraints making the rate grid honest (SMELL-022).
 
 - `rateperiod_no_overlap` — periods are date-disjoint per plan.
 - `rateband_bands_no_overlap` — bands are party-disjoint per period.
 
 Together every `(night, party)` resolves to exactly one cell. Both mix `=`
 and `&&` operators on one gist index, so they need `btree_gist`
-(`core/0002_postgres_extensions`). RunPython-gated on vendor so the
-SQLite-backed unit suite skips them; the check + unique constraints in the
-model `Meta` still cover the basic invariants there.
+(`core/0002_postgres_extensions`).
 
-SQL matches the net live state (`pg_get_constraintdef`) after the historical
-RateRule→RateBand rename.
+Historically these were raw `ALTER TABLE … ADD CONSTRAINT … EXCLUDE` RunPython
+SQL; rewritten as `AddConstraint` so the model `Meta` owns them and the
+autodetector tracks them (SMELL-022). Environments that applied the RunPython
+version keep their `django_migrations` record and identical net schema —
+Postgres normalises both routes to the same `pg_get_constraintdef`.
+
+Operations pasted verbatim from `makemigrations` output — do not hand-edit
+(deconstruct() mismatches leave `makemigrations --check` permanently dirty).
 """
 
-from __future__ import annotations
-
+import core.fields
+import django.contrib.postgres.constraints
+import django.contrib.postgres.fields.ranges
+from django.conf import settings
 from django.db import migrations
-
-_FORWARD = (
-    "ALTER TABLE pricing_rateperiod ADD CONSTRAINT rateperiod_no_overlap "
-    "EXCLUDE USING gist (plan_id WITH =, daterange(date_from, date_to, '[]') WITH &&);",
-    "ALTER TABLE pricing_rateband ADD CONSTRAINT rateband_bands_no_overlap "
-    "EXCLUDE USING gist (period_id WITH =, int4range(min_party, max_party, '[]') WITH &&);",
-)
-
-_REVERSE = (
-    "ALTER TABLE pricing_rateband DROP CONSTRAINT IF EXISTS rateband_bands_no_overlap;",
-    "ALTER TABLE pricing_rateperiod DROP CONSTRAINT IF EXISTS rateperiod_no_overlap;",
-)
-
-
-def _forwards(apps, schema_editor) -> None:  # type: ignore[no-untyped-def]
-    if schema_editor.connection.vendor != "postgresql":
-        return
-    for sql in _FORWARD:
-        schema_editor.execute(sql)
-
-
-def _backwards(apps, schema_editor) -> None:  # type: ignore[no-untyped-def]
-    if schema_editor.connection.vendor != "postgresql":
-        return
-    for sql in _REVERSE:
-        schema_editor.execute(sql)
 
 
 class Migration(migrations.Migration):
     dependencies = [
         ("pricing", "0002_initial"),
         ("core", "0002_postgres_extensions"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
-        migrations.RunPython(_forwards, _backwards, elidable=False),
+        migrations.AddConstraint(
+            model_name="rateband",
+            constraint=django.contrib.postgres.constraints.ExclusionConstraint(
+                expressions=[
+                    ("period", "="),
+                    (
+                        core.fields.Int4RangeFunc(
+                            "min_party",
+                            "max_party",
+                            django.contrib.postgres.fields.ranges.RangeBoundary(
+                                inclusive_lower=True, inclusive_upper=True
+                            ),
+                        ),
+                        "&&",
+                    ),
+                ],
+                name="rateband_bands_no_overlap",
+            ),
+        ),
+        migrations.AddConstraint(
+            model_name="rateperiod",
+            constraint=django.contrib.postgres.constraints.ExclusionConstraint(
+                expressions=[
+                    ("plan", "="),
+                    (
+                        core.fields.DateRangeFunc(
+                            "date_from",
+                            "date_to",
+                            django.contrib.postgres.fields.ranges.RangeBoundary(
+                                inclusive_lower=True, inclusive_upper=True
+                            ),
+                        ),
+                        "&&",
+                    ),
+                ],
+                name="rateperiod_no_overlap",
+            ),
+        ),
     ]

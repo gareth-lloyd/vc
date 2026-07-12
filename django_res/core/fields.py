@@ -1,9 +1,9 @@
-"""Cross-cutting field types.
+"""Cross-cutting field types and range expression helpers.
 
-Includes a CIEmailField that falls back to a case-insensitive lookup on
-SQLite (which has no citext extension). On Postgres, override behaviour is
-to enforce case-insensitivity via the database extension migration in
-core/migrations.
+`CIEmailField` stores emails lowercased; the `citext` extension
+(core/migrations) makes DB-side comparison case-insensitive as a backstop.
+`DateRangeFunc` / `Int4RangeFunc` build the range expressions used by
+ExclusionConstraints.
 """
 
 from __future__ import annotations
@@ -11,9 +11,32 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
+from django.contrib.postgres.fields import DateRangeField, IntegerRangeField
 from django.db import models
 
 logger = structlog.get_logger(__name__)
+
+
+class DateRangeFunc(models.Func):
+    """`daterange(lower, upper, bounds)` expression for ExclusionConstraints.
+
+    Migrations serialize this by import path (``core.fields.DateRangeFunc``),
+    so this module path is permanent once a migration references it.
+    """
+
+    function = "daterange"
+    output_field = DateRangeField()
+
+
+class Int4RangeFunc(models.Func):
+    """`int4range(lower, upper, bounds)` expression for ExclusionConstraints.
+
+    Same serialization caveat as :class:`DateRangeFunc` — the import path is
+    frozen into migrations.
+    """
+
+    function = "int4range"
+    output_field = IntegerRangeField()
 
 
 class CIEmailField(models.EmailField):

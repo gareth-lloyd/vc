@@ -1,3 +1,26 @@
+> **✅ RESOLVED (2026-07-12)** — all four raw-SQL EXCLUDEs (not just
+> pricing's two) ported to `ExclusionConstraint` in model `Meta` (3 TDD
+> units, `7cf5eb0..1793daa`): `rateperiod_no_overlap` /
+> `rateband_bands_no_overlap` on `RatePeriod`/`RateBand` (inclusive `[]`),
+> `booking_no_overlap_blocking` / `bookinghold_no_overlap_live` on
+> `Booking`/`BookingHold` (half-open `[)`, conditions on the six blocking
+> statuses / `released_at IS NULL`). Names, expression order, and predicates
+> byte-identical to the old SQL; both apps' `0003_exclude_constraints.py`
+> rewritten in place with `AddConstraint` ops pasted verbatim from
+> `makemigrations` (applied DBs keep their record + net schema; fresh DBs
+> converge on the same `pg_get_constraintdef`). Range `Func` helpers
+> (`DateRangeFunc`/`Int4RangeFunc`) live in `core/fields.py` — the import
+> path is frozen into migrations. New repo-wide guard
+> `core/tests/test_no_pending_migrations.py` fails the suite on any
+> model/migration drift (the ticket's `[]`-vs-`[)` reconciliation stays a
+> comment + the pre-existing boundary tests). Owned behaviour change: admin
+> saves of overlapping rows now get a form validation error instead of a
+> 500. The booking hold constraint name is shared via
+> `HOLD_OVERLAP_CONSTRAINT_NAME` (Meta + `HoldService` error mapper).
+>
+> _Original ticket preserved below (its migration refs pre-date the
+> 2026-07 flatten: 0015/0016 became `pricing/migrations/0003`)._
+
 # SMELL-022 — The rate-grid overlap EXCLUDE constraints live only in raw migration SQL; the model layer can't see them
 
 - **Severity:** 🟡 Smell

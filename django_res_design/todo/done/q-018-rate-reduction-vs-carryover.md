@@ -1,3 +1,24 @@
+> **✅ RESOLVED (2026-07-12)** — decided **and built on this ticket** (8 TDD
+> units, `047a822..816ad8d` + docs). Problem: a mid-season rate cut overwrote
+> the price, so `RateCarryoverService.materialise()` copied the discounted
+> figure into next year — the failure the loader guarded against with a
+> free-text note. Fix: **base + reduction on `RateBand`** —
+> `nightly`/`weekly` stay the base; a reduction sits alongside
+> (`reduction_percent` XOR fixed `reduced_nightly`/`reduced_weekly`, plus
+> `reduced_at`/`reduction_reason`; five CheckConstraints) and the engine
+> quotes the derived `effective_nightly`/`effective_weekly` through the
+> single derive point (`rule_nightly`). **Carry-over copies the base and
+> drops the reduction** — "discounted 2026 → undiscounted 2027" is pinned;
+> projection and uplift read the base too; `:duplicate` copies reductions
+> verbatim by design. Staff-facing reduced-from surfaces shipped: quote
+> lines carry `reduced_from`, quotes carry `rate_subtotal_before_reduction`
+> / `total_before_reduction` (basis math re-run on the un-reduced base), and
+> the workbench matrix/timeline/probe + quote builder render struck base +
+> effective. Decision row in `design/decisions.md`; `04-pricing.md`
+> rate-model + projection/carry-over sections rewritten as-built.
+>
+> _Investigation banner and original ticket preserved below._
+
 > **🔎 INVESTIGATED + DESIGN DECIDED (2026-07-02)** — full codebase exploration
 > and an adversarial design review done; remaining open questions answered
 > (see below) and the field shape decided. **Implementation not started** —

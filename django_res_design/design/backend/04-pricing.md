@@ -5,6 +5,19 @@
 > [`../data-model-overview.md`](../data-model-overview.md) + the code in
 > `django_res/` + [`../../todo/INDEX.md`](../../todo/INDEX.md).
 
+> ⚠️ **Model naming stale (errata, 2026-07-12, GAP-056 / SMELL-019).** Much of
+> this doc still says `RatePlan → RateCard → RateRule`. That shape was dropped:
+> GAP-056 removed `RateCard` and made `RatePeriod` the date axis; SMELL-019
+> renamed `RateRule` → `RateBand`. The as-built model is
+> **`Property → RatePlan → RatePeriod → RateBand`**. The "Rate model" and
+> "Projected pricing / Carrying a year forward" sections below were rewritten
+> to the as-built shape (incl. the Q-018 reduction fields, 2026-07-12); read
+> stale names elsewhere through that mapping — a "card" is now a period, a
+> "rule" is now a band. See
+> [`todo/done/gap-056-rate-model-restructure-property-period-band.md`](../../todo/done/gap-056-rate-model-restructure-property-period-band.md)
+> and
+> [`todo/done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md`](../../todo/done/smell-019-rate-model-naming-and-ui-residuals-post-gap-056.md).
+
 The pricing app is a pure library: given a property, dates, party size, and currency, return a Quote. It has no knowledge of bookings, enquiries, or payments — those import from here.
 
 ## File layout
@@ -44,24 +57,28 @@ Constraint: `UniqueConstraint(base, quote, as_of)`.
 
 ## Rate model
 
-Three levels: **RatePlan → RateCard → RateRule**. Each level carries the metadata that its scope owns.
+*(Rewritten to the as-built shape, 2026-07-12 — GAP-056 / SMELL-019 / GAP-059 / Q-018.)*
 
-- `RatePlan` — the operator's "Season". Names the period, owns currency and price basis, no prices.
-- `RateCard` — the operator's "rate card". The unit of editing in the admin UI: has name, min/max nights, and is what `Discount` rules attach to. (Changeover is property-level, not card-level — GAP-007.)
-- `RateRule` — the price row. One per (date sub-range × party-size band) inside a card. Occupancy bands are sibling rules sharing date range with different `(min_party, max_party)`.
+Three levels: **RatePlan → RatePeriod → RateBand**. Each level carries the metadata that its scope owns. Every `(night, party)` resolves to exactly **one** cell — disjointness is structural (two `btree_gist` EXCLUDE constraints), not a precedence walk.
 
-This three-level split honours the operator mental model (see `product-design/03-workflows.md` flow 13) without re-introducing the legacy `VillaSeasonDate` table — date ranges live on `RateRule`. Production data confirms this is the right shape: 96% of legacy seasons had a single date range; only 3% of rate rows had occupancy bands, so a separate band table is unjustified.
+- `RatePlan` — the operator's "Season" grouping. Owns currency and price basis, no prices or dates of its own beyond the effective envelope.
+- `RatePeriod` — the **date axis**. An inclusive `date_from..date_to` window, disjoint per plan; owns per-period `min_nights`/`max_nights` overrides and a compulsory operator `name` (GAP-059).
+- `RateBand` — the price row: a party-size band on a period (it inherits the period's dates). Carries the **base** `nightly`/`weekly` prices plus the Q-018 reduction fields (see "Rate reductions" below).
 
-**Why seasons stay per-property.** The mockup-demo (2026-05-29) explored standardising seasons across the portfolio (VC-defined peak/shoulder/low) and splitting Season→Inclusions→Rates into separate layers. We deliberately **keep the per-property shape**: production data confirms it (96% of legacy seasons had a single date range), so there is **no** portfolio-wide standard-season catalogue and **no** first-class `Inclusion` entity fused into the rate layer. **Update (GAP-037, owner Loom 2026-06-17):** the *inclusions axis is now un-bundled from rates* — inclusions are no longer the free-text `RatePlan.inclusion` that drove "how many seasons a villa has". They are promoted to first-class, date-ranged `properties.PropertyService` rows with their own tab (`02-properties.md`), so a villa with flat rates but a summer-only chef is **one `RatePlan` + one service band**, not a duplicate season. Rates, tier labels, and inclusions are three independent overlays on one calendar. This **supersedes** the earlier "inclusions drive how many seasons" framing in `10-decisions.md`. VC-standard reporting *labels* (peak/shoulder/low) remain a separate open follow-up — most likely on `RatePlan`, not `RateCard`.
+The original design had a third `RateCard` precedence level between plan and price row; **GAP-056 dropped it** (no production villa used cross-card precedence, and the flattened date-range-on-the-price-row shape permitted ragged bands — BUG-014). The legacy `VillaSeasonDate` table is still not re-introduced: `RatePeriod` is the honest replacement for the date axis, and occupancy bands are sibling `RateBand` rows per period rather than a separate band table.
 
-**Lifecycle.** Every rate model is `AuditedModel` only. Retiring a plan/card/rule is done by toggling `is_active=False` (already on `RatePlan` / `RateCard`) or by setting `effective_to` to a past date (`RateRule.date_from`/`date_to` already bound applicability). Historical bookings keep their pricing via `Booking.pricing_snapshot`, so a previously-active rate that is now switched off does not retroactively change any booking's recorded price. Hard delete is permitted for "rule entered in error" cases (no FK from `Booking` to `RateRule` — bookings reference only their snapshot).
+**Why seasons stay per-property.** The mockup-demo (2026-05-29) explored standardising seasons across the portfolio (VC-defined peak/shoulder/low) and splitting Season→Inclusions→Rates into separate layers. We deliberately **keep the per-property shape**: production data confirms it (96% of legacy seasons had a single date range), so there is **no** portfolio-wide standard-season catalogue and **no** first-class `Inclusion` entity fused into the rate layer. **Update (GAP-037, owner Loom 2026-06-17):** the *inclusions axis is now un-bundled from rates* — inclusions are no longer the free-text `RatePlan.inclusion` that drove "how many seasons a villa has". They are promoted to first-class, date-ranged `properties.PropertyService` rows with their own tab (`02-properties.md`), so a villa with flat rates but a summer-only chef is **one `RatePlan` + one service band**, not a duplicate season. Rates, tier labels, and inclusions are three independent overlays on one calendar. This **supersedes** the earlier "inclusions drive how many seasons" framing in `10-decisions.md`. VC-standard reporting *labels* (peak/shoulder/low) remain a separate open follow-up — most likely on `RatePlan` (Q-022).
+
+**Lifecycle.** Every rate model is `AuditedModel` only. Retiring a plan/period/band is done by toggling `is_active=False` (on `RatePlan` / `RatePeriod`) or by setting `effective_to` to a past date (the owning `RatePeriod.date_from`/`date_to` already bound a band's applicability). Historical bookings keep their pricing via `Booking.pricing_snapshot`, so a previously-active rate that is now switched off does not retroactively change any booking's recorded price. Hard delete is permitted for "band entered in error" cases (no FK from `Booking` to `RateBand` — bookings reference only their snapshot). Fully-elapsed periods report `is_historical` (derived, `date_to` before today) and are locked read-only in the workbench — dates, name, bands, and deletion all refused.
 
 ### `RatePlan(AuditedModel)`
-Groups a set of cards; replaces legacy `VillaSeason` as the grouping container. Carries no prices.
+Groups a set of periods; replaces legacy `VillaSeason` as the grouping container. Carries no prices.
 - `property` — FK properties.Property PROTECT
 - `name` — CharField (e.g. "Summer 2026", "2026 Agent Net")
 - `currency` — FK Currency PROTECT
 - `price_basis` — TextChoices (`GROSS`, `NET`) — gross is customer-facing, net is agent. **Owner-facing views must show net.** The legacy build leaked **gross** figures onto the owner booking-confirmation (a "big low moment a couple of weeks in", 2026-06-08 demo) — a genuine logic bug, not a config gap. The rebuild closes it: `PricingEngine` derives commission/tax `price_basis`-aware (GROSS carve-out vs NET gross-up — Services steps 8-9, BUG-009) and computes `net_to_owner` explicitly (step 10), and owner-facing serializers read that field directly rather than recomputing. Treat "owner confirmation shows net" as an acceptance criterion, not an implementation detail. **Engine status:** ✅ **implemented (BUG-009, 2026-07-02)** — `PricingEngine._derive_commission_and_tax` branches on the resolved plan's `price_basis` (GROSS carve-out / NET gross-up, Services steps 8-9) and the breakdown snapshots `price_basis` alongside `net_to_owner`.
+- `prices_by_occupancy` — BooleanField(default=False) — False = flat rate (one band per period, party size ignored); True = per-party-size bands. Kills the confusing seeded "1–30 pax" display for flat-rate villas.
+- `fallback_nightly` — Decimal(12, 2, null=True, blank=True) — opt-in no-coverage fallback (GAP-008); NULL = uncovered nights raise `NoRateAvailable`.
 - `effective_from` — DateField
 - `effective_to` — DateField(null=True, blank=True) — open-ended
 - `is_active` — bool
@@ -71,70 +88,121 @@ Groups a set of cards; replaces legacy `VillaSeason` as the grouping container. 
   (`02-properties.md`); the engine now derives the quote "Includes:" line from a
   property's active services whose band overlaps the stay, not from the plan.
 
-### `RateCard(AuditedModel)`
-The operator-facing rate-card unit; the level at which length-of-stay rules and discounts attach. Has no prices of its own — those live on child `RateRule`s. Changeover is **not** a card-level concern — it resolves from the property (`PropertySettings.changeover_day` chain + `ChangeOverRule` windows) only (GAP-007).
+### `RatePeriod(AuditedModel)`
+The date axis: a disjoint, **inclusive** date window on a plan (`date_from == date_to` is a legitimate single-day period). Owns the dates its bands inherit and the level at which length-of-stay rules attach. Changeover is **not** a period-level concern — it resolves from the property (`PropertySettings.changeover_day` + `ChangeOverRule` windows) only (GAP-007).
 - `plan` — FK RatePlan CASCADE
-- `name` — CharField (e.g. "Peak weeks", "Shoulder")
-- `description` — TextField(blank=True)
-- `min_nights` — PositiveSmallInteger(default=1)
+- `name` — CharField — **compulsory** (GAP-059: `rateperiod_name_not_blank` CHECK + backfill migration); an operator label with no grouping semantics (season *tiers* are Q-022). Writers with no meaningful label derive the date-span placeholder via `pricing.services.period_names.derive_period_name`.
+- `date_from` / `date_to` — DateField, inclusive
+- `min_nights` — PositiveSmallInteger(null=True, blank=True) — per-period override of the villa default
 - `max_nights` — PositiveSmallInteger(null=True, blank=True)
-- `sort_order` — int(default=0)
 - `is_active` — bool(default=True)
-- `notes` — TextField(blank=True)
 
-Index: `(plan, sort_order)`.
+Constraints (Postgres):
+- `CheckConstraint(date_from <= date_to)`
+- `CheckConstraint(name != '')` (`rateperiod_name_not_blank`)
+- `EXCLUDE USING gist (plan_id WITH =, daterange(date_from, date_to, '[]') WITH &&)` (`rateperiod_no_overlap`) — periods on one plan are date-disjoint unconditionally. There is no precedence walk: with `RateCard` gone there is nothing to order, and a night resolves to at most one period by construction.
+
+`is_historical` (derived property, `date_to` before today) locks the period read-only in the workbench and API (edit / add-band / delete all refuse).
 
 > **Seasonal minimum-stay drops need no extra field.** Villas commonly require 7
 > nights in high season but drop to 3 (occasionally lower) outside it
 > (2026-06-08 demo). This is expressed as different `min_nights` on the relevant
-> season's cards — the per-card LOS rule already varies by season because cards
-> are season-scoped. The same demo flagged changeover-day + length-of-stay +
+> season's periods — the per-period LOS rule already varies by season because
+> periods are date-scoped. The same demo flagged changeover-day + length-of-stay +
 > rate interplay as the genuinely hard corner of pricing ("quite a lot of
 > complexity… we've run into all those problems and limitations and know how to
-> solve them"); the three-level RatePlan→RateCard→RateRule split plus
+> solve them"); the RatePlan→RatePeriod→RateBand split plus
 > property-level changeover (GAP-007) is the answer, but treat the rates/products
 > walkthrough with the person who loads rates (Ashley) as a required validation
 > pass before locking the pricing UI.
 
-### `RateRule(AuditedModel)`
-The fundamental price row. Replaces `VillaSeasonRate` × `VillaOccupencyPrice` × `VillaSeasonDate`.
-- `card` — FK RateCard CASCADE
-- `date_from` — DateField
-- `date_to` — DateField
+### `RateBand(AuditedModel)`
+The fundamental price row: a party-size band on a period, inheriting the period's dates. Replaces `VillaSeasonRate` × `VillaOccupencyPrice` × `VillaSeasonDate` (the latter via `RatePeriod`). Renamed from `RateRule` by SMELL-019.
+- `period` — FK RatePeriod CASCADE (non-null — a band cannot exist off the date axis)
 - `min_party` — PositiveSmallInteger(default=1)
 - `max_party` — PositiveSmallInteger
-- `nightly` — Decimal(12, 2, null=True, blank=True)
-- `weekly` — Decimal(12, 2, null=True, blank=True)
+- `nightly` — Decimal(12, 2, null=True, blank=True) — the **base** nightly price
+- `weekly` — Decimal(12, 2, null=True, blank=True) — the **base** weekly price
+- `reduction_percent` — Decimal(5, 2, null=True, blank=True) — Q-018, see "Rate reductions" below
+- `reduced_nightly` / `reduced_weekly` — Decimal(12, 2, null=True, blank=True) — Q-018
+- `reduced_at` — DateField(null=True, blank=True) — Q-018
+- `reduction_reason` — CharField(200, blank=True) — Q-018
 - `is_poa` — BooleanField(default=False)
-- `is_locked` — BooleanField(default=False) — preserves the rule against bulk recompute / re-import. Bulk services (any future "regenerate rates for season X" admin action, CSV re-import, FX-driven mass adjustment) skip locked rules. Individual edits via the admin / API are unaffected and clear the lock implicitly only when the operator confirms in the UI. Replaces the legacy `IsManualUpdate` flag from `workflows/04-pricing/rates.md`.
-- `is_approved` — BooleanField(default=True) — gates engine visibility. Staff-created rules default to `True`; bulk-imported rules land as `False` and require an explicit approval pass before `PricingEngine.quote()` will consider them. Replaces the legacy `IsApprove` workflow step.
+- `is_locked` — BooleanField(default=False) — preserves the band against bulk recompute / re-import. Bulk services (any future "regenerate rates for season X" admin action, CSV re-import, FX-driven mass adjustment) skip locked bands. Individual edits via the admin / API are unaffected and clear the lock implicitly only when the operator confirms in the UI. Replaces the legacy `IsManualUpdate` flag from `workflows/04-pricing/rates.md`. (Reductions are individual edits — `is_locked` does not gate them.)
+- `is_approved` — BooleanField(default=True) — gates engine visibility. Staff-created bands default to `True`; bulk-imported bands land as `False` and require an explicit approval pass before `PricingEngine.quote()` will consider them. Replaces the legacy `IsApprove` workflow step.
 - `notes` — TextField(blank=True)
 
 > **No `is_provisional` / `carried_over_from`.** Next-year quoting is solved by
 > *lazy projection* (see "Projected pricing for future years" below), which derives
-> a guide rate at quote time and writes no rows — so there is no per-rule
+> a guide rate at quote time and writes no rows — so there is no per-band
 > "provisional" flag to carry. Earlier drafts added both fields for a
 > materialise-everything carryover design; that was superseded (`10-decisions.md`
 > row 50) before either field was built.
 
 Constraints (Postgres):
-- `CheckConstraint(date_from <= date_to)`
 - `CheckConstraint(min_party <= max_party)`
 - `CheckConstraint(nightly IS NOT NULL OR weekly IS NOT NULL OR is_poa)` — must have a price or be POA
-- `EXCLUDE USING gist (card_id WITH =, daterange(date_from, date_to, '[]') WITH &&, int4range(min_party, max_party, '[]') WITH &&)` (`raterule_no_overlap`) — within-card overlap (inclusive dates × party brackets) is forbidden unconditionally; disjoint occupancy bands on the same dates remain legal siblings. Cross-card overlap is allowed and resolved by **card order** (`sort_order`, then `pk`) at quote time — the first card with a covering rule wins. There is no per-rule precedence field: legacy had no precedence concept to mirror (its overlap winner was an unordered `TOP 1`), and the data-migration loader resolves legacy overlaps at load time (`data_migration/CUTOVER.md` "Rate rule overlap resolution").
+- `CheckConstraint(is_poa = false OR (nightly IS NULL AND weekly IS NULL))` — POA excludes prices
+- `EXCLUDE USING gist (period_id WITH =, int4range(min_party, max_party, '[]') WITH &&)` (`rateband_no_overlap`) — party brackets within a period are disjoint unconditionally; occupancy bands on the same dates are legal siblings, ragged/misaligned bands are structurally impossible (BUG-014).
+- Five Q-018 reduction CHECKs (`__isnull`-explicit predicates, never three-valued-logic accidents): `reduction_percent` strictly `0 < p < 100`; percent excludes fixed amounts; `reduced_nightly` strictly `0 < reduced < nightly` and requires that base; `reduced_weekly` likewise against `weekly`; POA excludes any reduction.
 
-Index: `(card, date_from, date_to)`.
-
-`RateRuleSerializer.validate()` mirrors all of the above (including the
+`RateBandSerializer.validate()` mirrors all of the above (including the
 EXCLUDE overlap, with inclusive-range semantics) so API writes that would
 violate a constraint return `400 field_errors` rather than a 500
 `IntegrityError`. On partial update it merges incoming attrs with the stored
-row; on create, omitted fields fall back to model defaults. Adjacent rules
-must therefore start the day **after** the previous rule's `date_to` — the
-admin UI's "Add rule" / "Save & add another" seeding does this automatically.
+row; on create, omitted fields fall back to model defaults.
+
+#### Rate reductions (Q-018, built 2026-07-12)
+
+A mid-season rate cut is recorded **alongside the base, never over it** — the
+legacy/loader ritual of overwriting the price and leaving a free-text "rate
+reduced by 10% on 10 June" note (purely to remember to revert before copying
+next season) is retired.
+
+- **Shape**: either `reduction_percent` (applies to both prices) **XOR** explicit
+  fixed *new* amounts `reduced_nightly`/`reduced_weekly` — never both kinds;
+  all-null = no reduction. `reduced_at` (FE prefills today) + `reduction_reason`
+  are metadata; sending metadata without a reduction value is a 400, and
+  removing the last reduction value clears both.
+- **A fixed reduction must cover every non-null base** (decision 6b): quoting
+  prefers `nightly`, so a `reduced_weekly` alone on a two-price band would be a
+  silent no-op. Enforced at the serializer (and FE), **deliberately not** a DB
+  constraint.
+- **Effective price is derived, never stored**: `effective_nightly` /
+  `effective_weekly` properties — fixed amount wins, else percent off base
+  quantized to 0.01 `ROUND_HALF_EVEN`; a NULL base stays NULL. The engine's
+  single derive point `rule_nightly` (`pricing/services/rates.py`) reads the
+  effective prices, so every quote path picks up reductions with one change;
+  `rule_base_nightly` supplies the base ("reduced from") figure. Weekly-only
+  bands quantize the effective weekly first, then `/7`.
+- **Display truth is the effective price**: `rebuild_summary` (website min/max)
+  uses effective prices — display shows what the engine would quote. The
+  workbench matrix shows struck-through base + effective + a Reduced badge
+  (inline editors still edit the base); timeline/band detail/probe and the
+  quote builder show effective-first with reduced-from/reason/date.
+- **Engine surfaces**: quote lines carry `reduced_from` (base nightly, null when
+  unchanged); quotes/breakdowns carry `rate_subtotal_before_reduction` +
+  `total_before_reduction` (null when no line was reduced). The before-total
+  **re-runs the commission/tax basis math on the un-reduced base** — on a NET
+  plan the gross-up scales with the base, so "total + subtotal delta" would be
+  wrong; the discount and subtotal-derived extras are reused **as charged**
+  (the figure means "this quote, without the reduction", not "the quote we'd
+  have built"). Stay-options passes `total_before_reduction` through the
+  search/band/week shapes.
+- **Base edits vs stored reductions**: a PATCH dropping `nightly` below a stored
+  `reduced_nightly` (exactly what the workbench inline editors send) is a
+  friendly 400 keyed on the field the client sent, validated on merged
+  stored+incoming values — never an `IntegrityError`.
+- **Cross-year semantics** (pinned by tests): carry-forward materialises next
+  year from the **base** with all reduction columns dropped — "discounted 2026 →
+  undiscounted 2027"; uplift applies to the base; projection prices from the
+  base. `RatePlan:duplicate` is the deliberate contrast: a same-context literal
+  copy tool, it copies reductions **verbatim**.
+- **Audit**: the money/date reduction fields join the `track(RateBand, …)`
+  AuditLog registration; the free-text reason is not tracked.
 
 #### Occupancy bands
-A card with multiple party-size bands is represented as **multiple `RateRule` rows** sharing a `card_id` and date range, with disjoint `(min_party, max_party)` intervals. The `EXCLUDE` constraint permits this because party range is part of the exclusion tuple. No separate band table.
+A period with multiple party-size bands is represented as **multiple `RateBand` rows** sharing a `period_id`, with disjoint `(min_party, max_party)` intervals — `rateband_no_overlap` forbids overlap outright. No separate band table. Flat-rate villas set `RatePlan.prices_by_occupancy=False` (one auto-spanned band per period, party size ignored in the UI).
 
 > **Confirmed high-priority requirement (2026-06-08 demo).** Occupancy-bracket
 > pricing — different nightly/weekly rates for, e.g., 1–8 / 9–12 / 13–16 guests,
@@ -142,7 +210,7 @@ A card with multiple party-size bands is represented as **multiple `RateRule` ro
 > from the legacy build**, where the quote generator "defaults to the higher
 > price" (legacy in fact fell back to base-weekly ÷ 7 on a bracket miss — see
 > `09-departures.md` "Legacy correctness bugs explicitly fixed" #2). The
-> sibling-`RateRule` shape above **is** this feature and it is first-class here,
+> sibling-`RateBand` shape above **is** this feature and it is first-class here,
 > not an edge case. Caveat the production-data finding accordingly: the "only 3%
 > of legacy rate rows had occupancy bands" number (above) measures legacy
 > *under-support*, **not** future demand — the owner explicitly wants occupancy
@@ -151,7 +219,7 @@ A card with multiple party-size bands is represented as **multiple `RateRule` ro
 > rare / unimportant."
 >
 > **The engine resolves one bracket; the *builder* may present several.**
-> `PricingEngine.quote()` resolves the single `RateRule` whose `(min_party,
+> `PricingEngine.quote()` resolves the single `RateBand` whose `(min_party,
 > max_party)` contains the inquiry's party size (and raises `PartyOutOfRange`
 > otherwise) — it does **not** auto-emit a price line per bracket. Showing a
 > client multiple occupancy options is a deliberate **quote-builder** action by
@@ -197,8 +265,8 @@ A card with multiple party-size bands is represented as **multiple `RateRule` ro
 > See
 > [`todo/done/gap-055-occupancy-band-week-picker.md`](../../todo/done/gap-055-occupancy-band-week-picker.md).
 
-#### Disjoint date ranges within a card
-A card whose price applies to multiple non-contiguous date ranges is represented as multiple `RateRule` rows sharing `card_id` and party range, with disjoint date intervals.
+#### Disjoint date ranges
+A price that applies to multiple non-contiguous date ranges is represented as multiple `RatePeriod` rows on the plan (each with its own band set) — the date axis lives on the period, never on the band.
 
 ## Projected pricing for future years
 
@@ -230,13 +298,14 @@ class RateProjectionService:
   guarantees a forward projection and stops a partial same-year plan (or a previously
   materialised carry-forward) from anchoring on itself. `None` for a brand-new villa with no
   prior rates → the engine raises `NoRateAvailable` as usual.
-- **`project`** clones the anchor's active cards and `is_approved=True` rules into **unsaved**
+- **`project`** clones the anchor's active periods and `is_approved=True` bands into **unsaved**
   in-memory instances whose `pk` is the source row's pk, packaged as a `PricingContext` the
   engine prices exactly like a real one. Because the synthesized rows carry the source pks, the
-  quote breakdown (`QuoteLine.rule_id`, `winning_card_id`) points at the real anchor rows for
-  free traceability — and nothing is written. Rule date ranges move via `date_map`, preserving
-  the night count (`map_range`); the plan envelope moves by calendar year. Prices scale by
-  `1 + uplift`.
+  quote breakdown (`QuoteLine.band_id`, `winning_period_id`) points at the real anchor rows for
+  free traceability — and nothing is written. Period date ranges move via `date_map`, preserving
+  the night count (`map_range`); the plan envelope moves by calendar year. **Base** prices scale
+  by `1 + uplift` — projection reads `nightly`/`weekly` only and never a reduction column
+  (Q-018), so a guide year always projects from the un-reduced price.
 - **Verbatim by default** (`uplift = 0`): the guide shows last year's number unchanged. The
   parameter exists so a future `SystemSettings` escalator can feed a standard uplift, but no
   settings plumbing is built — anything non-zero must be an explicit, signed-off figure.
@@ -278,21 +347,30 @@ so a later reader can see the quote was built on a projection and from which yea
 When staff want **editable** rows for a year — an owner returned real numbers, or they want to
 hand-tune the guide before confirming — `pricing.services.RateCarryoverService.materialise(
 property, *, target_year, currency, date_map=…, uplift=…)` clones the anchor year into real
-`RatePlan` / `RateCard` / `RateRule` rows, reusing the same `date_map` + `uplift` as projection
+`RatePlan` / `RatePeriod` / `RateBand` rows, reusing the same `date_map` + `uplift` as projection
 so the materialised rows match the guide a quote would have shown. Date-mapping can land
 adjacent source ranges on top of each other (a leap-year span crossing Feb 29; the weekday map
-shifting neighbours in opposite directions); rules claim date space in ascending source-pk
-order — the same precedence `pick_rule_for_night` gives colliding in-memory projected rules —
-with later rules keeping every remainder segment around earlier claims (a mid-punched rule
-splits into two rows). The materialised plan therefore prices every night exactly as the
-projection would have, and `raterule_no_overlap` can never fire. It is idempotent per
-`(property, currency, target_year)` (a plan already starting in that year is returned
-untouched), records provenance in `RatePlan.notes`, and raises `NoRateAvailable` when there is
-no prior year to carry from. Materialised rows are ordinary editable rules staff then
-confirm/adjust — there is no per-rule "provisional" flag.
+shifting neighbours in opposite directions); periods claim date space in ascending source-pk
+order — via the one canonical grid flattener shared with projection and the legacy loader
+(BUG-016) — with later periods keeping every remainder segment around earlier claims (a
+mid-punched period splits into two rows). The materialised plan therefore prices every night
+exactly as the projection would have, and the `rateperiod_no_overlap` / `rateband_no_overlap`
+EXCLUDEs can never fire. It is idempotent per `(property, currency, target_year)` (a plan
+already starting in that year is returned untouched), records provenance in `RatePlan.notes`,
+and raises `NoRateAvailable` when there is no prior year to carry from. Materialised rows are
+ordinary editable bands staff then confirm/adjust — there is no per-band "provisional" flag.
 
-It is exposed as a `RatePlan` admin action ("Carry forward to next year") and a
-`POST /properties/{id}/seasons:carry-forward` endpoint. It is **deliberately not** a Celery
+**Carry-forward materialises from the base and drops reductions (Q-018, pinned).** The clone
+reads `nightly`/`weekly` only; every reduction column (`reduction_percent`,
+`reduced_nightly`/`reduced_weekly`, `reduced_at`, `reduction_reason`) is dropped, and `uplift`
+applies to the base — so a discounted 2026 carries forward as an **undiscounted** 2027, the
+exact failure the old overwrite-the-price ritual guarded against by hand
+(`todo/done/q-018-rate-reduction-vs-carryover.md`). The deliberate contrast is
+`RatePlan:duplicate`, a same-context literal copy tool that copies reductions **verbatim**.
+
+It is exposed as a `RatePlan` admin action ("Carry forward to next year"), a
+`POST /properties/{id}/rate-plans:carry-forward` endpoint, and the workbench's empty-year
+"Carry rates forward" affordance (GAP-069). It is **deliberately not** a Celery
 beat task — nothing rolls the whole portfolio forward speculatively. This supersedes the manual
 `:COPY` only as the *default*; manual ad-hoc copy stays for arbitrary cloning
 (`workflows/04-pricing/seasons.md`).

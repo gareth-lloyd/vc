@@ -15,7 +15,7 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-08 recount + close-outs to 2026-07-11 incl. GAP-080; BUG-017 deleted outright 2026-07-10): **128 done** (121 resolved + 7 dropped), **40 open**
+Scoreboard (2026-07-08 recount + close-outs to 2026-07-12 incl. Q-018; BUG-017 deleted outright 2026-07-10): **129 done** (122 resolved + 7 dropped), **39 open**
 (incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
@@ -179,7 +179,7 @@ GAP-050; Zoho blocked on external spec, GAP-028)._
 | Id | Title | Status |
 |---|---|---|
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
-| [Q-018](q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ⬜ all questions answered + design decided 2026-07-02 (field shape, hazards, 8-unit build sketch in ticket); build not started |
+| [Q-018](done/q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ✅ resolved (2026-07-12) — built as designed (8 TDD units): base `nightly`/`weekly` + reduction alongside on `RateBand` (`reduction_percent` XOR fixed `reduced_nightly`/`reduced_weekly` + `reduced_at`/`reason`, 5 CHECKs), derived `effective_*` quoted via the single derive point `rule_nightly`; carry-over/projection/uplift read the **base** ("discounted 2026 → undiscounted 2027" pinned), `:duplicate` copies verbatim; staff "reduced from" surfaces (workbench matrix/timeline/probe + quote builder, `reduced_from` + `total_before_reduction` with basis math re-run on the un-reduced base). Decision row in `design/decisions.md`; `04-pricing.md` rewritten as-built |
 | [Q-019](done/q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ✅ superseded (2026-07-02) by **GAP-064/065/066** — legacy-grounded build tickets; the A1/A2 owner-vocabulary decision is carried in their "Owner steer" sections |
 | [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written | ⬜ |
 | [Q-021](done/q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ✅ superseded (2026-07-02) — split into **GAP-067** (feature taxonomy + room→property derivation) and **GAP-068** (group-defaults seeding, buildable now); groups stay |

@@ -1,3 +1,17 @@
+> **✅ RESOLVED (2026-07-12)** — shipped on `feat/gap-078` (units 1–4).
+> Picker: `/properties` list rows carry `region_name`/`country_name`, the
+> quote builder requests `ordering=region__country__name,region__name,name,id`
+> (trailing `id` keeps paging stable), and `QuoteResultsList` renders country
+> sections / region sub-groups with disambiguating headers only (≥2 rule),
+> geo-less rows under "Other locations", group structure always mounted so
+> Load-more never remounts cards. Email + operator preview: lines ordered
+> country → region → name, `line_groups` + "Country · Region" header rows in
+> BOTH `quotation.sent.body.mjml` (comms 0003 re-sync migration) and
+> `quotation_quote.html`; single-group renders header-less.
+> **Deferred:** the weekly-vs-nightly section break — GAP-074/075 are unbuilt
+> and product-gated (Debbie call); a pointer note now sits in GAP-074 so the
+> break lands with the nightly work.
+
 # GAP-078 — Quote property ordering: group by country/region + weekly-vs-nightly section break
 
 - **Severity:** 🟢 Gap (quote builder + guest email presentation). FE-led plus a

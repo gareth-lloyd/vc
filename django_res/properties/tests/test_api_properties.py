@@ -79,6 +79,57 @@ def test_list_orders_collisions_deterministically(
 
 
 @pytest.mark.django_db
+def test_list_includes_region_and_country_names(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """GAP-078: the quote builder groups candidates by geography, so list rows
+    carry the region/country display names, not just the region PK."""
+    api_client.force_login(staff)
+    response = api_client.get("/api/v1/properties")
+    assert response.status_code == 200
+    row = next(r for r in response.json()["results"] if r["id"] == property_.pk)
+    assert row["region_name"] == property_.region.name
+    assert row["country_name"] == property_.region.country.name
+
+
+@pytest.mark.django_db
+def test_list_orders_by_country_then_region_then_name(
+    api_client: APIClient, staff: User, category: PropertyCategory
+) -> None:
+    """GAP-078: `ordering=region__country__name,region__name,name,id` bunches
+    candidates country → region → name for the quote builder picker, with the
+    trailing `id` keeping name collisions page-stable (OrderingFilter REPLACES
+    Meta.ordering, so the tiebreaker must ride the param itself)."""
+    spain = factories.CountryFactory(iso2="ES", iso3="ESP", name="Spain")
+    greece = factories.CountryFactory(iso2="GR", iso3="GRC", name="Greece")
+    andalusia = cast(Region, factories.RegionFactory(country=spain, name="Andalusia"))
+    ibiza = cast(Region, factories.RegionFactory(country=spain, name="Ibiza"))
+    crete = cast(Region, factories.RegionFactory(country=greece, name="Crete"))
+
+    def make(name: str, slug: str, reg: Region) -> Property:
+        return Property.objects.create(
+            name=name, display_name=name, slug=slug, category=category, region=reg
+        )
+
+    zeta = make("GeoSort Zeta", "geosort-zeta", crete)
+    alpha = make("GeoSort Alpha", "geosort-alpha", ibiza)
+    beta = make("GeoSort Beta", "geosort-beta", andalusia)
+    twin_a = make("GeoSort Twin", "geosort-twin-a", ibiza)
+    twin_b = make("GeoSort Twin", "geosort-twin-b", ibiza)
+
+    api_client.force_login(staff)
+    response = api_client.get(
+        "/api/v1/properties",
+        {"q": "GeoSort", "ordering": "region__country__name,region__name,name,id"},
+    )
+    assert response.status_code == 200
+    ids = [row["id"] for row in response.json()["results"]]
+    # Greece < Spain; within Spain, Andalusia < Ibiza; the identically named
+    # twins fall back to ascending id.
+    assert ids == [zeta.id, beta.id, alpha.id, twin_a.id, twin_b.id]
+
+
+@pytest.mark.django_db
 def test_create_property_as_staff(
     api_client: APIClient,
     staff: User,

@@ -23,7 +23,14 @@
               </tr>
             </thead>
             <tbody>
-              {% for line in lines %}
+              {% for group in line_groups %}
+              {# GAP-078: geo section header per (country, region) group — a lone label is noise, so one group renders header-less. #}
+              {% if show_group_headers %}
+              <tr>
+                <td colspan="5" style="font-size:13px;font-weight:bold;color:#222222;padding:14px 6px 4px;border-bottom:1px solid #eeeeee;">{{ group.label }}</td>
+              </tr>
+              {% endif %}
+              {% for line in group.lines %}
               <tr>
                 <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;"><strong>{{ line.property_name }}</strong>{% if line.notes %}<br /><span style="font-size:13px;color:#888888;font-style:italic;">{{ line.notes }}</span>{% endif %}{% if line.inclusions %}<br /><span style="font-size:13px;color:#555555;"><strong>Includes:</strong> {{ line.inclusions }}</span>{% endif %}</td>
                 <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;">{{ line.date_from }} &ndash; {{ line.date_to }}</td>
@@ -31,6 +38,7 @@
                 <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;text-align:right;">{{ line.adults }}+{{ line.children }}</td>
                 <td style="font-size:14px;color:#333333;border-bottom:1px solid #f0f0f0;padding:10px 6px;text-align:right;">{{ line.currency_code }} {{ line.total }}{% if line.discount and line.discount != "0.00" %}<br /><span style="font-size:12px;color:#2e7d32;">incl. {{ line.currency_code }} {{ line.discount }} discount</span>{% endif %}</td>
               </tr>
+              {% endfor %}
               {% endfor %}
             </tbody>
           </table>

@@ -80,7 +80,18 @@ interface PropertyCandidate {
   // Per-row availability for the searched dates (`available_for_range` on the
   // list row); null when the candidate query carried no date range.
   datesAvailable: boolean | null;
+  // GAP-078: geography for the picker's country → region grouping. The
+  // search-options response carries no geo, so these ride the candidate row.
+  regionName: string | null;
+  countryName: string | null;
 }
+
+// GAP-078: bunch candidates country → region → name so the picker's groups
+// arrive page-contiguous. The trailing `id` is load-bearing: OrderingFilter
+// REPLACES Property.Meta.ordering, and without a total order page-number
+// pagination over name collisions can duplicate or skip rows. Keep in sync
+// with PropertyViewSet.ordering_fields — unknown terms are silently dropped.
+const CANDIDATE_ORDERING = "region__country__name,region__name,name,id";
 
 interface SearchOptionsResponse {
   quotes: Array<{
@@ -173,6 +184,7 @@ async function fetchCandidateProperties(
     include_unavailable: filters.date_from && filters.date_to ? "true" : undefined,
     // Omit page=1 so the first request stays clean (mirrors `toQuery`).
     page: page > 1 ? page : undefined,
+    ordering: CANDIDATE_ORDERING,
   };
   const data = await apiGet<unknown>("/properties", { query });
   const result = propertyListResponseSchema.parse(data);
@@ -185,6 +197,8 @@ async function fetchCandidateProperties(
       sleeps: row.capacity?.guests ?? null,
       slug: row.slug ?? null,
       datesAvailable: row.available_for_range ?? null,
+      regionName: row.region_name ?? null,
+      countryName: row.country_name ?? null,
     })),
     hasMore: result.next != null,
     totalMatched: result.count,
@@ -290,6 +304,8 @@ export async function searchQuoteOptions(
       bedrooms: property?.bedrooms ?? null,
       sleeps: property?.sleeps ?? null,
       property_slug: property?.slug ?? null,
+      region_name: property?.regionName ?? null,
+      country_name: property?.countryName ?? null,
       hero_image_url: q.hero_image_url ?? null,
       available: !datesUnavailable && q.available !== false && !q.error_code,
       total: q.total ?? null,

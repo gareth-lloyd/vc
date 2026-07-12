@@ -55,6 +55,10 @@ export const propertyListItemSchema = z.object({
   channel: z.string().nullable().optional(),
   category: z.number().nullable().optional(),
   region: z.number().nullable().optional(),
+  // GAP-078: geo display names for the quote builder's country → region
+  // grouping (list serializer only — the detail endpoint may omit them).
+  region_name: z.string().nullable().optional(),
+  country_name: z.string().nullable().optional(),
   capacity: propertyListCapacitySchema.nullable().optional(),
   // Whether the row is free across the request's date_from..date_to window;
   // null when the request carried no date range (availability undefined).

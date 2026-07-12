@@ -174,6 +174,11 @@ export const quoteOptionSchema = z.object({
   bedrooms: z.number().nullable().optional(),
   sleeps: z.number().nullable().optional(),
   property_slug: z.string().nullable().optional(),
+  // GAP-078: geography for the picker's country → region grouping, plumbed
+  // from the candidate row (the pricing response carries no geo). Nullable +
+  // optional (NOT defaulted) so hand-built fixtures stay valid inputs.
+  region_name: z.string().nullable().optional(),
+  country_name: z.string().nullable().optional(),
   hero_image_url: z.string().nullable().optional(),
   available: z.boolean(),
   total: z.union([z.string(), z.number()]).nullable().optional(),

@@ -55,6 +55,13 @@ class PricingConfig(AppConfig):
                 "max_party",
                 "nightly",
                 "weekly",
+                # Q-018: reductions are operator price edits — same trail as the
+                # base prices. reduction_reason is free text, deliberately not
+                # tracked (the notes rule above).
+                "reduction_percent",
+                "reduced_nightly",
+                "reduced_weekly",
+                "reduced_at",
                 "is_poa",
                 "is_locked",
                 "is_approved",

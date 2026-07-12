@@ -7,6 +7,8 @@ one cell. The old `RateCard` precedence level is gone (no prod villa used it).
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.db import models
 from django.utils import timezone
 
@@ -126,7 +128,15 @@ class RatePeriod(AuditedModel):
 
 
 class RateBand(AuditedModel):
-    """The fundamental price row: a party-size band on a period (inherits its dates)."""
+    """The fundamental price row: a party-size band on a period (inherits its dates).
+
+    ``nightly``/``weekly`` are the **base** prices — what carry-over, projection
+    and next-year copies read. A mid-season cut is recorded *alongside* the base
+    (Q-018): either ``reduction_percent`` (applies to both prices) or explicit
+    ``reduced_nightly``/``reduced_weekly`` new amounts, never both. Quoting reads
+    the derived ``effective_nightly``/``effective_weekly``; nothing effective is
+    stored, so a discounted year can never leak into the next.
+    """
 
     period = models.ForeignKey(
         RatePeriod,
@@ -137,6 +147,11 @@ class RateBand(AuditedModel):
     max_party = models.PositiveSmallIntegerField()
     nightly = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     weekly = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    reduction_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    reduced_nightly = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    reduced_weekly = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    reduced_at = models.DateField(null=True, blank=True)
+    reduction_reason = models.CharField(max_length=200, blank=True)
     is_poa = models.BooleanField(default=False)
     is_locked = models.BooleanField(default=False)
     is_approved = models.BooleanField(default=True)
@@ -165,6 +180,60 @@ class RateBand(AuditedModel):
                 ),
                 name="rateband_poa_excludes_price",
             ),
+            # Q-018 reduction legality. NULL rows pass via explicit __isnull
+            # predicates, never three-valued-logic accident.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(reduction_percent__isnull=True)
+                    | (models.Q(reduction_percent__gt=0) & models.Q(reduction_percent__lt=100))
+                ),
+                name="rateband_reduction_percent_range",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(reduction_percent__isnull=True)
+                    | (
+                        models.Q(reduced_nightly__isnull=True)
+                        & models.Q(reduced_weekly__isnull=True)
+                    )
+                ),
+                name="rateband_reduction_percent_excludes_fixed",
+            ),
+            # Fixed amounts are strictly 0 < reduced < base: zero/negative would
+            # smuggle in the free stay the percent range (<100) forbids.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(reduced_nightly__isnull=True)
+                    | (
+                        models.Q(nightly__isnull=False)
+                        & models.Q(reduced_nightly__gt=0)
+                        & models.Q(reduced_nightly__lt=models.F("nightly"))
+                    )
+                ),
+                name="rateband_reduced_nightly_lt_base",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(reduced_weekly__isnull=True)
+                    | (
+                        models.Q(weekly__isnull=False)
+                        & models.Q(reduced_weekly__gt=0)
+                        & models.Q(reduced_weekly__lt=models.F("weekly"))
+                    )
+                ),
+                name="rateband_reduced_weekly_lt_base",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_poa=False)
+                    | (
+                        models.Q(reduction_percent__isnull=True)
+                        & models.Q(reduced_nightly__isnull=True)
+                        & models.Q(reduced_weekly__isnull=True)
+                    )
+                ),
+                name="rateband_poa_excludes_reduction",
+            ),
         ]
         indexes = [
             models.Index(fields=["period", "min_party"]),
@@ -172,3 +241,35 @@ class RateBand(AuditedModel):
 
     def __str__(self) -> str:
         return f"{self.period_id} {self.min_party}-{self.max_party}"
+
+    @property
+    def has_reduction(self) -> bool:
+        return (
+            self.reduction_percent is not None
+            or self.reduced_nightly is not None
+            or self.reduced_weekly is not None
+        )
+
+    def _effective(self, base: Decimal | None, fixed: Decimal | None) -> Decimal | None:
+        """Derive one effective price: fixed amount wins, else percent off base.
+
+        Quantized to 0.01 with the engine's rounding (ROUND_HALF_EVEN, the
+        Decimal default) so a quoted price never differs from a displayed one.
+        A NULL base stays NULL — a reduction never invents a price.
+        """
+        if base is None:
+            return None
+        if fixed is not None:
+            return fixed
+        if self.reduction_percent is not None:
+            factor = (Decimal("100") - self.reduction_percent) / Decimal("100")
+            return (base * factor).quantize(Decimal("0.01"))
+        return base
+
+    @property
+    def effective_nightly(self) -> Decimal | None:
+        return self._effective(self.nightly, self.reduced_nightly)
+
+    @property
+    def effective_weekly(self) -> Decimal | None:
+        return self._effective(self.weekly, self.reduced_weekly)

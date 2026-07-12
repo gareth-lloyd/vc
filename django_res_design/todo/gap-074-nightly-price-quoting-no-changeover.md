@@ -31,6 +31,15 @@
     `QuoteResultLine.tsx`, `StayOptionPicker.tsx` (week strip).
   - `django_res/comms/templates/comms/quotation.sent.body.mjml` — per-line row.
 
+> **📌 Carried over from GAP-078 (resolved 2026-07-12):** the quote email's
+> **weekly-vs-nightly section break** lands with this ticket. GAP-078 shipped
+> the country/region grouping (`line_groups` + `show_group_headers` in
+> `build_quotation_context`, group loops in BOTH `quotation.sent.body.mjml`
+> and `quotation_quote.html`) — when nightly lines exist, partition within or
+> above those geo groups and omit any empty section. Remember: every mjml body
+> edit needs a companion `comms/000N_seed_*` migration, and MJML compilation
+> HTML-escapes `>` inside Django tags (compute booleans in Python).
+
 ## Problem
 
 For a `changeover_day = any` property, the builder can only quote the exact

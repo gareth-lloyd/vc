@@ -624,3 +624,42 @@ def test_projected_quote_inherits_net_basis_from_anchor(
     assert quote.tax == Decimal("183.01")
     assert quote.total == Decimal("1830.07")
     assert quote.net_to_owner == Decimal("1400.00")
+
+
+# --- Q-018: before-reduction total re-runs the basis math ---------------------
+
+
+def test_net_total_before_reduction_reruns_gross_up(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """Under NET the commission/tax gross-up scales with the base, so the
+    before-total must re-derive from the un-reduced base — adding the subtotal
+    delta to the reduced total would understate it (1722.54, not 1830.07)."""
+    _finance(property_)  # 15% commission, 10% tax
+    _set_basis(rule.period.plan, PriceBasis.NET)
+    rule.reduction_percent = Decimal("25.00")
+    rule.save()
+
+    quote = _quote(property_, gbp)
+
+    # Reduced: base 1050 -> commission 185.29, tax 137.25.
+    assert quote.rate_subtotal == Decimal("1050.00")
+    assert quote.total == Decimal("1372.54")
+    # Before: base 1400 -> commission 247.06, tax 183.01 (re-derived).
+    assert quote.total_before_reduction == Decimal("1830.07")
+    assert quote.rate_subtotal_before_reduction == Decimal("1400.00")
+
+
+def test_gross_total_before_reduction_is_unreduced_base(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """GROSS: the guest pays the base — before-total is simply the un-reduced
+    subtotal (commission/tax are carved out, not added)."""
+    _finance(property_)
+    rule.reduction_percent = Decimal("25.00")
+    rule.save()
+
+    quote = _quote(property_, gbp)
+
+    assert quote.total == Decimal("1050.00")
+    assert quote.total_before_reduction == Decimal("1400.00")

@@ -8,7 +8,6 @@ the pricing signal handlers via `transaction.on_commit`.
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
 from typing import Any
 
 from celery import shared_task
@@ -41,8 +40,10 @@ def rebuild_summary(property_id: int, currency_id: int) -> VillaPricingSummary:
         is_approved=True,
     )
 
-    nightlies = [Decimal(r.nightly) for r in rules if r.nightly is not None]
-    weeklies = [Decimal(r.weekly) for r in rules if r.weekly is not None]
+    # Q-018: display truth is the effective (reduced) price — what the engine
+    # actually quotes — never the stored base.
+    nightlies = [r.effective_nightly for r in rules if r.effective_nightly is not None]
+    weeklies = [r.effective_weekly for r in rules if r.effective_weekly is not None]
     parties_min = [int(r.min_party) for r in rules]
     parties_max = [int(r.max_party) for r in rules]
 

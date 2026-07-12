@@ -38,6 +38,7 @@ from pricing.services.rates import (
     Picked,
     nights,
     pick_band_for_night,
+    rule_base_nightly,
     rule_nightly,
 )
 from properties.enums import CommissionCalcType
@@ -198,12 +199,17 @@ class PricingEngine:
                     f"RateBand {rule.pk} is POA — cannot generate automatic quote"
                 )
             nightly = rule_nightly(rule)
+            # Q-018: carry the base price when a reduction changed this night
+            # (equal base/effective — e.g. a sub-cent percent — stays None so
+            # the FE never renders a "reduced from" hint that shows no change).
+            base_nightly = rule_base_nightly(rule)
             lines.append(
                 QuoteLine(
                     date=night,
                     band_id=rule.pk,
                     period_id=rule.period_id,
                     nightly=nightly,
+                    reduced_from=base_nightly if base_nightly != nightly else None,
                 )
             )
             chosen_periods[period.pk] = period
@@ -292,19 +298,42 @@ class PricingEngine:
         # commission + tax). `plan.price_basis` is the sole pricing authority.
         # The base is the COMMISSIONABLE base (GAP-076); non-commissionable
         # extras are added back into the guest total after derivation.
-        base = rate_subtotal + extras_commissionable_total - discount_total
-        commission, tax = cls._derive_commission_and_tax(
-            basis=plan.price_basis,
-            base=base,
-            commission_policy=cls._resolve_commission_policy(property, as_of),
-            tax_rate=cls._resolve_tax_policy(property, as_of),
-        )
-        if plan.price_basis == PriceBasis.NET:
-            total = (base + commission + tax + extras_non_commissionable_total).quantize(
-                Decimal("0.01")
+        commission_policy = cls._resolve_commission_policy(property, as_of)
+        tax_rate = cls._resolve_tax_policy(property, as_of)
+
+        def assemble_total(rate_sub: Decimal) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+            # The ONE total formula (base, commission, tax, guest total) —
+            # shared by the charged and before-reduction figures so a future
+            # change to the assembly cannot make them drift (Q-018).
+            b = rate_sub + extras_commissionable_total - discount_total
+            comm, tx = cls._derive_commission_and_tax(
+                basis=plan.price_basis,
+                base=b,
+                commission_policy=commission_policy,
+                tax_rate=tax_rate,
             )
-        else:
-            total = (base + extras_non_commissionable_total).quantize(Decimal("0.01"))
+            if plan.price_basis == PriceBasis.NET:
+                tot = (b + comm + tx + extras_non_commissionable_total).quantize(Decimal("0.01"))
+            else:
+                tot = (b + extras_non_commissionable_total).quantize(Decimal("0.01"))
+            return b, comm, tx, tot
+
+        base, commission, tax, total = assemble_total(rate_subtotal)
+
+        # Q-018: what the stay would have cost un-reduced. The basis math is
+        # RE-RUN on the un-reduced base — under NET the commission/tax gross-up
+        # scales with the base, so before-total ≠ total + subtotal delta. The
+        # discount and any subtotal-derived extra amounts are reused as-charged
+        # (both were computed off the reduced subtotal — the figure answers
+        # "this quote, without the reduction", not "the quote we'd have built").
+        rate_subtotal_before_reduction: Decimal | None = None
+        total_before_reduction: Decimal | None = None
+        if any(ln.reduced_from is not None for ln in lines):
+            rate_subtotal_before_reduction = sum(
+                ((ln.reduced_from if ln.reduced_from is not None else ln.nightly) for ln in lines),
+                Decimal("0"),
+            ).quantize(Decimal("0.01"))
+            _, _, _, total_before_reduction = assemble_total(rate_subtotal_before_reduction)
         # Owner-net is captured at quote-time so downstream consumers (the
         # booking detail serializer, owner statements) never have to re-derive
         # it from the breakdown. See `09-departures.md`: serializers should
@@ -328,6 +357,14 @@ class PricingEngine:
             # it alongside `price_basis` — commission ≠ base x pct under NET.
             "commission_base": str(base.quantize(Decimal("0.01"))),
             "extras_non_commissionable_total": str(extras_non_commissionable_total),
+            "rate_subtotal_before_reduction": (
+                str(rate_subtotal_before_reduction)
+                if rate_subtotal_before_reduction is not None
+                else None
+            ),
+            "total_before_reduction": (
+                str(total_before_reduction) if total_before_reduction is not None else None
+            ),
             "discount": str(discount_total),
             "commission": str(commission),
             "tax": str(tax),
@@ -389,6 +426,8 @@ class PricingEngine:
             tax=tax,
             total=total,
             net_to_owner=net_to_owner,
+            rate_subtotal_before_reduction=rate_subtotal_before_reduction,
+            total_before_reduction=total_before_reduction,
             changeover_shifted_from=changeover_shifted_from,
             is_projected=context.is_projected,
             breakdown=breakdown,

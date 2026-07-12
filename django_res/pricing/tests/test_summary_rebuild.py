@@ -87,3 +87,18 @@ def test_rebuild_summary_excludes_deactivated_period_rules(
     # Only the live period's 200.00 prices — the withdrawn 50.00 is excluded.
     assert summary.min_nightly == Decimal("200.00")
     assert summary.max_nightly == Decimal("200.00")
+
+
+def test_rebuild_summary_uses_effective_prices(rule: RateBand) -> None:
+    """Q-018: the display min/max mirrors what the engine quotes — the
+    effective (reduced) prices, not the stored base."""
+    plan = rule.period.plan
+    rule.reduction_percent = Decimal("20.00")
+    rule.save()
+
+    summary = rebuild_summary(property_id=plan.property_id, currency_id=plan.currency_id)
+
+    assert summary.min_nightly == Decimal("200.00")  # 250 - 20%
+    assert summary.max_nightly == Decimal("200.00")
+    assert summary.min_weekly == Decimal("1200.00")  # 1500 - 20%
+    assert summary.max_weekly == Decimal("1200.00")

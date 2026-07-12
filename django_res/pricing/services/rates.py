@@ -21,11 +21,25 @@ def nights(date_from: date, date_to: date) -> list[date]:
 
 
 def rule_nightly(rule: RateBand) -> Decimal:
-    """Return the effective nightly rate for a rule, deriving from weekly if needed."""
+    """Return the effective nightly rate for a rule, deriving from weekly if needed.
+
+    Q-018: reads the band's *effective* prices, so a recorded reduction flows
+    into every quote path through this single derive point. Weekly-only bands
+    quantize the effective weekly first, then the /7 division — pinned by test.
+    """
+    if rule.effective_nightly is not None:
+        return rule.effective_nightly
+    if rule.effective_weekly is not None:
+        return (rule.effective_weekly / Decimal(7)).quantize(Decimal("0.01"))
+    raise NoRateAvailable(f"RateBand {rule.pk} is POA and cannot be priced")
+
+
+def rule_base_nightly(rule: RateBand) -> Decimal:
+    """The band's base (un-reduced) nightly — the "reduced from" figure."""
     if rule.nightly is not None:
-        return Decimal(rule.nightly)
+        return rule.nightly
     if rule.weekly is not None:
-        return (Decimal(rule.weekly) / Decimal(7)).quantize(Decimal("0.01"))
+        return (rule.weekly / Decimal(7)).quantize(Decimal("0.01"))
     raise NoRateAvailable(f"RateBand {rule.pk} is POA and cannot be priced")
 
 

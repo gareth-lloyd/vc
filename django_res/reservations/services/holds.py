@@ -27,7 +27,7 @@ from django.utils import timezone
 
 from core.exceptions import HoldUnavailable
 from reservations.enums import BookingHoldReason
-from reservations.models.booking import BookingHold
+from reservations.models.booking import HOLD_OVERLAP_CONSTRAINT_NAME, BookingHold
 
 if TYPE_CHECKING:
     from datetime import date as date_type
@@ -62,7 +62,7 @@ def _translate_overlap_violation(property: Any, date_from: date_type, date_to: d
     try:
         yield
     except IntegrityError as exc:
-        if "bookinghold_no_overlap_live" not in str(exc):
+        if HOLD_OVERLAP_CONSTRAINT_NAME not in str(exc):
             raise
         raise HoldUnavailable(
             f"{property} is unavailable for {date_from}..{date_to} — "

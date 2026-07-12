@@ -69,9 +69,9 @@ def test_raterule_poa_cannot_coexist_with_weekly() -> None:
 
 
 @pytest.mark.django_db
-def test_raterule_bands_no_overlap_same_period() -> None:
+def test_rateband_bands_no_overlap_same_period() -> None:
     """Two bands on one period with overlapping party ranges are forbidden
-    (raterule_bands_no_overlap)."""
+    (rateband_bands_no_overlap)."""
     period = _period()
     RateBand.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("100"))
     with pytest.raises(IntegrityError), transaction.atomic():
@@ -79,7 +79,7 @@ def test_raterule_bands_no_overlap_same_period() -> None:
 
 
 @pytest.mark.django_db
-def test_raterule_bands_no_overlap_is_inclusive_on_party() -> None:
+def test_rateband_bands_no_overlap_is_inclusive_on_party() -> None:
     """Party ranges are inclusive: a band starting on another's max overlaps."""
     period = _period()
     RateBand.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("100"))

@@ -552,7 +552,7 @@ class RateBandLoader(BaseLoader):
 
         Inserting into an empty legacy footprint means re-runs can't collide
         with last run's spans under the `rateperiod_no_overlap` /
-        `raterule_bands_no_overlap` EXCLUDE constraints (in-place upserts could:
+        `rateband_bands_no_overlap` EXCLUDE constraints (in-place upserts could:
         a row expanding into — or swapping spans with — a sibling's old range
         would trip mid-run). `flatten_rate_grid` resolves each plan's
         pre-normalised bands into a (date x party)-disjoint grid (BUG-016) —

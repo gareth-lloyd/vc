@@ -426,7 +426,7 @@ Legacy had no rate-precedence concept: its per-night lookup was an unordered
 unordered `DISTINCT` (`ResService.cs`), so the winner among overlapping
 `VillaSeasonRate` rows was formally arbitrary (de-facto lowest ID via the
 clustered index). The new schema forbids within-plan overlap outright
-(the `rateperiod_no_overlap` / `raterule_bands_no_overlap` EXCLUDE
+(the `rateperiod_no_overlap` / `rateband_bands_no_overlap` EXCLUDE
 constraints), so `RateBandLoader` resolves overlaps at load time in two
 stages (BUG-016):
 

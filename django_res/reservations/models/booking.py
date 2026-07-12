@@ -12,11 +12,14 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
+from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import RangeBoundary, RangeOperators
 from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition, OverlappingBooking
+from core.fields import DateRangeFunc
 from core.locking import refresh_locked
 from core.models.base import AuditedModel, TimestampedModel
 from core.refs import booking_reference, generate_reference
@@ -40,6 +43,10 @@ if TYPE_CHECKING:
 
 
 _OVERLAP_CONSTRAINT_NAME = "booking_no_overlap_blocking"
+
+# Shared with HoldService._translate_overlap_violation, which maps this
+# constraint's IntegrityError to HoldUnavailable.
+HOLD_OVERLAP_CONSTRAINT_NAME = "bookinghold_no_overlap_live"
 
 
 def _is_overlap_violation(exc: IntegrityError) -> bool:
@@ -210,6 +217,24 @@ class Booking(AuditedModel):
             models.UniqueConstraint(
                 fields=["quotation_line"],
                 name="booking_one_per_quotation_line",
+            ),
+            # Half-open '[)' bounds: date_to is checkout day, so a same-day
+            # back-to-back turnover is legal. Only blocking-state bookings
+            # hard-block dates at the DB layer (DRAFT rows still *occupy* the
+            # calendar — see `occupying()`); editing
+            # OVERLAP_BLOCKING_BOOKING_STATUSES will (correctly) surface as a
+            # constraint diff in makemigrations against the migration's frozen
+            # literals. `_is_overlap_violation` keys on this constraint's name.
+            ExclusionConstraint(
+                name=_OVERLAP_CONSTRAINT_NAME,
+                expressions=[
+                    ("property", RangeOperators.EQUAL),
+                    (
+                        DateRangeFunc("date_from", "date_to", RangeBoundary()),
+                        RangeOperators.OVERLAPS,
+                    ),
+                ],
+                condition=Q(status__in=OVERLAP_BLOCKING_BOOKING_STATUSES),
             ),
         ]
         ordering = ["-created_at"]
@@ -795,6 +820,22 @@ class BookingHold(AuditedModel):
                     )
                 ),
                 name="bookinghold_has_source_or_blocking_reason",
+            ),
+            # Half-open '[)' bounds (same-day turnover legal). Live = not yet
+            # released; expiry is delegated to the application sweeper, which
+            # sets released_at (Postgres rejects non-IMMUTABLE now() in an
+            # index predicate). HoldService maps this constraint's name to
+            # HoldUnavailable.
+            ExclusionConstraint(
+                name=HOLD_OVERLAP_CONSTRAINT_NAME,
+                expressions=[
+                    ("property", RangeOperators.EQUAL),
+                    (
+                        DateRangeFunc("date_from", "date_to", RangeBoundary()),
+                        RangeOperators.OVERLAPS,
+                    ),
+                ],
+                condition=Q(released_at__isnull=True),
             ),
         ]
         ordering = ["-created_at"]

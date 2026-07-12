@@ -269,6 +269,9 @@
     "results": {
       "title": "Results",
       "total": "Total",
+      "groups": {
+        "other": "Other locations"
+      },
       "thumbnail_alt": "{{name}} thumbnail",
       "add": "Add to quote",
       "add_count_one": "Add {{count}} week",

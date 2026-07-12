@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   currencyAdornment,
   formatMoney,
+  formatMoneyWithCode,
   isNonNegativeMoney,
   isPositiveMoney,
   parseMoney,
@@ -114,5 +115,32 @@ describe("formatMoney", () => {
   it("returns dash when currency code is missing", () => {
     expect(formatMoney(10, "")).toBe("—");
     expect(formatMoney(10, null)).toBe("—");
+  });
+});
+
+describe("formatMoneyWithCode", () => {
+  it("appends the ISO code after symbol-formatted amounts", () => {
+    expect(formatMoneyWithCode(1500, "GBP")).toBe("£1,500.00 GBP");
+    expect(formatMoneyWithCode("1234.5", "EUR")).toBe("€1,234.50 EUR");
+    expect(formatMoneyWithCode("99", "USD")).toBe("$99.00 USD");
+  });
+
+  it("is case-insensitive on the code", () => {
+    expect(formatMoneyWithCode(1500, "gbp")).toBe("£1,500.00 GBP");
+  });
+
+  it("does not duplicate a code whose symbol already IS the code (CHF)", () => {
+    expect(formatMoneyWithCode(1500, "CHF")).toBe("CHF 1,500.00");
+  });
+
+  it("leaves unmapped currencies unchanged — the code already trails", () => {
+    expect(formatMoneyWithCode(4800, "AED")).toBe("4,800.00 AED");
+  });
+
+  it("never appends a code to the dash fallback", () => {
+    expect(formatMoneyWithCode(null, "GBP")).toBe("—");
+    expect(formatMoneyWithCode("not-a-number", "GBP")).toBe("—");
+    expect(formatMoneyWithCode(10, null)).toBe("—");
+    expect(formatMoneyWithCode(10, "")).toBe("—");
   });
 });

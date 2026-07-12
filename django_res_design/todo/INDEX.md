@@ -15,7 +15,7 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-08 recount + GAP-076/077/079 close-outs to 2026-07-10; BUG-017 deleted outright 2026-07-10; GAP-078 resolved 2026-07-12): **128 done** (121 resolved + 7 dropped), **40 open**
+Scoreboard (2026-07-08 recount + close-outs to 2026-07-12 incl. GAP-080 and GAP-078; BUG-017 deleted outright 2026-07-10): **129 done** (122 resolved + 7 dropped), **39 open**
 (incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
@@ -172,7 +172,7 @@ GAP-050; Zoho blocked on external spec, GAP-028)._
 | [GAP-077](done/gap-077-deposit-balance-gross-net-split.md) | Gross/net/commission split per payment component (deposit & balance), not just whole-booking | ✅ resolved (2026-07-10) — derive-on-read `payment_component_splits` (pro-rata by scheduled gross, residual to BALANCE, tax surfaced per component, GAP-076 charge overlay riding along), staff detail `payment_splits` + `get_net_to_owner` consolidation, owner detail-only behind `view_full_money`, FE FinanceTab split table + owner-portal cards (en+el); INTERIM deferred (allocator already N-component); track semantics set-equality-pinned in payments/tests |
 | [GAP-078](done/gap-078-quote-property-ordering-country-region.md) | Quote property ordering — group picker + email by country/region + weekly-vs-nightly section break | ✅ resolved (2026-07-12) — picker grouped country → region (backend ordering + geo names on list rows), email + preview grouped with «Country · Region» headers (comms 0003 re-sync); weekly-vs-nightly break deferred to GAP-074/075 (pointer added there) |
 | [GAP-079](done/gap-079-commission-after-local-vat.md) | Commission-after-local-VAT — verify GROSS branch matches real villa numbers + per-villa policy | ✅ resolved (2026-07-09) — verify-only: the GROSS branch already takes VAT off the gross then commission off the remainder (legacy `RatesModel.Calculate()` parity), **no per-villa toggle** (ordering is a function of `price_basis`; decision row in `design/decisions.md`); constructed 13%/20%/10,000 worked example pinned engine-side + through the 30/70 deposit/balance split (re-reconcile when Nick supplies real villa numbers); extras-taxability handed to GAP-076 via a coordination note |
-| [GAP-080](gap-080-currency-obvious-in-quote-builder.md) | Make currency unmistakable in the quote **builder** UI (email already shows codes) | ⬜ from 2026-07-08 Nick call; FE-only; builder `formatMoney` is symbol-only for £/€/$ |
+| [GAP-080](done/gap-080-currency-obvious-in-quote-builder.md) | Make currency unmistakable in the quote **builder** UI (email already shows codes) | ✅ resolved (2026-07-11) — `formatMoneyWithCode` renders the ISO code explicitly ("£4,500.00 GBP") across all 8 quotations money-display sites (builder + saved-quote detail + convert dialog); shared `formatMoney` untouched; grouping-by-currency deferred to GAP-078 |
 
 ## Open product questions
 

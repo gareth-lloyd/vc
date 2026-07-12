@@ -7,7 +7,7 @@ import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatMoney } from "@/lib/format/money";
+import { formatMoneyWithCode } from "@/lib/format/money";
 import { formatDate } from "@/lib/format/date";
 import { lineEffectiveTotal, stagedLineErrors } from "../lineTotals";
 import type { StagedLine } from "../schemas";
@@ -85,7 +85,7 @@ export function QuoteShortlistLine({ line, expanded, onToggle, onUpdate, onRemov
               ·{" "}
               <span className="text-foreground font-medium">
                 {/* Each line formats in its own priced currency (GAP-014). */}
-                {effective == null ? "—" : formatMoney(effective, line.currency)}
+                {effective == null ? "—" : formatMoneyWithCode(effective, line.currency)}
               </span>
             </p>
           )}
@@ -118,7 +118,7 @@ export function QuoteShortlistLine({ line, expanded, onToggle, onUpdate, onRemov
                   <span className="text-foreground text-xs font-medium">
                     {b.is_poa || b.total == null
                       ? t("builder.results.bands.poa")
-                      : formatMoney(b.total, b.currency)}
+                      : formatMoneyWithCode(b.total, b.currency)}
                   </span>
                 </CheckboxLabel>
               ))}

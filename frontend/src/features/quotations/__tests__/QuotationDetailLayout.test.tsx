@@ -112,7 +112,7 @@ describe("QuotationDetailLayout", () => {
     setup();
     expect(await screen.findByText("#33")).toBeInTheDocument();
     expect(screen.getByText("#12")).toBeInTheDocument();
-    expect(screen.getByText(/€1,234\.50/)).toBeInTheDocument();
+    expect(screen.getByText(/€1,234\.50 EUR/)).toBeInTheDocument();
     // The arrival was shifted to the changeover day — the detail line table
     // surfaces the same "we moved your dates" note as the builder/convert.
     expect(
@@ -133,7 +133,7 @@ describe("QuotationDetailLayout", () => {
     setup();
     const discountedCard = (await screen.findByText("#34")).closest("li")!;
     expect(within(discountedCard).getByText(/discount/i)).toBeInTheDocument();
-    expect(within(discountedCard).getByText(/€150\.00/)).toBeInTheDocument();
+    expect(within(discountedCard).getByText(/€150\.00 EUR/)).toBeInTheDocument();
     const zeroCard = screen.getByText("#33").closest("li")!;
     expect(within(zeroCard).queryByText(/discount/i)).not.toBeInTheDocument();
   });
@@ -148,8 +148,8 @@ describe("QuotationDetailLayout", () => {
       ]),
     );
     setup();
-    expect(await screen.findByText(/€1,234\.50/)).toBeInTheDocument();
-    expect(screen.getByText(/£980\.00/)).toBeInTheDocument();
+    expect(await screen.findByText(/€1,234\.50 EUR/)).toBeInTheDocument();
+    expect(screen.getByText(/£980\.00 GBP/)).toBeInTheDocument();
   });
 
   it("links the line's property name to the property detail page", async () => {

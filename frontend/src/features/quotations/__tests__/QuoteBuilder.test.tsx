@@ -201,16 +201,16 @@ describe("QuoteBuilder", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
     // One results list freely mixes currencies — each row prices in its own.
-    expect(await screen.findByText("£4,500.00")).toBeInTheDocument();
-    expect(screen.getByText("€5,200.00")).toBeInTheDocument();
+    expect(await screen.findByText("£4,500.00 GBP")).toBeInTheDocument();
+    expect(screen.getByText("€5,200.00 EUR")).toBeInTheDocument();
 
     // Staged lines carry their own currency into the shortlist.
     const addButtons = screen.getAllByRole("button", { name: /add to quote/i });
     await userEvent.click(addButtons[0]);
     await userEvent.click(addButtons[1]);
     expect(await screen.findByText(/shortlist \(2\)/i)).toBeInTheDocument();
-    expect(screen.getAllByText("£4,500.00")).toHaveLength(2); // result row + shortlist line
-    expect(screen.getAllByText("€5,200.00")).toHaveLength(2);
+    expect(screen.getAllByText("£4,500.00 GBP")).toHaveLength(2); // result row + shortlist line
+    expect(screen.getAllByText("€5,200.00 EUR")).toHaveLength(2);
   });
 
   it("adds a priced option into the shortlist", async () => {
@@ -386,13 +386,13 @@ describe("QuoteBuilder", () => {
     );
     await userEvent.click(cells[0]);
     await userEvent.click(cells[1]);
-    await screen.findByText("$5,200.00");
+    await screen.findByText("$5,200.00 USD");
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
 
     // The shortlist line carries the picked block, not the criteria dates.
     expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
     expect(screen.getByText(/11 Jul 2026 – 18 Jul 2026/)).toBeInTheDocument();
-    expect(screen.getAllByText("$5,200.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$5,200.00 USD").length).toBeGreaterThan(0);
 
     // The saved line persists the picked block's dates, not just the display.
     await userEvent.click(screen.getByRole("button", { name: /save draft/i }));
@@ -476,7 +476,7 @@ describe("QuoteBuilder", () => {
       "checkbox",
     );
     await userEvent.click(cells[1]);
-    await screen.findByText("$5,200.00");
+    await screen.findByText("$5,200.00 USD");
     await userEvent.click(screen.getByRole("button", { name: /add 2 weeks/i }));
     expect(await screen.findByText(/shortlist \(2\)/i)).toBeInTheDocument();
 
@@ -731,9 +731,9 @@ describe("QuoteBuilder", () => {
 
     // The shortlist renders both band prices (result card + shortlist row) and
     // never a summed villa total.
-    expect(screen.getAllByText("$4,500.00").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText("$6,200.00").length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText("$10,700.00")).not.toBeInTheDocument();
+    expect(screen.getAllByText("$4,500.00 USD").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("$6,200.00 USD").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("$10,700.00 USD")).not.toBeInTheDocument();
 
     // The staged line's manual toggle is disabled — bands are priced per bracket.
     await userEvent.click(screen.getByRole("button", { name: /edit line/i }));
@@ -818,13 +818,13 @@ describe("QuoteBuilder", () => {
 
     // Default week shows its bands; move to the alternate alone → its bands
     // reprice (uncheck the pre-checked default first).
-    expect(screen.getAllByText("$4,500.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$4,500.00 USD").length).toBeGreaterThan(0);
     const cells = within(screen.getByRole("group", { name: /stay options/i })).getAllByRole(
       "checkbox",
     );
     await userEvent.click(cells[0]);
     await userEvent.click(cells[1]);
-    await screen.findByText("$4,800.00");
+    await screen.findByText("$4,800.00 USD");
 
     await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
     expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
@@ -832,9 +832,9 @@ describe("QuoteBuilder", () => {
     // Shortlist carries the PICKED week's dates and that week's band prices —
     // never a summed total (bands are alternatives), week fixed at Add.
     expect(screen.getByText(/11 Jul 2026 – 18 Jul 2026/)).toBeInTheDocument();
-    expect(screen.getAllByText("$4,800.00").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText("$6,600.00").length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText("$11,400.00")).not.toBeInTheDocument();
+    expect(screen.getAllByText("$4,800.00 USD").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("$6,600.00 USD").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("$11,400.00 USD")).not.toBeInTheDocument();
 
     // Save → one non-manual line per band at the PICKED week's dates + party.
     await userEvent.click(screen.getByRole("button", { name: /save draft/i }));

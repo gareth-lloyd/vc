@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/format/date";
-import { formatMoney, parseMoney } from "@/lib/format/money";
+import { formatMoneyWithCode, parseMoney } from "@/lib/format/money";
 import { propertyDetailsPath } from "@/lib/routes";
 import type { QuotationLine } from "../schemas";
 import { PropertyThumbnail } from "./PropertyThumbnail";
@@ -78,14 +78,14 @@ export function QuotationLineCard({
             ·{" "}
             <span className="text-foreground font-medium tabular-nums">
               {/* Each line is priced in its own currency (GAP-014). */}
-              {formatMoney(line.total ?? null, line.currency ?? null)}
+              {formatMoneyWithCode(line.total ?? null, line.currency ?? null)}
             </span>
             {Number.isFinite(discount) && discount !== 0 ? (
               <>
                 {" "}
                 · {t("detail.lines.discount_label")}{" "}
                 <span className="tabular-nums">
-                  {formatMoney(line.discount ?? null, line.currency ?? null)}
+                  {formatMoneyWithCode(line.discount ?? null, line.currency ?? null)}
                 </span>
               </>
             ) : null}

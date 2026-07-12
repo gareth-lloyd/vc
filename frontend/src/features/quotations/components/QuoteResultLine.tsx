@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { CheckboxLabel } from "@/components/ui/checkbox-label";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatMoney } from "@/lib/format/money";
+import { formatMoneyWithCode } from "@/lib/format/money";
 import { formatDate, formatWeekRangeCompact } from "@/lib/format/date";
 import { useRepriceStayOption } from "../hooks";
 import { PropertyThumbnail } from "./PropertyThumbnail";
@@ -398,7 +398,7 @@ export function QuoteResultLine({
     } else {
       value = (
         <span className="text-foreground font-medium">
-          {formatMoney(resolved.total, resolved.currency)}
+          {formatMoneyWithCode(resolved.total, resolved.currency)}
         </span>
       );
     }
@@ -503,7 +503,7 @@ export function QuoteResultLine({
                     {b.is_poa || b.total == null
                       ? t("builder.results.bands.poa")
                       : // Per-band currency — a banded list can mix £/€/$.
-                        formatMoney(b.total, b.currency_code)}
+                        formatMoneyWithCode(b.total, b.currency_code)}
                   </span>
                 </CheckboxLabel>
               ))}
@@ -526,7 +526,7 @@ export function QuoteResultLine({
                       {resolved.state === "pending"
                         ? t("builder.results.stay_options.repricing")
                         : // Per-result currency (GAP-014) — one list mixes £/€/$.
-                          formatMoney(resolved.total, resolved.currency)}
+                          formatMoneyWithCode(resolved.total, resolved.currency)}
                     </span>
                   </p>
                 );

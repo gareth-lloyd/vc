@@ -51,7 +51,7 @@ describe("QuoteResultsList", () => {
   it("renders an available option with its total", () => {
     renderList([option()]);
     expect(screen.getByText("Villa Sol")).toBeInTheDocument();
-    expect(screen.getByText("$4,500.00")).toBeInTheDocument();
+    expect(screen.getByText("$4,500.00 USD")).toBeInTheDocument();
   });
 
   it("disambiguates same-named villas with internal name and capacity", () => {
@@ -109,8 +109,8 @@ describe("QuoteResultsList", () => {
       option({ currency: "GBP" }),
       option({ property_id: 2, property_name: "Villa Azul", total: "5200.00", currency: "EUR" }),
     ]);
-    expect(screen.getByText("£4,500.00")).toBeInTheDocument();
-    expect(screen.getByText("€5,200.00")).toBeInTheDocument();
+    expect(screen.getByText("£4,500.00 GBP")).toBeInTheDocument();
+    expect(screen.getByText("€5,200.00 EUR")).toBeInTheDocument();
   });
 
   it("collapses unavailable options behind a toggle, revealing them on expand", async () => {

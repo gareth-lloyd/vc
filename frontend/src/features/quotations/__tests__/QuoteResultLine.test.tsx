@@ -429,8 +429,8 @@ describe("QuoteResultLine", () => {
 
       expect(weekCells()).toHaveLength(2);
       expect(bandBoxes()).toHaveLength(2);
-      expect(screen.getByText("$3,000.00")).toBeInTheDocument();
-      expect(screen.getByText("$4,500.00")).toBeInTheDocument();
+      expect(screen.getByText("$3,000.00 USD")).toBeInTheDocument();
+      expect(screen.getByText("$4,500.00 USD")).toBeInTheDocument();
     });
 
     it("flags a reprice whose engine dates differ from the checked cell", async () => {
@@ -470,9 +470,9 @@ describe("QuoteResultLine", () => {
       expect(screen.getByText(/1–4 guests/)).toBeInTheDocument();
       expect(screen.getByText(/5–8 guests/)).toBeInTheDocument();
       expect(screen.getByText(/9–12 guests/)).toBeInTheDocument();
-      expect(screen.getByText("$3,000.00")).toBeInTheDocument();
-      expect(screen.getByText("$4,500.00")).toBeInTheDocument();
-      expect(screen.getByText("$6,000.00")).toBeInTheDocument();
+      expect(screen.getByText("$3,000.00 USD")).toBeInTheDocument();
+      expect(screen.getByText("$4,500.00 USD")).toBeInTheDocument();
+      expect(screen.getByText("$6,000.00 USD")).toBeInTheDocument();
     });
 
     it("shows the on-application label for a POA band without crashing", () => {
@@ -532,8 +532,8 @@ describe("QuoteResultLine", () => {
       );
 
       expect(weekCells()[1]).toHaveAttribute("aria-checked", "true");
-      await waitFor(() => expect(screen.getByText("$3,100.00")).toBeInTheDocument());
-      expect(screen.getByText("$4,600.00")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText("$3,100.00 USD")).toBeInTheDocument());
+      expect(screen.getByText("$4,600.00 USD")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
     });
 
@@ -621,8 +621,8 @@ describe("QuoteResultLine", () => {
       // ...move to the alternate week alone: its band prices load...
       await userEvent.click(weekCells()[0]);
       await userEvent.click(weekCells()[1]);
-      await waitFor(() => expect(screen.getByText("$3,200.00")).toBeInTheDocument());
-      expect(screen.getByText("$4,700.00")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText("$3,200.00 USD")).toBeInTheDocument());
+      expect(screen.getByText("$4,700.00 USD")).toBeInTheDocument();
 
       // ...and the 1–4 deselection carried across weeks (party-range identity).
       expect(bandBoxes()[0]).toHaveAttribute("aria-checked", "false");
@@ -688,7 +688,7 @@ describe("QuoteResultLine", () => {
 
       await userEvent.click(weekCells()[0]); // leave only the alternate checked
       await userEvent.click(weekCells()[1]);
-      await waitFor(() => expect(screen.getByText("$3,200.00")).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText("$3,200.00 USD")).toBeInTheDocument());
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /add to quote/i })).toBeEnabled();
     });
@@ -775,7 +775,7 @@ describe("QuoteResultLine", () => {
 
       await userEvent.click(weekCells()[0]); // uncheck the default week
       await userEvent.click(weekCells()[1]);
-      await waitFor(() => expect(screen.getByText("$3,200.00")).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText("$3,200.00 USD")).toBeInTheDocument());
       // Trim the 1–4 band, then add the alternate week.
       await userEvent.click(bandBoxes()[0]);
       await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));

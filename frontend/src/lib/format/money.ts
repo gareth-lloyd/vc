@@ -81,6 +81,24 @@ export function formatMoney(
   );
 }
 
+// GAP-080: quote surfaces list lines priced in different base currencies side
+// by side (GAP-014), where a bare symbol is ambiguous — so the ISO code is
+// rendered explicitly for every currency ("£1,500.00 GBP"), not only unmapped
+// ones. Skips the append when the mapped symbol already reads as the code
+// (CHF), and never decorates the "—" fallback.
+export function formatMoneyWithCode(
+  value: string | number | null | undefined,
+  currencyCode: string | null | undefined,
+): string {
+  if (value == null || !currencyCode) return "—";
+  const formatted = formatMoney(value, currencyCode);
+  if (formatted === "—") return formatted;
+  const code = currencyCode.toUpperCase();
+  const symbol = SYMBOLS[code];
+  if (!symbol || symbol.trim() === code) return formatted;
+  return `${formatted} ${code}`;
+}
+
 // Whole-amount headline figure for at-a-glance summaries (e.g. "from £20,378/wk")
 // — drops the cents that add noise without precision at the guide-price altitude.
 export function formatMoneyWhole(

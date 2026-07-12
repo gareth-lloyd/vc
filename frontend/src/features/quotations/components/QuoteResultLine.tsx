@@ -50,6 +50,9 @@ type ResolvedPrice =
   | {
       state: "ready";
       total: string | number | null;
+      // Q-018: the pre-reduction total when the engine quoted reduced prices
+      // — renders as a muted "reduced from" hint next to the effective total.
+      totalBeforeReduction: string | number | null;
       currency: string | null;
       pricedFrom: string;
       pricedTo: string;
@@ -180,6 +183,7 @@ export function QuoteResultLine({
       return {
         state: "ready",
         total: option.total ?? null,
+        totalBeforeReduction: option.total_before_reduction ?? null,
         currency: option.currency ?? null,
         pricedFrom: option.date_from ?? block?.date_from ?? "",
         pricedTo: option.date_to ?? block?.date_to ?? "",
@@ -195,6 +199,7 @@ export function QuoteResultLine({
     return {
       state: "ready",
       total: entry.total ?? null,
+      totalBeforeReduction: entry.total_before_reduction ?? null,
       currency: entry.currency_code ?? null,
       pricedFrom: entry.date_from ?? block.date_from,
       pricedTo: entry.date_to ?? block.date_to,
@@ -375,6 +380,23 @@ export function QuoteResultLine({
       })
     : [];
 
+  // Q-018: muted "reduced from" hint appended after an effective price when
+  // the engine applied a rate reduction. Null when there was no reduction —
+  // or no currency: formatMoneyWithCode falls back to an em-dash then, and a
+  // "reduced from —" next to an already-dashed price is pure noise.
+  const reducedFromHint = (
+    before: string | number | null | undefined,
+    currency: string | null | undefined,
+  ) =>
+    before != null && currency ? (
+      <span className="text-muted-foreground font-normal">
+        {" · "}
+        {t("builder.results.reduced_from", {
+          amount: formatMoneyWithCode(before, currency),
+        })}
+      </span>
+    ) : null;
+
   // Per-week price row content for the picker view.
   const weekRow = (index: number) => {
     const block = stayOptions[index];
@@ -399,6 +421,7 @@ export function QuoteResultLine({
       value = (
         <span className="text-foreground font-medium">
           {formatMoneyWithCode(resolved.total, resolved.currency)}
+          {reducedFromHint(resolved.totalBeforeReduction, resolved.currency)}
         </span>
       );
     }
@@ -500,10 +523,15 @@ export function QuoteResultLine({
                     </span>
                   </span>
                   <span className="text-foreground text-xs font-medium">
-                    {b.is_poa || b.total == null
-                      ? t("builder.results.bands.poa")
-                      : // Per-band currency — a banded list can mix £/€/$.
-                        formatMoneyWithCode(b.total, b.currency_code)}
+                    {b.is_poa || b.total == null ? (
+                      t("builder.results.bands.poa")
+                    ) : (
+                      <>
+                        {/* Per-band currency — a banded list can mix £/€/$. */}
+                        {formatMoneyWithCode(b.total, b.currency_code)}
+                        {reducedFromHint(b.total_before_reduction, b.currency_code)}
+                      </>
+                    )}
                   </span>
                 </CheckboxLabel>
               ))}
@@ -523,10 +551,15 @@ export function QuoteResultLine({
                   <p className="text-muted-foreground text-xs">
                     {t("builder.results.total")}:{" "}
                     <span className="text-foreground font-medium">
-                      {resolved.state === "pending"
-                        ? t("builder.results.stay_options.repricing")
-                        : // Per-result currency (GAP-014) — one list mixes £/€/$.
-                          formatMoneyWithCode(resolved.total, resolved.currency)}
+                      {resolved.state === "pending" ? (
+                        t("builder.results.stay_options.repricing")
+                      ) : (
+                        <>
+                          {/* Per-result currency (GAP-014) — one list mixes £/€/$. */}
+                          {formatMoneyWithCode(resolved.total, resolved.currency)}
+                          {reducedFromHint(resolved.totalBeforeReduction, resolved.currency)}
+                        </>
+                      )}
                     </span>
                   </p>
                 );

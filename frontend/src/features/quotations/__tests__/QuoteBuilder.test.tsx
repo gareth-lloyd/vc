@@ -162,6 +162,33 @@ describe("QuoteBuilder", () => {
     expect(screen.getByLabelText(/adults/i)).toHaveValue(2);
   });
 
+  it("renders the reduced-from hint off a live search response (Q-018 end-to-end mapping)", async () => {
+    // Through the real api mapping (searchQuoteOptions rebuilds each option
+    // field-by-field) — a directly-constructed option can't catch a field
+    // dropped there.
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4200.00",
+              total_before_reduction: "4800.00",
+              currency_code: "USD",
+            },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+
+    expect(await screen.findByText(/Reduced from \$4,800\.00 USD/)).toBeInTheDocument();
+  });
+
   it("searches without any currency selection and sends no currency to pricing", async () => {
     let bulkBody: Record<string, unknown> | null = null;
     server.use(

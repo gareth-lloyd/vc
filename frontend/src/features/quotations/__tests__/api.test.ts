@@ -79,6 +79,41 @@ describe("searchQuoteOptions", () => {
     expect(result.options[0].currency).toBe("USD");
   });
 
+  it("maps the option-level total_before_reduction through to the parsed option (Q-018)", async () => {
+    server.use(
+      http.get("/api/v1/properties", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 7,
+              name: "Villa Sol",
+              display_name: "Villa Sol",
+              slug: "villa-sol",
+              status: "active",
+            },
+          ]),
+        ),
+      ),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4200.00",
+              total_before_reduction: "4800.00",
+              currency_code: "USD",
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].total_before_reduction).toBe("4800.00");
+  });
+
   it("sends page=2 on a later page and reports the last page", async () => {
     let seenPage: string | null = "unset";
     server.use(

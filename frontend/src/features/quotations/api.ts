@@ -89,6 +89,9 @@ interface SearchOptionsResponse {
     error_code?: string;
     error_detail?: string;
     total?: string;
+    // Q-018 rate reductions: the pre-reduction total (spread through from the
+    // quote breakdown) when the engine quoted reduced prices.
+    total_before_reduction?: string | null;
     rate_subtotal?: string;
     currency_code?: string;
     hero_image_url?: string | null;
@@ -112,6 +115,7 @@ interface SearchOptionsResponse {
       max_party: number;
       adults: number;
       total?: string | null;
+      total_before_reduction?: string | null;
       currency_code?: string | null;
       is_projected?: boolean;
       is_poa?: boolean;
@@ -289,6 +293,9 @@ export async function searchQuoteOptions(
       hero_image_url: q.hero_image_url ?? null,
       available: !datesUnavailable && q.available !== false && !q.error_code,
       total: q.total ?? null,
+      // Q-018: pre-reduction total — powers the "reduced from" hint on the
+      // default-week row and the single-total block.
+      total_before_reduction: q.total_before_reduction ?? null,
       currency: q.currency_code ?? null,
       rate_subtotal: q.rate_subtotal ?? null,
       date_from: q.date_from ?? null,

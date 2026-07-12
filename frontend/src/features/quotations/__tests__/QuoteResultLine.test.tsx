@@ -450,6 +450,85 @@ describe("QuoteResultLine", () => {
     });
   });
 
+  describe("rate reductions (Q-018)", () => {
+    it("shows a reduced-from hint on the single total when total_before_reduction is present", () => {
+      renderLine(option({ total_before_reduction: "5000.00" }));
+
+      expect(screen.getByText(/Reduced from \$5,000\.00 USD/)).toBeInTheDocument();
+    });
+
+    it("shows no hint when total_before_reduction is null or absent", () => {
+      renderLine(option({ total_before_reduction: null }));
+      expect(screen.queryByText(/Reduced from/)).not.toBeInTheDocument();
+
+      renderLine(option());
+      expect(screen.queryByText(/Reduced from/)).not.toBeInTheDocument();
+    });
+
+    it("shows the hint on a week row and keeps it across a reprice", async () => {
+      mockReprice({
+        available: true,
+        total: "5200.00",
+        currency_code: "USD",
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+        total_before_reduction: "5600.00",
+      });
+      renderLine(option({ stay_options: twoBlocks(), total_before_reduction: "4800.00" }));
+
+      // Default week row: the option-level pre-reduction total.
+      expect(screen.getByText(/Reduced from \$4,800\.00 USD/)).toBeInTheDocument();
+
+      // The repriced alternate carries its own pre-reduction total.
+      await userEvent.click(weekCells()[1]);
+      await waitFor(() => expect(screen.getByText(/5,200\.00/)).toBeInTheDocument());
+      expect(screen.getByText(/Reduced from \$5,600\.00 USD/)).toBeInTheDocument();
+    });
+
+    it("shows no week-row hint when the reprice has no reduction", async () => {
+      mockReprice({
+        available: true,
+        total: "5200.00",
+        currency_code: "USD",
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+      });
+      renderLine(option({ stay_options: twoBlocks() }));
+
+      await userEvent.click(weekCells()[1]);
+      await waitFor(() => expect(screen.getByText(/5,200\.00/)).toBeInTheDocument());
+      expect(screen.queryByText(/Reduced from/)).not.toBeInTheDocument();
+    });
+
+    it("suppresses the hint when the currency is missing (no 'Reduced from —')", () => {
+      // formatMoneyWithCode renders "—" without a currency; the hint must not
+      // echo a dash next to an already-dashed price.
+      renderLine(option({ currency: null, total_before_reduction: "5000.00" }));
+
+      expect(screen.queryByText(/Reduced from/)).not.toBeInTheDocument();
+    });
+
+    it("shows the hint per occupancy band, only where present", () => {
+      renderLine(
+        option({
+          total: null,
+          occupancy_bands: [
+            band({
+              min_party: 1,
+              max_party: 4,
+              total: "3000.00",
+              total_before_reduction: "3400.00",
+            }),
+            band({ min_party: 5, max_party: 8, total: "4500.00", total_before_reduction: null }),
+          ],
+        }),
+      );
+
+      expect(screen.getByText(/Reduced from \$3,400\.00 USD/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Reduced from/)).toHaveLength(1);
+    });
+  });
+
   describe("occupancy fan-out", () => {
     it("renders each occupancy band as a default-checked, priced row", () => {
       renderLine(

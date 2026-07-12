@@ -305,6 +305,7 @@
       "min_nights_other": "ελάχ. {{count}} διανυκτερεύσεις",
       "occupancy_pricing": "Τιμολόγηση βάσει πληρότητας",
       "projected": "Προβλεπόμενες τιμές",
+      "reduced_from": "Μειωμένο από {{amount}}",
       "inclusions_label": "Περιλαμβάνει",
       "inclusions_more": "Περισσότερα",
       "inclusions_less": "Λιγότερα",

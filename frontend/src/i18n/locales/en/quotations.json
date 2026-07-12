@@ -305,6 +305,7 @@
       "min_nights_other": "min {{count}} nights",
       "occupancy_pricing": "Occupancy-based pricing",
       "projected": "Projected rates",
+      "reduced_from": "Reduced from {{amount}}",
       "inclusions_label": "Includes",
       "inclusions_more": "Show more",
       "inclusions_less": "Show less",

@@ -151,6 +151,9 @@ export const occupancyBandSchema = z.object({
   // Value fields mirror the sibling quoteOption fields: nullable + optional so a
   // single band that omits a key can't reject the whole search response.
   total: z.union([z.string(), z.number()]).nullable().optional(),
+  // Q-018 rate reductions: what the band would have cost at the base rates
+  // when the engine applied a reduction — powers the "reduced from" hint.
+  total_before_reduction: z.union([z.string(), z.number()]).nullable().optional(),
   currency_code: z.string().nullable().optional(),
   is_projected: z.boolean().nullable().optional(),
   is_poa: z.boolean().nullable().optional(),
@@ -174,6 +177,10 @@ export const quoteOptionSchema = z.object({
   hero_image_url: z.string().nullable().optional(),
   available: z.boolean(),
   total: z.union([z.string(), z.number()]).nullable().optional(),
+  // Q-018 rate reductions: the pre-reduction total when the engine quoted
+  // reduced prices (spread through from the quote breakdown) — the builder
+  // shows a muted "reduced from" hint next to the effective total.
+  total_before_reduction: z.union([z.string(), z.number()]).nullable().optional(),
   currency: z.string().nullable().optional(),
   rate_subtotal: z.union([z.string(), z.number()]).nullable().optional(),
   nights: z.number().optional(),
@@ -210,6 +217,9 @@ export type QuoteOption = z.infer<typeof quoteOptionSchema>;
 export const stayRepriceSchema = z.object({
   available: z.boolean().optional().default(false),
   total: z.union([z.string(), z.number()]).nullable().optional(),
+  // Q-018 rate reductions: pre-reduction total for the repriced week, so the
+  // "reduced from" hint survives a block reprice.
+  total_before_reduction: z.union([z.string(), z.number()]).nullable().optional(),
   currency_code: z.string().nullable().optional(),
   date_from: z.string().nullable().optional(),
   date_to: z.string().nullable().optional(),

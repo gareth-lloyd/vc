@@ -468,3 +468,31 @@ def test_carry_forward_rejects_out_of_range_year(
             format="json",
         )
         assert response.status_code == 400, (bad_year, response.content)
+
+
+@pytest.mark.django_db
+def test_rate_plan_duplicate_copies_reductions_verbatim(
+    api_client: APIClient,
+    staff: User,
+    plan: RatePlan,
+    period: RatePeriod,
+    rule: RateBand,
+) -> None:
+    """Q-018 decision 5: `:duplicate` is a same-context literal copy tool, so
+    reductions ride along verbatim — the sanctioned next-year path
+    (carry-forward) is what drops them."""
+    rule.reduction_percent = Decimal("15.00")
+    rule.reduced_at = date(2026, 5, 1)
+    rule.reduction_reason = "June push"
+    rule.save()
+
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/rate-plans/{plan.pk}:duplicate")
+    assert response.status_code == 201, response.content
+
+    cloned = RatePlan.objects.get(pk=response.json()["id"])
+    cloned_band = RateBand.objects.get(period__plan=cloned)
+    assert cloned_band.reduction_percent == Decimal("15.00")
+    assert cloned_band.reduced_at == date(2026, 5, 1)
+    assert cloned_band.reduction_reason == "June push"
+    assert cloned_band.effective_nightly == rule.effective_nightly

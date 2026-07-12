@@ -510,3 +510,63 @@ def test_materialise_derives_name_when_segment_mixes_source_periods(
     # 3/2-3/7 is purely "Early March".
     sliver = derive_period_name(date(2025, 3, 1), date(2025, 3, 1))
     assert names == ["Late Feb", sliver, "Early March"]
+
+
+# --- Q-018: reductions are a this-year fact ---------------------------------
+
+
+@pytest.mark.django_db
+def test_materialise_drops_reductions_and_carries_base(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    """The ticket's acceptance test: discounted 2026 → undiscounted 2027.
+
+    Carry-over copies the *base* prices and never the reduction columns —
+    the whole point of Q-018's base-plus-reduction split.
+    """
+    # Fixed-amount shape here; the uplift test below (and the projection /
+    # duplicate pins) cover the percent shape.
+    anchor_rule.weekly = Decimal("1300.00")
+    anchor_rule.reduced_nightly = Decimal("150.00")
+    anchor_rule.reduced_weekly = Decimal("1000.00")
+    anchor_rule.reduced_at = date(2026, 5, 1)
+    anchor_rule.reduction_reason = "Slow season"
+    anchor_rule.save()
+
+    new_plan = RateCarryoverService.materialise(
+        property_,
+        target_year=2027,
+        currency=gbp,
+        date_map=keep_calendar_date,
+    )
+
+    band = RateBand.objects.get(period__plan=new_plan)
+    assert band.nightly == Decimal("200.00")
+    assert band.weekly == Decimal("1300.00")
+    assert band.reduction_percent is None
+    assert band.reduced_nightly is None
+    assert band.reduced_weekly is None
+    assert band.reduced_at is None
+    assert band.reduction_reason == ""
+    assert band.has_reduction is False
+
+
+@pytest.mark.django_db
+def test_materialise_uplift_applies_to_base_not_effective(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    anchor_rule.reduction_percent = Decimal("50.00")
+    anchor_rule.save()
+
+    new_plan = RateCarryoverService.materialise(
+        property_,
+        target_year=2027,
+        currency=gbp,
+        date_map=keep_calendar_date,
+        uplift=Decimal("0.10"),
+    )
+
+    band = RateBand.objects.get(period__plan=new_plan)
+    # 10% on the base 200.00 — never on the reduced 100.00.
+    assert band.nightly == Decimal("220.00")
+    assert band.has_reduction is False

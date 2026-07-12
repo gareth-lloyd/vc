@@ -365,3 +365,26 @@ def test_project_keeps_fallback_only_context_when_no_approved_bands(
     assert ctx.periods == []
     assert ctx.bands_by_period == {}
     assert ctx.plan.fallback_nightly == Decimal("120.00")
+
+
+@pytest.mark.django_db
+def test_project_prices_from_base_not_reduced(
+    property_: Property, gbp: Currency, anchor_plan: RateBand
+) -> None:
+    """Q-018: a reduction is a this-year fact — the next-year guide rate
+    derives from the base price and the projected band carries no reduction."""
+    anchor_plan.reduction_percent = Decimal("25.00")
+    anchor_plan.save()
+
+    ctx = RateProjectionService.project(
+        property=property_,
+        date_from=date(2028, 7, 4),
+        currency=gbp,
+        date_map=keep_calendar_date,
+    )
+    assert ctx is not None
+    [rule] = ctx.bands_by_period[_period_of(anchor_plan).pk]
+    assert rule.nightly == Decimal("200.00")
+    assert rule.reduction_percent is None
+    assert rule.has_reduction is False
+    assert rule.effective_nightly == Decimal("200.00")

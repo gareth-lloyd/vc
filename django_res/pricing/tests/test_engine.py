@@ -1520,3 +1520,114 @@ def test_covering_bands_aligns_non_conforming_arrival_to_changeover_day(
         OccupancyBand(min_party=1, max_party=8),
         OccupancyBand(min_party=9, max_party=12),
     ]
+
+
+# --- Q-018 rate reductions ----------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_quote_prices_percent_reduction_and_carries_reduced_from(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """The engine quotes the effective price; each line carries the base as
+    `reduced_from` and the quote the before-reduction aggregates."""
+    rule.reduction_percent = Decimal("25.00")
+    rule.save()
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert all(ln.nightly == Decimal("150.00") for ln in quote.lines)
+    assert all(ln.reduced_from == Decimal("200.00") for ln in quote.lines)
+    assert quote.rate_subtotal == Decimal("1050.00")
+    assert quote.rate_subtotal_before_reduction == Decimal("1400.00")
+    assert quote.total == Decimal("1050.00")
+    assert quote.total_before_reduction == Decimal("1400.00")
+    assert quote.breakdown["lines"][0]["reduced_from"] == "200.00"
+    assert quote.breakdown["rate_subtotal_before_reduction"] == "1400.00"
+    assert quote.breakdown["total_before_reduction"] == "1400.00"
+
+
+@pytest.mark.django_db
+def test_quote_prices_fixed_reduction(property_: Property, gbp: Currency, rule: RateBand) -> None:
+    rule.reduced_nightly = Decimal("170.00")
+    rule.save()
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert all(ln.nightly == Decimal("170.00") for ln in quote.lines)
+    assert all(ln.reduced_from == Decimal("200.00") for ln in quote.lines)
+    assert quote.rate_subtotal == Decimal("1190.00")
+    assert quote.rate_subtotal_before_reduction == Decimal("1400.00")
+
+
+@pytest.mark.django_db
+def test_quote_without_reduction_leaves_before_fields_null(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """No reduction on any priced band -> the before-reduction fields are null,
+    not a copy of the totals (the FE renders the hint only when present)."""
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+
+    assert all(ln.reduced_from is None for ln in quote.lines)
+    assert quote.rate_subtotal_before_reduction is None
+    assert quote.total_before_reduction is None
+    assert quote.breakdown["lines"][0]["reduced_from"] is None
+    assert quote.breakdown["rate_subtotal_before_reduction"] is None
+    assert quote.breakdown["total_before_reduction"] is None
+
+
+@pytest.mark.django_db
+def test_discount_applies_to_reduced_subtotal(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """A percent Discount computes off the REDUCED subtotal (reduction first,
+    then promo), and the before-reduction total reuses the same discount."""
+    from pricing.enums import DiscountKind, RuleKind
+    from pricing.models import Discount
+
+    rule.reduction_percent = Decimal("25.00")
+    rule.save()
+    Discount.objects.create(
+        property=property_,
+        name="Promo",
+        code="SAVE10",
+        rule_kind=RuleKind.PROMO_CODE,
+        kind=DiscountKind.PERCENT,
+        amount=Decimal("10.00"),
+        valid_from=date(2026, 1, 1),
+        valid_to=date(2026, 12, 31),
+        is_active=True,
+    )
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+        discount_code="SAVE10",
+    )
+
+    assert quote.rate_subtotal == Decimal("1050.00")
+    assert quote.discount == Decimal("105.00")  # 10% of the REDUCED subtotal
+    assert quote.total == Decimal("945.00")
+    # Before-total: un-reduced subtotal minus the SAME discount amount.
+    assert quote.total_before_reduction == Decimal("1295.00")

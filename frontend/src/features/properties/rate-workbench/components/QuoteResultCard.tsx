@@ -103,6 +103,15 @@ export function QuoteResultCard({ quote, periodLabel }: QuoteResultCardProps) {
           <Line label={t("rate_workbench.probe.result.guest_total")}>
             <span className="text-base font-semibold">{formatMoney(guestTotal, currency)}</span>
           </Line>
+          {/* Q-018: the engine quoted reduced band prices — show what the stay
+              would have cost at the base rates. */}
+          {quote.total_before_reduction != null ? (
+            <p className="text-muted-foreground text-right text-xs">
+              {t("rate_workbench.probe.result.reduced_from", {
+                amount: formatMoney(quote.total_before_reduction, currency),
+              })}
+            </p>
+          ) : null}
         </div>
       </dl>
 

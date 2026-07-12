@@ -383,6 +383,7 @@ class TestStayOptionsSearch:
                 "max_party": 8,
                 "adults": 1,
                 "total": "700.00",
+                "total_before_reduction": None,
                 "currency_code": "GBP",
                 "is_projected": False,
                 "is_poa": False,
@@ -393,6 +394,7 @@ class TestStayOptionsSearch:
                 "max_party": 12,
                 "adults": 9,
                 "total": "980.00",
+                "total_before_reduction": None,
                 "currency_code": "GBP",
                 "is_projected": False,
                 "is_poa": False,
@@ -403,6 +405,7 @@ class TestStayOptionsSearch:
                 "max_party": 16,
                 "adults": 13,
                 "total": "1120.00",
+                "total_before_reduction": None,
                 "currency_code": "GBP",
                 "is_projected": False,
                 "is_poa": False,
@@ -792,3 +795,67 @@ class TestWeeklyPricesEndpoint:
             self.URL, {"property_ids": ids, "from": "2026-07-04", "to": "2026-08-01"}
         )
         assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestReductionPassthrough:
+    """Q-018: before-reduction totals flow through the stay-options shapes."""
+
+    def test_search_result_carries_total_before_reduction(
+        self, property_: Property, rate_rule: RateBand
+    ) -> None:
+        rate_rule.reduction_percent = Decimal("25.00")
+        rate_rule.save()
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11))],
+            flex_days=3,
+        )
+        assert result["total"] == "1050.00"
+        assert result["total_before_reduction"] == "1400.00"
+
+    def test_occupancy_band_fan_out_carries_total_before_reduction(
+        self, property_: Property, plan: RatePlan
+    ) -> None:
+        from pricing.models import RateBand as RateBandModel
+
+        _occupancy_period(plan)
+        reduced = RateBandModel.objects.get(period__plan=plan, min_party=1)
+        reduced.reduction_percent = Decimal("25.00")
+        reduced.save()
+
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11))],
+            flex_days=3,
+        )
+
+        bands = result["occupancy_bands"]
+        assert [(b["total"], b["total_before_reduction"]) for b in bands] == [
+            ("525.00", "700.00"),  # reduced band: 75 x 7, was 100 x 7
+            ("980.00", None),
+            ("1120.00", None),
+        ]
+
+    def test_weekly_prices_carry_total_before_reduction(
+        self, property_: Property, rate_rule: RateBand
+    ) -> None:
+        rate_rule.reduction_percent = Decimal("25.00")
+        rate_rule.save()
+        _sat_changeover(property_)
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2026, 7, 4),
+            window_to=date(2026, 7, 18),
+        )
+        assert [(w["price"], w["total_before_reduction"]) for w in result["weeks"]] == [
+            ("1050.00", "1400.00"),
+            ("1050.00", "1400.00"),
+        ]
+
+    def test_no_reduction_passthrough_is_null(
+        self, property_: Property, rate_rule: RateBand
+    ) -> None:
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11))],
+            flex_days=3,
+        )
+        assert result["total_before_reduction"] is None

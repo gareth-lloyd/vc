@@ -344,6 +344,7 @@ class StayOptionsService:
                         "max_party": band.max_party,
                         "adults": party,
                         "total": None,
+                        "total_before_reduction": None,
                         "currency_code": band_currency if code == "no_rate_available" else None,
                         "is_projected": False,
                         "is_poa": is_poa,
@@ -357,6 +358,12 @@ class StayOptionsService:
                     "max_party": band.max_party,
                     "adults": party,
                     "total": str(quote.total),
+                    # Q-018: null unless a rate reduction changed this band's price.
+                    "total_before_reduction": (
+                        str(quote.total_before_reduction)
+                        if quote.total_before_reduction is not None
+                        else None
+                    ),
                     "currency_code": quote.currency_code,
                     "is_projected": quote.is_projected,
                     "is_poa": False,
@@ -502,6 +509,7 @@ class StayOptionsService:
                 "week_start": week_from.isoformat(),
                 "week_end": week_to.isoformat(),
                 "price": None,
+                "total_before_reduction": None,
                 "currency_code": resolved.code if resolved else None,
                 "is_projected": False,
                 "is_poa": is_poa,
@@ -511,6 +519,12 @@ class StayOptionsService:
             "week_start": week_from.isoformat(),
             "week_end": week_to.isoformat(),
             "price": str(quote.total),
+            # Q-018: null unless a rate reduction changed this week's price.
+            "total_before_reduction": (
+                str(quote.total_before_reduction)
+                if quote.total_before_reduction is not None
+                else None
+            ),
             "currency_code": quote.currency_code,
             "is_projected": quote.is_projected,
             "is_poa": False,

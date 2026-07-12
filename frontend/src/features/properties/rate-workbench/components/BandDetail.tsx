@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Check } from "lucide-react";
+import { formatDate } from "@/lib/format/date";
 import { formatMoney } from "@/lib/format/money";
 import { bandDateRangeLabel, bandTitle, type WorkbenchBand } from "../toLanes";
 
@@ -27,6 +28,12 @@ export function BandDetail({
 
   const title = bandTitle(band, t);
 
+  // Shared by the (effective) price row and the Q-018 "reduced from" base row.
+  const priceRange = (min: number, max: number | null | undefined) =>
+    min === max
+      ? formatMoney(String(min), currency)
+      : `${formatMoney(String(min), currency)} – ${formatMoney(String(max), currency)}`;
+
   return (
     <div className="space-y-2 text-sm">
       <p className="text-foreground font-medium">{title}</p>
@@ -41,13 +48,21 @@ export function BandDetail({
           <>
             {meta.minPrice != null ? (
               <Row term={t("rate_workbench.detail.price_range")}>
-                {meta.minPrice === meta.maxPrice
-                  ? formatMoney(String(meta.minPrice), currency)
-                  : `${formatMoney(String(meta.minPrice), currency)} – ${formatMoney(
-                      String(meta.maxPrice),
-                      currency,
-                    )}`}
+                {priceRange(meta.minPrice, meta.maxPrice)}
               </Row>
+            ) : null}
+            {/* Q-018: the price above is the EFFECTIVE one; surface the base
+                it was reduced from, plus the audit trail when recorded. */}
+            {meta.hasReduction && meta.baseMinPrice != null ? (
+              <Row term={t("rate_workbench.detail.reduced_from")}>
+                {priceRange(meta.baseMinPrice, meta.baseMaxPrice)}
+              </Row>
+            ) : null}
+            {meta.hasReduction && meta.reductionReason ? (
+              <Row term={t("rate_workbench.detail.reduction_reason")}>{meta.reductionReason}</Row>
+            ) : null}
+            {meta.hasReduction && meta.reducedAt ? (
+              <Row term={t("rate_workbench.detail.reduced_on")}>{formatDate(meta.reducedAt)}</Row>
             ) : null}
             {meta.hasPoa ? (
               <Row term={t("rate_workbench.detail.poa")}>

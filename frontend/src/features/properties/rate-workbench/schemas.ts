@@ -204,6 +204,9 @@ export const quoteLineSchema = z
     rule_id: z.number().nullable().optional(),
     period_id: z.number().nullable().optional(),
     nightly: z.string(),
+    // Q-018: the base nightly when that night's band carried a reduction
+    // (`nightly` is the effective price the guest pays), else null/absent.
+    reduced_from: z.string().nullable().optional(),
     notes: z.string().nullable().optional(),
   })
   .passthrough();
@@ -227,6 +230,10 @@ export const priceQuoteSchema = z
     date_to: z.string().optional(),
     lines: z.array(quoteLineSchema).default([]),
     rate_subtotal: z.string().optional(),
+    // Q-018: pre-reduction totals, present (non-null) only when at least one
+    // night was priced from a reduced band — drives the "reduced from" cue.
+    rate_subtotal_before_reduction: z.string().nullable().optional(),
+    total_before_reduction: z.string().nullable().optional(),
     extras: z.array(appliedExtraSchema).default([]),
     extras_total: z.string().optional(),
     discount: z.string().optional(),

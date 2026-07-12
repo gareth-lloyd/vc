@@ -299,6 +299,19 @@
         "derived": {
           "owner_net": "Owner net",
           "guest_price": "Guest price"
+        },
+        "reduction": {
+          "kind": "Reduction",
+          "kind_none": "No reduction",
+          "kind_percent": "Percentage",
+          "kind_fixed": "Fixed reduced prices",
+          "percent": "Reduction (%)",
+          "reduced_nightly": "Reduced nightly price",
+          "reduced_weekly": "Reduced weekly price",
+          "reduced_at": "Reduced on",
+          "reason": "Reason",
+          "effective_nightly": "Effective nightly",
+          "effective_weekly": "Effective weekly"
         }
       },
       "toasts": {
@@ -1000,6 +1013,13 @@
     "rule_max_party_lt_min": "Maximum party can't be below minimum party",
     "rule_price_invalid": "Enter a price like 1250 or 1250.00",
     "rule_price_required": "Set a nightly or weekly price, or mark the rule POA",
+    "reduction_xor": "Use a percentage reduction or fixed reduced prices, not both",
+    "reduction_percent_range": "Enter a percentage above 0 and below 100",
+    "reduction_no_base": "There is no base price to reduce",
+    "reduction_not_below_base": "The reduced price must be above zero and below the base price",
+    "reduction_covers_all_bases": "Set a reduced price for every base price, or clear both",
+    "reduction_reason_max": "Reason can't be longer than 200 characters",
+    "reduction_value_required": "Enter the reduction, or set it back to No reduction",
     "image_file_required": "Choose an image file",
     "service_name_required": "Name is required",
     "service_copy_required": "Guest-facing copy is required",
@@ -1090,7 +1110,10 @@
       "no_rates_yet": "No rates yet — add a band in the matrix below.",
       "year_round": "Year-round",
       "open_end": "—",
-      "band": "{{from}} – {{to}}"
+      "band": "{{from}} – {{to}}",
+      "reduced_from": "Reduced from",
+      "reduction_reason": "Reason",
+      "reduced_on": "Reduced on"
     },
     "matrix": {
       "title": "Rate matrix",
@@ -1106,6 +1129,7 @@
       "delete_rule": "Delete rule",
       "nightly_short": "night",
       "weekly_short": "week",
+      "reduced": "Reduced",
       "nightly_for": "Nightly rate, {{from}} to {{to}}, {{party}}",
       "weekly_for": "Weekly rate, {{from}} to {{to}}, {{party}}",
       "no_rules": "This rate period has no bands yet.",
@@ -1162,6 +1186,7 @@
         "extras_heading": "Extras applied",
         "included_heading": "Included",
         "changeover_shifted": "Changeover shifted from {{from}}",
+        "reduced_from": "Reduced from {{amount}}",
         "owner_heading": "Owner economics",
         "net_to_owner": "Net to owner",
         "commission": "Commission",

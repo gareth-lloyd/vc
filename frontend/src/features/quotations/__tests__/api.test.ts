@@ -79,6 +79,41 @@ describe("searchQuoteOptions", () => {
     expect(result.options[0].currency).toBe("USD");
   });
 
+  it("maps the option-level total_before_reduction through to the parsed option (Q-018)", async () => {
+    server.use(
+      http.get("/api/v1/properties", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 7,
+              name: "Villa Sol",
+              display_name: "Villa Sol",
+              slug: "villa-sol",
+              status: "active",
+            },
+          ]),
+        ),
+      ),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4200.00",
+              total_before_reduction: "4800.00",
+              currency_code: "USD",
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(result.options[0].total_before_reduction).toBe("4800.00");
+  });
+
   it("sends page=2 on a later page and reports the last page", async () => {
     let seenPage: string | null = "unset";
     server.use(
@@ -150,6 +185,44 @@ describe("searchQuoteOptions", () => {
     expect(result.options[0].internal_name).toBe("Mary Gardens");
     expect(result.options[0].bedrooms).toBe(4);
     expect(result.options[0].sleeps).toBe(8);
+  });
+
+  it("requests geo ordering and carries region/country names through to the option", async () => {
+    // GAP-078: the picker groups candidates country → region, so the
+    // candidate query must ask the backend to bunch them (trailing `id`
+    // keeps name collisions page-stable) and the row's geo names must
+    // survive the merge onto the option.
+    let seenOrdering: string | null = null;
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        seenOrdering = new URL(request.url).searchParams.get("ordering");
+        return HttpResponse.json(
+          drfPage([
+            {
+              id: 23,
+              name: "Villa Thalassa",
+              display_name: "Villa Thalassa",
+              slug: "villa-thalassa",
+              status: "active",
+              region: 11,
+              region_name: "Crete",
+              country_name: "Greece",
+            },
+          ]),
+        );
+      }),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [{ property_id: 23, available: true, total: "3200.00", currency_code: "EUR" }],
+        }),
+      ),
+    );
+
+    const result = await searchQuoteOptions(criteria);
+
+    expect(seenOrdering).toBe("region__country__name,region__name,name,id");
+    expect(result.options[0].region_name).toBe("Crete");
+    expect(result.options[0].country_name).toBe("Greece");
   });
 
   it("carries the plan/card enrichment fields through to the option", async () => {

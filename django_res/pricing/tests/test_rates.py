@@ -20,12 +20,17 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
+from core.exceptions import NoRateAvailable
 from pricing.models import RateBand, RatePeriod
 from pricing.services.rates import (
     NoCoverage,
     OutOfRange,
     Picked,
     pick_band_for_night,
+    rule_base_nightly,
+    rule_nightly,
 )
 
 
@@ -41,6 +46,57 @@ def _band(pk: int, period_pk: int, min_party: int, max_party: int, nightly: str)
         max_party=max_party,
         nightly=Decimal(nightly),
     )
+
+
+# --- rule_nightly / rule_base_nightly (Q-018 reductions) ---------------------
+#
+# `rule_nightly` is the engine's single price read: it must return the
+# *effective* (reduced) price, while `rule_base_nightly` keeps returning the
+# base for the "reduced from X" figure. Pure properties — unsaved instances.
+
+
+def test_rule_nightly_no_reduction_returns_base() -> None:
+    band = RateBand(nightly=Decimal("200.00"))
+    assert rule_nightly(band) == Decimal("200.00")
+    assert rule_base_nightly(band) == Decimal("200.00")
+
+
+def test_rule_nightly_percent_reduction() -> None:
+    band = RateBand(nightly=Decimal("200.00"), reduction_percent=Decimal("25.00"))
+    assert rule_nightly(band) == Decimal("150.00")
+    assert rule_base_nightly(band) == Decimal("200.00")
+
+
+def test_rule_nightly_fixed_reduction() -> None:
+    band = RateBand(nightly=Decimal("200.00"), reduced_nightly=Decimal("170.00"))
+    assert rule_nightly(band) == Decimal("170.00")
+    assert rule_base_nightly(band) == Decimal("200.00")
+
+
+def test_rule_nightly_weekly_only_percent_quantization_order() -> None:
+    """Weekly-only + percent: the effective weekly quantizes FIRST, then /7.
+
+    50% off 100.03 = 50.015 -> 50.02 (HALF_EVEN), /7 = 7.1457... -> 7.15.
+    Dividing first would give 14.29 x 0.5 = 7.145 -> 7.14 — the order is
+    observable, so pin it.
+    """
+    band = RateBand(weekly=Decimal("100.03"), reduction_percent=Decimal("50.00"))
+    assert rule_nightly(band) == Decimal("7.15")
+    assert rule_base_nightly(band) == Decimal("14.29")
+
+
+def test_rule_nightly_weekly_fixed_reduction() -> None:
+    band = RateBand(weekly=Decimal("1400.00"), reduced_weekly=Decimal("1190.00"))
+    assert rule_nightly(band) == Decimal("170.00")
+    assert rule_base_nightly(band) == Decimal("200.00")
+
+
+def test_rule_nightly_poa_still_raises() -> None:
+    band = RateBand(id=99, is_poa=True)
+    with pytest.raises(NoRateAvailable):
+        rule_nightly(band)
+    with pytest.raises(NoRateAvailable):
+        rule_base_nightly(band)
 
 
 def test_pick_rule_returns_picked_with_matching_band() -> None:

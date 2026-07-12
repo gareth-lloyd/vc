@@ -48,7 +48,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     queryset = (
         Property.objects.all()
-        .select_related("category", "region", "capacity", "settings", "availability_confirmed_by")
+        .select_related(
+            "category", "region__country", "capacity", "settings", "availability_confirmed_by"
+        )
         # Scalar subqueries → no JOIN, no row multiplication, so the paginator
         # COUNT(*) stays correct and each flag costs no per-row query (GAP-034).
         # `_CalendarSourceMixin` reads these annotations, falling back for fresh
@@ -67,7 +69,20 @@ class PropertyViewSet(viewsets.ModelViewSet):
     )
     filterset_class = PropertyFilter
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    ordering_fields = ["name", "display_name", "created_at", "updated_at"]
+    # GAP-078: the quote builder sends
+    # `ordering=region__country__name,region__name,name,id` to bunch candidates
+    # by geography. `id` must be requestable because OrderingFilter REPLACES
+    # Meta.ordering — without the tiebreaker, paging over name collisions can
+    # duplicate or skip rows.
+    ordering_fields = [
+        "name",
+        "display_name",
+        "created_at",
+        "updated_at",
+        "region__name",
+        "region__country__name",
+        "id",
+    ]
     # Default ordering (incl. the `id` pagination tiebreaker) comes from
     # Property.Meta.ordering, so every paginated listing stays stable.
     permission_classes = [IsReservationsWriter]

@@ -55,6 +55,10 @@ export const propertyListItemSchema = z.object({
   channel: z.string().nullable().optional(),
   category: z.number().nullable().optional(),
   region: z.number().nullable().optional(),
+  // GAP-078: geo display names for the quote builder's country → region
+  // grouping (list serializer only — the detail endpoint may omit them).
+  region_name: z.string().nullable().optional(),
+  country_name: z.string().nullable().optional(),
   capacity: propertyListCapacitySchema.nullable().optional(),
   // Whether the row is free across the request's date_from..date_to window;
   // null when the request carried no date range (availability undefined).
@@ -422,6 +426,16 @@ export const rateBandSchema = z.object({
   max_party: z.number().nullable().optional(),
   nightly: z.string().nullable().optional(),
   weekly: z.string().nullable().optional(),
+  // Q-018: `nightly`/`weekly` stay the BASE prices; a reduction (percent XOR
+  // fixed new amounts) is stored alongside, and `effective_*` are the
+  // read-only derived prices quoting actually uses.
+  reduction_percent: z.string().nullable().optional(),
+  reduced_nightly: z.string().nullable().optional(),
+  reduced_weekly: z.string().nullable().optional(),
+  reduced_at: z.string().nullable().optional(),
+  reduction_reason: z.string().nullable().optional(),
+  effective_nightly: z.string().nullable().optional(),
+  effective_weekly: z.string().nullable().optional(),
   is_poa: z.boolean().optional(),
   is_locked: z.boolean().optional(),
   is_approved: z.boolean().optional(),
@@ -486,6 +500,9 @@ export const ratePeriodWriteInputSchema = z
 export type RatePeriodWriteInput = z.infer<typeof ratePeriodWriteInputSchema>;
 
 export const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
+// Q-018: reduction percentage — same decimal-string shape as MONEY_PATTERN;
+// the 0 < percent < 100 exclusivity is checked numerically in `superRefine`.
+export const PERCENT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 
 export const rateBandWriteInputSchema = z
   .object({
@@ -502,6 +519,17 @@ export const rateBandWriteInputSchema = z
     weekly: z.string().trim().optional(),
     is_poa: z.boolean(),
     notes: z.string().trim().optional(),
+    // Q-018: a reduction is a percent XOR fixed new amounts, plus optional
+    // audit metadata. Empty string = "not set" (the payload maps it to null).
+    reduction_percent: z.string().trim().optional(),
+    reduced_nightly: z.string().trim().optional(),
+    reduced_weekly: z.string().trim().optional(),
+    reduced_at: z.string().trim().optional(),
+    reduction_reason: z
+      .string()
+      .trim()
+      .max(200, { message: "properties:errors.reduction_reason_max" })
+      .optional(),
   })
   .refine((v) => v.max_party >= v.min_party, {
     path: ["max_party"],
@@ -528,13 +556,101 @@ export const rateBandWriteInputSchema = z
         message: "properties:errors.rule_price_required",
       });
     }
+
+    // Q-018 reductions: mirror the backend constraints so users rarely see a
+    // 400. A POA band can't carry a reduction, but POA already returned above
+    // (leftovers in the hidden reduction inputs must not block a POA save —
+    // the submit payload nulls them, same as the prices).
+    const hasPercent = Boolean(v.reduction_percent);
+    const hasFixed = Boolean(v.reduced_nightly) || Boolean(v.reduced_weekly);
+    if (hasPercent && hasFixed) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["reduction_percent"],
+        message: "properties:errors.reduction_xor",
+      });
+      return;
+    }
+    if (hasPercent) {
+      const percent = Number(v.reduction_percent);
+      if (!PERCENT_PATTERN.test(v.reduction_percent ?? "") || !(percent > 0 && percent < 100)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["reduction_percent"],
+          message: "properties:errors.reduction_percent_range",
+        });
+      }
+    }
+    const pairs = [
+      ["reduced_nightly", "nightly"],
+      ["reduced_weekly", "weekly"],
+    ] as const;
+    for (const [reducedKey, baseKey] of pairs) {
+      const reduced = v[reducedKey];
+      if (!reduced) continue;
+      if (!MONEY_PATTERN.test(reduced)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [reducedKey],
+          message: "properties:errors.rule_price_invalid",
+        });
+        continue;
+      }
+      const base = v[baseKey];
+      if (!base) {
+        ctx.addIssue({
+          code: "custom",
+          path: [reducedKey],
+          message: "properties:errors.reduction_no_base",
+        });
+        continue;
+      }
+      if (MONEY_PATTERN.test(base) && !(Number(reduced) > 0 && Number(reduced) < Number(base))) {
+        ctx.addIssue({
+          code: "custom",
+          path: [reducedKey],
+          message: "properties:errors.reduction_not_below_base",
+        });
+      }
+    }
+    // Decision 6b: quoting prefers the nightly price, so a fixed reduction
+    // must cover EVERY base price the band carries — a partial pair would be
+    // a silent no-op (or an accidental cut).
+    if (hasFixed) {
+      for (const [reducedKey, baseKey] of pairs) {
+        if (!v[reducedKey] && v[baseKey]) {
+          ctx.addIssue({
+            code: "custom",
+            path: [reducedKey],
+            message: "properties:errors.reduction_covers_all_bases",
+          });
+        }
+      }
+    }
   });
 export type RateBandWriteInput = z.infer<typeof rateBandWriteInputSchema>;
 
-/** Wire shape: empty/POA-masked money fields are sent as explicit nulls. */
-export type RateBandWritePayload = Omit<RateBandWriteInput, "nightly" | "weekly"> & {
+/** Wire shape: empty/POA-masked money fields are sent as explicit nulls.
+ * Q-018: cleared reduction values go as explicit nulls too, so the server
+ * wipes them (and auto-clears the metadata companions). `reduction_reason`
+ * is a non-nullable CharField server-side, so its cleared value is `""`. */
+export type RateBandWritePayload = Omit<
+  RateBandWriteInput,
+  | "nightly"
+  | "weekly"
+  | "reduction_percent"
+  | "reduced_nightly"
+  | "reduced_weekly"
+  | "reduced_at"
+  | "reduction_reason"
+> & {
   nightly: string | null;
   weekly: string | null;
+  reduction_percent: string | null;
+  reduced_nightly: string | null;
+  reduced_weekly: string | null;
+  reduced_at: string | null;
+  reduction_reason: string;
 };
 
 export const ratePlanSchema = z.object({

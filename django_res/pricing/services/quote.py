@@ -21,6 +21,9 @@ class QuoteLine:
     period_id: int | None
     nightly: Decimal
     notes: str = ""
+    # Q-018: the base nightly when a reduction changed this night's price;
+    # None for an unreduced (or fallback) night.
+    reduced_from: Decimal | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -29,6 +32,7 @@ class QuoteLine:
             "period_id": self.period_id,
             "nightly": str(self.nightly),
             "notes": self.notes,
+            "reduced_from": str(self.reduced_from) if self.reduced_from is not None else None,
         }
 
 
@@ -81,6 +85,12 @@ class Quote:
     tax: Decimal
     total: Decimal
     net_to_owner: Decimal
+    # Q-018: what the stay would have cost without any rate reduction — both
+    # None when no priced band carried one. `total_before_reduction` re-runs
+    # the basis math on the un-reduced base (under NET the gross-up scales
+    # with the base, so it is NOT total + subtotal delta).
+    rate_subtotal_before_reduction: Decimal | None = None
+    total_before_reduction: Decimal | None = None
     changeover_shifted_from: date | None = None
     # True when no real plan covered the stay and the quote was derived from a
     # prior year's rates — a guide rate, not a confirmed price. The provenance

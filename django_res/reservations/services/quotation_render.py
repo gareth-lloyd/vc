@@ -10,6 +10,7 @@ guest sees in their inbox is byte-for-byte what an operator previews.
 from __future__ import annotations
 
 from decimal import Decimal
+from itertools import groupby
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
@@ -93,10 +94,18 @@ def build_quotation_context(
     subject is never acceptable. `intro`/`signoff` keep `is not None`
     semantics: `""` is a legitimate "no paragraph" and is respected.
     """
+    # GAP-078: lines render bunched country → region → property name, matching
+    # the quote-builder picker — not insertion order. `pk` keeps ties stable.
     lines_qs = (
         quotation.lines.real()
-        .select_related("property", "currency")
+        .select_related("property__region__country", "currency")
         .prefetch_related("property__images")
+        .order_by(
+            "property__region__country__name",
+            "property__region__name",
+            "property__name",
+            "pk",
+        )
     )
 
     line_dicts: list[dict[str, Any]] = []
@@ -105,6 +114,10 @@ def build_quotation_context(
         line_dicts.append(
             {
                 "property_name": line.property.display_name or line.property.name,
+                # GAP-078 geo grouping — `Property.region` / `Region.country`
+                # are non-null FKs, so the names are always present.
+                "country_name": line.property.region.country.name,
+                "region_name": line.property.region.name,
                 "date_from": format_date(line.date_from),
                 "date_to": format_date(line.date_to),
                 "nights": nights,
@@ -121,6 +134,22 @@ def build_quotation_context(
             }
         )
 
+    # GAP-078: contiguous (country, region) groups over the already-ordered
+    # lines. The templates iterate these and emit a header row per group —
+    # suppressed when there's only one group (a lone label is noise). The flat
+    # `lines` key stays for consumers that don't group (additive contract).
+    line_groups = [
+        {
+            "country": country,
+            "region": region,
+            "label": f"{country} · {region}",
+            "lines": list(grouped),
+        }
+        for (country, region), grouped in groupby(
+            line_dicts, key=lambda d: (d["country_name"], d["region_name"])
+        )
+    ]
+
     agent = quotation.agent
     agent_name = ""
     if agent is not None:
@@ -131,6 +160,10 @@ def build_quotation_context(
 
     return {
         "lines": line_dicts,
+        "line_groups": line_groups,
+        # Plain boolean for the templates: a lone group renders header-less
+        # (and MJML compilation would HTML-escape a `>` comparison in-tag).
+        "show_group_headers": len(line_groups) > 1,
         # GAP-045 Unit 3d-3: the customer name resolves solely from `person`.
         # quotation_render is in reservations and cannot import comms, so it uses
         # the same-app `_contact_reads` resolvers rather than

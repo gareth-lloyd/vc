@@ -85,6 +85,10 @@ class PropertyListSerializer(_CalendarSourceMixin, serializers.ModelSerializer[P
 
     capacity = serializers.SerializerMethodField()
     available_for_range = serializers.SerializerMethodField()
+    # GAP-078: the quote builder groups candidates by geography; ship the
+    # display names alongside the region PK so the client needs no lookup.
+    region_name = serializers.CharField(source="region.name", read_only=True)
+    country_name = serializers.CharField(source="region.country.name", read_only=True)
 
     class Meta:
         model = Property
@@ -98,6 +102,8 @@ class PropertyListSerializer(_CalendarSourceMixin, serializers.ModelSerializer[P
             "channel",
             "category",
             "region",
+            "region_name",
+            "country_name",
             "capacity",
             "available_for_range",
             "has_active_ical_feed",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  occupancyBandSchema,
   quotationDetailSchema,
   quotationLineSchema,
   quotationListItemSchema,
@@ -7,6 +8,7 @@ import {
   quotationLineWriteInputSchema,
   quotationPreviewSchema,
   quoteOptionSchema,
+  stayRepriceSchema,
 } from "../schemas";
 
 describe("quotation schemas", () => {
@@ -98,6 +100,40 @@ describe("quotation schemas", () => {
       hero_image_url: "https://cdn.example/sol.jpg",
     });
     expect(parsed.hero_image_url).toBe("https://cdn.example/sol.jpg");
+  });
+
+  it("parses total_before_reduction on the option, band, and reprice shapes (Q-018)", () => {
+    const baseOption = { property_id: 5, property_name: "Villa Sol", available: true };
+    expect(
+      quoteOptionSchema.parse({ ...baseOption, total_before_reduction: "5000.00" })
+        .total_before_reduction,
+    ).toBe("5000.00");
+    expect(
+      quoteOptionSchema.parse({ ...baseOption, total_before_reduction: null })
+        .total_before_reduction,
+    ).toBeNull();
+    expect(quoteOptionSchema.parse(baseOption).total_before_reduction).toBeUndefined();
+
+    const baseBand = { min_party: 1, max_party: 4, adults: 4 };
+    expect(
+      occupancyBandSchema.parse({ ...baseBand, total_before_reduction: "3400.00" })
+        .total_before_reduction,
+    ).toBe("3400.00");
+    expect(
+      occupancyBandSchema.parse({ ...baseBand, total_before_reduction: null })
+        .total_before_reduction,
+    ).toBeNull();
+    expect(occupancyBandSchema.parse(baseBand).total_before_reduction).toBeUndefined();
+
+    expect(
+      stayRepriceSchema.parse({ available: true, total_before_reduction: "5600.00" })
+        .total_before_reduction,
+    ).toBe("5600.00");
+    expect(
+      stayRepriceSchema.parse({ available: true, total_before_reduction: null })
+        .total_before_reduction,
+    ).toBeNull();
+    expect(stayRepriceSchema.parse({ available: true }).total_before_reduction).toBeUndefined();
   });
 
   it("parses the guest-facing preview shape", () => {

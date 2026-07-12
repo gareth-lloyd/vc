@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
@@ -9,14 +9,29 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
+import { todayIso } from "@/lib/format/date";
 import { currencyAdornment, formatMoney } from "@/lib/format/money";
-import { deriveNetGross, type CommissionInput, type TaxInput } from "@/lib/pricing/netGross";
+import {
+  deriveNetGross,
+  roundHalfEven,
+  type CommissionInput,
+  type TaxInput,
+} from "@/lib/pricing/netGross";
 import { useCreateRateBand, useUpdateRateBand } from "../hooks";
 import {
+  MONEY_PATTERN,
+  PERCENT_PATTERN,
   rateBandWriteInputSchema,
   type RateBand,
   type RateBandWriteInput,
@@ -72,6 +87,11 @@ function createDefaults(seed?: Partial<RateBandWriteInput>): RateBandWriteInput 
     weekly: "",
     is_poa: false,
     notes: "",
+    reduction_percent: "",
+    reduced_nightly: "",
+    reduced_weekly: "",
+    reduced_at: "",
+    reduction_reason: "",
     ...seed,
   };
 }
@@ -84,15 +104,53 @@ function defaultsFromRule(rule: RateBand): RateBandWriteInput {
     weekly: rule.weekly ?? "",
     is_poa: rule.is_poa ?? false,
     notes: rule.notes ?? "",
+    reduction_percent: rule.reduction_percent ?? "",
+    reduced_nightly: rule.reduced_nightly ?? "",
+    reduced_weekly: rule.reduced_weekly ?? "",
+    reduced_at: rule.reduced_at ?? "",
+    reduction_reason: rule.reduction_reason ?? "",
   };
+}
+
+/** Q-018: which reduction editor the form values call for. */
+type ReductionKind = "none" | "percent" | "fixed";
+
+const REDUCTION_FIELDS = [
+  "reduction_percent",
+  "reduced_nightly",
+  "reduced_weekly",
+  "reduced_at",
+  "reduction_reason",
+] as const;
+
+function reductionKindOf(values: RateBandWriteInput): ReductionKind {
+  if (values.reduction_percent) return "percent";
+  if (values.reduced_nightly || values.reduced_weekly) return "fixed";
+  return "none";
 }
 
 /** Empty or POA-masked prices go to the API as explicit nulls. */
 function toPayload(values: RateBandWriteInput): RateBandWritePayload {
+  // Q-018: cleared (or POA-masked) reduction values go as explicit nulls so
+  // the server wipes the stored reduction.
+  const reduction_percent =
+    values.is_poa || !values.reduction_percent ? null : values.reduction_percent;
+  const reduced_nightly = values.is_poa || !values.reduced_nightly ? null : values.reduced_nightly;
+  const reduced_weekly = values.is_poa || !values.reduced_weekly ? null : values.reduced_weekly;
+  const hasReduction =
+    reduction_percent !== null || reduced_nightly !== null || reduced_weekly !== null;
   return {
     ...values,
     nightly: values.is_poa || !values.nightly ? null : values.nightly,
     weekly: values.is_poa || !values.weekly ? null : values.weekly,
+    reduction_percent,
+    reduced_nightly,
+    reduced_weekly,
+    // Metadata may only ride alongside a live reduction (the server 400s it
+    // otherwise) and must clear with it. `reduction_reason` clears to "" —
+    // the backend column is a non-nullable CharField.
+    reduced_at: hasReduction && values.reduced_at ? values.reduced_at : null,
+    reduction_reason: hasReduction ? (values.reduction_reason ?? "") : "",
   };
 }
 
@@ -128,6 +186,40 @@ function DerivedCounterpartHint({
   );
 }
 
+/** Q-018: live preview of the price quoting will actually charge once the
+ * typed reduction applies. Mirrors `DerivedCounterpartHint`: display-only,
+ * renders nothing when the currency is unknown or nothing is derivable. */
+function EffectivePriceHint({
+  base,
+  percent,
+  reduced,
+  label,
+  currencyCode,
+}: {
+  base: string | undefined;
+  percent?: string;
+  reduced?: string;
+  label: string;
+  currencyCode?: string | null;
+}) {
+  if (!currencyCode || !base || !MONEY_PATTERN.test(base)) return null;
+  const baseAmount = Number(base);
+  let effective: number | null = null;
+  if (percent && PERCENT_PATTERN.test(percent)) {
+    const pct = Number(percent);
+    if (pct > 0 && pct < 100) effective = roundHalfEven(baseAmount * (1 - pct / 100));
+  } else if (reduced && MONEY_PATTERN.test(reduced)) {
+    const amount = Number(reduced);
+    if (amount > 0 && amount < baseAmount) effective = amount;
+  }
+  if (effective == null) return null;
+  return (
+    <p className="text-muted-foreground text-xs" data-testid="effective-price">
+      {label}: {formatMoney(effective, currencyCode)}
+    </p>
+  );
+}
+
 export function RateBandFormDialog(props: RateBandFormDialogProps) {
   const {
     ratePlanId,
@@ -157,6 +249,11 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
     defaultValues: isCreate ? buildCreateDefaults(props.defaults) : defaultsFromRule(props.rule),
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
+  // Q-018: which reduction editor is showing. Derived from the loaded values
+  // and re-derived whenever the dialog (re)opens.
+  const [reductionKind, setReductionKind] = useState<ReductionKind>(() =>
+    reductionKindOf(form.getValues()),
+  );
 
   const createMutation = useCreateRateBand(ratePlanId);
   const updateMutation = useUpdateRateBand(ratePlanId);
@@ -164,14 +261,70 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
 
   useEffect(() => {
     if (open) {
-      form.reset(isCreate ? buildCreateDefaults(props.defaults) : defaultsFromRule(props.rule));
+      const values = isCreate ? buildCreateDefaults(props.defaults) : defaultsFromRule(props.rule);
+      form.reset(values);
+      setReductionKind(reductionKindOf(values));
       setTopLevelError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? null : props.rule.id]);
 
+  /** Switching reduction mode clears the other mode's inputs (leftovers must
+   * never fail the XOR refine) and stamps today on first enable. */
+  const switchReductionKind = (next: ReductionKind) => {
+    setReductionKind(next);
+    if (next !== "percent") form.setValue("reduction_percent", "");
+    if (next !== "fixed") {
+      form.setValue("reduced_nightly", "");
+      form.setValue("reduced_weekly", "");
+    }
+    if (next === "none") {
+      form.setValue("reduced_at", "");
+      form.setValue("reduction_reason", "");
+    } else if (!form.getValues("reduced_at")) {
+      form.setValue("reduced_at", todayIso());
+    }
+    form.clearErrors(["reduction_percent", "reduced_nightly", "reduced_weekly"]);
+  };
+
+  /** A cleared base price takes its fixed reduced amount with it — RHF keeps
+   * unmounted values, so a stale reduced_* would otherwise fail the no-base
+   * refine on a hidden input and silently block the save. */
+  const clearReducedWhenBaseEmpty =
+    (reducedField: "reduced_nightly" | "reduced_weekly") =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      if (!event.target.value.trim() && form.getValues(reducedField)) {
+        form.setValue(reducedField, "");
+        form.clearErrors(reducedField);
+      }
+    };
+
+  /** A picked reduction mode with its amount left blank would pass the schema
+   * as "no reduction" and silently discard the typed metadata — demand the
+   * amount (or an explicit switch back to "No reduction") instead. */
+  const guardIncompleteReduction = (values: RateBandWriteInput): boolean => {
+    if (values.is_poa || reductionKind === "none") return false;
+    if (reductionKind === "percent") {
+      if (values.reduction_percent) return false;
+      form.setError("reduction_percent", {
+        message: "properties:errors.reduction_value_required",
+      });
+      return true;
+    }
+    const rendered = (
+      [
+        ["reduced_nightly", values.nightly],
+        ["reduced_weekly", values.weekly],
+      ] as const
+    ).filter(([, base]) => Boolean(base));
+    if (rendered.length === 0 || rendered.some(([field]) => values[field])) return false;
+    form.setError(rendered[0][0], { message: "properties:errors.reduction_value_required" });
+    return true;
+  };
+
   const submit = async (values: RateBandWriteInput, andAddAnother: boolean) => {
     setTopLevelError(null);
+    if (guardIncompleteReduction(values)) return;
     try {
       if (isCreate) {
         await createMutation.mutateAsync({ periodId, input: toPayload(values) });
@@ -185,6 +338,7 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
         // just above this band's max, so building 1–2 / 3–4 / … coverage is fast.
         const nextParty = (values.max_party ?? 0) + 1;
         form.reset(createDefaults({ min_party: nextParty, max_party: nextParty }));
+        setReductionKind("none");
         form.setFocus("min_party");
       } else {
         onOpenChange(false);
@@ -206,6 +360,23 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
   const isPoa = form.watch("is_poa");
   const nightly = form.watch("nightly");
   const weekly = form.watch("weekly");
+  const reductionPercent = form.watch("reduction_percent");
+  const reducedNightly = form.watch("reduced_nightly");
+  const reducedWeekly = form.watch("reduced_weekly");
+
+  // Server 400s can key a reduction field whose input isn't currently mounted
+  // (e.g. reduction_percent while the kind selector says none/fixed) — RHF
+  // would hold the error invisibly, so surface those in one aggregate line.
+  const reductionFieldMounted: Record<(typeof REDUCTION_FIELDS)[number], boolean> = {
+    reduction_percent: reductionKind === "percent",
+    reduced_nightly: reductionKind === "fixed" && Boolean(nightly),
+    reduced_weekly: reductionKind === "fixed" && Boolean(weekly),
+    reduced_at: reductionKind !== "none",
+    reduction_reason: reductionKind !== "none",
+  };
+  const hiddenReductionErrors = REDUCTION_FIELDS.filter(
+    (field) => !reductionFieldMounted[field] && form.formState.errors[field]?.message,
+  ).map((field) => fieldErrorText(t, form.formState.errors[field]?.message));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -271,8 +442,15 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
               checked={isPoa}
               onCheckedChange={(v) => {
                 form.setValue("is_poa", v === true);
-                // Price errors no longer apply once POA masks the inputs.
-                form.clearErrors(["nightly", "weekly"]);
+                // Price (and reduction — a POA band can't carry one) errors
+                // no longer apply once POA masks the inputs.
+                form.clearErrors([
+                  "nightly",
+                  "weekly",
+                  "reduction_percent",
+                  "reduced_nightly",
+                  "reduced_weekly",
+                ]);
               }}
             />
             <Label htmlFor="rate-rule-is-poa">{t("pricing.rule.dialog.fields.is_poa")}</Label>
@@ -286,7 +464,9 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
                 inputMode="decimal"
                 disabled={isPoa}
                 adornment={isPoa ? null : priceAdornment}
-                {...form.register("nightly")}
+                {...form.register("nightly", {
+                  onChange: clearReducedWhenBaseEmpty("reduced_nightly"),
+                })}
               />
               {form.formState.errors.nightly ? (
                 <p className="text-destructive text-sm" role="alert">
@@ -311,7 +491,9 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
                 inputMode="decimal"
                 disabled={isPoa}
                 adornment={isPoa ? null : priceAdornment}
-                {...form.register("weekly")}
+                {...form.register("weekly", {
+                  onChange: clearReducedWhenBaseEmpty("reduced_weekly"),
+                })}
               />
               {form.formState.errors.weekly ? (
                 <p className="text-destructive text-sm" role="alert">
@@ -329,6 +511,159 @@ export function RateBandFormDialog(props: RateBandFormDialogProps) {
               ) : null}
             </div>
           </div>
+
+          {/* Q-018: a reduction keeps the base prices above intact and quotes
+              the effective price instead. Hidden under POA — a POA band has
+              no price to reduce (the payload nulls any leftovers). */}
+          {!isPoa ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="rate-rule-reduction-kind">
+                  {t("pricing.rule.dialog.reduction.kind")}
+                </Label>
+                <Select
+                  value={reductionKind}
+                  onValueChange={(v) => switchReductionKind(v as ReductionKind)}
+                >
+                  <SelectTrigger id="rate-rule-reduction-kind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      {t("pricing.rule.dialog.reduction.kind_none")}
+                    </SelectItem>
+                    <SelectItem value="percent">
+                      {t("pricing.rule.dialog.reduction.kind_percent")}
+                    </SelectItem>
+                    <SelectItem value="fixed">
+                      {t("pricing.rule.dialog.reduction.kind_fixed")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {hiddenReductionErrors.length > 0 ? (
+                  <p className="text-destructive text-sm" role="alert">
+                    {hiddenReductionErrors.join(" ")}
+                  </p>
+                ) : null}
+              </div>
+
+              {reductionKind === "percent" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="rate-rule-reduction-percent">
+                    {t("pricing.rule.dialog.reduction.percent")}
+                  </Label>
+                  <Input
+                    id="rate-rule-reduction-percent"
+                    inputMode="decimal"
+                    {...form.register("reduction_percent")}
+                  />
+                  {form.formState.errors.reduction_percent ? (
+                    <p className="text-destructive text-sm" role="alert">
+                      {fieldErrorText(t, form.formState.errors.reduction_percent.message)}
+                    </p>
+                  ) : null}
+                  <EffectivePriceHint
+                    base={nightly}
+                    percent={reductionPercent}
+                    label={t("pricing.rule.dialog.reduction.effective_nightly")}
+                    currencyCode={currencyCode}
+                  />
+                  <EffectivePriceHint
+                    base={weekly}
+                    percent={reductionPercent}
+                    label={t("pricing.rule.dialog.reduction.effective_weekly")}
+                    currencyCode={currencyCode}
+                  />
+                </div>
+              ) : null}
+
+              {/* Fixed mode asks for a new amount per non-empty base price —
+                  decision 6b: a fixed reduction must cover every base. */}
+              {reductionKind === "fixed" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {nightly ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="rate-rule-reduced-nightly">
+                        {t("pricing.rule.dialog.reduction.reduced_nightly")}
+                      </Label>
+                      <MoneyInput
+                        id="rate-rule-reduced-nightly"
+                        inputMode="decimal"
+                        adornment={priceAdornment}
+                        {...form.register("reduced_nightly")}
+                      />
+                      {form.formState.errors.reduced_nightly ? (
+                        <p className="text-destructive text-sm" role="alert">
+                          {fieldErrorText(t, form.formState.errors.reduced_nightly.message)}
+                        </p>
+                      ) : null}
+                      <EffectivePriceHint
+                        base={nightly}
+                        reduced={reducedNightly}
+                        label={t("pricing.rule.dialog.reduction.effective_nightly")}
+                        currencyCode={currencyCode}
+                      />
+                    </div>
+                  ) : null}
+                  {weekly ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="rate-rule-reduced-weekly">
+                        {t("pricing.rule.dialog.reduction.reduced_weekly")}
+                      </Label>
+                      <MoneyInput
+                        id="rate-rule-reduced-weekly"
+                        inputMode="decimal"
+                        adornment={priceAdornment}
+                        {...form.register("reduced_weekly")}
+                      />
+                      {form.formState.errors.reduced_weekly ? (
+                        <p className="text-destructive text-sm" role="alert">
+                          {fieldErrorText(t, form.formState.errors.reduced_weekly.message)}
+                        </p>
+                      ) : null}
+                      <EffectivePriceHint
+                        base={weekly}
+                        reduced={reducedWeekly}
+                        label={t("pricing.rule.dialog.reduction.effective_weekly")}
+                        currencyCode={currencyCode}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {reductionKind !== "none" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="rate-rule-reduced-at">
+                      {t("pricing.rule.dialog.reduction.reduced_at")}
+                    </Label>
+                    <Input id="rate-rule-reduced-at" type="date" {...form.register("reduced_at")} />
+                    {form.formState.errors.reduced_at ? (
+                      <p className="text-destructive text-sm" role="alert">
+                        {fieldErrorText(t, form.formState.errors.reduced_at.message)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rate-rule-reduction-reason">
+                      {t("pricing.rule.dialog.reduction.reason")}
+                    </Label>
+                    <Input
+                      id="rate-rule-reduction-reason"
+                      maxLength={200}
+                      {...form.register("reduction_reason")}
+                    />
+                    {form.formState.errors.reduction_reason ? (
+                      <p className="text-destructive text-sm" role="alert">
+                        {fieldErrorText(t, form.formState.errors.reduction_reason.message)}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="rate-rule-notes">{t("pricing.rule.dialog.fields.notes")}</Label>

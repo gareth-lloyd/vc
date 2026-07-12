@@ -417,3 +417,196 @@ describe("QuoteResultsList", () => {
     expect(screen.getByRole("button", { name: /loading/i })).toBeDisabled();
   });
 });
+
+describe("QuoteResultsList geo grouping (GAP-078)", () => {
+  it("groups results under country headers, manual rows inside their group after cards", () => {
+    renderList([
+      option({
+        property_id: 1,
+        property_name: "Villa Sol",
+        country_name: "Spain",
+        region_name: "Ibiza",
+      }),
+      option({
+        property_id: 2,
+        property_name: "Villa Zeus",
+        country_name: "Greece",
+        region_name: "Crete",
+      }),
+      option({
+        property_id: 3,
+        property_name: "Villa Manual",
+        country_name: "Greece",
+        region_name: "Crete",
+        available: false,
+        total: null,
+        error_code: "no_rate_available",
+      }),
+    ]);
+    const headers = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(headers).toEqual(["Greece", "Spain"]);
+    const greece = screen.getByRole("region", { name: "Greece" });
+    const spain = screen.getByRole("region", { name: "Spain" });
+    expect(greece).toHaveTextContent("Villa Zeus");
+    expect(greece).toHaveTextContent("Villa Manual");
+    expect(spain).toHaveTextContent("Villa Sol");
+    // Within a group the partition holds: full cards before manual rows.
+    const text = greece.textContent ?? "";
+    expect(text.indexOf("Villa Zeus")).toBeLessThan(text.indexOf("Villa Manual"));
+  });
+
+  it("keys groups on country+region so same-named regions never merge", () => {
+    renderList([
+      option({
+        property_id: 1,
+        property_name: "Villa Cy",
+        country_name: "Cyprus",
+        region_name: "Paphos",
+      }),
+      option({
+        property_id: 2,
+        property_name: "Villa Gr",
+        country_name: "Greece",
+        region_name: "Paphos",
+      }),
+      option({
+        property_id: 3,
+        property_name: "Villa Cr",
+        country_name: "Greece",
+        region_name: "Crete",
+      }),
+    ]);
+    // Greece has two distinct regions → region subheaders; Cyprus has one → none.
+    // Card titles are also h4s, but they live inside <article> — region
+    // subheaders sit above the cards, outside any article.
+    const regionHeaders = screen
+      .getAllByRole("heading", { level: 4 })
+      .filter((h) => !h.closest("article"))
+      .map((h) => h.textContent);
+    expect(regionHeaders).toEqual(["Crete", "Paphos"]);
+    const cyprus = screen.getByRole("region", { name: "Cyprus" });
+    const greece = screen.getByRole("region", { name: "Greece" });
+    expect(cyprus).toHaveTextContent("Villa Cy");
+    expect(greece).toHaveTextContent("Villa Gr");
+    expect(cyprus).not.toHaveTextContent("Villa Gr");
+  });
+
+  it("renders flat with no headers for a single country and region", () => {
+    renderList([
+      option({ property_id: 1, country_name: "Spain", region_name: "Ibiza" }),
+      option({
+        property_id: 2,
+        property_name: "Villa Luna",
+        country_name: "Spain",
+        region_name: "Ibiza",
+      }),
+    ]);
+    expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument();
+    // Card titles are h4s inside <article>; no region subheaders outside one.
+    const regionHeaders = screen
+      .getAllByRole("heading", { level: 4 })
+      .filter((h) => !h.closest("article"));
+    expect(regionHeaders).toHaveLength(0);
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+  });
+
+  it("shows region subheaders without country headers for a single country with two regions", () => {
+    // Nick's stated flow: filter to one country — no redundant country
+    // header, but the regions still bunch.
+    renderList([
+      option({ property_id: 1, country_name: "Spain", region_name: "Ibiza" }),
+      option({
+        property_id: 2,
+        property_name: "Villa Sur",
+        country_name: "Spain",
+        region_name: "Andalusia",
+      }),
+    ]);
+    expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument();
+    const regionHeaders = screen
+      .getAllByRole("heading", { level: 4 })
+      .filter((h) => !h.closest("article"))
+      .map((h) => h.textContent);
+    expect(regionHeaders).toEqual(["Andalusia", "Ibiza"]);
+  });
+
+  it("buckets options without geo under Other, last", () => {
+    renderList([
+      option({ property_id: 1, property_name: "Villa NoGeo" }),
+      option({
+        property_id: 2,
+        property_name: "Villa Sur",
+        country_name: "Spain",
+        region_name: "Ibiza",
+      }),
+    ]);
+    const headers = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(headers).toEqual(["Spain", "Other locations"]);
+    expect(screen.getByRole("region", { name: "Other locations" })).toHaveTextContent(
+      "Villa NoGeo",
+    );
+  });
+
+  it("keeps unavailable villas in the single global collapsible, outside geo groups", () => {
+    renderList([
+      option({ property_id: 1, country_name: "Spain", region_name: "Ibiza" }),
+      option({
+        property_id: 2,
+        property_name: "Villa Zeus",
+        country_name: "Greece",
+        region_name: "Crete",
+      }),
+      option({
+        property_id: 3,
+        property_name: "Villa Blocked",
+        country_name: "Greece",
+        region_name: "Crete",
+        available: false,
+        total: null,
+        error_code: "dates_unavailable",
+      }),
+    ]);
+    expect(screen.getByText("1 villa unavailable for these dates")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Greece" })).not.toHaveTextContent("Villa Blocked");
+  });
+
+  it("introduces headers when a later page brings a second country", () => {
+    // Load more can surface a new country: headers appear over the existing
+    // cards WITHOUT remounting them — the group structure always renders, so
+    // a card's DOM node (and its picker/reprice state) survives the flip.
+    const single = [option({ property_id: 1, country_name: "Spain", region_name: "Ibiza" })];
+    const view = renderList(single);
+    expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument();
+    const cardBefore = screen.getByText("Villa Sol").closest("article");
+    expect(cardBefore).not.toBeNull();
+    view.rerender(
+      <QuoteResultsList
+        options={[
+          ...single,
+          option({
+            property_id: 2,
+            property_name: "Villa Zeus",
+            country_name: "Greece",
+            region_name: "Crete",
+          }),
+        ]}
+        hiddenForCapacity={[]}
+        isLoading={false}
+        stagedKeys={new Set<string>()}
+        criteriaDates={{ date_from: "2026-07-01", date_to: "2026-07-08" }}
+        onAdd={noop}
+        adults={2}
+        children={0}
+        searchKey="2026-07-01:2026-07-08:0"
+        hasMore={false}
+        isLoadingMore={false}
+        totalMatched={2}
+        onLoadMore={noop}
+      />,
+    );
+    const headers = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(headers).toEqual(["Greece", "Spain"]);
+    // Same DOM node → React did not remount the card when headers appeared.
+    expect(screen.getByText("Villa Sol").closest("article")).toBe(cardBefore);
+  });
+});

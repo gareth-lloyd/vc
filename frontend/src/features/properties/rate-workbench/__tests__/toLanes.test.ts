@@ -152,7 +152,136 @@ describe("toLanes", () => {
       minPrice: 650,
       maxPrice: 900,
       hasPoa: true,
+      hasReduction: false,
     });
+  });
+
+  it("flags hasReduction and carries effective prices + base range + reason/date (Q-018)", () => {
+    const lanes = toLanes({
+      ...base(),
+      ratePlanDetails: [
+        detail({
+          id: 5,
+          name: "Summer",
+          currency_code: "EUR",
+          periods: [
+            {
+              id: 50,
+              plan: 5,
+              name: "Standard",
+              date_from: "2026-06-01",
+              date_to: "2026-08-30",
+              coverage_gaps: [],
+              bands: [
+                {
+                  id: 1,
+                  period: 50,
+                  nightly: "200.00",
+                  reduction_percent: "20.00",
+                  reduced_at: "2026-05-01T09:00:00Z",
+                  reduction_reason: "Late-season push",
+                  effective_nightly: "160.00",
+                },
+                { id: 2, period: 50, nightly: "900.00", effective_nightly: "900.00" },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    const band = lane(lanes, "rates").bands[0];
+    expect(band.meta).toMatchObject({
+      hasReduction: true,
+      // The lane's price range is what the engine quotes: the EFFECTIVE prices.
+      minPrice: 160,
+      maxPrice: 900,
+      // The base range rides along for the popover's "reduced from" — computed
+      // over the REDUCED bands only, so the unreduced 900 band isn't implied cut.
+      baseMinPrice: 200,
+      baseMaxPrice: 200,
+      reductionReason: "Late-season push",
+      reducedAt: "2026-05-01T09:00:00Z",
+    });
+  });
+
+  it("derives the effective price from the reduction fields when effective_* is absent", () => {
+    const lanes = toLanes({
+      ...base(),
+      ratePlanDetails: [
+        detail({
+          id: 5,
+          name: "Summer",
+          periods: [
+            {
+              id: 50,
+              plan: 5,
+              name: "Standard",
+              date_from: "2026-06-01",
+              date_to: "2026-08-30",
+              coverage_gaps: [],
+              // A shape without effective_* (pre-Q-018 snapshot or a stale
+              // optimistic cache): fall through the reduction fields, not base.
+              bands: [{ id: 1, period: 50, nightly: "650", reduced_nightly: "500" }],
+            },
+          ],
+        }),
+      ],
+    });
+    const meta = lane(lanes, "rates").bands[0].meta;
+    expect(meta.hasReduction).toBe(true);
+    expect(meta.minPrice).toBe(500);
+    expect(meta.baseMinPrice).toBe(650);
+  });
+
+  it("omits the reduction audit trail when the period's reduced bands disagree", () => {
+    const lanes = toLanes({
+      ...base(),
+      ratePlanDetails: [
+        detail({
+          id: 5,
+          name: "Summer",
+          periods: [
+            {
+              id: 50,
+              plan: 5,
+              name: "Standard",
+              date_from: "2026-06-01",
+              date_to: "2026-08-30",
+              coverage_gaps: [],
+              bands: [
+                {
+                  id: 1,
+                  period: 50,
+                  nightly: "200.00",
+                  reduction_percent: "20.00",
+                  reduction_reason: "Late-season push",
+                  reduced_at: "2026-05-01T09:00:00Z",
+                  effective_nightly: "160.00",
+                },
+                {
+                  id: 2,
+                  period: 50,
+                  nightly: "900.00",
+                  reduced_nightly: "700.00",
+                  reduction_reason: "Owner request",
+                  reduced_at: "2026-05-02T09:00:00Z",
+                  effective_nightly: "700.00",
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    const meta = lane(lanes, "rates").bands[0].meta;
+    expect(meta.hasReduction).toBe(true);
+    // Both bands are reduced, so both feed the base range…
+    expect(meta.baseMinPrice).toBe(200);
+    expect(meta.baseMaxPrice).toBe(900);
+    // …but their audit trails differ — attributing one to the whole period
+    // would lie, so the popover shows neither row.
+    expect(meta.reductionReason).toBeNull();
+    expect(meta.reducedAt).toBeNull();
   });
 
   it("computes addAfter per period: suppressed when contiguous, capped at the next period, open for the last", () => {

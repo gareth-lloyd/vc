@@ -14,6 +14,7 @@ import {
   propertyRoomWriteInputSchema,
   propertySettingsWriteInputSchema,
   ratePeriodWriteInputSchema,
+  rateBandSchema,
   rateBandWriteInputSchema,
   roomAttributeSchema,
   roomAttributesResponseSchema,
@@ -368,6 +369,143 @@ describe("rateBandWriteInputSchema", () => {
     expect(() => rateBandWriteInputSchema.parse({ ...valid, nightly: "-5" })).toThrow();
     expect(rateBandWriteInputSchema.parse({ ...valid, nightly: "1250" }).nightly).toBe("1250");
     expect(rateBandWriteInputSchema.parse({ ...valid, nightly: "12.5" }).nightly).toBe("12.5");
+  });
+});
+
+describe("rateBandSchema — Q-018 reduction read fields", () => {
+  const base = { id: 9, period: 5, min_party: 1, max_party: 8 };
+
+  it("parses a band carrying the reduction + effective fields", () => {
+    const band = rateBandSchema.parse({
+      ...base,
+      nightly: "200.00",
+      weekly: "1200.00",
+      reduction_percent: "10.00",
+      reduced_nightly: null,
+      reduced_weekly: null,
+      reduced_at: "2026-07-12",
+      reduction_reason: "Late-season push",
+      effective_nightly: "180.00",
+      effective_weekly: "1080.00",
+    });
+    expect(band.reduction_percent).toBe("10.00");
+    expect(band.reduced_at).toBe("2026-07-12");
+    expect(band.reduction_reason).toBe("Late-season push");
+    expect(band.effective_nightly).toBe("180.00");
+    expect(band.effective_weekly).toBe("1080.00");
+  });
+
+  it("accepts fixtures without the reduction fields (older MSW payloads)", () => {
+    const band = rateBandSchema.parse({ ...base, nightly: "200.00" });
+    expect(band.reduction_percent).toBeUndefined();
+    expect(band.effective_nightly).toBeUndefined();
+  });
+});
+
+describe("rateBandWriteInputSchema — Q-018 reductions", () => {
+  const valid = {
+    min_party: 1,
+    max_party: 8,
+    nightly: "200.00",
+    weekly: "",
+    is_poa: false,
+    reduction_percent: "",
+    reduced_nightly: "",
+    reduced_weekly: "",
+    reduced_at: "",
+    reduction_reason: "",
+  };
+
+  it("accepts a percent reduction", () => {
+    expect(
+      rateBandWriteInputSchema.parse({ ...valid, reduction_percent: "10.00" }).reduction_percent,
+    ).toBe("10.00");
+  });
+
+  it("rejects percent AND fixed together (XOR)", () => {
+    expect(() =>
+      rateBandWriteInputSchema.parse({
+        ...valid,
+        reduction_percent: "10.00",
+        reduced_nightly: "150.00",
+      }),
+    ).toThrow();
+  });
+
+  it("requires the percent strictly between 0 and 100", () => {
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, reduction_percent: "0" })).toThrow();
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, reduction_percent: "100" })).toThrow();
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, reduction_percent: "abc" })).toThrow();
+    expect(
+      rateBandWriteInputSchema.parse({ ...valid, reduction_percent: "99.99" }).reduction_percent,
+    ).toBe("99.99");
+  });
+
+  it("accepts a fixed reduction covering the band's only base price", () => {
+    expect(
+      rateBandWriteInputSchema.parse({ ...valid, reduced_nightly: "150.00" }).reduced_nightly,
+    ).toBe("150.00");
+  });
+
+  it("6b: a fixed reduction must cover EVERY base price the band carries", () => {
+    const both = { ...valid, weekly: "1200.00" };
+    expect(() => rateBandWriteInputSchema.parse({ ...both, reduced_nightly: "150.00" })).toThrow();
+    expect(
+      rateBandWriteInputSchema.parse({
+        ...both,
+        reduced_nightly: "150.00",
+        reduced_weekly: "900.00",
+      }).reduced_weekly,
+    ).toBe("900.00");
+  });
+
+  it("requires each fixed reduced amount strictly below its base", () => {
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, reduced_nightly: "200.00" })).toThrow();
+    expect(() => rateBandWriteInputSchema.parse({ ...valid, reduced_nightly: "0" })).toThrow();
+    expect(
+      rateBandWriteInputSchema.parse({ ...valid, reduced_nightly: "199.99" }).reduced_nightly,
+    ).toBe("199.99");
+  });
+
+  it("rejects a fixed reduced amount with no base price to reduce", () => {
+    expect(() =>
+      rateBandWriteInputSchema.parse({
+        ...valid,
+        nightly: "",
+        weekly: "1200.00",
+        reduced_nightly: "150.00",
+        reduced_weekly: "900.00",
+      }),
+    ).toThrow();
+  });
+
+  it("caps reduction_reason at 200 characters", () => {
+    expect(() =>
+      rateBandWriteInputSchema.parse({
+        ...valid,
+        reduction_percent: "10",
+        reduction_reason: "x".repeat(201),
+      }),
+    ).toThrow();
+    expect(
+      rateBandWriteInputSchema.parse({
+        ...valid,
+        reduction_percent: "10",
+        reduction_reason: "x".repeat(200),
+      }).reduction_reason,
+    ).toBe("x".repeat(200));
+  });
+
+  it("ignores reduction leftovers under POA (payload nulls them at submit)", () => {
+    expect(
+      rateBandWriteInputSchema.parse({
+        ...valid,
+        is_poa: true,
+        nightly: "",
+        reduction_percent: "150",
+        reduced_nightly: "999",
+      }).is_poa,
+    ).toBe(true);
   });
 });
 

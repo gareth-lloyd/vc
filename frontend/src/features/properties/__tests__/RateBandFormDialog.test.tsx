@@ -4,6 +4,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
+import { todayIso } from "@/lib/format/date";
 import { useAuthStore } from "@/features/auth/store";
 import { RateBandFormDialog } from "../components/RateBandFormDialog";
 import type { RateBand } from "../schemas";
@@ -363,6 +364,301 @@ describe("RateBandFormDialog — currency adornment (GAP-026)", () => {
     expect(await screen.findAllByText("£")).toHaveLength(2);
     await userEvent.click(screen.getByLabelText(/price on application/i));
     await waitFor(() => expect(screen.queryByText("£")).not.toBeInTheDocument());
+  });
+});
+
+describe("RateBandFormDialog — reductions (Q-018)", () => {
+  afterEach(() => useAuthStore.getState().clear());
+
+  async function chooseKind(name: RegExp) {
+    await userEvent.click(screen.getByRole("combobox", { name: /^reduction$/i }));
+    await userEvent.click(screen.getByRole("option", { name }));
+  }
+
+  it("percent mode posts reduction_percent + metadata, nulling the fixed amounts", async () => {
+    setReservationsUser();
+    let postBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/periods/5/bands", async ({ request }) => {
+        postBody = (await request.json()) as Record<string, unknown>;
+        return ruleResponse(postBody);
+      }),
+    );
+
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
+    );
+    await fillValidRule();
+    await chooseKind(/^percentage$/i);
+    await userEvent.type(screen.getByLabelText(/Reduction \(%\)/i), "10");
+    await userEvent.type(screen.getByLabelText(/^Reason$/i), "Summer promo");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(postBody).not.toBeNull());
+    expect(postBody).toMatchObject({
+      reduction_percent: "10",
+      reduced_nightly: null,
+      reduced_weekly: null,
+      reduction_reason: "Summer promo",
+      // Enabling a reduction pre-fills "Reduced on" with today.
+      reduced_at: todayIso(),
+    });
+    useAuthStore.getState().clear();
+  });
+
+  it("fixed mode offers one input per non-null base price and posts the reduced amount", async () => {
+    setReservationsUser();
+    let postBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post("/api/v1/periods/5/bands", async ({ request }) => {
+        postBody = (await request.json()) as Record<string, unknown>;
+        return ruleResponse(postBody);
+      }),
+    );
+
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
+    );
+    // Nightly base only — the fixed mode must not ask for a reduced weekly.
+    await userEvent.clear(screen.getByLabelText(/Maximum party/i));
+    await userEvent.type(screen.getByLabelText(/Maximum party/i), "8");
+    await userEvent.type(screen.getByLabelText(/Nightly price/i), "200.00");
+    await chooseKind(/fixed reduced prices/i);
+    expect(screen.getByLabelText(/Reduced nightly price/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Reduced weekly price/i)).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/Reduced nightly price/i), "150.00");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(postBody).not.toBeNull());
+    expect(postBody).toMatchObject({
+      nightly: "200.00",
+      reduced_nightly: "150.00",
+      reduced_weekly: null,
+      reduction_percent: null,
+    });
+    useAuthStore.getState().clear();
+  });
+
+  it("6b: with both base prices, a fixed reduction needs both reduced amounts", async () => {
+    setReservationsUser();
+    let requested = false;
+    server.use(
+      http.post("/api/v1/periods/5/bands", () => {
+        requested = true;
+        return ruleResponse({});
+      }),
+    );
+
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
+    );
+    await fillValidRule();
+    await userEvent.type(screen.getByLabelText(/Weekly price/i), "900.00");
+    await chooseKind(/fixed reduced prices/i);
+    await userEvent.type(screen.getByLabelText(/Reduced nightly price/i), "120.00");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/every base price/i)).toBeInTheDocument();
+    expect(requested).toBe(false);
+    useAuthStore.getState().clear();
+  });
+
+  it("shows the live effective price while entering a percent", async () => {
+    setReservationsUser();
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+        currencyCode="EUR"
+      />,
+    );
+    await userEvent.type(screen.getByLabelText(/Nightly price/i), "200.00");
+    await chooseKind(/^percentage$/i);
+    await userEvent.type(screen.getByLabelText(/Reduction \(%\)/i), "10");
+
+    const hint = await screen.findByTestId("effective-price");
+    expect(hint).toHaveTextContent(/Effective nightly/i);
+    expect(hint).toHaveTextContent("€180.00");
+  });
+
+  it("switching back to no reduction sends nulls so the server clears everything", async () => {
+    setReservationsUser();
+    let patchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/bands/9", async ({ request }) => {
+        patchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...rule, ...patchBody });
+      }),
+    );
+
+    const reducedRule: RateBand = {
+      ...rule,
+      nightly: "200.00",
+      reduction_percent: "10.00",
+      reduced_at: "2026-07-01",
+      reduction_reason: "Slow season",
+      effective_nightly: "180.00",
+    };
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="edit"
+        rule={reducedRule}
+      />,
+    );
+    // Edit mode prefills the stored reduction…
+    const percentInput = (await screen.findByLabelText(/Reduction \(%\)/i)) as HTMLInputElement;
+    expect(percentInput.value).toBe("10.00");
+    // …and clearing it sends explicit nulls (reason clears to "" — the
+    // backend field is a non-nullable CharField).
+    await chooseKind(/no reduction/i);
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(patchBody).not.toBeNull());
+    expect(patchBody).toMatchObject({
+      reduction_percent: null,
+      reduced_nightly: null,
+      reduced_weekly: null,
+      reduced_at: null,
+      reduction_reason: "",
+    });
+    useAuthStore.getState().clear();
+  });
+
+  it("clearing a base price clears its fixed reduced amount so the save isn't blocked", async () => {
+    setReservationsUser();
+    let patchBody: Record<string, unknown> | null = null;
+    server.use(
+      http.patch("/api/v1/bands/9", async ({ request }) => {
+        patchBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...rule, ...patchBody });
+      }),
+    );
+
+    const fixedRule: RateBand = {
+      ...rule,
+      nightly: "200.00",
+      weekly: "1200.00",
+      reduced_nightly: "150.00",
+      reduced_weekly: "900.00",
+      reduced_at: "2026-07-01",
+    };
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="edit"
+        rule={fixedRule}
+      />,
+    );
+
+    // RHF keeps unmounted values, so clearing the nightly base must take the
+    // stale reduced_nightly with it — otherwise the hidden field's no-base
+    // error silently blocks the save.
+    const nightlyInput = (await screen.findByLabelText(/^Nightly price$/i)) as HTMLInputElement;
+    await waitFor(() => expect(nightlyInput.value).toBe("200.00"));
+    await userEvent.clear(nightlyInput);
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(patchBody).not.toBeNull());
+    expect(patchBody).toMatchObject({
+      nightly: null,
+      reduced_nightly: null,
+      weekly: "1200.00",
+      reduced_weekly: "900.00",
+    });
+    useAuthStore.getState().clear();
+  });
+
+  it("rejects a blank percent inline instead of silently dropping the typed metadata", async () => {
+    setReservationsUser();
+    let requested = false;
+    server.use(
+      http.post("/api/v1/periods/5/bands", () => {
+        requested = true;
+        return ruleResponse({});
+      }),
+    );
+
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
+    );
+    await fillValidRule();
+    await chooseKind(/^percentage$/i);
+    // Reason typed, percent left blank — must NOT save as "no reduction".
+    await userEvent.type(screen.getByLabelText(/^Reason$/i), "Summer promo");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/enter the reduction/i)).toBeInTheDocument();
+    expect(requested).toBe(false);
+    useAuthStore.getState().clear();
+  });
+
+  it("surfaces server errors keyed to a reduction field whose input isn't mounted", async () => {
+    setReservationsUser();
+    server.use(
+      http.post("/api/v1/periods/5/bands", () =>
+        HttpResponse.json(
+          {
+            detail: "Validation failed",
+            field_errors: {
+              reduction_percent: ["The reduction must be between 0 and 100% (exclusive)."],
+            },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    renderWithProviders(
+      <RateBandFormDialog
+        ratePlanId={11}
+        periodId={5}
+        open
+        onOpenChange={() => {}}
+        mode="create"
+      />,
+    );
+    // Kind stays "none", so the percent input is unmounted — the 400 keyed on
+    // reduction_percent must still show up somewhere visible.
+    await fillValidRule();
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/between 0 and 100/i)).toBeInTheDocument();
+    useAuthStore.getState().clear();
   });
 });
 

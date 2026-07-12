@@ -70,6 +70,52 @@ function CapacityHint({ properties }: { properties: HiddenCapacityProperty[] }) 
   );
 }
 
+// GAP-078: country → region grouping for the picker. Options bucket on the
+// geo names the candidate row carried; a missing name falls into the `null`
+// bucket, which sorts last (rendered under the "Other" label). Keys are
+// composite (country THEN region within it) — region names repeat across
+// countries, so a flat region key would merge e.g. the two Paphos.
+interface RegionGroup {
+  region: string | null;
+  // Partitioned at build time (never re-filtered): full result cards render
+  // before manual-quotable rows within the group.
+  cards: QuoteOption[];
+  manual: QuoteOption[];
+}
+interface CountryGroup {
+  country: string | null;
+  regions: RegionGroup[];
+}
+
+// Blanks sort last so real geography leads (mirrors RoomsTab's axisRank).
+function geoRank(a: string | null, b: string | null): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a.localeCompare(b);
+}
+
+function groupByGeo(cards: QuoteOption[], manual: QuoteOption[]): CountryGroup[] {
+  const countries = new Map<string | null, Map<string | null, RegionGroup>>();
+  const bucket = (o: QuoteOption): RegionGroup => {
+    const country = o.country_name?.trim() || null;
+    const region = o.region_name?.trim() || null;
+    const regions = countries.get(country) ?? new Map<string | null, RegionGroup>();
+    countries.set(country, regions);
+    const group = regions.get(region) ?? { region, cards: [], manual: [] };
+    regions.set(region, group);
+    return group;
+  };
+  for (const o of cards) bucket(o).cards.push(o);
+  for (const o of manual) bucket(o).manual.push(o);
+  return [...countries.entries()]
+    .sort(([a], [b]) => geoRank(a, b))
+    .map(([country, regions]) => ({
+      country,
+      regions: [...regions.values()].sort((a, b) => geoRank(a.region, b.region)),
+    }));
+}
+
 // Distinct villas can share a guest-facing display name (the card title), so
 // the meta line carries the internal name (when it differs) and the capacity
 // headline to tell same-named results apart.
@@ -152,78 +198,125 @@ export function QuoteResultsList({
     (o.occupancy_bands?.length ?? 0) > 0 && o.error_code !== "dates_unavailable";
   const available = options.filter((o) => o.available);
   // Full result cards: truly available results plus date-available banded ones.
-  const fullCard = options.filter((o) => o.available || showsBands(o));
+  const isFullCard = (o: QuoteOption) => o.available || showsBands(o);
+  const fullCard = options.filter(isFullCard);
   // Q-013: villas the engine can't price (missing rate rules or POA) stay
   // quotable with an operator-typed price, per legacy NO RATE behaviour —
   // flagged in the main list, never hidden.
-  const manualQuotable = options.filter(
-    (o) => !o.available && !showsBands(o) && o.error_code === "no_rate_available",
-  );
+  const isManualQuotable = (o: QuoteOption) =>
+    !o.available && !showsBands(o) && o.error_code === "no_rate_available";
+  const manualQuotable = options.filter(isManualQuotable);
   const unavailable = options.filter(
     (o) => !o.available && !showsBands(o) && o.error_code !== "no_rate_available",
+  );
+
+  // GAP-078: bunch the addable rows (full cards + manual-quotable) by
+  // country → region, with headers only where they disambiguate: country
+  // headers when ≥2 countries are on screen, region subheaders within a
+  // country holding ≥2 regions. The section/div group structure ALWAYS
+  // renders (headers just appear) so that when a Load-more page introduces a
+  // new country/region, existing cards keep their parent chain — a
+  // flat→grouped structural flip would remount every QuoteResultLine and
+  // wipe the picker/reprice state the searchKey contract promises to keep.
+  // The unavailable collapsible stays global: grouping collapsed noise adds
+  // nothing.
+  const geoGroups = groupByGeo(fullCard, manualQuotable);
+  const showCountryHeaders = geoGroups.length >= 2;
+
+  const renderFullCard = (option: QuoteOption) => (
+    <QuoteResultLine
+      key={`${option.property_id}:${searchKey}`}
+      option={option}
+      stagedKeys={stagedKeys}
+      criteriaDates={criteriaDates ?? { date_from: "", date_to: "" }}
+      adults={adults}
+      children={children}
+      onAdd={onAdd}
+    />
+  );
+
+  const renderManualRow = (option: QuoteOption) => (
+    <article
+      key={option.property_id}
+      className="border-border flex items-center justify-between gap-3 rounded-md border p-3"
+      aria-label={t("builder.results.incomplete_pricing_aria", {
+        name: option.property_name,
+      })}
+    >
+      <div className="flex items-center gap-3">
+        <PropertyThumbnail
+          src={option.hero_image_url}
+          fallbackText={option.property_name}
+          alt={t("builder.results.thumbnail_alt", { name: option.property_name })}
+        />
+        <div>
+          <h4 className="text-foreground text-sm font-semibold">{option.property_name}</h4>
+          <OptionMeta option={option} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {/* tabIndex makes the badge keyboard-focusable so the tooltip
+                      (the only place POA is distinguished from a rate-card gap)
+                      opens on focus, not just hover. */}
+              <p tabIndex={0} className="text-warning text-xs font-medium">
+                {t("builder.results.incomplete_pricing")}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent>
+              {/* error_detail distinguishes a rate-card gap from a POA rule. */}
+              {option.error_detail ?? t("builder.results.incomplete_pricing_hint")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant={isPropertyStaged(option.property_id) ? "secondary" : "outline"}
+        disabled={isPropertyStaged(option.property_id)}
+        onClick={() => onAdd(option)}
+      >
+        {isPropertyStaged(option.property_id)
+          ? t("builder.results.added")
+          : t("builder.results.add_manual")}
+      </Button>
+    </article>
   );
 
   return (
     <div className="space-y-3">
       <CapacityHint properties={hiddenForCapacity} />
-      {fullCard.map((option) => (
-        <QuoteResultLine
-          key={`${option.property_id}:${searchKey}`}
-          option={option}
-          stagedKeys={stagedKeys}
-          criteriaDates={criteriaDates ?? { date_from: "", date_to: "" }}
-          adults={adults}
-          children={children}
-          onAdd={onAdd}
-        />
-      ))}
-
-      {manualQuotable.map((option) => (
-        <article
-          key={option.property_id}
-          className="border-border flex items-center justify-between gap-3 rounded-md border p-3"
-          aria-label={t("builder.results.incomplete_pricing_aria", {
-            name: option.property_name,
-          })}
-        >
-          <div className="flex items-center gap-3">
-            <PropertyThumbnail
-              src={option.hero_image_url}
-              fallbackText={option.property_name}
-              alt={t("builder.results.thumbnail_alt", { name: option.property_name })}
-            />
-            <div>
-              <h4 className="text-foreground text-sm font-semibold">{option.property_name}</h4>
-              <OptionMeta option={option} />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {/* tabIndex makes the badge keyboard-focusable so the tooltip
-                      (the only place POA is distinguished from a rate-card gap)
-                      opens on focus, not just hover. */}
-                  <p tabIndex={0} className="text-warning text-xs font-medium">
-                    {t("builder.results.incomplete_pricing")}
-                  </p>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {/* error_detail distinguishes a rate-card gap from a POA rule. */}
-                  {option.error_detail ?? t("builder.results.incomplete_pricing_hint")}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            variant={isPropertyStaged(option.property_id) ? "secondary" : "outline"}
-            disabled={isPropertyStaged(option.property_id)}
-            onClick={() => onAdd(option)}
+      {geoGroups.map((countryGroup) => {
+        const countryLabel = countryGroup.country ?? t("builder.results.groups.other");
+        const showRegionHeaders = countryGroup.regions.length >= 2;
+        return (
+          <section
+            key={countryGroup.country ?? " other"}
+            // No accessible name when the header is hidden — an unlabelled
+            // section is generic, not a region landmark, so the ungrouped
+            // view exposes the same a11y tree as the old flat list.
+            aria-label={showCountryHeaders ? countryLabel : undefined}
+            className="space-y-2"
           >
-            {isPropertyStaged(option.property_id)
-              ? t("builder.results.added")
-              : t("builder.results.add_manual")}
-          </Button>
-        </article>
-      ))}
+            {showCountryHeaders ? (
+              <h3 className="text-muted-foreground text-sm font-medium">{countryLabel}</h3>
+            ) : null}
+            {countryGroup.regions.map((regionGroup) => (
+              <div key={regionGroup.region ?? " other"} className="space-y-2">
+                {showRegionHeaders ? (
+                  <h4 className="text-muted-foreground text-xs font-medium">
+                    {/* A blank region still gets a subheader — without one
+                        its villas would visually fall under the previous
+                        region's heading. */}
+                    {regionGroup.region ?? t("builder.results.groups.other")}
+                  </h4>
+                ) : null}
+                {regionGroup.cards.map(renderFullCard)}
+                {regionGroup.manual.map(renderManualRow)}
+              </div>
+            ))}
+          </section>
+        );
+      })}
 
       {unavailable.length > 0 ? (
         <Collapsible
@@ -272,10 +365,10 @@ export function QuoteResultsList({
         </Collapsible>
       ) : null}
 
-      {/* Pagination is over name-sorted candidates, not available results — a
-          Load-more click prices the next page and may surface few (or no) new
-          available villas. The count line makes that legible rather than
-          looking like a no-op. */}
+      {/* Pagination is over geo-sorted candidates (country → region → name,
+          GAP-078), not available results — a Load-more click prices the next
+          page and may surface few (or no) new available villas. The count
+          line makes that legible rather than looking like a no-op. */}
       <div className="flex flex-col items-center gap-2 pt-1">
         <p className="text-muted-foreground text-xs">
           {t("builder.results.priced_count", {

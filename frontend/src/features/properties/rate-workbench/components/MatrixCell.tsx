@@ -11,9 +11,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { currencyAdornment } from "@/lib/format/money";
+import { currencyAdornment, formatMoney } from "@/lib/format/money";
 import { MONEY_PATTERN, type RateBand } from "@/features/properties/schemas";
 import { bandLabel } from "../matrixModel";
+import { bandHasReduction, derivedReducedPrice } from "../reductions";
 import type { MatrixCell as CellModel } from "../matrixModel";
 import type { PriceField } from "../hooks";
 
@@ -105,10 +106,36 @@ function PriceRow({
 }
 
 /**
+ * The effective price under a reduced base (Q-018): the struck-through base the
+ * inline editor above still edits, then the effective figure the engine quotes.
+ * Rendered only when the reduction actually moves this field. `pl-10` aligns
+ * under the input (past the w-9 label + gap).
+ */
+function ReducedHint({
+  base,
+  effective,
+  currencyCode,
+}: {
+  base: string;
+  effective: string;
+  currencyCode: string | null;
+}) {
+  return (
+    <div className="flex items-center gap-1 pl-10 text-[10px] leading-tight">
+      <s className="text-muted-foreground line-through">{formatMoney(base, currencyCode)}</s>
+      <span className="text-foreground font-medium tabular-nums">
+        {formatMoney(effective, currencyCode)}
+      </span>
+    </div>
+  );
+}
+
+/**
  * One matrix intersection: an empty (fillable) coordinate, a POA-masked rule, or
  * a priced rule with stacked inline nightly + weekly editors. Party/POA/clearing
  * a price and deletion go through the rule dialog + confirm — the inline path
- * only fast-edits prices.
+ * only fast-edits prices. A reduced band (Q-018) keeps the editors on the BASE
+ * price and shows the effective figure beneath, base struck through.
  */
 export function MatrixCell({
   cell,
@@ -198,6 +225,20 @@ export function MatrixCell({
       : t("rate_workbench.matrix.any_party");
   const adornment = currencyAdornment(currencyCode);
 
+  // Q-018: a reduction (percent XOR fixed) rides on the band; the editors keep
+  // the BASE, the hint below each shows the reduced figure. Derived from the
+  // reduction fields per axis — NOT from `effective_*`, which goes stale when
+  // the optimistic cache patches only the edited base field — so the hint stays
+  // coherent with the base on screen mid-edit.
+  const hasReduction = bandHasReduction(band);
+  const reducedHintFor = (axis: "nightly" | "weekly") => {
+    const base = axis === "nightly" ? band.nightly : band.weekly;
+    const reduced = derivedReducedPrice(band, axis);
+    return base && reduced ? (
+      <ReducedHint base={base} effective={reduced} currencyCode={currencyCode} />
+    ) : null;
+  };
+
   return (
     // The editor column sizes to its inputs (no flex-1) so the ··· menu stays
     // visually attached to the band it acts on instead of drifting to the far
@@ -217,6 +258,7 @@ export function MatrixCell({
           disabled={!canWrite}
           onCommit={(value) => onCommitPrice(band.id, "nightly", value)}
         />
+        {reducedHintFor("nightly")}
         <PriceRow
           label={t("rate_workbench.matrix.weekly_short")}
           ariaLabel={t("rate_workbench.matrix.weekly_for", {
@@ -230,9 +272,19 @@ export function MatrixCell({
           disabled={!canWrite}
           onCommit={(value) => onCommitPrice(band.id, "weekly", value)}
         />
+        {reducedHintFor("weekly")}
       </div>
       {/* pt-1 centres the h-6 trigger against the first h-8 input row. */}
-      {menu ? <div className="pt-1">{menu}</div> : null}
+      {menu || hasReduction ? (
+        <div className="flex flex-col items-center gap-1 pt-1">
+          {menu}
+          {hasReduction ? (
+            <Badge variant="outline" className="text-muted-foreground px-1 text-[10px]">
+              {t("rate_workbench.matrix.reduced")}
+            </Badge>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

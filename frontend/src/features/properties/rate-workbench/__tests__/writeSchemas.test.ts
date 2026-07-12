@@ -129,3 +129,35 @@ describe("priceQuoteSchema — owner economics pass through (BUG-009 fixed)", ()
     expect(parsed.tax).toBeUndefined();
   });
 });
+
+describe("priceQuoteSchema — reduction keys (Q-018)", () => {
+  it("parses the typed before-reduction totals and per-line reduced_from", () => {
+    const parsed = priceQuoteSchema.parse({
+      currency_code: "EUR",
+      total: "1600",
+      rate_subtotal_before_reduction: "2000",
+      total_before_reduction: "2000",
+      lines: [
+        { date: "2026-06-01", nightly: "160.00", reduced_from: "200.00" },
+        { date: "2026-06-02", nightly: "160.00", reduced_from: null },
+      ],
+    });
+    // Typed (not just passthrough) — these drive render decisions.
+    expect(parsed.rate_subtotal_before_reduction).toBe("2000");
+    expect(parsed.total_before_reduction).toBe("2000");
+    expect(parsed.lines[0].reduced_from).toBe("200.00");
+    expect(parsed.lines[1].reduced_from).toBeNull();
+  });
+
+  it("tolerates unreduced quotes: keys nullable and optional", () => {
+    const withNulls = priceQuoteSchema.parse({
+      total: "1920",
+      rate_subtotal_before_reduction: null,
+      total_before_reduction: null,
+    });
+    expect(withNulls.total_before_reduction).toBeNull();
+    const absent = priceQuoteSchema.parse({ total: "1920" });
+    expect(absent.total_before_reduction).toBeUndefined();
+    expect(absent.rate_subtotal_before_reduction).toBeUndefined();
+  });
+});

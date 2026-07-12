@@ -1110,7 +1110,10 @@
       "no_rates_yet": "Χωρίς τιμές ακόμη — προσθέστε μια ζώνη στον πίνακα παρακάτω.",
       "year_round": "Όλο τον χρόνο",
       "open_end": "—",
-      "band": "{{from}} – {{to}}"
+      "band": "{{from}} – {{to}}",
+      "reduced_from": "Μειωμένο από",
+      "reduction_reason": "Αιτιολογία",
+      "reduced_on": "Ημερομηνία μείωσης"
     },
     "matrix": {
       "title": "Πίνακας τιμών",
@@ -1126,6 +1129,7 @@
       "delete_rule": "Διαγραφή κανόνα",
       "nightly_short": "νύχτα",
       "weekly_short": "εβδ.",
+      "reduced": "Μειωμένη",
       "nightly_for": "Τιμή ανά διανυκτέρευση, {{from}} έως {{to}}, {{party}}",
       "weekly_for": "Τιμή ανά εβδομάδα, {{from}} έως {{to}}, {{party}}",
       "no_rules": "Αυτή η περίοδος τιμών δεν έχει ακόμη ζώνες.",
@@ -1182,6 +1186,7 @@
         "extras_heading": "Εφαρμοσμένα έξτρα",
         "included_heading": "Περιλαμβάνονται",
         "changeover_shifted": "Η αλλαγή μετατοπίστηκε από {{from}}",
+        "reduced_from": "Μειωμένο από {{amount}}",
         "owner_heading": "Οικονομικά ιδιοκτήτη",
         "net_to_owner": "Καθαρό ιδιοκτήτη",
         "commission": "Προμήθεια",

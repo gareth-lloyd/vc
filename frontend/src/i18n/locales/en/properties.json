@@ -1110,7 +1110,10 @@
       "no_rates_yet": "No rates yet — add a band in the matrix below.",
       "year_round": "Year-round",
       "open_end": "—",
-      "band": "{{from}} – {{to}}"
+      "band": "{{from}} – {{to}}",
+      "reduced_from": "Reduced from",
+      "reduction_reason": "Reason",
+      "reduced_on": "Reduced on"
     },
     "matrix": {
       "title": "Rate matrix",
@@ -1126,6 +1129,7 @@
       "delete_rule": "Delete rule",
       "nightly_short": "night",
       "weekly_short": "week",
+      "reduced": "Reduced",
       "nightly_for": "Nightly rate, {{from}} to {{to}}, {{party}}",
       "weekly_for": "Weekly rate, {{from}} to {{to}}, {{party}}",
       "no_rules": "This rate period has no bands yet.",
@@ -1182,6 +1186,7 @@
         "extras_heading": "Extras applied",
         "included_heading": "Included",
         "changeover_shifted": "Changeover shifted from {{from}}",
+        "reduced_from": "Reduced from {{amount}}",
         "owner_heading": "Owner economics",
         "net_to_owner": "Net to owner",
         "commission": "Commission",

@@ -118,3 +118,23 @@ describe("QuoteResultCard", () => {
     expect(screen.queryByText("Owner economics")).toBeNull();
   });
 });
+
+describe("QuoteResultCard — reductions (Q-018)", () => {
+  it("shows a muted 'reduced from' line when the engine reports a pre-reduction total", () => {
+    const reduced: PriceQuote = {
+      ...grossQuote,
+      rate_subtotal_before_reduction: "3805.00",
+      total_before_reduction: "3955.00",
+    };
+    renderWithProviders(<QuoteResultCard quote={reduced} />);
+    expect(screen.getByText("£3,195.00")).toBeInTheDocument();
+    expect(screen.getByText("Reduced from £3,955.00")).toBeInTheDocument();
+  });
+
+  it("omits the reduced-from line when total_before_reduction is null or absent", () => {
+    renderWithProviders(
+      <QuoteResultCard quote={{ ...grossQuote, total_before_reduction: null }} />,
+    );
+    expect(screen.queryByText(/Reduced from/)).toBeNull();
+  });
+});

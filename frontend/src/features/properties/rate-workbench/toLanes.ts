@@ -10,6 +10,7 @@ import type {
 } from "@/features/properties/schemas";
 import { periodLabel } from "@/features/properties/periodLabel";
 import { coverageDateGaps } from "./coverageGaps";
+import { bandHasReduction, derivedReducedPrice } from "./reductions";
 
 /** The stacked concern lanes, top to bottom. `coverage` is derived (the
  * selected plan's unpriced dates) and only present when a plan is selected. */
@@ -36,10 +37,22 @@ export interface BandMeta {
   isActive?: boolean;
   planId?: number;
   planName?: string;
-  /** Rates: min/max across the period's bands (single price basis per band). */
+  /** Rates: min/max across the period's bands (single price basis per band).
+   * EFFECTIVE prices — what the engine quotes — falling back to the base when
+   * a band predates Q-018's `effective_*` fields. */
   minPrice?: number | null;
   maxPrice?: number | null;
   hasPoa?: boolean;
+  /** Rates: any of the period's bands carries a Q-018 reduction (percent XOR
+   * fixed reduced prices) — lane consumers badge these. */
+  hasReduction?: boolean;
+  /** Rates: the BASE (pre-reduction) min/max, only set when `hasReduction`,
+   * for the popover's "reduced from" row. */
+  baseMinPrice?: number | null;
+  baseMaxPrice?: number | null;
+  /** Rates: first reduced band's reason/timestamp, when recorded. */
+  reductionReason?: string | null;
+  reducedAt?: string | null;
   /** Rates: the period exists but has no bands yet — rendered as an outline. */
   noRates?: boolean;
   /** Rates: prefill for the "add a period after this one" affordance — absent
@@ -212,9 +225,30 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
       // One figure per band: a band prices either nightly or weekly (its basis),
       // never both — flat-mapping both mixes per-night and per-week amounts into
       // one nonsensical range (e.g. €650 nightly and €4,550 weekly → "€650–€4,550").
+      // The range shows what the engine quotes: the EFFECTIVE price (Q-018) —
+      // server `effective_*` first, then the figure derived from the band's own
+      // reduction fields (shapes without effective_*), then the base.
       const prices = bands
+        .map(
+          (r) =>
+            numeric(r.effective_nightly ?? derivedReducedPrice(r, "nightly") ?? r.nightly) ??
+            numeric(r.effective_weekly ?? derivedReducedPrice(r, "weekly") ?? r.weekly),
+        )
+        .filter((v): v is number => v != null);
+      // Q-018 reductions: badge the period and carry the base range + audit
+      // trail for the popover's "reduced from" row. Only the REDUCED bands feed
+      // the base range — including unreduced siblings would imply they were cut.
+      const reducedBands = bands.filter(bandHasReduction);
+      const hasReduction = reducedBands.length > 0;
+      const basePrices = reducedBands
         .map((r) => numeric(r.nightly) ?? numeric(r.weekly))
         .filter((v): v is number => v != null);
+      // One reason/date pair only when every reduced band agrees — attributing
+      // one band's audit trail to the whole period would mislead.
+      const trails = new Set(
+        reducedBands.map((r) => JSON.stringify([r.reduction_reason ?? null, r.reduced_at ?? null])),
+      );
+      const trailBand = trails.size === 1 ? reducedBands[0] : null;
       // "Add a period after this one" prefill, scoped to the OWNING plan:
       // the free range runs from the day after this period to the day before
       // the plan's next one. A contiguous successor leaves no free day, so no
@@ -252,6 +286,15 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
           minPrice: prices.length ? Math.min(...prices) : null,
           maxPrice: prices.length ? Math.max(...prices) : null,
           hasPoa: bands.some((r) => r.is_poa),
+          hasReduction,
+          ...(hasReduction
+            ? {
+                baseMinPrice: basePrices.length ? Math.min(...basePrices) : null,
+                baseMaxPrice: basePrices.length ? Math.max(...basePrices) : null,
+                reductionReason: trailBand?.reduction_reason ?? null,
+                reducedAt: trailBand?.reduced_at ?? null,
+              }
+            : {}),
           noRates: bands.length === 0,
           addAfter,
         },
@@ -267,6 +310,8 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
   // always read "high", two prices would never yield "low", and tied prices
   // would collapse to one tier) — so those cases stay untiered and fall back to
   // the neutral lane tone. All-POA cards have no numeric price and stay untiered.
+  // Q-018: tiers rank by EFFECTIVE (quoted) prices — display truth across the
+  // workbench is what the engine quotes (mirrors server-side rebuild_summary).
   const distinctPrices = [
     ...new Set(rateBandsUntiered.map((b) => b.meta.minPrice).filter((v): v is number => v != null)),
   ].sort((a, b) => a - b);

@@ -38,6 +38,7 @@ from reservations.serializers.enquiry import (
 )
 from reservations.serializers.quotation import (
     QuotationDetailSerializer,
+    QuotationDuplicateSerializer,
     QuotationLineSerializer,
     QuotationLineWriteSerializer,
     QuotationListSerializer,
@@ -68,6 +69,7 @@ __all__ = [
     "EnquiryNoteSerializer",
     "EnquiryWriteSerializer",
     "QuotationDetailSerializer",
+    "QuotationDuplicateSerializer",
     "QuotationLineSerializer",
     "QuotationLineWriteSerializer",
     "QuotationListSerializer",

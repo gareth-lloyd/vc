@@ -16,12 +16,14 @@ from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
 from core.exceptions import InvalidTransition, QuotationLocked, TermsNotAccepted
+from core.idempotency import integrity_conflict_guard
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Booking, BookingHold, Quotation, QuotationLine
 from reservations.serializers import (
     BookingDetailSerializer,
     QuotationDetailSerializer,
+    QuotationDuplicateSerializer,
     QuotationLineSerializer,
     QuotationLineWriteSerializer,
     QuotationListSerializer,
@@ -221,38 +223,18 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="duplicate")
     def duplicate(self, request: Request, pk: str | None = None) -> Response:
-        """Clone header + lines into a new DRAFT quotation."""
+        """Clone header + lines into a new DRAFT quotation (SMELL-009)."""
         quotation = self.get_object()
-        with transaction.atomic():
-            clone = Quotation.objects.create(
-                enquiry=quotation.enquiry,
-                # GAP-045 Unit 3d-C: clone the unified Person FK straight from the
-                # source quote (person is the authoritative, NOT-NULL customer FK);
-                # the legacy `guest` leg is no longer persisted.
-                person=quotation.person,
-                agent=quotation.agent,
-                is_unbranded=quotation.is_unbranded,
-                expires_at=quotation.expires_at,
-                terms_version=quotation.terms_version,
-            )
-            for line in quotation.lines.all():
-                QuotationLine.objects.create(
-                    quotation=clone,
-                    property=line.property,
-                    currency=line.currency,
-                    date_from=line.date_from,
-                    date_to=line.date_to,
-                    adults=line.adults,
-                    children=line.children,
-                    pricing_snapshot=line.pricing_snapshot,
-                    total=line.total,
-                    discount=line.discount,
-                    inclusions=line.inclusions,
-                    is_selected=False,
-                    is_manual=line.is_manual,
-                    price_override_reason=line.price_override_reason,
-                    notes=line.notes,
-                )
+        serializer = QuotationDuplicateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        idempotency_key = serializer.validated_data["idempotency_key"] or None
+        # FG-010: the guard maps a racing loser's IntegrityError (from
+        # `quotation_idempotency_key_unique_per_enquiry`) to a 409.
+        with integrity_conflict_guard(
+            idempotency_key,
+            "A duplicate with this idempotency key already exists for this enquiry.",
+        ):
+            clone = QuotationService.duplicate(quotation, idempotency_key=idempotency_key)
         return Response(
             QuotationDetailSerializer(clone).data,
             status=status.HTTP_201_CREATED,

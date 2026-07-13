@@ -15,7 +15,7 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-08 recount + close-outs to 2026-07-13 incl. GAP-080, GAP-078, Q-018, SMELL-022, SMELL-021 and SMELL-020; BUG-017 deleted outright 2026-07-10): **133 done** (126 resolved + 7 dropped), **35 open**
+Scoreboard (2026-07-08 recount + close-outs to 2026-07-13 incl. GAP-080, GAP-078, Q-018, SMELL-022, SMELL-021, SMELL-009 and SMELL-020; BUG-017 deleted outright 2026-07-10): **134 done** (127 resolved + 7 dropped), **34 open**
 (incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
@@ -75,7 +75,7 @@ GAP-050; Zoho blocked on external spec, GAP-028)._
 | [FG-002](done/fg-002-effective-null-vs-empty-string.md) | `effective()` conflates `""` and `NULL` | ❌ dropped (2026-07-06) — mooted by **GAP-070** (deletes `effective()` entirely; `NULL` now = genuinely unset, resolves to a floor/`_POLICY_FALLBACKS`). Never a real-world risk |
 | [SMELL-001](smell-001-archived-vs-status.md) | `archived_at` is a second status | ⬜ |
 | [SMELL-008](smell-008-service-layer-contract-single-island.md) | Service-layer contract (perms / `log_operation` / idempotency) lives in one file | ⬜ |
-| [SMELL-009](smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ⬜ |
+| [SMELL-009](done/smell-009-duplicate-implemented-three-ways.md) | "Duplicate" implemented three ways; no clone endpoint is idempotent | ✅ resolved (2026-07-13, local main unpushed) — clone walks extracted to `pricing/services/duplication.py` + `QuotationService.duplicate`; per-model `idempotency_key` + parent-scoped partial-unique FG-010 backstops; retry returns the original clone, race loser 409s via shared `integrity_conflict_guard`; rate-plan clones no longer copy `legacy_id` (approved fix — loaders upsert on it); backend-only, FE key wiring is a follow-up |
 | [SMELL-011](smell-011-bare-querysets-missing-query-pins.md) | Bare `.objects.all()` querysets; `accounts`/`pricing` lack query pins | ⬜ |
 | [SMELL-012](smell-012-module-structure-drift.md) | Module-structure drift: filters / services / routers / views-in-urls | 🟨 views-in-urls fixed (`refunds_for_booking` moved); filter/service/router shapes still open |
 | [SMELL-020](done/smell-020-booking-money-authority.md) | Booking has no single money authority; guest total re-derived byte-for-byte in two apps; dead `adjustment` column | ✅ resolved (2026-07-13, local main unpushed) — single `booking_total()` authority in `reservations.services.charges` (snapshot-first + Σ charges, live-aggregate by default); scheduler/SD/breakdown/serializer/negativity-guard all delegate (`PaymentScheduler._booking_total` deleted); concierge money declared non-scheduling (Payment purpose=CONCIERGE stays the deferred collection path) and the write-only `adjustment` + never-written `discount` columns dropped (reservations.0005, FE rows/keys removed) |

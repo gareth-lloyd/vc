@@ -10,8 +10,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
+from core.idempotency import integrity_conflict_guard
 from pricing.models import Extra
-from pricing.serializers import ExtraSerializer
+from pricing.serializers import ExtraDuplicateSerializer, ExtraSerializer
+from pricing.services.duplication import duplicate_extra
 from properties.models import Property
 
 if TYPE_CHECKING:
@@ -41,16 +43,26 @@ class ExtraDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class ExtraDuplicateView(APIView):
+    """`POST /extras/{id}:duplicate` — clone, optionally cross-property (SMELL-009)."""
+
     permission_classes = [IsReservationsWriter]
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         original = get_object_or_404(Extra, pk=self.kwargs["pk"])
-        clone = Extra.objects.get(pk=original.pk)
-        clone.pk = None
-        target = request.data.get("target_property_id") if isinstance(request.data, dict) else None
-        if target:
-            target_property = get_object_or_404(Property, pk=int(target))
-            clone.property = target_property
-        clone.name = f"{original.name} (copy)"
-        clone.save()
+        serializer = ExtraDuplicateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_id = serializer.validated_data.get("target_property_id")
+        target_property = get_object_or_404(Property, pk=target_id) if target_id else None
+        idempotency_key = serializer.validated_data["idempotency_key"] or None
+        # FG-010: the guard maps a racing loser's IntegrityError (from
+        # `extra_idempotency_key_unique_per_property`) to a 409.
+        with integrity_conflict_guard(
+            idempotency_key,
+            "A duplicate with this idempotency key already exists for this property.",
+        ):
+            clone = duplicate_extra(
+                original,
+                target_property=target_property,
+                idempotency_key=idempotency_key,
+            )
         return Response(ExtraSerializer(clone).data, status=status.HTTP_201_CREATED)

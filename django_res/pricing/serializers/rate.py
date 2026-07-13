@@ -478,3 +478,17 @@ class RatePlanDetailSerializer(RatePlanSerializer):
     class Meta(RatePlanSerializer.Meta):
         fields = [*RatePlanSerializer.Meta.fields, "periods"]
         read_only_fields = [*RatePlanSerializer.Meta.read_only_fields, "periods"]
+
+
+class RatePlanDuplicateSerializer(serializers.Serializer[None]):
+    """Input for `POST /rate-plans/{id}:duplicate` (SMELL-009).
+
+    Retrying UIs send a key; a repeat POST with the same key returns the
+    original clone (FG-010). Absent, blank, and explicit-null all mean
+    "no idempotency requested" — the bodyless FE call keeps working.
+    `max_length=64` matches the model column.
+    """
+
+    idempotency_key = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, default="", max_length=64
+    )

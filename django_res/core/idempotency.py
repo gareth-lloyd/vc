@@ -33,12 +33,37 @@ free of ceremony.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
+from django.db import IntegrityError
+
+from core.exceptions import IdempotencyConflict
+
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from django.db.models import Model, QuerySet
 
 IDEMPOTENCY_META_KEY = "idempotency_key"
+
+
+@contextmanager
+def integrity_conflict_guard(idempotency_key: str | None, message: str) -> Iterator[None]:
+    """Map the FG-010 race loser's `IntegrityError` to a 409 conflict.
+
+    Views wrap the service call: two racing requests with the same key both
+    pass the service's check-then-create pre-check under READ COMMITTED, and
+    the loser trips the model's partial-unique backstop. Keyless requests
+    can't trip it (blank keys are excluded from every backstop's condition),
+    so their `IntegrityError` is a genuine error and re-raises untouched.
+    """
+    try:
+        yield
+    except IntegrityError as exc:
+        if idempotency_key is None:
+            raise
+        raise IdempotencyConflict(message) from exc
 
 
 def find_by_meta_key[ModelT: Model](
@@ -57,6 +82,30 @@ def find_by_meta_key[ModelT: Model](
     if not idempotency_key:
         return None
     return queryset.filter(**{f"meta__{IDEMPOTENCY_META_KEY}": idempotency_key}).first()
+
+
+def find_by_key[ModelT: Model](
+    queryset: QuerySet[ModelT],
+    idempotency_key: str | None,
+) -> ModelT | None:
+    """`find_by_meta_key`'s twin for models with a dedicated key column.
+
+    Returns the first row in `queryset` whose `idempotency_key` column
+    matches, or `None` when no key was supplied or no row matches. The
+    column default is `""` (blank = "no idempotency requested"), so a
+    falsy key never matches the sea of keyless rows.
+
+    As with the meta variant, scope the queryset to the logical operation
+    context before calling (e.g. `RatePlan.objects.filter(property=prop)`) —
+    and match the model's partial-unique backstop *exactly*, including any
+    status condition the partial index carries. A pre-check broader than the
+    backstop can match rows the index deliberately excludes (e.g. OwnerBlock's
+    is scoped to APPROVED so cancelled blocks don't stop a re-import) and
+    wrongly short-circuit a creation the constraint would have allowed.
+    """
+    if not idempotency_key:
+        return None
+    return queryset.filter(idempotency_key=idempotency_key).first()
 
 
 def stamp_meta(meta: dict[str, Any] | None, idempotency_key: str | None) -> dict[str, Any]:

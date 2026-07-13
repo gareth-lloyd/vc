@@ -60,9 +60,22 @@ class RatePlan(AuditedModel):
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    # Retry dedupe for `:duplicate` (SMELL-009). Blank = "no idempotency
+    # requested" — only client-supplied keys enter the partial unique below.
+    idempotency_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
     class Meta:
         ordering = ["property", "-effective_from"]
+        constraints = [
+            # FG-010 backstop for `duplicate_rate_plan`'s check-then-create
+            # pre-check: the losing racer fails loudly instead of silently
+            # duplicating. Same (property, key) scope as the service queries.
+            models.UniqueConstraint(
+                fields=["property", "idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="rateplan_idempotency_key_unique_per_property",
+            ),
+        ]
         indexes = [
             models.Index(fields=["property", "currency", "is_active"]),
             models.Index(fields=["effective_from", "effective_to"]),

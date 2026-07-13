@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from rest_framework.test import APIClient
@@ -11,6 +13,7 @@ from accounts.models import User
 from core.enums import StaffRole
 from pricing.enums import ExtraCalc, ExtraKind
 from pricing.models import Currency, Extra
+from properties.factories import PropertyFactory
 from properties.models import Property
 
 
@@ -165,3 +168,210 @@ def test_list_extras_filters_on_commissionable(
     assert response.status_code == 200, response.content
     ids = [r["id"] for r in response.json()["results"]]
     assert ids == [non_comm.pk]
+
+
+# ---------------------------------------------------------------------------
+# SMELL-009: `:duplicate` characterisation (endpoint had zero coverage)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def rich_extra(property_: Property, gbp: Currency) -> Extra:
+    """Non-default values on every copyable field, so the field-list
+    assertion below can catch a silently dropped column."""
+    return Extra.objects.create(
+        property=property_,
+        name="Heated pool",
+        description="Pool heating, per week",
+        kind=ExtraKind.OTHER,
+        calc=ExtraCalc.FIXED_PER_NIGHT,
+        amount=Decimal("350.00"),
+        currency=gbp,
+        is_mandatory=False,
+        commissionable=False,
+        applies_from=date(2026, 5, 1),
+        applies_to=date(2026, 9, 30),
+        min_party=2,
+        max_party=10,
+        sort_order=7,
+        is_active=False,
+        notes="owner insists",
+    )
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_copies_every_field(
+    api_client: APIClient,
+    staff: User,
+    rich_extra: Extra,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/extras/{rich_extra.pk}:duplicate")
+    assert response.status_code == 201, response.content
+
+    clone = Extra.objects.get(pk=response.json()["id"])
+    assert clone.pk != rich_extra.pk
+    assert clone.property_id == rich_extra.property_id
+    assert clone.name == "Heated pool (copy)"
+    assert clone.description == "Pool heating, per week"
+    assert clone.kind == ExtraKind.OTHER
+    assert clone.calc == ExtraCalc.FIXED_PER_NIGHT
+    assert clone.amount == Decimal("350.00")
+    assert clone.currency_id == rich_extra.currency_id
+    assert clone.is_mandatory is False
+    assert clone.commissionable is False
+    assert clone.applies_from == date(2026, 5, 1)
+    assert clone.applies_to == date(2026, 9, 30)
+    assert (clone.min_party, clone.max_party) == (2, 10)
+    assert clone.sort_order == 7
+    assert clone.is_active is False
+    assert clone.notes == "owner insists"
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_reparents_to_target_property(
+    api_client: APIClient,
+    staff: User,
+    rich_extra: Extra,
+) -> None:
+    target = cast(Property, PropertyFactory())
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/extras/{rich_extra.pk}:duplicate",
+        data={"target_property_id": target.pk},
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+    clone = Extra.objects.get(pk=response.json()["id"])
+    assert clone.property_id == target.pk
+    assert clone.name == "Heated pool (copy)"
+    # The source row is untouched.
+    rich_extra.refresh_from_db()
+    assert rich_extra.property_id != target.pk
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_unknown_target_is_404(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"target_property_id": 999999},
+        format="json",
+    )
+    assert response.status_code == 404, response.content
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_without_body_clones_in_place(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+) -> None:
+    api_client.force_login(staff)
+    first = api_client.post(f"/api/v1/extras/{extra.pk}:duplicate")
+    second = api_client.post(f"/api/v1/extras/{extra.pk}:duplicate")
+    assert first.status_code == 201 and second.status_code == 201
+    assert first.json()["id"] != second.json()["id"]
+    assert Extra.objects.filter(name="Cleaning (copy)").count() == 2
+
+
+# ---------------------------------------------------------------------------
+# SMELL-009: `:duplicate` idempotency via optional body key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_retry_same_key_returns_same_extra(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+) -> None:
+    api_client.force_login(staff)
+    first = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"idempotency_key": "ui-77"},
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+    count = Extra.objects.count()
+
+    second = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"idempotency_key": "ui-77"},
+        format="json",
+    )
+
+    assert second.status_code == 201, second.content
+    assert second.json()["id"] == first.json()["id"]
+    assert Extra.objects.count() == count
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_race_loser_maps_to_409(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Patch the IMPORT SITE (`pricing.services.duplication.find_by_key`) so
+    the pre-check misses and the loser hits the partial-unique backstop."""
+    import pricing.services.duplication as duplication
+
+    monkeypatch.setattr(duplication, "find_by_key", lambda queryset, idempotency_key: None)
+
+    api_client.force_login(staff)
+    first = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"idempotency_key": "race-key"},
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+
+    second = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"idempotency_key": "race-key"},
+        format="json",
+    )
+
+    assert second.status_code == 409, second.content
+    assert second.json()["code"] == "idempotency_conflict"
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_key_and_target_compose(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+) -> None:
+    target = cast(Property, PropertyFactory())
+    api_client.force_login(staff)
+    payload = {"idempotency_key": "ui-88", "target_property_id": target.pk}
+
+    first = api_client.post(f"/api/v1/extras/{extra.pk}:duplicate", data=payload, format="json")
+    second = api_client.post(f"/api/v1/extras/{extra.pk}:duplicate", data=payload, format="json")
+
+    assert first.status_code == 201 and second.status_code == 201
+    assert second.json()["id"] == first.json()["id"]
+    clone = Extra.objects.get(pk=first.json()["id"])
+    assert clone.property_id == target.pk
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_non_numeric_target_is_400(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+) -> None:
+    # Previously `int("abc")` blew up as a 500; the input serializer makes
+    # it a validation error (side effect flagged in the plan, accepted).
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"target_property_id": "abc"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content

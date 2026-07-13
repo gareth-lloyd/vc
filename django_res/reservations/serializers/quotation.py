@@ -263,6 +263,20 @@ class QuotationDetailSerializer(QuotationListSerializer):
         fields = [*QuotationListSerializer.Meta.fields, "cancel_reason", "lines"]
 
 
+class QuotationDuplicateSerializer(serializers.Serializer[None]):
+    """Input for `POST /quotations/{id}:duplicate` (SMELL-009).
+
+    Retrying UIs send a key; a repeat POST with the same key returns the
+    original clone (FG-010). Absent, blank, and explicit-null all mean
+    "no idempotency requested" — the bodyless FE call keeps working.
+    `max_length=64` matches the model column.
+    """
+
+    idempotency_key = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, default="", max_length=64
+    )
+
+
 class QuotationWriteSerializer(serializers.ModelSerializer[Quotation]):
     """Header write body. Status is action-driven.
 

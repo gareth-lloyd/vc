@@ -6,22 +6,24 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
-from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
+from core.idempotency import integrity_conflict_guard
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.serializers import (
     RateBandSerializer,
     RatePeriodSerializer,
     RatePlanDetailSerializer,
+    RatePlanDuplicateSerializer,
     RatePlanSerializer,
 )
 from pricing.serializers.rate import guard_period_editable
 from pricing.services.carryover import RateCarryoverService
+from pricing.services.duplication import duplicate_rate_plan
 from properties.models import Property
 
 if TYPE_CHECKING:
@@ -64,29 +66,22 @@ class RatePlanDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class RatePlanDuplicateView(APIView):
+    """`POST /rate-plans/{id}:duplicate` — clone the plan + grid (SMELL-009)."""
+
     permission_classes = [IsReservationsWriter]
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         original = get_object_or_404(RatePlan, pk=self.kwargs["pk"])
-        with transaction.atomic():
-            original_pk = original.pk
-            clone = RatePlan.objects.get(pk=original_pk)
-            clone.pk = None
-            clone.name = f"{original.name} (copy)"
-            clone.save()
-            # GAP-056: clone the period/band grid onto the new plan. Each cloned
-            # band re-parents to the cloned period (which owns the dates) — never
-            # the source plan's period.
-            for period in RatePeriod.objects.filter(plan_id=original_pk):
-                source_period_pk = period.pk
-                period_clone = RatePeriod.objects.get(pk=source_period_pk)
-                period_clone.pk = None
-                period_clone.plan = clone
-                period_clone.save()
-                for rule in RateBand.objects.filter(period_id=source_period_pk):
-                    rule.pk = None
-                    rule.period = period_clone
-                    rule.save()
+        serializer = RatePlanDuplicateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        idempotency_key = serializer.validated_data["idempotency_key"] or None
+        # FG-010: the guard maps a racing loser's IntegrityError (from
+        # `rateplan_idempotency_key_unique_per_property`) to a 409.
+        with integrity_conflict_guard(
+            idempotency_key,
+            "A duplicate with this idempotency key already exists for this property.",
+        ):
+            clone = duplicate_rate_plan(original, idempotency_key=idempotency_key)
         return Response(
             RatePlanDetailSerializer(clone).data,
             status=status.HTTP_201_CREATED,

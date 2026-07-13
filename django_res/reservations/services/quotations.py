@@ -15,6 +15,7 @@ import structlog
 from django.db import transaction
 
 from core.exceptions import DomainValidationError
+from core.idempotency import find_by_key
 from pricing.models import Currency
 from pricing.services import PricingEngine
 from pricing.services.currency import quantise_money, resolve_property_currency
@@ -407,3 +408,59 @@ class QuotationService:
             agent=agent,
             actor=actor,
         )
+
+    @classmethod
+    def duplicate(
+        cls,
+        quotation: Quotation,
+        *,
+        idempotency_key: str | None = None,
+    ) -> Quotation:
+        """Clone header + lines into a new DRAFT quotation (SMELL-009).
+
+        A retry carrying the same `idempotency_key` returns the original
+        clone (pre-check scoped `(enquiry, key)`, outside the atomic block);
+        a racing loser past the pre-check trips
+        `quotation_idempotency_key_unique_per_enquiry` with `IntegrityError`
+        for the view to map to 409. No holds are placed — a duplicate is a
+        renegotiation scaffold, not a live option set. `expires_at` copies
+        verbatim (a stale expiry clones stale; changing that is a product
+        call). Fresh `number`/`reference` are allocated by `save()`;
+        `legacy_id` is never copied (loaders upsert on it).
+        """
+        existing = find_by_key(Quotation.objects.filter(enquiry=quotation.enquiry), idempotency_key)
+        if existing is not None:
+            return existing
+
+        with transaction.atomic():
+            clone = Quotation.objects.create(
+                enquiry=quotation.enquiry,
+                # GAP-045 Unit 3d-C: clone the unified Person FK straight from
+                # the source quote (person is the authoritative, NOT-NULL
+                # customer FK); the legacy `guest` leg is no longer persisted.
+                person=quotation.person,
+                agent=quotation.agent,
+                is_unbranded=quotation.is_unbranded,
+                expires_at=quotation.expires_at,
+                terms_version=quotation.terms_version,
+                idempotency_key=idempotency_key or "",
+            )
+            for line in quotation.lines.all():
+                QuotationLine.objects.create(
+                    quotation=clone,
+                    property=line.property,
+                    currency=line.currency,
+                    date_from=line.date_from,
+                    date_to=line.date_to,
+                    adults=line.adults,
+                    children=line.children,
+                    pricing_snapshot=line.pricing_snapshot,
+                    total=line.total,
+                    discount=line.discount,
+                    inclusions=line.inclusions,
+                    is_selected=False,
+                    is_manual=line.is_manual,
+                    price_override_reason=line.price_override_reason,
+                    notes=line.notes,
+                )
+        return clone

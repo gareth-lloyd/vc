@@ -82,10 +82,25 @@ class Quotation(AuditedModel):
     cancel_reason = models.TextField(blank=True)
 
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    # Retry dedupe for `:duplicate` (SMELL-009). Blank = "no idempotency
+    # requested" — only client-supplied keys enter the partial unique below.
+    idempotency_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["status", "expires_at"]),
+        ]
+        constraints = [
+            # FG-010 backstop for `QuotationService.duplicate`'s
+            # check-then-create pre-check, same (enquiry, key) scope the
+            # service queries. `enquiry` is NOT NULL today; if it ever goes
+            # nullable, NULLs are distinct in this partial index and the
+            # dedupe silently stops for enquiry-less quotations.
+            models.UniqueConstraint(
+                fields=["enquiry", "idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="quotation_idempotency_key_unique_per_enquiry",
+            ),
         ]
         ordering = ["-created_at"]
 

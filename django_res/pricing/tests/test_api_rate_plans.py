@@ -496,3 +496,105 @@ def test_rate_plan_duplicate_copies_reductions_verbatim(
     assert cloned_band.reduced_at == date(2026, 5, 1)
     assert cloned_band.reduction_reason == "June push"
     assert cloned_band.effective_nightly == rule.effective_nightly
+
+
+# ---------------------------------------------------------------------------
+# SMELL-009: `:duplicate` idempotency via optional body key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_rate_plan_duplicate_retry_same_key_returns_same_plan(
+    api_client: APIClient,
+    staff: User,
+    plan: RatePlan,
+    period: RatePeriod,
+    rule: RateBand,
+) -> None:
+    api_client.force_login(staff)
+    first = api_client.post(
+        f"/api/v1/rate-plans/{plan.pk}:duplicate",
+        data={"idempotency_key": "ui-123"},
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+    count = RatePlan.objects.count()
+
+    second = api_client.post(
+        f"/api/v1/rate-plans/{plan.pk}:duplicate",
+        data={"idempotency_key": "ui-123"},
+        format="json",
+    )
+
+    assert second.status_code == 201, second.content
+    assert second.json()["id"] == first.json()["id"]
+    assert RatePlan.objects.count() == count
+
+
+@pytest.mark.django_db
+def test_rate_plan_duplicate_race_loser_maps_to_409(
+    api_client: APIClient,
+    staff: User,
+    plan: RatePlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FG-010: a racer past the pre-check trips the partial-unique backstop;
+    the view maps the IntegrityError to 409 `idempotency_conflict`, not 500.
+
+    Patch the IMPORT SITE (`pricing.services.duplication.find_by_key`) — the
+    service binds the name at import, so patching `core.idempotency` would
+    leave the pre-check live and the test would pass vacuously.
+    """
+    import pricing.services.duplication as duplication
+
+    monkeypatch.setattr(duplication, "find_by_key", lambda queryset, idempotency_key: None)
+
+    api_client.force_login(staff)
+    first = api_client.post(
+        f"/api/v1/rate-plans/{plan.pk}:duplicate",
+        data={"idempotency_key": "race-key"},
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+
+    second = api_client.post(
+        f"/api/v1/rate-plans/{plan.pk}:duplicate",
+        data={"idempotency_key": "race-key"},
+        format="json",
+    )
+
+    assert second.status_code == 409, second.content
+    assert second.json()["code"] == "idempotency_conflict"
+
+
+@pytest.mark.django_db
+def test_rate_plan_duplicate_without_body_still_works(
+    api_client: APIClient,
+    staff: User,
+    plan: RatePlan,
+) -> None:
+    # Back-compat: the FE sends no body today; a bodyless POST must keep
+    # returning a fresh clone every time.
+    api_client.force_login(staff)
+    first = api_client.post(f"/api/v1/rate-plans/{plan.pk}:duplicate")
+    second = api_client.post(f"/api/v1/rate-plans/{plan.pk}:duplicate")
+    assert first.status_code == 201, first.content
+    assert second.status_code == 201, second.content
+    assert first.json()["id"] != second.json()["id"]
+
+
+@pytest.mark.django_db
+def test_rate_plan_duplicate_explicit_null_key_is_ignored(
+    api_client: APIClient,
+    staff: User,
+    plan: RatePlan,
+) -> None:
+    # An explicit JSON null must stay "no idempotency requested" (today's
+    # behaviour), not become a 400.
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/rate-plans/{plan.pk}:duplicate",
+        data={"idempotency_key": None},
+        format="json",
+    )
+    assert response.status_code == 201, response.content

@@ -1,3 +1,18 @@
+> **✅ RESOLVED (2026-07-13)** — all three inline clones extracted to
+> services with FG-010 idempotency (7 TDD units, `8e8a9b5..4fdcbd8`):
+> `duplicate_rate_plan` / `duplicate_extra` in
+> `pricing/services/duplication.py`, `QuotationService.duplicate`; views
+> are thin delegations (zero `pk = None` walks in any `*/views/`). Each
+> model gains `idempotency_key` + a parent-scoped partial-unique backstop
+> (`(property, key)` ×2, `(enquiry, key)`); retries return the original
+> clone with 201, race losers map to 409 `idempotency_conflict` via the
+> shared `integrity_conflict_guard` (`core/idempotency.py`, keyless
+> re-raise). One approved behaviour fix: rate-plan clones no longer copy
+> `legacy_id` (loaders upsert on it — a copied one broke the next delta
+> load). Extra's duplicate also gained the missing `transaction.atomic`
+> and its first test coverage. Backend-only: the SPA still sends no key
+> (bodyless POST unchanged); FE key wiring is a follow-up.
+
 # SMELL-009 — "Duplicate" is implemented three different ways, none idempotent
 
 - **Severity:** 🟡 Smell

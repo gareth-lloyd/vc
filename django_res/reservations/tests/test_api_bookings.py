@@ -248,10 +248,10 @@ def test_detail_booking(api_client: APIClient, staff: User, booking: Booking) ->
 def test_list_exposes_total_and_amount_paid(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:
-    """`total` is the guest-facing gross (the denormalised `balance_due`,
-    see 07-payments.md); `amount_paid` is real settled money — never derived
-    from `total - balance_due`, which used to render the commission as a
-    negative "Paid" figure on the FE."""
+    """`total` is the guest-facing gross from `booking_total()` (snapshot-first,
+    falling back to the denormalised `balance_due` here); `amount_paid` is real
+    settled money — never derived from `total - balance_due`, which used to
+    render the commission as a negative "Paid" figure on the FE."""
     api_client.force_login(staff)
     response = api_client.get("/api/v1/bookings")
 
@@ -970,7 +970,9 @@ def _add_charge(booking: Booking, gbp: Currency, amount: str, label: str = "Extr
 def test_total_includes_charge_items(
     api_client: APIClient, staff: User, booking: Booking, gbp: Currency
 ) -> None:
-    """`total` = `balance_due` + Σ charge items, on list and detail alike.
+    """`total` = `booking_total()` (snapshot-first base + Σ charge items), on
+    list and detail alike — the snapshot-less fixture exercises the
+    `balance_due` fallback.
 
     `balance_due` keeps its engine-gross meaning so a re-price never wipes
     manual charges; the FE reads `total` and needs no finance changes.
@@ -988,6 +990,29 @@ def test_total_includes_charge_items(
     assert detail.data["total"] == "1550.00"
     assert detail.data["balance_due"] == "1400.00"
     assert detail.data["charges_total"] == "150.00"
+
+
+@pytest.mark.django_db
+def test_total_prefers_pricing_snapshot_over_balance_due(
+    api_client: APIClient, staff: User, booking: Booking, gbp: Currency
+) -> None:
+    """SMELL-020: the API `total` delegates to `booking_total()`, so it is
+    snapshot-first — the same figure the payment schedule and the guest email
+    size against. Before the consolidation this serializer read bare
+    `balance_due` and silently disagreed with both whenever the two diverged
+    (e.g. a manual edit)."""
+    booking.pricing_snapshot = {"total": "1500.00"}
+    booking.save(update_fields=["pricing_snapshot"])
+    _add_charge(booking, gbp, "100.00", label="Late checkout")
+
+    api_client.force_login(staff)
+    listing = api_client.get("/api/v1/bookings")
+    row = listing.data["results"][0]
+    assert row["total"] == "1600.00"
+    assert row["balance_due"] == "1400.00"
+
+    detail = api_client.get(f"/api/v1/bookings/{booking.pk}")
+    assert detail.data["total"] == "1600.00"
 
 
 @pytest.mark.django_db

@@ -14,7 +14,11 @@ from properties.enums import PriceBasis
 from properties.models import PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
 from reservations.serializers._contact_reads import contact_email, contact_name
-from reservations.services.charges import charges_total_for, effective_commission_for
+from reservations.services.charges import (
+    booking_total,
+    charges_total_for,
+    effective_commission_for,
+)
 from reservations.services.owner_finance import (
     OwnerMoney,
     format_component_split,
@@ -34,9 +38,11 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
     # `balance_due` holds the denormalised engine-gross total (07-payments.md)
     # — it is *not* decremented as payments settle, and a re-price rewrites it
     # without touching manual charge items. What the guest actually owes is
-    # `balance_due` plus the live Σ of charge items, exposed here as `total`
-    # so the FE never reconstructs the gross from net-of-commission
-    # `rental_price`.
+    # `booking_total()` — the single money authority (SMELL-020): snapshot
+    # total (else `balance_due`) plus the Σ of charge items — exposed here as
+    # `total` so the FE never reconstructs the gross from net-of-commission
+    # `rental_price`, and always sees the figure the payment schedule and the
+    # guest email size against.
     total = serializers.SerializerMethodField()
     amount_paid = serializers.SerializerMethodField()
 
@@ -104,7 +110,9 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
         return charges_total_for(obj)
 
     def get_total(self, obj: Booking) -> str:
-        return f"{(obj.balance_due + self._charges_total(obj)):.2f}"
+        # Hand the (annotation-aware) charge sum over explicitly so annotated
+        # list/detail paths stay query-free — see `booking_total`'s contract.
+        return f"{booking_total(obj, charges_total=self._charges_total(obj)):.2f}"
 
     def get_amount_paid(self, obj: Booking) -> str:
         """Settled rental money (SUCCEEDED deposit/balance payments).

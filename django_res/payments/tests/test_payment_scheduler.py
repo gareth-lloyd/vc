@@ -62,6 +62,51 @@ def test_create_for_booking__creates_deposit_balance_and_security_deposit(
 
 
 @pytest.mark.django_db
+def test_schedule_and_sd_size_from_booking_total_authority(
+    booking: Any,
+    property_: Property,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SMELL-020: schedule + percent-SD sizing delegate to `booking_total`.
+
+    Patch the authority to a sentinel in both payments modules and assert the
+    deposit/balance/SD rows are sized from it — proving there is no residual
+    private re-derivation of the guest total inside payments.
+    """
+    import payments.services.payment_scheduler as scheduler_module
+    import payments.services.security_deposit as sd_module
+
+    finance = _ensure_finance(property_)
+    finance.security_deposit_required = True
+    finance.security_deposit_amount = Decimal("10.00")
+    finance.security_deposit_calculation_type = "percent"
+    finance.save(
+        update_fields=[
+            "security_deposit_required",
+            "security_deposit_amount",
+            "security_deposit_calculation_type",
+        ]
+    )
+    from reservations.models import Booking
+
+    booking = Booking.objects.get(pk=booking.pk)
+
+    sentinel = Decimal("2000.00")
+    monkeypatch.setattr(scheduler_module, "booking_total", lambda b: sentinel)
+    monkeypatch.setattr(sd_module, "booking_total", lambda b: sentinel)
+
+    created = PaymentScheduler.create_for_booking(booking)
+
+    deposit = next(p for p in created if p.purpose == PaymentPurpose.DEPOSIT.value)
+    balance = next(p for p in created if p.purpose == PaymentPurpose.BALANCE.value)
+    assert deposit.amount == Decimal("600.00")  # 30% of the sentinel
+    assert balance.amount == Decimal("1400.00")  # sentinel - deposit
+
+    sd = SecurityDeposit.objects.get(booking=booking)
+    assert sd.amount == Decimal("200.00")  # 10% of the sentinel
+
+
+@pytest.mark.django_db
 def test_create_for_booking__deposit_plus_balance_conserves_total(
     booking: Any,
     property_: Property,

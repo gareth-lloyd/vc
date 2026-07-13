@@ -15,12 +15,11 @@ from decimal import Decimal
 import pytest
 
 from accounts.models import Person
-from payments.services.payment_scheduler import PaymentScheduler
 from pricing.models import Currency
 from properties.models import Property
 from reservations.factories import BookingChargeItemFactory, make_occupying_booking
 from reservations.models import Booking, TermsVersion
-from reservations.services.charges import _money, booking_charge_breakdown
+from reservations.services.charges import _money, booking_charge_breakdown, booking_total
 
 
 @pytest.fixture
@@ -171,13 +170,12 @@ def test_builder_is_query_free_when_booking_is_prefetched(
 
 
 @pytest.mark.django_db
-def test_total_is_byte_equal_to_payment_scheduler(booking: Booking, gbp: Currency) -> None:
-    # The load-bearing invariant: the email's grand total MUST equal what the
-    # guest is actually scheduled to pay. While the scheduler still owns its
-    # own `_booking_total` copy, pin against it as an INDEPENDENT oracle —
-    # pinning against `booking_total` would be circular now that the breakdown
-    # delegates to it. Once the scheduler itself delegates (SMELL-020 unit 2),
-    # this pin can follow the authority.
+def test_total_matches_booking_total_live_aggregate(booking: Booking, gbp: Currency) -> None:
+    # The email total == scheduled total invariant now holds by construction:
+    # both the breakdown and PaymentScheduler delegate to `booking_total`
+    # (SMELL-020). What is left to pin is the passthrough seam — the
+    # breakdown's single-pass `charges_total=` sum must equal the authority's
+    # own live aggregate.
     BookingChargeItemFactory(
         booking=booking, currency=gbp, label="Late checkout", amount=Decimal("150.00")
     )
@@ -187,13 +185,13 @@ def test_total_is_byte_equal_to_payment_scheduler(booking: Booking, gbp: Currenc
 
     result = booking_charge_breakdown(booking)
 
-    assert result["total"] == _money(PaymentScheduler._booking_total(booking))
+    assert result["total"] == _money(booking_total(booking))
 
 
 @pytest.mark.django_db
 def test_float_snapshot_total_is_str_coerced(booking: Booking, gbp: Currency) -> None:
-    # A real JSON decode yields a float, not a str — the builder must `str()`-
-    # coerce it exactly as the scheduler does, with no binary-float drift.
+    # A real JSON decode yields a float, not a str — the base extraction must
+    # `str()`-coerce it, with no binary-float drift.
     booking.pricing_snapshot = {"total": 1450.5}
     booking.save(update_fields=["pricing_snapshot"])
     BookingChargeItemFactory(
@@ -203,7 +201,7 @@ def test_float_snapshot_total_is_str_coerced(booking: Booking, gbp: Currency) ->
     result = booking_charge_breakdown(booking)
 
     assert result["base_amount"] == "1,450.50"
-    assert result["total"] == _money(PaymentScheduler._booking_total(booking))
+    assert result["total"] == _money(booking_total(booking))
 
 
 @pytest.mark.django_db

@@ -16,7 +16,6 @@ from typing import Any
 
 import structlog
 from django.db import transaction
-from django.db.models import Sum
 from django.utils import timezone
 
 from core.logging.operations import log_operation
@@ -24,6 +23,7 @@ from payments.enums import PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from pricing.services.currency import quantise_money
 from properties.enums import DepositCalcType
+from reservations.services.charges import booking_total
 
 logger = structlog.get_logger(__name__)
 
@@ -50,8 +50,6 @@ class PaymentScheduler:
         written all-or-nothing, so a failure part-way never leaves a booking
         with a deposit row but no balance row (or vice versa).
         """
-        # Late import — `SecurityDepositService` lives in another module in
-        # this package and we don't want a circular import at module load.
         from payments.services.security_deposit import SecurityDepositService
 
         # Idempotent: the scheduler is reachable from the booking-creation
@@ -82,7 +80,7 @@ class PaymentScheduler:
             return []
         schedule = finance.effective_payment_schedule()
         currency = booking.currency
-        total = cls._booking_total(booking)
+        total = booking_total(booking)
         balance_due_at = cls._coerce_due_at(getattr(booking, "balance_due_at", None))
 
         to_create: list[Payment] = []
@@ -181,7 +179,7 @@ class PaymentScheduler:
             # — `create_for_booking` sizes against the charges when it runs.
             return
 
-        total = cls._booking_total(booking)
+        total = booking_total(booking)
         with log_operation(
             "payment.schedule_resync",
             logger=logger,
@@ -240,25 +238,6 @@ class PaymentScheduler:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-    @staticmethod
-    def _booking_total(booking: Any) -> Decimal:
-        """Extract the total amount the schedule sizes against.
-
-        Prefers `booking.pricing_snapshot["total"]` (the locked-in JSON
-        breakdown captured at confirmation time); falls back to
-        `booking.balance_due` when no snapshot is set yet. Manual charge
-        items live outside the snapshot and are added live on top — the
-        single source of truth shared by `create_for_booking` and
-        `resync_for_booking`.
-        """
-        snapshot = getattr(booking, "pricing_snapshot", None) or {}
-        if isinstance(snapshot, dict) and snapshot.get("total") is not None:
-            total = Decimal(str(snapshot["total"]))
-        else:
-            total = Decimal(getattr(booking, "balance_due", Decimal("0")))
-        charges = booking.charge_items.aggregate(total=Sum("amount"))["total"] or Decimal("0")
-        return (total + charges).quantize(Decimal("0.01"))
-
     @staticmethod
     def _calc_amount(
         *,

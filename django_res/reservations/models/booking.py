@@ -138,8 +138,6 @@ class Booking(AuditedModel):
 
     pricing_snapshot = models.JSONField(default=dict)
     rental_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
-    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
-    adjustment = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     balance_due = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     balance_due_at = models.DateField(null=True, blank=True)
 

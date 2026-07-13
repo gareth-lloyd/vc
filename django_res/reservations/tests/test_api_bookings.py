@@ -1016,6 +1016,21 @@ def test_total_prefers_pricing_snapshot_over_balance_due(
 
 
 @pytest.mark.django_db
+def test_dead_money_columns_are_gone_from_the_payload(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """SMELL-020: `discount` (never written) and `adjustment` (written by the
+    deleted concierge recompute, read by nothing) are dropped — the detail
+    payload must expose neither."""
+    api_client.force_login(staff)
+    detail = api_client.get(f"/api/v1/bookings/{booking.pk}")
+
+    assert detail.status_code == 200
+    assert "discount" not in detail.data
+    assert "adjustment" not in detail.data
+
+
+@pytest.mark.django_db
 def test_charges_total_zero_without_rows(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:

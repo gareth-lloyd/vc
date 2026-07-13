@@ -40,8 +40,6 @@ class ReservationsConfig(AppConfig):
                 "adults",
                 "children",
                 "rental_price",
-                "discount",
-                "adjustment",
                 "balance_due",
                 "balance_due_at",
                 "person_id",

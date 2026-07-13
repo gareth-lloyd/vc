@@ -146,8 +146,6 @@ class BookingDetailSerializer(BookingListSerializer):
             "quotation_line",
             "pricing_snapshot",
             "charges_total",
-            "discount",
-            "adjustment",
             "terms_version",
             "terms_accepted_at",
             "payment_method",

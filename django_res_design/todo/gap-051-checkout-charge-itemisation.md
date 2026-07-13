@@ -44,8 +44,9 @@ itemisation is still missing because the page itself is not yet built.
   layout so the guest sees one consistent decomposition.
 - **Reuse the backend, don't re-derive it.** GAP-018 added
   `reservations.services.charges.booking_charge_breakdown(booking)` as the
-  single source of truth (snapshot base + signed charge lines, grand total
-  byte-equal to `PaymentScheduler._booking_total`). Expose it on whatever
+  single source of truth (snapshot base + signed charge lines; since SMELL-020
+  its grand total delegates to `booking_total()`, the single money authority
+  the payment scheduler also uses). Expose it on whatever
   booking/checkout serializer the checkout page reads, rather than recomputing
   the breakdown in TypeScript.
 - Keep the signed-discount contract (the Discounts block) consistent with the

@@ -1,5 +1,38 @@
 # SMELL-020 — Booking has no single money authority; the guest total is re-derived byte-for-byte in two apps
 
+> ✅ **RESOLVED 2026-07-13** (local `main`, unpushed; 8 units, branch `feat/smell-020`).
+>
+> - **Authority** — `reservations.services.charges.booking_total(booking, *,
+>   charges_total=None)`: `pricing_snapshot["total"]` (str-coerced) else
+>   `balance_due`, + Σ charge items, flat 2dp quantize. Safe-by-default: the
+>   charge sum is **live-aggregated** unless the caller explicitly hands it
+>   over (`charges_total=`), so a stale `with_charges_total` annotation can
+>   never size money (design hardened by the unit-1 adversarial review).
+> - **All five derivations now delegate**: `PaymentScheduler`
+>   (create + resync — the private `_booking_total` is deleted),
+>   `SecurityDepositService._size_sd` (percent SD; no longer reaches into a
+>   private scheduler method), `booking_charge_breakdown` (email),
+>   `BookingListSerializer.get_total` (API — now snapshot-first, a deliberate
+>   alignment: it previously read bare `balance_due` and could silently
+>   disagree with the scheduled/emailed total), and
+>   `ChargeItemService._check_total` (negativity guard — now guards the actual
+>   guest total). No "mirrors byte-for-byte" comments remain.
+> - **Concierge decision (product)**: concierge money is **non-scheduling** —
+>   it never enters `booking_total()`, never fires `booking_total_changed`,
+>   never resizes the schedule/SD; collection stays deferred to
+>   `Payment(purpose=CONCIERGE)` (`ConciergeService.request_payment` stub).
+>   The write-only `Booking.adjustment` column and its whole FG-011 recompute
+>   machinery are **deleted**; `test_concierge.py` pins non-scheduling
+>   executably.
+> - **`Booking.discount` dropped too** (never written by any code, default-0
+>   ghost); migration `reservations.0005` removes both columns. FE: detail
+>   schema fields, Overview Discount/Adjustment rows, en+el i18n keys removed.
+> - **Deliberately NOT unified**: owner-side gross (`owner_finance`) is
+>   different accounting (GAP-076/077); documented in the authority docstring.
+> - Deferred: currency-aware `quantise_money` for the authority (0dp/3dp
+>   currencies); pre-existing charge-item stale-delta race under concurrent
+>   same-item updates (surfaced by review — candidate ticket).
+
 - **Severity:** 🟡 Smell
 - **Source:** the 2026-07-02 backend complexity audit (money-model fragmentation)
 - **Files:** `reservations/models/booking.py:132–137`,

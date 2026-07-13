@@ -1,5 +1,32 @@
 # SMELL-021 — `PriceBasis` defined twice with two competing authorities; loader silently defaults imported plans to GROSS
 
+> ✅ **RESOLVED 2026-07-13** (local `main`, unpushed; merge `6cc64d8`, 3 units).
+>
+> - **Unit 1** — one `PriceBasis`: the duplicate in `pricing/enums.py` deleted;
+>   the sole definition lives in `properties/enums.py` with a docstring
+>   recording the authority split (engine → `RatePlan.price_basis` per BUG-009;
+>   `prices_entered_as` → entry-form pre-fill only per GAP-035). **Deviation
+>   from the ticket's proposed fix:** "keep it in pricing, import it into
+>   properties" is the spine-illegal direction (properties may not import
+>   pricing); the enum lives in `properties` and pricing imports it —
+>   import-linter green.
+> - **Unit 2** — `RatePlanLoader.transform` stamps `price_basis=GROSS`
+>   **explicitly**. The "no per-villa basis signal" question is answered and
+>   documented: legacy `RatesModel.Calculate()` always treats the entered rate
+>   as the guest-facing gross (`GrossPrice = getWeeklyPrice`, net derived by
+>   subtracting tax + commission) and no NET column exists anywhere in the
+>   legacy schema — so *every* legacy plan is GROSS by rule, not by accident.
+>   The feared "NET legacy villa imports as GROSS" case is structurally
+>   impossible; no NET-import test exists because there is no NET input to
+>   test. `reconcile_legacy` gains an invariant check (`SELECT 0` vs imported
+>   plans carrying non-GROSS basis → BLOCKER on stamp regression; staff-created
+>   NET plans excluded) + CUTOVER.md expected-gap row.
+> - **Unit 3** — `prices_entered_as` marked non-authoritative at the field:
+>   help_text + comments on `PropertySettings` and `PropertyDefaults`
+>   (GroupSettings is gone — GAP-070), state-only migration `properties.0004`.
+>   Chose document-over-derive: deriving it from the plan would invert the
+>   pre-fill's purpose (it exists to seed plans that don't exist yet).
+
 - **Severity:** 🟡 Smell (latent money bug — a NET legacy villa is mis-priced on cutover)
 - **Source:** the 2026-07-02 backend complexity audit (pricing-authority divergence)
 - **Files:** `pricing/enums.py:8–12`, `properties/enums.py:36`,

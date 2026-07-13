@@ -312,6 +312,34 @@ def test_credit_below_negative_total_rejected(
 
 
 @pytest.mark.django_db
+def test_negativity_guard_uses_booking_total_not_balance_due(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """SMELL-020: the guard delegates to `booking_total()`, so it protects the
+    ACTUAL guest total (snapshot-first) rather than the bare `balance_due`
+    column. A credit within the snapshot-based total is legal even when it
+    would push `balance_due + charges` negative; one beyond it is refused."""
+    booking.pricing_snapshot = {"total": "2000.00"}
+    booking.save(update_fields=["pricing_snapshot"])
+
+    api_client.force_login(staff)
+    within = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/charge-items",
+        {"label": "Goodwill credit", "amount": "-1800.00"},
+        format="json",
+    )
+    assert within.status_code == 201  # 2000 - 1800 = 200 ≥ 0
+
+    beyond = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/charge-items",
+        {"label": "Too generous", "amount": "-300.00"},
+        format="json",
+    )
+    assert beyond.status_code == 400  # 200 - 300 < 0
+    assert "amount" in beyond.data["field_errors"]
+
+
+@pytest.mark.django_db
 def test_mutations_write_booking_events(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:

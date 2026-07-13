@@ -379,13 +379,12 @@ class ChargeItemService:
 
     @staticmethod
     def _check_total(booking: Booking, *, delta: Decimal) -> None:
-        """Refuse a write that would push `balance_due + Σcharges` negative.
+        """Refuse a write that would push `booking_total()` negative.
 
         Computed live under the booking row lock, so two concurrent credits
         can't slip past the guard together.
         """
-        current = charges_total_for(booking)
-        if booking.balance_due + current + delta < 0:
+        if booking_total(booking) + delta < 0:
             raise DomainValidationError(
                 field_errors={"amount": ["This would make the booking total negative."]}
             )

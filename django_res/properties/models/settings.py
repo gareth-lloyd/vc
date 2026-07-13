@@ -52,11 +52,16 @@ class PropertySettings(AuditedModel):
     # emptied note by sending `null`. Without it the whole Operational form
     # 400s ("This field may not be null.") whenever the note is empty.
     min_nights_rental_note = models.TextField(null=True, blank=True)
+    # NOT a pricing authority (GAP-035/SMELL-021): the engine branches on
+    # `RatePlan.price_basis` alone. This field only pre-fills the entry form
+    # when a new rate plan is created.
     prices_entered_as = models.CharField(
         max_length=8,
         choices=PriceBasis.choices,
         null=True,
         blank=True,
+        help_text="Entry-form pre-fill for new rate plans; "
+        "the engine prices from RatePlan.price_basis.",
     )
     hold_duration_hours = models.PositiveSmallIntegerField(null=True, blank=True)
     # The owner's online (non-iCal) calendar webpage, surfaced to sales as a

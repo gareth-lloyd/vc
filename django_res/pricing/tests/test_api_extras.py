@@ -277,3 +277,101 @@ def test_extra_duplicate_without_body_clones_in_place(
     assert first.status_code == 201 and second.status_code == 201
     assert first.json()["id"] != second.json()["id"]
     assert Extra.objects.filter(name="Cleaning (copy)").count() == 2
+
+
+# ---------------------------------------------------------------------------
+# SMELL-009: `:duplicate` idempotency via optional body key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_retry_same_key_returns_same_extra(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+) -> None:
+    api_client.force_login(staff)
+    first = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"idempotency_key": "ui-77"},
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+    count = Extra.objects.count()
+
+    second = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"idempotency_key": "ui-77"},
+        format="json",
+    )
+
+    assert second.status_code == 201, second.content
+    assert second.json()["id"] == first.json()["id"]
+    assert Extra.objects.count() == count
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_race_loser_maps_to_409(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Patch the IMPORT SITE (`pricing.services.duplication.find_by_key`) so
+    the pre-check misses and the loser hits the partial-unique backstop."""
+    import pricing.services.duplication as duplication
+
+    monkeypatch.setattr(duplication, "find_by_key", lambda queryset, idempotency_key: None)
+
+    api_client.force_login(staff)
+    first = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"idempotency_key": "race-key"},
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+
+    second = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"idempotency_key": "race-key"},
+        format="json",
+    )
+
+    assert second.status_code == 409, second.content
+    assert second.json()["code"] == "idempotency_conflict"
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_key_and_target_compose(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+) -> None:
+    target = cast(Property, PropertyFactory())
+    api_client.force_login(staff)
+    payload = {"idempotency_key": "ui-88", "target_property_id": target.pk}
+
+    first = api_client.post(f"/api/v1/extras/{extra.pk}:duplicate", data=payload, format="json")
+    second = api_client.post(f"/api/v1/extras/{extra.pk}:duplicate", data=payload, format="json")
+
+    assert first.status_code == 201 and second.status_code == 201
+    assert second.json()["id"] == first.json()["id"]
+    clone = Extra.objects.get(pk=first.json()["id"])
+    assert clone.property_id == target.pk
+
+
+@pytest.mark.django_db
+def test_extra_duplicate_non_numeric_target_is_400(
+    api_client: APIClient,
+    staff: User,
+    extra: Extra,
+) -> None:
+    # Previously `int("abc")` blew up as a 500; the input serializer makes
+    # it a validation error (side effect flagged in the plan, accepted).
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/extras/{extra.pk}:duplicate",
+        data={"target_property_id": "abc"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content

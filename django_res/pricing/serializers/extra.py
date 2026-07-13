@@ -55,3 +55,17 @@ class ExtraSerializer(serializers.ModelSerializer[Extra]):
                 {"max_party": "max_party must be greater than or equal to min_party."},
             )
         return attrs
+
+
+class ExtraDuplicateSerializer(serializers.Serializer[None]):
+    """Input for `POST /extras/{id}:duplicate` (SMELL-009).
+
+    `target_property_id` re-parents the clone (the view resolves it,
+    404-ing unknown ids); `idempotency_key` dedupes retries per destination
+    property. Absent, blank, and explicit-null all mean "not requested".
+    """
+
+    idempotency_key = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, default="", max_length=64
+    )
+    target_property_id = serializers.IntegerField(required=False, allow_null=True)

@@ -7,7 +7,7 @@ from pricing.serializers.discount import (
     DiscountLookupCodeSerializer,
     DiscountSerializer,
 )
-from pricing.serializers.extra import ExtraSerializer
+from pricing.serializers.extra import ExtraDuplicateSerializer, ExtraSerializer
 from pricing.serializers.quote import (
     PricingQuoteBulkRequestSerializer,
     PricingQuoteRequestSerializer,
@@ -24,6 +24,7 @@ __all__ = [
     "CurrencySerializer",
     "DiscountLookupCodeSerializer",
     "DiscountSerializer",
+    "ExtraDuplicateSerializer",
     "ExtraSerializer",
     "FxRateSerializer",
     "PricingQuoteBulkRequestSerializer",

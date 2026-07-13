@@ -5,7 +5,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("reservations", "0004_bookingchargeitem_commissionable"),
+        ("reservations", "0005_quotation_idempotency_key_and_more"),
     ]
 
     operations = [

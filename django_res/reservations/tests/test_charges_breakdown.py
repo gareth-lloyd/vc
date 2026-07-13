@@ -3,8 +3,8 @@
 The breakdown decomposes the total a guest is billed into the snapshot base
 plus the signed `BookingChargeItem` lines (legacy `VillaBookingDetail`
 itemisation), partitioned by sign into `charges` (positive) and `discounts`
-(negative). The grand `total` must equal `PaymentScheduler._booking_total`
-byte-for-byte so the email total matches the scheduled total.
+(negative). The grand `total` must come from `booking_total` — the single
+money authority (SMELL-020) — so the email total matches the scheduled total.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def test_partitions_charges_and_discounts_in_pk_order(booking: Booking, gbp: Cur
     assert result["discounts"] == [
         {"label": "Loyalty credit", "amount": "-500.00"},
     ]
-    # 1400 + 150 + 900 - 500 = 1950 — equals PaymentScheduler._booking_total.
+    # 1400 + 150 + 900 - 500 = 1950 — equals `booking_total`.
     assert result["total"] == "1,950.00"
 
 
@@ -173,10 +173,11 @@ def test_builder_is_query_free_when_booking_is_prefetched(
 @pytest.mark.django_db
 def test_total_is_byte_equal_to_payment_scheduler(booking: Booking, gbp: Currency) -> None:
     # The load-bearing invariant: the email's grand total MUST equal what the
-    # guest is actually scheduled to pay. Pin it against the real scheduler
-    # method rather than a hand-typed literal, so a future change to
-    # `_booking_total` (e.g. switching its flat quantize to currency-aware
-    # `quantise_money`) fails here instead of silently drifting the email.
+    # guest is actually scheduled to pay. While the scheduler still owns its
+    # own `_booking_total` copy, pin against it as an INDEPENDENT oracle —
+    # pinning against `booking_total` would be circular now that the breakdown
+    # delegates to it. Once the scheduler itself delegates (SMELL-020 unit 2),
+    # this pin can follow the authority.
     BookingChargeItemFactory(
         booking=booking, currency=gbp, label="Late checkout", amount=Decimal("150.00")
     )

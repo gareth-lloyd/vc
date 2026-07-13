@@ -113,10 +113,9 @@ def _money(amount: Decimal) -> str:
 
 
 def _booking_base_total(booking: Booking) -> Decimal:
-    """The snapshot total the guest-facing total sizes against.
+    """The snapshot total `booking_total` sizes the guest total against.
 
-    Mirrors `PaymentScheduler._booking_total`'s base extraction exactly:
-    prefer `pricing_snapshot["total"]` (`str()`-coerced — JSON may yield a
+    Prefer `pricing_snapshot["total"]` (`str()`-coerced — JSON may yield a
     float), else `booking.balance_due`. There is deliberately no `booking.total`
     field; the snapshot is the locked-in breakdown captured at confirmation.
     """
@@ -126,6 +125,33 @@ def _booking_base_total(booking: Booking) -> Decimal:
     return Decimal(getattr(booking, "balance_due", Decimal("0")))
 
 
+def booking_total(booking: Booking, *, charges_total: Decimal | None = None) -> Decimal:
+    """THE guest grand total — the single money authority (SMELL-020).
+
+    `pricing_snapshot["total"]` (else `balance_due`) plus Σ charge items,
+    quantized to 2dp. Every surface that answers "what does this booking cost
+    the guest" — payment scheduler, security-deposit sizing, charge breakdown,
+    the serializer's `total`, the charge-item negativity guard — must delegate
+    here; do not re-derive this figure.
+
+    The charge sum is live-aggregated by default, so money-sizing callers are
+    safe even on an instance carrying a stale `with_charges_total` annotation.
+    A caller that already holds the sum (the breakdown's single prefetch-cache
+    pass, the serializer's annotation via `charges_total_for`) opts out of the
+    query by passing `charges_total` — and owns its freshness.
+
+    Concierge lines are deliberately EXCLUDED: concierge money is
+    non-scheduling (collection is deferred to `Payment(purpose=CONCIERGE)` —
+    see `reservations/services/concierge.py`). Owner-side gross
+    (`owner_finance.owner_money_for_booking`) is deliberately different
+    accounting (commission base, CENT quantize) — do not unify it onto this.
+    """
+    if charges_total is None:
+        aggregated = booking.charge_items.aggregate(total=models.Sum("amount"))["total"]
+        charges_total = Decimal(aggregated or 0)
+    return (_booking_base_total(booking) + charges_total).quantize(Decimal("0.01"))
+
+
 def booking_charge_breakdown(booking: Booking) -> dict[str, Any]:
     """Itemise a booking's charge lines for guest-facing comms.
 
@@ -133,8 +159,8 @@ def booking_charge_breakdown(booking: Booking) -> dict[str, Any]:
     signed `BookingChargeItem` lines (the legacy `VillaBookingDetail`
     itemisation), partitioned by sign into positive `charges` and negative
     `discounts` (a separate "Discounts" block, per the GAP-018 decision). The
-    grand `total` replicates `PaymentScheduler._booking_total` byte-for-byte
-    (flat 2dp quantize) so the email total equals the scheduled total.
+    grand `total` comes from `booking_total`, so the email total is the
+    scheduled total by construction.
 
     Money fields are pre-formatted strings (`_money`) the template interpolates
     directly. Lines come out in `pk` order (the model's `Meta.ordering`).
@@ -153,7 +179,7 @@ def booking_charge_breakdown(booking: Booking) -> dict[str, Any]:
         charges_sum += item.amount
         bucket = charges if item.amount > 0 else discounts
         bucket.append({"label": item.label, "amount": _money(item.amount)})
-    total = (base + charges_sum).quantize(Decimal("0.01"))
+    total = booking_total(booking, charges_total=charges_sum)
     return {
         "currency": booking.currency.code,
         "base_amount": _money(base),

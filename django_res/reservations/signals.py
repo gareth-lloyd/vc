@@ -7,8 +7,9 @@ Defines:
 
 Wires up:
 - `EnquiryNote` post_save → emit a `NOTE_ADDED` `EnquiryEvent`.
-- `BookingConciergeItem` post_save / post_delete → recompute
-  `Booking.adjustment` from non-cancelled concierge items.
+- `BookingChargeItem` post_save / post_delete → `booking_total_changed`
+  (concierge items deliberately do NOT participate — concierge money is
+  non-scheduling, SMELL-020; see `reservations/services/concierge.py`).
 """
 
 from __future__ import annotations
@@ -123,22 +124,6 @@ def _enquiry_note_post_save(
         source=EventSource.USER.value,
         meta={"note_id": instance.pk, "kind": instance.kind},
     )
-
-
-# ---------------------------------------------------------------------------
-# BookingConciergeItem → Booking.adjustment recompute
-# ---------------------------------------------------------------------------
-
-
-def _concierge_item_changed(sender: type, instance: Any, **_: Any) -> None:
-    # Single-row save/delete only. Bulk concierge writes (queryset.update(),
-    # bulk_create, bulk_update) fire no signal and so silently desync
-    # Booking.adjustment — they must call ConciergeService.recompute_adjustment
-    # (or .recompute_for_bookings) explicitly (FG-011; same bulk-write/signal
-    # blind spot as the AuditLog convention in django_res/CLAUDE.md).
-    from reservations.services.concierge import ConciergeService
-
-    ConciergeService.recompute_adjustment(instance.booking_id)
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +271,6 @@ def _quotation_line_pre_delete(sender: type, instance: Any, **_: Any) -> None:
 def _connect() -> None:
     from reservations.models.booking_guest import BookingGuest
     from reservations.models.charge_item import BookingChargeItem
-    from reservations.models.concierge import BookingConciergeItem
     from reservations.models.enquiry import EnquiryNote
     from reservations.models.quotation import QuotationLine
 
@@ -304,16 +288,6 @@ def _connect() -> None:
         _charge_item_changed,
         sender=BookingChargeItem,
         dispatch_uid="reservations.charge_item_post_delete",
-    )
-    post_save.connect(
-        _concierge_item_changed,
-        sender=BookingConciergeItem,
-        dispatch_uid="reservations.concierge_item_post_save",
-    )
-    post_delete.connect(
-        _concierge_item_changed,
-        sender=BookingConciergeItem,
-        dispatch_uid="reservations.concierge_item_post_delete",
     )
     post_save.connect(
         _booking_guest_post_save,

@@ -1,4 +1,12 @@
-"""Tests for BookingConciergeItem → Booking.adjustment signal recompute."""
+"""BookingConciergeItem is NON-SCHEDULING money (SMELL-020).
+
+Concierge lines never enter `booking_total()` (the single guest-total
+authority), never fire `booking_total_changed`, and never resize the payment
+schedule or the security deposit. Collection is deferred to the future
+`Payment(purpose=CONCIERGE)` — `ConciergeService.request_payment` is the
+(stubbed) seam. The old `Booking.adjustment` denorm these lines used to
+maintain was written-but-never-read and has been removed.
+"""
 
 from __future__ import annotations
 
@@ -9,14 +17,16 @@ from typing import TYPE_CHECKING
 import pytest
 from django.utils import timezone
 
-from reservations.enums import ConciergeStatus, ConciergeTier, ConciergeUnit, PaymentMethod
+from reservations.enums import ConciergeTier, ConciergeUnit, PaymentMethod
 from reservations.models import (
     Booking,
     BookingConciergeItem,
     Quotation,
     QuotationLine,
 )
+from reservations.services.charges import booking_total
 from reservations.services.concierge import ConciergeService
+from reservations.signals import booking_total_changed
 
 if TYPE_CHECKING:
     from accounts.models import Person
@@ -64,9 +74,8 @@ def booking(
     )
 
 
-@pytest.mark.django_db
-def test_concierge_item_save_updates_adjustment(booking: Booking, gbp: Currency) -> None:
-    BookingConciergeItem.objects.create(
+def _chef(booking: Booking, gbp: Currency) -> BookingConciergeItem:
+    return BookingConciergeItem.objects.create(
         booking=booking,
         tier=ConciergeTier.SIGNATURE.value,
         name="Private chef",
@@ -75,101 +84,61 @@ def test_concierge_item_save_updates_adjustment(booking: Booking, gbp: Currency)
         unit_price=Decimal("300.00"),
         currency=gbp,
     )
-    booking.refresh_from_db()
-    assert booking.adjustment == Decimal("600.00")
 
 
 @pytest.mark.django_db
-def test_concierge_item_cancelled_excluded(booking: Booking, gbp: Currency) -> None:
-    BookingConciergeItem.objects.create(
-        booking=booking,
-        tier=ConciergeTier.QUINTESSENTIAL.value,
-        name="Housekeeping",
-        quantity=7,
-        unit=ConciergeUnit.DAY.value,
-        unit_price=Decimal("80.00"),
-        currency=gbp,
-        status=ConciergeStatus.CONFIRMED.value,
-    )
-    BookingConciergeItem.objects.create(
-        booking=booking,
-        tier=ConciergeTier.QUINTESSENTIAL.value,
-        name="Pet care",
-        quantity=3,
-        unit=ConciergeUnit.DAY.value,
-        unit_price=Decimal("50.00"),
-        currency=gbp,
-        status=ConciergeStatus.CANCELLED.value,
-    )
-    booking.refresh_from_db()
-    assert booking.adjustment == Decimal("560.00")  # 7*80
+def test_concierge_item_never_enters_booking_total(booking: Booking, gbp: Currency) -> None:
+    assert booking_total(booking) == Decimal("1400.00")
 
+    item = _chef(booking, gbp)
+    assert booking_total(booking) == Decimal("1400.00")
 
-@pytest.mark.django_db
-def test_concierge_item_delete_recomputes(booking: Booking, gbp: Currency) -> None:
-    item = BookingConciergeItem.objects.create(
-        booking=booking,
-        tier=ConciergeTier.SIGNATURE.value,
-        name="Driver",
-        quantity=1,
-        unit=ConciergeUnit.STAY.value,
-        unit_price=Decimal("500.00"),
-        currency=gbp,
-    )
-    booking.refresh_from_db()
-    assert booking.adjustment == Decimal("500.00")
     item.delete()
-    booking.refresh_from_db()
-    assert booking.adjustment == Decimal("0.00")
+    assert booking_total(booking) == Decimal("1400.00")
 
 
 @pytest.mark.django_db
-def test_bulk_update_desyncs_until_service_recompute(booking: Booking, gbp: Currency) -> None:
-    """A queryset .update() fires no signal, so the denorm goes stale until the
-    service-layer recompute corrects it (FG-011)."""
-    item = BookingConciergeItem.objects.create(
-        booking=booking,
-        tier=ConciergeTier.SIGNATURE.value,
-        name="Private chef",
-        quantity=1,
-        unit=ConciergeUnit.EVENT.value,
-        unit_price=Decimal("300.00"),
-        currency=gbp,
-    )
-    booking.refresh_from_db()
-    assert booking.adjustment == Decimal("300.00")
+def test_concierge_item_fires_no_booking_total_changed(booking: Booking, gbp: Currency) -> None:
+    fired: list[Booking] = []
 
-    # Bulk write — no post_save fires, so the denorm is now stale.
-    BookingConciergeItem.objects.filter(pk=item.pk).update(unit_price=Decimal("500.00"))
-    booking.refresh_from_db()
-    assert booking.adjustment == Decimal("300.00")  # still stale
+    def _capture(sender: type, booking: Booking, **_: object) -> None:
+        fired.append(booking)
 
-    # The service entry point re-derives it from the rows.
-    ConciergeService.recompute_adjustment(booking.pk)
-    booking.refresh_from_db()
-    assert booking.adjustment == Decimal("500.00")
+    booking_total_changed.connect(_capture, dispatch_uid="test.concierge_no_total_changed")
+    try:
+        item = _chef(booking, gbp)
+        item.delete()
+    finally:
+        booking_total_changed.disconnect(dispatch_uid="test.concierge_no_total_changed")
+
+    assert fired == []
 
 
 @pytest.mark.django_db
-def test_recompute_for_bookings_handles_multiple(booking: Booking, gbp: Currency) -> None:
-    """The batch entry point recomputes every supplied booking id (FG-011)."""
-    BookingConciergeItem.objects.bulk_create(
-        [
-            BookingConciergeItem(
-                booking=booking,
-                tier=ConciergeTier.SIGNATURE.value,
-                name="Driver",
-                quantity=2,
-                unit=ConciergeUnit.DAY.value,
-                unit_price=Decimal("120.00"),
-                currency=gbp,
-            ),
-        ]
-    )
-    # bulk_create fires no post_save — denorm untouched.
-    booking.refresh_from_db()
-    assert booking.adjustment == Decimal("0.00")
+def test_concierge_item_leaves_payment_schedule_untouched(
+    booking: Booking, gbp: Currency, property_: Property
+) -> None:
+    from payments.models import Payment, SecurityDeposit
+    from payments.services.payment_scheduler import PaymentScheduler
+    from properties.models.finance import PropertyFinance
 
-    ConciergeService.recompute_for_bookings([booking.pk])
-    booking.refresh_from_db()
-    assert booking.adjustment == Decimal("240.00")
+    PropertyFinance.objects.get_or_create(property=property_)
+    booking = Booking.objects.get(pk=booking.pk)  # refresh cached `.finance`
+    rows = PaymentScheduler.create_for_booking(booking)
+    assert rows  # non-vacuous: the default policy floor yields deposit+balance
+    before = {row.pk: row.amount for row in rows}
+
+    _chef(booking, gbp)
+
+    # No resize, no new collection row, no security-deposit reaction.
+    assert {p.pk: p.amount for p in Payment.objects.filter(booking=booking)} == before
+    assert not SecurityDeposit.objects.filter(booking=booking).exists()
+
+
+@pytest.mark.django_db
+def test_request_payment_is_a_pending_stub(booking: Booking, gbp: Currency) -> None:
+    # The Payment(purpose=CONCIERGE) collection path is the deferred design —
+    # the stable seam exists, the implementation deliberately does not yet.
+    item = _chef(booking, gbp)
+    with pytest.raises(NotImplementedError):
+        ConciergeService.request_payment(item)

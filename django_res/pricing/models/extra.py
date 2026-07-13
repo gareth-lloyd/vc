@@ -38,10 +38,21 @@ class Extra(AuditedModel):
     sort_order = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
+    # Retry dedupe for `:duplicate` (SMELL-009). Blank = "no idempotency
+    # requested" — only client-supplied keys enter the partial unique below.
+    idempotency_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
     class Meta:
         ordering = ["property", "sort_order", "name"]
         constraints = [
+            # FG-010 backstop for `duplicate_extra`'s check-then-create
+            # pre-check. Scoped to the DESTINATION property (where the clone
+            # lands), matching the scope the service queries.
+            models.UniqueConstraint(
+                fields=["property", "idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="extra_idempotency_key_unique_per_property",
+            ),
             models.CheckConstraint(
                 condition=(
                     models.Q(applies_from__isnull=True)

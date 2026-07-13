@@ -13,12 +13,48 @@ class's job for now (deliberate SMELL-008 leftover).
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.db import transaction
 
 from core.idempotency import find_by_key
-from pricing.models import RateBand, RatePeriod, RatePlan
+from pricing.models import Extra, RateBand, RatePeriod, RatePlan
 
-__all__ = ["duplicate_rate_plan"]
+if TYPE_CHECKING:
+    from properties.models import Property
+
+__all__ = ["duplicate_extra", "duplicate_rate_plan"]
+
+
+def duplicate_extra(
+    extra: Extra,
+    *,
+    target_property: Property | None = None,
+    idempotency_key: str | None = None,
+) -> Extra:
+    """Clone an extra, optionally onto another property.
+
+    The idempotency pre-check scopes to the DESTINATION property — the same
+    key aimed at a different `target_property` is a different logical
+    operation and clones again (pinned by test). A retry with the same key
+    and target returns the original clone; a racing loser past the pre-check
+    trips `extra_idempotency_key_unique_per_property` with `IntegrityError`
+    for the view to map to 409. (Extra has no `legacy_id`, so there is
+    nothing to null here.)
+    """
+    destination = target_property or extra.property
+    existing = find_by_key(Extra.objects.filter(property=destination), idempotency_key)
+    if existing is not None:
+        return existing
+
+    with transaction.atomic():
+        clone = Extra.objects.get(pk=extra.pk)
+        clone.pk = None
+        clone.property = destination
+        clone.name = f"{extra.name} (copy)"
+        clone.idempotency_key = idempotency_key or ""
+        clone.save()
+    return clone
 
 
 def duplicate_rate_plan(plan: RatePlan, *, idempotency_key: str | None = None) -> RatePlan:

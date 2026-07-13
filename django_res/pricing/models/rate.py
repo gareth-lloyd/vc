@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from core.fields import DateRangeFunc, Int4RangeFunc
 from core.models.base import AuditedModel
-from pricing.enums import PriceBasis
+from properties.enums import PriceBasis
 
 
 class RatePlan(AuditedModel):

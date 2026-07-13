@@ -58,10 +58,14 @@ class PropertyDefaults(AuditedModel):
     )
     min_nights_rental = models.PositiveSmallIntegerField(default=1)
     min_nights_rental_note = models.TextField(blank=True)
+    # NOT a pricing authority (GAP-035/SMELL-021) — seeds the PropertySettings
+    # pre-fill at property creation; the engine prices from RatePlan.price_basis.
     prices_entered_as = models.CharField(
         max_length=8,
         choices=PriceBasis.choices,
         default=PriceBasis.GROSS,
+        help_text="Entry-form pre-fill for new rate plans; "
+        "the engine prices from RatePlan.price_basis.",
     )
     hold_duration_hours = models.PositiveSmallIntegerField(default=48)
 

@@ -166,6 +166,20 @@ def test_process_row_no_service_when_inclusion_blank(loaded_property: Property) 
 
 
 @pytest.mark.django_db
+def test_transform_stamps_price_basis_gross_explicitly(loaded_property: Property) -> None:
+    """SMELL-021: legacy has no per-villa NET/GROSS signal (RatesModel.Calculate
+    always treats the entered rate as the guest-facing gross and derives net by
+    subtraction), so every imported plan is stamped GROSS *explicitly* — the
+    basis must be a loader decision, never the model default riding along."""
+    from properties.enums import PriceBasis
+
+    Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
+    kwargs = RatePlanLoader().transform(_row(CurrencyId=3))
+    assert kwargs is not None
+    assert kwargs["price_basis"] == PriceBasis.GROSS
+
+
+@pytest.mark.django_db
 def test_fallback_ignores_previously_loaded_plans(loaded_property: Property) -> None:
     """Re-run convergence: the fallback must not read the RatePlan table this
     loader populates. A run-1 mis-stamp (EUR) would otherwise re-resolve from

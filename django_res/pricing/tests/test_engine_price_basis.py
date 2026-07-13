@@ -15,11 +15,11 @@ from decimal import Decimal
 
 import pytest
 
-from pricing.enums import DiscountKind, ExtraCalc, ExtraKind, PriceBasis, RuleKind
+from pricing.enums import DiscountKind, ExtraCalc, ExtraKind, RuleKind
 from pricing.models import Currency, Discount, Extra, RateBand, RatePeriod, RatePlan
 from pricing.services import PricingEngine
 from pricing.services.quote import Quote
-from properties.enums import CommissionCalcType
+from properties.enums import CommissionCalcType, PriceBasis
 from properties.models import Property, PropertyFinance
 
 pytestmark = pytest.mark.django_db

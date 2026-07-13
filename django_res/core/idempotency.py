@@ -59,6 +59,30 @@ def find_by_meta_key[ModelT: Model](
     return queryset.filter(**{f"meta__{IDEMPOTENCY_META_KEY}": idempotency_key}).first()
 
 
+def find_by_key[ModelT: Model](
+    queryset: QuerySet[ModelT],
+    idempotency_key: str | None,
+) -> ModelT | None:
+    """`find_by_meta_key`'s twin for models with a dedicated key column.
+
+    Returns the first row in `queryset` whose `idempotency_key` column
+    matches, or `None` when no key was supplied or no row matches. The
+    column default is `""` (blank = "no idempotency requested"), so a
+    falsy key never matches the sea of keyless rows.
+
+    As with the meta variant, scope the queryset to the logical operation
+    context before calling (e.g. `RatePlan.objects.filter(property=prop)`) —
+    and match the model's partial-unique backstop *exactly*, including any
+    status condition the partial index carries. A pre-check broader than the
+    backstop can match rows the index deliberately excludes (e.g. OwnerBlock's
+    is scoped to APPROVED so cancelled blocks don't stop a re-import) and
+    wrongly short-circuit a creation the constraint would have allowed.
+    """
+    if not idempotency_key:
+        return None
+    return queryset.filter(idempotency_key=idempotency_key).first()
+
+
 def stamp_meta(meta: dict[str, Any] | None, idempotency_key: str | None) -> dict[str, Any]:
     """Return a fresh `meta` dict with `idempotency_key` stamped on it.
 

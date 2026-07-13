@@ -79,6 +79,21 @@ class InvalidTfaCode(DomainValidationError):
     code = "invalid_tfa_code"
 
 
+class IdempotencyConflict(DomainError):
+    """Two racing requests carried the same idempotency key.
+
+    The check-then-create pre-check (`core.idempotency`) is not race-proof
+    under READ COMMITTED; the losing racer trips the model's partial-unique
+    DB backstop (FG-010) with `IntegrityError`, which views translate into
+    this 409 rather than a 500. Semantically distinct from
+    `InvalidPaymentState` (`invalid_state`, which the payments endpoints keep
+    for their established API contract): an idempotency race is a retry
+    collision, not a state-machine refusal.
+    """
+
+    code = "idempotency_conflict"
+
+
 class InvalidTransition(DomainError):
     """A state machine transition was attempted from a disallowed source."""
 

@@ -44,8 +44,6 @@ const bookingFixture = {
   total: "2000.00",
   night_count: 7,
   pricing_snapshot: {},
-  discount: "0.00",
-  adjustment: "0.00",
 };
 
 function item(overrides: Record<string, unknown> = {}) {

@@ -6,8 +6,10 @@ import { parseMoney } from "@/lib/format/money";
  * The Total / Paid / Due trio for a booking — single source for the rail
  * tiles, the Overview tiles, and the list finance column.
  *
- * `total` is the guest-facing gross (`total`, with `balance_due` as fallback —
- * the backend keeps both as the same denormalised gross, see 07-payments.md).
+ * `total` is the guest-facing gross from the backend's `booking_total()`
+ * money authority (snapshot-first plus charge items, SMELL-020) — it can
+ * legitimately differ from the bare `balance_due` column, which is only the
+ * client-side fallback when `total` is absent.
  * `paid` comes from the backend's settled-payments sum and is never derived by
  * subtraction: `total − balance_due` used to surface the agency commission as
  * a negative "Paid" on net-priced bookings.

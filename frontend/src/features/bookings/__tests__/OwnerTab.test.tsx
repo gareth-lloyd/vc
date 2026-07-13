@@ -55,8 +55,6 @@ function bookingFixture(
     total: "2000.00",
     night_count: 7,
     pricing_snapshot: overrides.pricing_snapshot ?? {},
-    discount: "0.00",
-    adjustment: "0.00",
     terms_version: 1,
     terms_accepted_at: "2026-05-01T00:00:00Z",
     payment_method: "card",

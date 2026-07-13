@@ -45,8 +45,6 @@ function bookingFixture(pricing_snapshot: unknown, overrides: Record<string, unk
     charges_total: "0.00",
     night_count: 7,
     pricing_snapshot,
-    discount: "0.00",
-    adjustment: "0.00",
     terms_version: 1,
     terms_accepted_at: "2026-05-01T00:00:00Z",
     payment_method: "card",

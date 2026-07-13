@@ -194,8 +194,6 @@
       "property": "Property",
       "source": "Source",
       "rental_price": "Rental price",
-      "discount": "Discount",
-      "adjustment": "Adjustment",
       "commission": "Commission",
       "total": "Total"
     },

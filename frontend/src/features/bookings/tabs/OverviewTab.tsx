@@ -120,14 +120,6 @@ export function OverviewTab() {
             label={t("overview.fields.rental_price")}
             value={formatMoney(booking.rental_price, currency)}
           />
-          <FactGridItem
-            label={t("overview.fields.discount")}
-            value={formatMoney(booking.discount ?? "0", currency)}
-          />
-          <FactGridItem
-            label={t("overview.fields.adjustment")}
-            value={formatMoney(booking.adjustment ?? "0", currency)}
-          />
           {booking.net_to_owner ? (
             <FactGridItem
               label={t("overview.fields.commission")}

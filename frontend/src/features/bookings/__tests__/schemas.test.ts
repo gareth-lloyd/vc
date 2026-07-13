@@ -113,8 +113,6 @@ describe("bookingDetailSchema", () => {
     const parsed = bookingDetailSchema.parse({
       ...baseListItem,
       pricing_snapshot: { rate_subtotal: "1500.00" },
-      discount: "0.00",
-      adjustment: "0.00",
       terms_version: 1,
       terms_accepted_at: "2026-05-01T00:00:00Z",
       payment_method: "card",

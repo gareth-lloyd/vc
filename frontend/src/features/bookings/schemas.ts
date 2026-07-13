@@ -166,8 +166,6 @@ export const bookingDetailSchema = bookingListItemSchema.extend({
   quotation_line: z.number().nullable().optional(),
   pricing_snapshot: z.unknown().optional(),
   charges_total: z.string().nullable().optional(),
-  discount: z.string().nullable().optional(),
-  adjustment: z.string().nullable().optional(),
   terms_version: z.number().nullable().optional(),
   terms_accepted_at: z.string().nullable().optional(),
   payment_method: z.string().nullable().optional(),

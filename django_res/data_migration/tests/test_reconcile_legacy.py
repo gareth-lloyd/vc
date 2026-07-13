@@ -229,6 +229,27 @@ def test_person_checks_count_their_own_legacy_id_slice(monkeypatch: pytest.Monke
 
 
 @pytest.mark.django_db
+def test_rate_plan_basis_check_counts_only_legacy_non_gross() -> None:
+    """SMELL-021: legacy cannot express NET, so the loader stamps GROSS on every
+    imported plan — the basis-invariant check must count only *legacy* plans
+    that ended up non-GROSS (a stamp regression), never staff-created NET plans.
+    """
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+    from pricing.factories import RatePlanFactory
+    from properties.enums import PriceBasis
+
+    RatePlanFactory(legacy_id="1", price_basis=PriceBasis.GROSS)  # correct stamp
+    RatePlanFactory(legacy_id="2", price_basis=PriceBasis.NET)  # regression → counted
+    RatePlanFactory(price_basis=PriceBasis.NET)  # staff-created NET — not counted
+
+    by_label = {c.label: c for c in _CHECKS}
+    basis_check = by_label["RatePlan non-GROSS basis (must be 0)"]
+    assert basis_check.loaded_count is not None
+    assert basis_check.loaded_count(basis_check.model) == 1
+    assert basis_check.expected_gap == 0
+
+
+@pytest.mark.django_db
 def test_room_placement_check_counts_preserved_notes(monkeypatch: pytest.MonkeyPatch) -> None:
     """GAP-065: legacy rooms with a non-NULL PlacementId reconcile against
     rooms that landed with a preserved `placement_note` — the no-loss gate.

@@ -57,6 +57,7 @@ from pricing.services.currency import default_currency, settings_currency
 from pricing.services.flattening import SourceBand, flatten_rate_grid
 from pricing.services.intervals import Interval, intervals_overlap, subtract_intervals
 from pricing.services.period_names import derive_period_name
+from properties.enums import PriceBasis
 from properties.models.property import Property
 from properties.models.services import PropertyService
 
@@ -280,6 +281,13 @@ class RatePlanLoader(BaseLoader):
             "notes": (row.get("Notes") or "").strip(),
             # GAP-037: `Inclusion` no longer lands on RatePlan — it materialises a
             # PropertyService in `_process_row` (keyed `<season>:svc`).
+            # SMELL-021: stamped explicitly, not left to the model default.
+            # Legacy has no per-villa NET/GROSS signal — `RatesModel.Calculate()`
+            # always treats the entered rate as the guest-facing gross
+            # (`GrossPrice = getWeeklyPrice`, net derived by subtracting
+            # tax + commission) — so every imported plan is GROSS by rule.
+            # `reconcile_legacy` pins the invariant (zero non-GROSS legacy plans).
+            "price_basis": PriceBasis.GROSS,
         }
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:

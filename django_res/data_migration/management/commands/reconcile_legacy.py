@@ -47,6 +47,7 @@ from integrations.models import SyncRecord
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
 from pricing.models.rate import RateBand, RatePlan
+from properties.enums import PriceBasis
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.features import (
     Collection,
@@ -224,6 +225,21 @@ _CHECKS: list[_Check] = [
         # Seasons whose VillaId doesn't resolve, or with no resolvable currency
         # (none on the season's rates and none configured on the property).
         expected_gap=67,
+    ),
+    _Check(
+        # SMELL-021: legacy cannot express a NET basis (no such column;
+        # `RatesModel.Calculate()` treats every entered rate as gross), so the
+        # loader stamps GROSS on every imported plan. Legacy side is a constant
+        # 0; any imported plan carrying NET means the stamp regressed to the
+        # model default (or was hand-edited under a legacy_id) — a BLOCKER.
+        "SELECT 0",
+        RatePlan,
+        "RatePlan non-GROSS basis (must be 0)",
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__isnull=False)
+            .exclude(price_basis=PriceBasis.GROSS)
+            .count()
+        ),
     ),
     _Check(
         # BUG-013: RateBand now has two legacy sources — parent VillaSeasonRate

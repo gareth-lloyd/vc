@@ -34,6 +34,14 @@ class PrefilledChangeOverDay(models.TextChoices):
 
 
 class PriceBasis(models.TextChoices):
+    """Customer-facing vs. agent-net price basis.
+
+    The sole definition (SMELL-021). Two consumers with distinct authority:
+    `RatePlan.price_basis` is what the pricing engine branches on (BUG-009);
+    `PropertySettings.prices_entered_as` is only the entry-form pre-fill for
+    new plans (GAP-035).
+    """
+
     GROSS = "gross", "Gross"
     NET = "net", "Net"
 

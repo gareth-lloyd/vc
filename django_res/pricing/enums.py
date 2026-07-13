@@ -5,13 +5,6 @@ from __future__ import annotations
 from django.db import models
 
 
-class PriceBasis(models.TextChoices):
-    """Customer-facing vs. agent-net price basis on a RatePlan."""
-
-    GROSS = "gross", "Gross"
-    NET = "net", "Net"
-
-
 class RuleKind(models.TextChoices):
     """Discount rule kind — controls when/how a discount auto-applies."""
 

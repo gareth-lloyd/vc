@@ -10,9 +10,9 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
-from pricing.enums import DiscountKind, PriceBasis, RuleKind
+from pricing.enums import DiscountKind, RuleKind
 from pricing.models import Currency, Discount, RateBand
-from properties.enums import CommissionCalcType
+from properties.enums import CommissionCalcType, PriceBasis
 from properties.models import Property, PropertyFinance, PropertyService
 
 

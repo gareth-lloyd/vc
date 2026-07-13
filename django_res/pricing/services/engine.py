@@ -18,7 +18,7 @@ from core.exceptions import (
     NoRateAvailable,
     PartyOutOfRange,
 )
-from pricing.enums import PriceBasis, RuleKind
+from pricing.enums import RuleKind
 from pricing.models import (
     Currency,
     Discount,
@@ -41,7 +41,7 @@ from pricing.services.rates import (
     rule_base_nightly,
     rule_nightly,
 )
-from properties.enums import CommissionCalcType
+from properties.enums import CommissionCalcType, PriceBasis
 from properties.models.services import PropertyService
 from properties.services.changeover import ChangeoverService
 

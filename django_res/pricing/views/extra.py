@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
-from core.exceptions import IdempotencyConflict
+from core.idempotency import integrity_conflict_guard
 from pricing.models import Extra
 from pricing.serializers import ExtraDuplicateSerializer, ExtraSerializer
 from pricing.services.duplication import duplicate_extra
@@ -55,21 +54,15 @@ class ExtraDuplicateView(APIView):
         target_id = serializer.validated_data.get("target_property_id")
         target_property = get_object_or_404(Property, pk=target_id) if target_id else None
         idempotency_key = serializer.validated_data["idempotency_key"] or None
-        try:
+        # FG-010: the guard maps a racing loser's IntegrityError (from
+        # `extra_idempotency_key_unique_per_property`) to a 409.
+        with integrity_conflict_guard(
+            idempotency_key,
+            "A duplicate with this idempotency key already exists for this property.",
+        ):
             clone = duplicate_extra(
                 original,
                 target_property=target_property,
                 idempotency_key=idempotency_key,
             )
-        except IntegrityError as exc:
-            # FG-010: two racing requests with the same key both pass the
-            # service pre-check under READ COMMITTED; the loser hits
-            # `extra_idempotency_key_unique_per_property`. Keyless requests
-            # can't trip the partial-unique backstop, so theirs is a genuine
-            # error, not a conflict.
-            if idempotency_key is None:
-                raise
-            raise IdempotencyConflict(
-                "A duplicate with this idempotency key already exists for this property."
-            ) from exc
         return Response(ExtraSerializer(clone).data, status=status.HTTP_201_CREATED)

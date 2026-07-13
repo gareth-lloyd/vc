@@ -33,12 +33,37 @@ free of ceremony.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
+from django.db import IntegrityError
+
+from core.exceptions import IdempotencyConflict
+
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from django.db.models import Model, QuerySet
 
 IDEMPOTENCY_META_KEY = "idempotency_key"
+
+
+@contextmanager
+def integrity_conflict_guard(idempotency_key: str | None, message: str) -> Iterator[None]:
+    """Map the FG-010 race loser's `IntegrityError` to a 409 conflict.
+
+    Views wrap the service call: two racing requests with the same key both
+    pass the service's check-then-create pre-check under READ COMMITTED, and
+    the loser trips the model's partial-unique backstop. Keyless requests
+    can't trip it (blank keys are excluded from every backstop's condition),
+    so their `IntegrityError` is a genuine error and re-raises untouched.
+    """
+    try:
+        yield
+    except IntegrityError as exc:
+        if idempotency_key is None:
+            raise
+        raise IdempotencyConflict(message) from exc
 
 
 def find_by_meta_key[ModelT: Model](

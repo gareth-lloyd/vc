@@ -6,14 +6,13 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
-from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
-from core.exceptions import IdempotencyConflict
+from core.idempotency import integrity_conflict_guard
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.serializers import (
     RateBandSerializer,
@@ -76,20 +75,13 @@ class RatePlanDuplicateView(APIView):
         serializer = RatePlanDuplicateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         idempotency_key = serializer.validated_data["idempotency_key"] or None
-        try:
+        # FG-010: the guard maps a racing loser's IntegrityError (from
+        # `rateplan_idempotency_key_unique_per_property`) to a 409.
+        with integrity_conflict_guard(
+            idempotency_key,
+            "A duplicate with this idempotency key already exists for this property.",
+        ):
             clone = duplicate_rate_plan(original, idempotency_key=idempotency_key)
-        except IntegrityError as exc:
-            # FG-010: two racing requests with the same key both pass the
-            # service pre-check under READ COMMITTED; the loser hits
-            # `rateplan_idempotency_key_unique_per_property`. A conflict,
-            # not a 500 — mirrors payments/views/refund.py. Keyless requests
-            # can't trip the partial-unique backstop (blank keys are excluded
-            # from it), so theirs is a genuine error, not a conflict.
-            if idempotency_key is None:
-                raise
-            raise IdempotencyConflict(
-                "A duplicate with this idempotency key already exists for this property."
-            ) from exc
         return Response(
             RatePlanDetailSerializer(clone).data,
             status=status.HTTP_201_CREATED,

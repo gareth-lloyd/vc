@@ -12,10 +12,11 @@ from datetime import timedelta
 from typing import cast
 
 import pytest
+from django.db import IntegrityError
 from django.utils import timezone
 
 from core.exceptions import DomainError, IdempotencyConflict
-from core.idempotency import find_by_key
+from core.idempotency import find_by_key, integrity_conflict_guard
 from properties.factories import PropertyFactory
 from properties.models import Property
 from reservations.models import OwnerBlock
@@ -76,3 +77,26 @@ def test_idempotency_conflict_is_a_409_domain_error() -> None:
     assert isinstance(exc, DomainError)
     assert exc.code == "idempotency_conflict"
     assert exc.status_code == 409
+
+
+def test_guard_passes_through_when_no_error() -> None:
+    with integrity_conflict_guard("k-1", "conflict"):
+        result = "ok"
+    assert result == "ok"
+
+
+def test_guard_maps_integrity_error_to_conflict_when_keyed() -> None:
+    with pytest.raises(IdempotencyConflict), integrity_conflict_guard("k-1", "conflict"):
+        raise IntegrityError("duplicate key value violates unique constraint")
+
+
+def test_guard_reraises_integrity_error_when_keyless() -> None:
+    # Blank keys are excluded from every FG-010 partial-unique backstop, so a
+    # keyless IntegrityError is a genuine error, never a conflict.
+    with pytest.raises(IntegrityError), integrity_conflict_guard(None, "conflict"):
+        raise IntegrityError("some genuine constraint violation")
+
+
+def test_guard_does_not_swallow_other_exceptions() -> None:
+    with pytest.raises(ValueError), integrity_conflict_guard("k-1", "conflict"):
+        raise ValueError("unrelated")

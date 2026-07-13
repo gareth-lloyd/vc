@@ -2715,3 +2715,82 @@ def test_convert_retry_after_booking_cancelled_is_409(
 
     assert second.status_code == 409, second.data
     assert second.data["code"] == "terminal_booking_exists"
+
+
+# ---------------------------------------------------------------------------
+# SMELL-009: `:duplicate` idempotency via optional body key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_duplicate_quotation_retry_same_key_returns_same_quotation(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+) -> None:
+    api_client.force_login(staff)
+    first = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:duplicate",
+        data={"idempotency_key": "ui-55"},
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+    counts = (Quotation.objects.count(), QuotationLine.objects.count())
+
+    second = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:duplicate",
+        data={"idempotency_key": "ui-55"},
+        format="json",
+    )
+
+    assert second.status_code == 201, second.content
+    assert second.json()["id"] == first.json()["id"]
+    assert (Quotation.objects.count(), QuotationLine.objects.count()) == counts
+
+
+@pytest.mark.django_db
+def test_duplicate_quotation_race_loser_maps_to_409(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Patch the IMPORT SITE (`reservations.services.quotations.find_by_key`)
+    so the pre-check misses and the loser hits the partial-unique backstop."""
+    import reservations.services.quotations as quotations_service
+
+    monkeypatch.setattr(quotations_service, "find_by_key", lambda queryset, idempotency_key: None)
+
+    api_client.force_login(staff)
+    first = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:duplicate",
+        data={"idempotency_key": "race-key"},
+        format="json",
+    )
+    assert first.status_code == 201, first.content
+
+    second = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:duplicate",
+        data={"idempotency_key": "race-key"},
+        format="json",
+    )
+
+    assert second.status_code == 409, second.content
+    assert second.json()["code"] == "idempotency_conflict"
+
+
+@pytest.mark.django_db
+def test_duplicate_quotation_without_body_still_works(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    # Back-compat: the FE (quotations/api.ts duplicateQuotation) sends no
+    # body; a bodyless POST must keep returning a fresh clone every time.
+    api_client.force_login(staff)
+    first = api_client.post(f"/api/v1/quotations/{quotation.pk}:duplicate")
+    second = api_client.post(f"/api/v1/quotations/{quotation.pk}:duplicate")
+    assert first.status_code == 201, first.content
+    assert second.status_code == 201, second.content
+    assert first.json()["id"] != second.json()["id"]

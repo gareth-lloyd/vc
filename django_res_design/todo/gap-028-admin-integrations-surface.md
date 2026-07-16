@@ -35,3 +35,10 @@ read surfaces over existing rows, not new execution machinery.
 
 - Independent of Q-003 (that blocks the Zoho *webhook*, slice 2, which stays
   on GAP-002).
+- **2026-07-15 re-scope note ([GAP-081](gap-081-zoho-flow-outbound-push.md)):**
+  the agreed Zoho integration is Flow webhooks with **no OAuth on the res
+  side**, so the `OAuthCredential` CRUD half of this surface has no Zoho
+  consumer — it only earns its keep if/when a second OAuth-based provider
+  lands (Mailchimp/HubSpot per the model's own rationale). The
+  `SyncRun`/`SyncIssue` read surfaces still apply and will display GAP-081's
+  push rows. Consider descoping to the read surfaces when picked up.

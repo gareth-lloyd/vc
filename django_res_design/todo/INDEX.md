@@ -15,8 +15,8 @@ Status icons:
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
-Scoreboard (2026-07-08 recount + close-outs to 2026-07-13 incl. GAP-080, GAP-078, Q-018, SMELL-022, SMELL-021, SMELL-009 and SMELL-020; BUG-017 deleted outright 2026-07-10): **134 done** (127 resolved + 7 dropped), **34 open**
-(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080). Recently-resolved tickets stay
+Scoreboard (2026-07-08 recount + close-outs to 2026-07-13 incl. GAP-080, GAP-078, Q-018, SMELL-022, SMELL-021, SMELL-009 and SMELL-020; BUG-017 deleted outright 2026-07-10): **134 done** (127 resolved + 7 dropped), **35 open**
+(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080; +1 from the 2026-07-15 Limitless call, GAP-081). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
 (superseded Q-019/Q-021); GAP-030–037 availability/commission/region/services; GAP-038–044
@@ -45,6 +45,13 @@ room features (GAP-064/067), direct-booking-via-unsent-quote (GAP-020 dropped),
 Greek UI. Leads-stage-before-enquiry and Zoho/WordPress integration were
 discussed but not filed here (leads = extend `EnquiryStatus`, tracked via GAP-005/
 GAP-050; Zoho blocked on external spec, GAP-028)._
+
+_2026-07-16: the Zoho external spec landed on the 2026-07-15 Limitless call —
+**GAP-081** (outbound push res → Zoho Flow webhooks, upsert-only, res PKs as
+dedupe keys) now tracks it. The agreed shape supersedes the OAuth
+`ZohoSyncClient`/bidirectional design in `design/backend/08-integrations.md`
+(departure note added there; `design/decisions.md` lead-primacy follow-up
+settled Res-primary)._
 
 ---
 
@@ -173,6 +180,7 @@ GAP-050; Zoho blocked on external spec, GAP-028)._
 | [GAP-078](done/gap-078-quote-property-ordering-country-region.md) | Quote property ordering — group picker + email by country/region + weekly-vs-nightly section break | ✅ resolved (2026-07-12) — picker grouped country → region (backend ordering + geo names on list rows), email + preview grouped with «Country · Region» headers (comms 0003 re-sync); weekly-vs-nightly break deferred to GAP-074/075 (pointer added there) |
 | [GAP-079](done/gap-079-commission-after-local-vat.md) | Commission-after-local-VAT — verify GROSS branch matches real villa numbers + per-villa policy | ✅ resolved (2026-07-09) — verify-only: the GROSS branch already takes VAT off the gross then commission off the remainder (legacy `RatesModel.Calculate()` parity), **no per-villa toggle** (ordering is a function of `price_basis`; decision row in `design/decisions.md`); constructed 13%/20%/10,000 worked example pinned engine-side + through the 30/70 deposit/balance split (re-reconcile when Nick supplies real villa numbers); extras-taxability handed to GAP-076 via a coordination note |
 | [GAP-080](done/gap-080-currency-obvious-in-quote-builder.md) | Make currency unmistakable in the quote **builder** UI (email already shows codes) | ✅ resolved (2026-07-11) — `formatMoneyWithCode` renders the ISO code explicitly ("£4,500.00 GBP") across all 8 quotations money-display sites (builder + saved-quote detail + convert dialog); shared `formatMoney` untouched; grouping-by-currency deferred to GAP-078 |
+| [GAP-081](gap-081-zoho-flow-outbound-push.md) | Outbound push res → Zoho Flow webhooks (contacts, enquiries, quotes, bookings) — upsert-only, all fields, res PKs as dedupe keys | ⬜ from 2026-07-15 Limitless call (the external spec Zoho was blocked on); supersedes the `08-integrations.md` OAuth `ZohoSyncClient` design for Zoho (departure note added); contact endpoint lands first, booking dormant until the booking build |
 
 ## Open product questions
 

@@ -25,10 +25,13 @@ import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from django.db import models, transaction
+
+if TYPE_CHECKING:
+    from integrations.models import SyncRecord
 
 ZOHO_FLOW_KINDS = ("contact", "enquiry", "quote", "booking")
 
@@ -142,6 +145,35 @@ def is_anonymized_person(instance: models.Model) -> bool:
     return isinstance(instance, Person) and instance.status == PersonStatus.ANONYMIZED
 
 
+def ensure_pending_record(instance: models.Model) -> SyncRecord:
+    """get_or_create/bump the instance's ZOHO_CRM `SyncRecord` to PENDING.
+
+    The record-upsert half of the push pipeline, WITHOUT the skip rules or
+    the on_commit dispatch. Shared by `enqueue_zoho_push` (live traffic) and
+    the `zoho_backfill` command (deliberate replay — deliberately unaffected
+    by `suppress_zoho_push`). Returns the `SyncRecord`.
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    from integrations.enums import SyncDirection, SyncProvider, SyncStatus
+    from integrations.models import SyncRecord
+
+    content_type = ContentType.objects.get_for_model(instance._meta.model)
+    record, was_created = SyncRecord.objects.get_or_create(
+        content_type=content_type,
+        object_id=instance.pk,
+        provider=SyncProvider.ZOHO_CRM.value,
+        defaults={
+            "direction": SyncDirection.PUSH.value,
+            "status": SyncStatus.PENDING.value,
+        },
+    )
+    if not was_created and record.status != SyncStatus.PENDING.value:
+        record.status = SyncStatus.PENDING.value
+        record.save(update_fields=["status", "updated_at"])
+    return record
+
+
 def enqueue_zoho_push(instance: models.Model) -> None:
     """Mark `instance` PENDING for Zoho Flow push and dispatch on commit.
 
@@ -163,25 +195,9 @@ def enqueue_zoho_push(instance: models.Model) -> None:
     if is_anonymized_person(instance):
         return
 
-    from django.contrib.contenttypes.models import ContentType
-
-    from integrations.enums import SyncDirection, SyncProvider, SyncStatus
-    from integrations.models import SyncRecord
     from integrations.tasks import push_sync_record
 
-    content_type = ContentType.objects.get_for_model(instance._meta.model)
-    record, was_created = SyncRecord.objects.get_or_create(
-        content_type=content_type,
-        object_id=instance.pk,
-        provider=SyncProvider.ZOHO_CRM.value,
-        defaults={
-            "direction": SyncDirection.PUSH.value,
-            "status": SyncStatus.PENDING.value,
-        },
-    )
-    if not was_created and record.status != SyncStatus.PENDING.value:
-        record.status = SyncStatus.PENDING.value
-        record.save(update_fields=["status", "updated_at"])
+    record = ensure_pending_record(instance)
     transaction.on_commit(lambda: push_sync_record.delay(record.pk))
 
 

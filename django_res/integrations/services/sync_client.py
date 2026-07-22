@@ -1,9 +1,10 @@
 """`SyncClient` ABC — interface every provider client implements.
 
-Concrete subclasses (see `integrations.services.zoho.ZohoSyncClient`) own
-the wire-level concerns (auth, request shape). The orchestration tasks in
-`integrations.tasks` work against this interface so adding a new provider
-is a single new subclass.
+Concrete subclasses own the wire-level concerns (auth, request shape); none
+exist yet (the Zoho push went the webhook route instead — see
+`integrations.services.zoho_flow`, GAP-081). The reconcile-path tasks in
+`integrations.tasks` will work against this interface so adding a new
+provider is a single new subclass (GAP-028's call).
 """
 
 from __future__ import annotations

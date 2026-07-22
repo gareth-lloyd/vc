@@ -8,7 +8,6 @@ from integrations.services.oauth import (
     TokenPayload,
 )
 from integrations.services.sync_client import SyncClient
-from integrations.services.zoho import ZohoSyncClient
 
 __all__ = [
     "OAuthError",
@@ -17,5 +16,4 @@ __all__ = [
     "OAuthStateError",
     "SyncClient",
     "TokenPayload",
-    "ZohoSyncClient",
 ]

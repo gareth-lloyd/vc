@@ -90,5 +90,10 @@ def configure_structlog(
             # django.server's per-request access line duplicates django-structlog's
             # `request_finished`; quiet it so we don't log every request twice.
             "django.server": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+            # httpx logs the full request URL at INFO on every request. Some
+            # outbound URLs carry credentials in the query string (Zoho Flow's
+            # zapikey, GAP-081) and `redact_sensitive` doesn't scrub inside
+            # event strings — pin it to WARNING so request lines never land.
+            "httpx": {"handlers": ["console"], "level": "WARNING", "propagate": False},
         },
     }

@@ -20,6 +20,7 @@ from django.db import transaction
 from django.db.models import Model
 
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
+from integrations.services.zoho_flow import suppress_zoho_push
 
 
 @dataclass
@@ -103,7 +104,14 @@ class BaseLoader:
             cursor.execute(self._apply_since(self.legacy_query))
             rows = list(rows_as_dicts(cursor))
 
-        self._load_rows(rows, report)
+        # GAP-081: loader writes must never avalanche Zoho Flow pushes —
+        # a full `loadlegacy` would enqueue a push per loaded row. Loaded
+        # records reach Zoho only via the deliberate, throttled backfill.
+        # `load()` is the envelope every BaseLoader subclass shares (they
+        # override `transform`/`_process_row`/`_load_rows`, not `load`), so
+        # this wrap covers all loader writes.
+        with suppress_zoho_push():
+            self._load_rows(rows, report)
 
         report.duration_s = time.monotonic() - started
         return report

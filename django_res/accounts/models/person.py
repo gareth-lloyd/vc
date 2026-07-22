@@ -320,6 +320,13 @@ class Person(AuditedModel):
         # augmented row is scrubbed too (FG-016).
         record_merge(self, target_pk, rewrites)
         scrub_pii(self, self._AUDIT_PII_FIELDS)
+        # GAP-081: the FK rewrites above use `.update()` (no post_save), so
+        # broadcast the merge for downstream re-push wiring (integrations /
+        # reservations receivers). Lazy import: signals.py is import-light, but
+        # keeping it out of module scope mirrors the other in-method imports.
+        from accounts.signals import person_merged
+
+        person_merged.send(sender=Person, survivor=target, absorbed_pk=dead_pk)
 
     def _merge_channel(self, target: Person, model: type[models.Model], value_field: str) -> int:
         """Fold ``self``'s email/phone rows into ``target`` without tripping the

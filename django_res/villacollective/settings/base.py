@@ -201,6 +201,17 @@ PAYMENT_WEBHOOK_SECRETS = {
     "STRIPE": env.str("STRIPE_WEBHOOK_SECRET", default="dev-stripe-secret"),
 }
 
+# Zoho Flow outbound push webhooks, one URL per object kind (GAP-081). The
+# zapikey lives in the URL, so each value is a credential: env vars only,
+# never committed. Empty (the dev default) = that kind's push is silently
+# disabled — see `integrations.services.zoho_flow`.
+ZOHO_FLOW_WEBHOOKS = {
+    "contact": env.str("ZOHO_FLOW_WEBHOOK_CONTACT", default=""),
+    "enquiry": env.str("ZOHO_FLOW_WEBHOOK_ENQUIRY", default=""),
+    "quote": env.str("ZOHO_FLOW_WEBHOOK_QUOTE", default=""),
+    "booking": env.str("ZOHO_FLOW_WEBHOOK_BOOKING", default=""),
+}
+
 # Public-facing SPA origin used to build user-clickable URLs in transactional
 # email (password reset, magic link, account setup). Must include the scheme
 # and no trailing slash.
@@ -302,7 +313,8 @@ CELERY_ENABLE_UTC = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 # Periodic schedule (UTC). Only *implemented* tasks are scheduled here — the
-# integrations.tasks.* stubs raise NotImplementedError and payments
+# remaining integrations.tasks stubs (reconcile_provider,
+# refresh_oauth_tokens) raise NotImplementedError and payments
 # process_sd_refunds is an empty TODO, so beat must not fire them (it would
 # error every tick). They are decorated for manual `.delay` use only.
 CELERY_BEAT_SCHEDULE = {
@@ -347,5 +359,11 @@ CELERY_BEAT_SCHEDULE = {
         # a booking arms the same morning its first reminder could fire.
         "task": "reservations.tasks.arm_balances",
         "schedule": crontab(hour=6, minute=0),
+    },
+    "push-pending-sync-records": {
+        # Zoho Flow push sweep (GAP-081): re-dispatch PENDING SyncRecords the
+        # broker lost, 15-min grace, 200/tick cap.
+        "task": "integrations.tasks.push_pending",
+        "schedule": timedelta(minutes=10),
     },
 }

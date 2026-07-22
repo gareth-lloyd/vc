@@ -393,3 +393,28 @@ def test_merge_scrubs_deletion_row_pii_but_keeps_structure() -> None:
         assert "Leaky" not in str(r.field_diffs)
         assert r.field_diffs["__deleted__"] is True
         assert r.field_diffs["last_name"][0] == REDACTED
+
+
+@pytest.mark.django_db
+def test_merge_sends_person_merged_signal() -> None:
+    """GAP-081: `Person.merge` fires `person_merged` with the survivor and the
+    absorbed row's (now-dead) pk so downstream apps can enqueue CRM re-pushes."""
+    from accounts.signals import person_merged
+
+    keep = Person.objects.create(first_name="Keep", last_name="Me")
+    duplicate = Person.objects.create(first_name="Dup", last_name="Me")
+    duplicate_pk = duplicate.pk
+    received: list[tuple[Person, int]] = []
+
+    def _capture(
+        sender: type[Person], survivor: Person, absorbed_pk: int, **kwargs: object
+    ) -> None:
+        received.append((survivor, absorbed_pk))
+
+    person_merged.connect(_capture)
+    try:
+        duplicate.merge(keep)
+    finally:
+        person_merged.disconnect(_capture)
+
+    assert received == [(keep, duplicate_pk)]

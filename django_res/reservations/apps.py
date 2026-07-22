@@ -1,6 +1,27 @@
 from __future__ import annotations
 
+from typing import Any
+
 from django.apps import AppConfig
+from django.db import models
+
+
+def _person_merged_re_enqueue_enquiries(sender: type[models.Model], **kwargs: Any) -> None:
+    """`Person.merge` repoints the absorbed person's enquiries (both the
+    `person` and `agent` FKs) onto the survivor via `.update()` — no
+    post_save, so the auto-push never fires (GAP-081). The signal doesn't
+    carry *which* rows moved, so simplest-correct: re-enqueue ALL of the
+    survivor's enquiries — pushes are idempotent upserts keyed on RES_ID and
+    per-person volume is tiny, so the over-push is a few redundant upserts."""
+    from integrations.services.zoho_flow import enqueue_zoho_push
+    from reservations.models import Enquiry
+
+    survivor = kwargs["survivor"]
+    enquiries = Enquiry.objects.filter(
+        models.Q(person=survivor) | models.Q(agent=survivor)
+    ).select_related("person", "agent")
+    for enquiry in enquiries:
+        enqueue_zoho_push(enquiry)
 
 
 class ReservationsConfig(AppConfig):
@@ -215,4 +236,17 @@ class ReservationsConfig(AppConfig):
                 "released_at",
                 "reason",
             ],
+        )
+
+        # --- Zoho Flow outbound push (GAP-081 Unit 2) --------------------
+        # auto_push: every enquiry create/update pushes — all lifecycle
+        # transitions (`contact`/`lose`/`set_lead_status`/…) end in `.save()`.
+        from accounts.signals import person_merged
+        from integrations.services.zoho_flow import register_zoho_flow
+        from reservations.services.zoho_payload import build_enquiry_payload
+
+        register_zoho_flow(Enquiry, kind="enquiry", build_payload=build_enquiry_payload)
+        person_merged.connect(
+            _person_merged_re_enqueue_enquiries,
+            dispatch_uid="reservations.zoho_flow:person_merged",
         )

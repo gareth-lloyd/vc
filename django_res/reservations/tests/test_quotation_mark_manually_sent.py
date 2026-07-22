@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -182,14 +183,40 @@ def test_manual_mark_queues_zoho_push(
     staff: User,
     quotation: Quotation,
 ) -> None:
+    # GAP-081: the push rides `enqueue_zoho_push`, which is a full no-op when
+    # the quote webhook URL is unset (dev default = push disabled entirely) —
+    # so the PENDING record only appears with a configured URL.
     api_client.force_login(staff)
 
-    response = api_client.post(f"/api/v1/quotations/{quotation.pk}:mark-manually-sent")
+    with override_settings(
+        ZOHO_FLOW_WEBHOOKS={
+            "contact": "",
+            "enquiry": "",
+            "quote": "https://flow.zoho.example/quote",
+            "booking": "",
+        }
+    ):
+        response = api_client.post(f"/api/v1/quotations/{quotation.pk}:mark-manually-sent")
 
     assert response.status_code == 200, response.data
     records = _zoho_sync_records(quotation)
     assert len(records) == 1
     assert records[0].status == SyncStatus.PENDING.value
+
+
+@pytest.mark.django_db
+def test_manual_mark_with_unset_url_creates_no_sync_record(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+) -> None:
+    """GAP-081: unset webhook URL = push disabled entirely — no SyncRecord."""
+    api_client.force_login(staff)
+
+    response = api_client.post(f"/api/v1/quotations/{quotation.pk}:mark-manually-sent")
+
+    assert response.status_code == 200, response.data
+    assert _zoho_sync_records(quotation) == []
 
 
 @pytest.mark.django_db

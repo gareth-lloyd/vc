@@ -24,7 +24,6 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
-from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.utils import timezone
 
@@ -57,8 +56,10 @@ def record_quote_sent(
 ) -> Quotation:
     """Apply post-send state writes for a Quotation.
 
-    Idempotent: if the quotation is already SENT, returns it untouched.
-    Otherwise enforces DRAFT → SENT and writes the downstream state.
+    Idempotent on state: if the quotation is already SENT the status flip is
+    skipped, but a re-send still records its audit event (per send_path) and
+    re-enqueues the Zoho push — a re-send IS a send (GAP-081). Otherwise
+    enforces DRAFT → SENT and writes the downstream state.
 
     Raises `InvalidTransition` if the quotation is in a non-DRAFT, non-SENT
     state (ACCEPTED, EXPIRED, CANCELLED) — those are terminal/diverged and
@@ -74,10 +75,14 @@ def record_quote_sent(
     refresh_locked(quotation)
 
     # Idempotency short-circuit — re-POST on an already-SENT quote skips the
-    # status flip and the Zoho push. The audit event, however, is gated by
-    # the (quotation, send_path) pair: if the operator confirms a manual
-    # re-send after an SMTP send (because they suspect the email never
-    # arrived), the manual confirmation still has to land on the audit trail.
+    # status flip only. The audit event is gated by the (quotation,
+    # send_path) pair: if the operator confirms a manual re-send after an
+    # SMTP send (because they suspect the email never arrived), the manual
+    # confirmation still has to land on the audit trail. The Zoho push IS
+    # deliberately re-enqueued (GAP-081): SENT is an editable, re-sendable
+    # status (renegotiation) and the re-send delivers the updated email —
+    # the CRM must get the updated payload too. Safe: idempotent PENDING
+    # upsert, payload built at push time.
     if quotation.status == QuotationStatus.SENT.value:
         enquiry = quotation.enquiry
         if enquiry is not None:
@@ -87,6 +92,7 @@ def record_quote_sent(
                 send_path=send_path,
                 actor=actor,
             )
+        _queue_zoho_push(quotation)
         return quotation
 
     if quotation.status != QuotationStatus.DRAFT.value:
@@ -196,29 +202,15 @@ def _record_audit_event_if_new_path(
 
 
 def _queue_zoho_push(quotation: Quotation) -> None:
-    """Create / refresh a PENDING `SyncRecord` for the Zoho push.
+    """Queue the Zoho Flow push for a just-sent quotation (GAP-081).
 
-    Idempotent via the unique `(content_type, object_id, provider)` constraint
-    on `SyncRecord` — a second call on the same quotation just bumps an
-    existing row back to PENDING.
+    Delegates to `enqueue_zoho_push`, which owns the whole contract: the
+    PENDING `SyncRecord` upsert, `transaction.on_commit` dispatch of the
+    delivery task, loader suppression, and the URL-unset full no-op (unset
+    webhook = push disabled entirely, the dev default).
     """
-    # Local imports keep the integrations dependency out of import order
-    # for the reservations app (`integrations` imports from reservations
-    # nowhere, but the contenttypes lookup is cheap at call time).
-    from integrations.enums import SyncDirection, SyncProvider, SyncStatus
-    from integrations.models import SyncRecord
-    from reservations.models.quotation import Quotation as _QuotationModel
+    # Local import keeps the integrations dependency lazy at call time,
+    # matching the rest of this module's cross-app import style.
+    from integrations.services.zoho_flow import enqueue_zoho_push
 
-    content_type = ContentType.objects.get_for_model(_QuotationModel)
-    record, was_created = SyncRecord.objects.get_or_create(
-        content_type=content_type,
-        object_id=quotation.pk,
-        provider=SyncProvider.ZOHO_CRM.value,
-        defaults={
-            "direction": SyncDirection.PUSH.value,
-            "status": SyncStatus.PENDING.value,
-        },
-    )
-    if not was_created and record.status != SyncStatus.PENDING.value:
-        record.status = SyncStatus.PENDING.value
-        record.save(update_fields=["status", "updated_at"])
+    enqueue_zoho_push(quotation)

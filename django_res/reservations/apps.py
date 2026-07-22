@@ -238,14 +238,27 @@ class ReservationsConfig(AppConfig):
             ],
         )
 
-        # --- Zoho Flow outbound push (GAP-081 Unit 2) --------------------
-        # auto_push: every enquiry create/update pushes — all lifecycle
+        # --- Zoho Flow outbound push (GAP-081 Units 2-3) -----------------
+        # Enquiry auto_push: every create/update pushes — all lifecycle
         # transitions (`contact`/`lose`/`set_lead_status`/…) end in `.save()`.
+        # Quotation auto_push=False: drafts must NEVER push; the only enqueue
+        # path is `quotation_transmission.record_quote_sent` (both the SMTP
+        # and manual-mark send paths route through it). The delete-reaper is
+        # connected regardless of auto_push.
         from accounts.signals import person_merged
         from integrations.services.zoho_flow import register_zoho_flow
-        from reservations.services.zoho_payload import build_enquiry_payload
+        from reservations.services.zoho_payload import (
+            build_enquiry_payload,
+            build_quotation_payload,
+        )
 
         register_zoho_flow(Enquiry, kind="enquiry", build_payload=build_enquiry_payload)
+        register_zoho_flow(
+            Quotation,
+            kind="quote",
+            build_payload=build_quotation_payload,
+            auto_push=False,
+        )
         person_merged.connect(
             _person_merged_re_enqueue_enquiries,
             dispatch_uid="reservations.zoho_flow:person_merged",

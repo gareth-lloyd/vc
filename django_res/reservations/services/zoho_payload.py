@@ -1,4 +1,4 @@
-"""Enquiry → Zoho Flow payload builder (GAP-081 Unit 2).
+"""Enquiry + Quotation → Zoho Flow payload builders (GAP-081 Units 2-3).
 
 Full-fat, JSON-safe payload (dates → ISO-8601), `RES_ID` + `id` on the record
 and on every nested sub-object (person, agent, property, region, country).
@@ -29,6 +29,21 @@ which `Person.anonymize()` does not scrub — are blanked in the payload when
 the linked person is anonymized. NB an enquiry with NO linked Person has no
 erasure hook at all (pre-existing: Enquiry has no erasure path) — that
 residual gap is out of scope here.
+
+`build_quotation_payload` covers the legacy `QuotationPostData` checklist:
+Name/Account/Contact→`full_name` + `person` sub-object, Stage→`status`,
+Valid_Until→`expires_at`, Enquiry.RES_ID→`enquiry` sub-object,
+Terms_and_Conditions→`terms_version` sub-object; Arrival_Date/Departure_Date/
+No_of_Nights/No_of_Guests/Country/Region/Villa/Currency/Line_Items live
+per-LINE on the current model (a quote is multi-option) → `lines[]`, `.real()`
+only (booking-synthesised rows are an internal fill artefact and never leave
+res), each with its property sub-object, ISO dates, currency code, money as
+strings (Decimal→str) and the full `pricing_snapshot`. The legacy money-split
+fields (Deposit_Amount / Balance_Amount / Commission_* / Security_Deposit_* /
+Net_Booking / Cost_of_Sale) are booking/payment-domain figures the legacy
+computed from its finance view at push time — they have no Quotation-model
+source and ship with the ~Sept booking build (`booking` kind), not here.
+`Zoho_ID` is omitted (external ids stay blank by contract).
 """
 
 from __future__ import annotations
@@ -42,7 +57,8 @@ if TYPE_CHECKING:
     from accounts.models import Person
     from properties.models.geo import Region
     from properties.models.property import Property
-    from reservations.models import Enquiry
+    from reservations.models import Enquiry, Quotation
+    from reservations.models.quotation import QuotationLine
 
 
 def _iso(value: datetime | date | None) -> str | None:
@@ -160,4 +176,70 @@ def build_enquiry_payload(enquiry: Enquiry) -> dict[str, Any]:
         "inbound_message": enquiry.inbound_message,
         "created_at": _iso(enquiry.created_at),
         "updated_at": _iso(enquiry.updated_at),
+    }
+
+
+def _line_payload(line: QuotationLine) -> dict[str, Any]:
+    return {
+        "RES_ID": line.pk,
+        "id": line.pk,
+        "legacy_id": line.legacy_id,
+        "property": _property_payload(line.property),
+        "currency": line.currency.code,
+        "date_from": _iso(line.date_from),
+        "date_to": _iso(line.date_to),
+        "nights": (line.date_to - line.date_from).days,
+        "adults": line.adults,
+        "children": line.children,
+        # Money as strings: Decimals are not JSON-serialisable, floats drift.
+        "total": str(line.total),
+        "discount": str(line.discount),
+        "pricing_snapshot": line.pricing_snapshot,
+        "inclusions": line.inclusions,
+        "price_override_reason": line.price_override_reason,
+        "is_selected": line.is_selected,
+        "is_manual": line.is_manual,
+        "notes": line.notes,
+    }
+
+
+def build_quotation_payload(quotation: Quotation) -> dict[str, Any]:
+    """Full-field JSON-safe payload for one `reservations.Quotation`.
+
+    Built at push time from the live row. `.real()` lines only — the
+    booking-synthesised fill rows never leave res. The header carries no
+    currency by design (GAP-014: per-line currency, mixed currencies are
+    expected and not normalised).
+    """
+    person_summary = _person_summary(quotation.person)
+    person_erased = is_anonymized_person(quotation.person)
+    full_name = "" if person_erased else ((person_summary or {}).get("full_name") or "")
+    enquiry = quotation.enquiry
+    lines = quotation.lines.real().select_related("property__region__country", "currency")
+    return {
+        "RES_ID": quotation.pk,
+        "id": quotation.pk,
+        "reference": quotation.reference,
+        "number": quotation.number,
+        "legacy_id": quotation.legacy_id,
+        "full_name": full_name,
+        "person": person_summary,
+        "agent": _person_summary(quotation.agent),
+        "enquiry": (
+            {"RES_ID": enquiry.pk, "id": enquiry.pk, "reference": enquiry.reference}
+            if enquiry is not None
+            else None
+        ),
+        "status": quotation.status,
+        "is_unbranded": quotation.is_unbranded,
+        "cancel_reason": quotation.cancel_reason,
+        "expires_at": _iso(quotation.expires_at),
+        "terms_version": {
+            "RES_ID": quotation.terms_version_id,
+            "id": quotation.terms_version_id,
+            "version": quotation.terms_version.version,
+        },
+        "lines": [_line_payload(line) for line in lines],
+        "created_at": _iso(quotation.created_at),
+        "updated_at": _iso(quotation.updated_at),
     }

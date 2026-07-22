@@ -8,7 +8,7 @@
 Pulls the integration/sync metadata (`ZohoId`, `SyncId`, `IsSync`, `OldVillaId`, `LastSyncedAt`) out of every domain model into a single `integrations` app. Domain models stay clean; sync state is observable in one place.
 
 > **⚠️ Zoho design superseded (2026-07-15 Limitless call — see
-> [`todo/gap-081-zoho-flow-outbound-push.md`](../../todo/gap-081-zoho-flow-outbound-push.md)).**
+> [`todo/done/gap-081-zoho-flow-outbound-push.md`](../../todo/done/gap-081-zoho-flow-outbound-push.md)).**
 > The agreed integration is **Zoho Flow webhooks**: res POSTs full-field JSON
 > (res PKs as dedupe keys) to per-object webhook URLs; Flow does all CRM
 > mapping. Upsert-only, one-way push, Res-primary — **no OAuth on the res

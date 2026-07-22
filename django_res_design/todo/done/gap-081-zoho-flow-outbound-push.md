@@ -1,5 +1,27 @@
 # GAP-081 — Outbound push: res → Zoho Flow webhooks (contacts, enquiries, quotes, bookings)
 
+> **✅ RESOLVED (2026-07-23)** — built as a thin webhook pusher in 4 TDD units
+> on `feat/gap-081` (`d5dcc61`, `f07c5c4`, `a1ceb37`, `df9f37a`): `zoho_flow`
+> registry (`register_zoho_flow` / `enqueue_zoho_push` / `suppress_zoho_push`)
+> + full-fat payload builders for **contact** (Person; `notes` excluded,
+> sensitive tags denylisted, ANONYMIZED never pushed — including the enquiry's
+> denormalised capture columns), **enquiry** (auto-push on every save;
+> `person_merged` re-push), and **quote** (send paths only, `auto_push=False`;
+> re-send re-pushes); `push_sync_record` delivery with retry/backoff +
+> `push_pending` 10-min sweep (15-min grace, cap 200); `zoho_backfill`
+> replay command (SyncRun MANUAL; quote eligibility requires an actual send).
+> Webhook URLs are env vars (`ZOHO_FLOW_WEBHOOK_*`) — the zapikey is the
+> credential, never committed, and the `httpx` logger is pinned WARNING so
+> URLs never hit logs. **Scope changes:** villa push descoped to
+> [GAP-082](../gap-082-zoho-villa-push.md) (user decision 2026-07-23);
+> booking push stays dormant until the ~Sept booking build (env key
+> reserved). **Accepted residuals:** merge-absorbed persons and other
+> deletions leave orphaned CRM records (no delete endpoint by contract; live
+> CRM wiped at go-live); person-unlinked enquiries have no erasure hook
+> (pre-existing); legacy-loaded quotations all carry DRAFT + no send markers,
+> so historic quotes never backfill — they reach Zoho via Nick's cleaned
+> spreadsheets as agreed on the call.
+
 - **Severity:** Gap
 - **Source:** 2026-07-15 Villa Collective / Limitless meeting (Zoho integration
   call — Gareth, Nick, Alice, Ben, Jake). This is the "external spec" the

@@ -145,13 +145,14 @@ def is_anonymized_person(instance: models.Model) -> bool:
     return isinstance(instance, Person) and instance.status == PersonStatus.ANONYMIZED
 
 
-def ensure_pending_record(instance: models.Model) -> SyncRecord:
+def ensure_pending_record(instance: models.Model) -> tuple[SyncRecord, bool]:
     """get_or_create/bump the instance's ZOHO_CRM `SyncRecord` to PENDING.
 
     The record-upsert half of the push pipeline, WITHOUT the skip rules or
     the on_commit dispatch. Shared by `enqueue_zoho_push` (live traffic) and
     the `zoho_backfill` command (deliberate replay — deliberately unaffected
-    by `suppress_zoho_push`). Returns the `SyncRecord`.
+    by `suppress_zoho_push`). Returns `(record, was_already_pending)` — the
+    flag lets `enqueue_zoho_push` skip a redundant dispatch.
     """
     from django.contrib.contenttypes.models import ContentType
 
@@ -168,10 +169,11 @@ def ensure_pending_record(instance: models.Model) -> SyncRecord:
             "status": SyncStatus.PENDING.value,
         },
     )
-    if not was_created and record.status != SyncStatus.PENDING.value:
+    already_pending = not was_created and record.status == SyncStatus.PENDING.value
+    if not was_created and not already_pending:
         record.status = SyncStatus.PENDING.value
         record.save(update_fields=["status", "updated_at"])
-    return record
+    return record, already_pending
 
 
 def enqueue_zoho_push(instance: models.Model) -> None:
@@ -197,7 +199,13 @@ def enqueue_zoho_push(instance: models.Model) -> None:
 
     from integrations.tasks import push_sync_record
 
-    record = ensure_pending_record(instance)
+    record, already_pending = ensure_pending_record(instance)
+    if already_pending:
+        # A dispatch for this row is already in flight — a second .delay
+        # would double-POST the same payload (e.g. `Person.merge` folding N
+        # relationship rows fires N child bumps). If the earlier dispatch
+        # was somehow lost, the `push_pending` sweep repairs PENDING rows.
+        return
     transaction.on_commit(lambda: push_sync_record.delay(record.pk))
 
 

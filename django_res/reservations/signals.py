@@ -135,9 +135,13 @@ def _enquiry_note_zoho_bump(sender: type, instance: Any, **_: Any) -> None:
     """Note rows ride the nested notes endpoint without touching the Enquiry
     row, yet push inside the enquiry payload's `notes` list — so a note
     save/delete must bump the parent's Zoho push itself (GAP-081)."""
-    from integrations.services.zoho_flow import enqueue_zoho_push
+    from integrations.services.zoho_flow import enqueue_zoho_push, push_suppressed, webhook_url
     from reservations.models.enquiry import Enquiry
 
+    # Guard before the parent deref — bulk cascades under suppression
+    # (loaders) or with the webhook unset (dev) shouldn't pay the SELECT.
+    if push_suppressed() or not webhook_url("enquiry"):
+        return
     try:
         enquiry = instance.enquiry
     except Enquiry.DoesNotExist:

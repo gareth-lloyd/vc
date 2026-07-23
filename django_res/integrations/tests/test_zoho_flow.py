@@ -223,6 +223,24 @@ def test_enqueue_bumps_existing_non_pending_row(delay_mock: mock.Mock) -> None:
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook")
+def test_enqueue_skips_redundant_dispatch_while_already_pending(delay_mock: mock.Mock) -> None:
+    """N bumps of an already-PENDING row (e.g. `merge()` folding N
+    relationship rows, each firing the child-bump handler) must not fan out
+    into N identical webhook POSTs — one dispatch is already in flight, and
+    the `push_pending` sweep repairs a lost one."""
+    person = _person()
+    assert delay_mock.call_count == 1
+
+    enqueue_zoho_push(person)
+    enqueue_zoho_push(person)
+
+    assert delay_mock.call_count == 1
+    record = SyncRecord.objects.get()
+    assert record.status == SyncStatus.PENDING
+
+
+@pytest.mark.django_db
 @pytest.mark.usefixtures("run_on_commit_immediately")
 def test_unset_url_is_full_noop(delay_mock: mock.Mock) -> None:
     _person()

@@ -31,9 +31,12 @@ Flow can join the agent to its agency record, not just string-match
 denormalised capture columns (first/last name, email, phone) — which
 `Person.anonymize()` does not scrub — are blanked in the payload when the
 linked person is anonymized; the `notes` list is blanked too (operator free
-text routinely names the guest and cannot be selectively scrubbed). NB an
-enquiry with NO linked Person has no erasure hook at all (pre-existing:
-Enquiry has no erasure path) — that residual gap is out of scope here.
+text routinely names the guest and cannot be selectively scrubbed). An
+anonymized AGENT only nulls the `agent` sub-object — the notes still push
+(blanking a live guest's enquiry notes because the agent was erased is the
+wrong trade; accepted residual, same class as the next). NB an enquiry with
+NO linked Person has no erasure hook at all (pre-existing: Enquiry has no
+erasure path) — that residual gap is out of scope here.
 
 `build_quotation_payload` covers the legacy `QuotationPostData` checklist:
 Name/Account/Contact→`full_name` + `person` sub-object, Stage→`status`,

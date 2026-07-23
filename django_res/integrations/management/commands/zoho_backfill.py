@@ -104,7 +104,7 @@ class Command(BaseCommand):
 
                 kind_ok = kind_failed = 0
                 for instance in self._queryset_for(kind, model).iterator():
-                    record = ensure_pending_record(instance)
+                    record, _ = ensure_pending_record(instance)
                     error = self._push(record.pk)
                     processed += 1
                     if error is None:

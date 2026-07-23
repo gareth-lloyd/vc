@@ -34,8 +34,17 @@ def _person_relationship_changed(
     list without touching either Person row — bump each leg (GAP-081).
     Per-leg guard: a cascade delete can have removed one party already."""
     from accounts.models import Person
-    from integrations.services.zoho_flow import enqueue_zoho_push
+    from integrations.services.zoho_flow import (
+        enqueue_zoho_push,
+        push_suppressed,
+        webhook_url,
+    )
 
+    # Guard before the FK derefs: a bulk cascade under suppression (loaders)
+    # or with the webhook unset (dev) would otherwise pay 2 SELECTs per row
+    # for enqueues that no-op anyway.
+    if push_suppressed() or not webhook_url("contact"):
+        return
     for field in ("from_person", "to_person"):
         try:
             person = getattr(instance, field)
@@ -54,8 +63,16 @@ def _organisation_changed(
     its agents (GAP-081). Residual: `Organisation.merge` repoints
     `Person.agency` via bulk `.update()` (no signals) — those members stay
     stale until their next own bump."""
-    from integrations.services.zoho_flow import enqueue_zoho_push
+    from integrations.services.zoho_flow import (
+        enqueue_zoho_push,
+        push_suppressed,
+        webhook_url,
+    )
 
+    # Guard before the members query — org saves under suppression (loaders)
+    # or with the webhook unset (dev) shouldn't pay it.
+    if push_suppressed() or not webhook_url("contact"):
+        return
     for person in instance.agents.all():
         enqueue_zoho_push(person)
 

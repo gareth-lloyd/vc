@@ -16,14 +16,15 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import override_settings
 
 from accounts.factories import CustomerPersonFactory, PersonFactory, UserFactory
-from accounts.models import Person, User
+from accounts.models import Organisation, Person, User
 from integrations import tasks
 from integrations.enums import SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from integrations.services.zoho_flow import get_zoho_spec
-from reservations.enums import EnquiryLostReason, EnquiryStatus, LeadStatus
+from reservations.enums import EnquiryLostReason, EnquiryNoteKind, EnquiryStatus, LeadStatus
 from reservations.factories import EnquiryFactory
 from reservations.models import Enquiry
+from reservations.models.enquiry import EnquiryNote
 from reservations.services.zoho_payload import build_enquiry_payload
 
 ENQUIRY_URL = "https://flow.zoho.example/enquiry"
@@ -196,6 +197,67 @@ def test_payload_agent_sub_object() -> None:
     sub = payload["agent"]
     assert sub["RES_ID"] == agent.pk
     assert sub["full_name"] == "Alex Agent"
+    assert sub["agency"] is None
+
+
+@pytest.mark.django_db
+def test_payload_agent_carries_keyed_agency_sub_object() -> None:
+    """`agency_name` alone gives Flow nothing to key-join on — the summary
+    also carries a {RES_ID, id, name} agency sub-object (user decision
+    2026-07-23)."""
+    org = Organisation.objects.create(name="Acme Travel")
+    agent = cast(Person, PersonFactory(first_name="Alex", last_name="Agent", agency=org))
+    enquiry = _enquiry(agent=agent)
+    payload = build_enquiry_payload(enquiry)
+
+    sub = payload["agent"]
+    assert sub["agency_name"] == "Acme Travel"
+    assert sub["agency"] == {"RES_ID": org.pk, "id": org.pk, "name": "Acme Travel"}
+
+
+@pytest.mark.django_db
+def test_payload_notes_list() -> None:
+    staff = cast(User, UserFactory(first_name="Olivia", last_name="Operator"))
+    enquiry = _enquiry()
+    first = EnquiryNote.objects.create(
+        enquiry=enquiry,
+        author=staff,
+        kind=EnquiryNoteKind.GENERAL,
+        body="called back, chasing dates",
+        is_pinned=True,
+    )
+    second = EnquiryNote.objects.create(enquiry=enquiry, author=None, body="prefers August")
+
+    payload = build_enquiry_payload(enquiry)
+
+    notes = payload["notes"]
+    # RES_ID is the Zoho-side dedupe key for note rows.
+    assert [n["RES_ID"] for n in notes] == [first.pk, second.pk]
+    head = notes[0]
+    assert head["id"] == first.pk
+    assert head["kind"] == EnquiryNoteKind.GENERAL.value
+    assert head["body"] == "called back, chasing dates"
+    assert head["is_pinned"] is True
+    assert head["author"]["id"] == staff.pk
+    assert head["author"]["full_name"] == "Olivia Operator"
+    assert notes[1]["author"] is None
+    assert json.loads(json.dumps(payload)) == payload
+
+
+@pytest.mark.django_db
+def test_payload_blanks_notes_when_person_anonymized() -> None:
+    """Operator free text routinely names the guest and cannot be selectively
+    scrubbed — mirror the capture-column blanking and push no notes at all
+    once the linked person is erased."""
+    person = cast(Person, CustomerPersonFactory())
+    enquiry = _enquiry(person=person)
+    EnquiryNote.objects.create(enquiry=enquiry, body="guest wants ground-floor room")
+    person.anonymize()
+    enquiry.refresh_from_db()
+
+    payload = build_enquiry_payload(enquiry)
+
+    assert payload["notes"] == []
 
 
 @pytest.mark.django_db

@@ -10,8 +10,10 @@ current models: Name/Payment_Contact→`full_name`, Date_From/To→`date_from`/
 `date_to`, Length_of_Stay→`nights`, Bedrooms_From/To→`min_bedrooms`,
 Number_of_Adults/Children→`adults`/`children`, Stage→`status` (+
 `lead_status`), Agency/Agent→`agent` sub-object, Enquiry_Notes→
-`inbound_message` (the guest's own message — operator `EnquiryNote` rows stay
-internal), Enquiry_Source→`site_source`, Countries/Regions_of_Interest→
+`inbound_message` (the guest's own message; operator `EnquiryNote` rows push
+as the separate `notes` list — included since 2026-07-23, superseding the
+original stay-internal decision, each row keyed by `RES_ID` for Zoho-side
+dedupe), Enquiry_Source→`site_source`, Countries/Regions_of_Interest→
 `region` sub-object (single FK on the current model),
 Where_did_you_hear_from_us→`referral_code`, Contact→`person` sub-object,
 Villa→`property` sub-object, Owner→`assigned_to` sub-object. `Zoho_ID`
@@ -22,13 +24,16 @@ legacy hardcoded `Owner` mailbox) is a compact staff sub-object, None when
 unassigned.
 
 Person/agent sub-objects are compact summaries (the full contact record is
-pushed separately via the `contact` kind). Erasure: an ANONYMIZED Person is
-omitted entirely so its [REDACTED] sentinels never leak into the CRM, and the
-enquiry's own denormalised capture columns (first/last name, email, phone) —
-which `Person.anonymize()` does not scrub — are blanked in the payload when
-the linked person is anonymized. NB an enquiry with NO linked Person has no
-erasure hook at all (pre-existing: Enquiry has no erasure path) — that
-residual gap is out of scope here.
+pushed separately via the `contact` kind), plus a keyed `agency` sub-object so
+Flow can join the agent to its agency record, not just string-match
+`agency_name`. Erasure: an ANONYMIZED Person is omitted entirely so its
+[REDACTED] sentinels never leak into the CRM, and the enquiry's own
+denormalised capture columns (first/last name, email, phone) — which
+`Person.anonymize()` does not scrub — are blanked in the payload when the
+linked person is anonymized; the `notes` list is blanked too (operator free
+text routinely names the guest and cannot be selectively scrubbed). NB an
+enquiry with NO linked Person has no erasure hook at all (pre-existing:
+Enquiry has no erasure path) — that residual gap is out of scope here.
 
 `build_quotation_payload` covers the legacy `QuotationPostData` checklist:
 Name/Account/Contact→`full_name` + `person` sub-object, Stage→`status`,
@@ -58,6 +63,7 @@ if TYPE_CHECKING:
     from properties.models.geo import Region
     from properties.models.property import Property
     from reservations.models import Enquiry, Quotation
+    from reservations.models.enquiry import EnquiryNote
     from reservations.models.quotation import QuotationLine
 
 
@@ -75,8 +81,26 @@ def _person_summary(person: Person | None) -> dict[str, Any] | None:
         "last_name": person.last_name,
         "full_name": person.display_name or "",
         "agency_name": person.agency_name,
+        "agency": (
+            {"RES_ID": person.agency.pk, "id": person.agency.pk, "name": person.agency.name}
+            if person.agency is not None
+            else None
+        ),
         "primary_email": person.primary_email(),
         "primary_phone": person.primary_phone(),
+    }
+
+
+def _note_payload(note: EnquiryNote) -> dict[str, Any]:
+    return {
+        "RES_ID": note.pk,
+        "id": note.pk,
+        "kind": note.kind,
+        "body": note.body,
+        "is_pinned": note.is_pinned,
+        "author": _assigned_to_payload(note.author),
+        "created_at": _iso(note.created_at),
+        "updated_at": _iso(note.updated_at),
     }
 
 
@@ -174,6 +198,11 @@ def build_enquiry_payload(enquiry: Enquiry) -> dict[str, Any]:
         "lost_reason": enquiry.lost_reason,
         "lead_status": enquiry.lead_status,
         "inbound_message": enquiry.inbound_message,
+        "notes": (
+            []
+            if person_erased
+            else [_note_payload(note) for note in enquiry.notes_collection.select_related("author")]
+        ),
         "created_at": _iso(enquiry.created_at),
         "updated_at": _iso(enquiry.updated_at),
     }

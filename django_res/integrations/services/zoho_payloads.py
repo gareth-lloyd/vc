@@ -14,6 +14,13 @@ mapped onto current model fields — there is no `accounts.Contact` model.
 `SENSITIVE_TAGS` denylist below starts EMPTY — everything is included until
 the business decides otherwise. Add `accounts.enums.PersonTag` values to the
 frozenset to withhold specific tags from the CRM.
+
+`relationships` carries both legs of the GAP-041 person graph (2026-07-24):
+`kind`/`direction` are the raw stored fact, `relation` is the display label
+from THIS person's perspective (inbound legs resolve through
+`RELATIONSHIP_INVERSE_LABEL`, e.g. the PA row shows "Principal" on the other
+side). Rows whose other party is ANONYMIZED are omitted — `Person.anonymize`
+deletes relationship rows, so this guards the in-flight window.
 """
 
 from __future__ import annotations
@@ -21,8 +28,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from accounts.enums import PhoneLabel
+from accounts.enums import RELATIONSHIP_INVERSE_LABEL, PhoneLabel
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone
+from integrations.services.zoho_flow import is_anonymized_person
 
 # Denylist of `accounts.enums.PersonTag` values withheld from the CRM.
 # Deliberately empty for now — all tags (including the GAP-040
@@ -65,8 +73,55 @@ def _agency_payload(agency: Organisation | None) -> dict[str, Any] | None:
         "post_code": agency.post_code,
         "country": _country_payload(agency.country),
         "website_url": agency.website_url,
+        "notes": agency.notes,
         "status": agency.status,
     }
+
+
+def _relationship_party(person: Person) -> dict[str, Any]:
+    return {
+        "RES_ID": person.pk,
+        "id": person.pk,
+        "first_name": person.first_name,
+        "last_name": person.last_name,
+        "full_name": person.display_name or "",
+    }
+
+
+def _relationship_payloads(person: Person) -> list[dict[str, Any]]:
+    """Both legs of the GAP-041 graph, from this person's perspective.
+
+    A stored row reads "to_person is from_person's {kind}", so an inbound leg
+    renders the other party under the inverse display label. Anonymized other
+    parties are skipped entirely (their linkage must not leak to the CRM).
+    """
+    rows: list[dict[str, Any]] = []
+    legs = (
+        ("out", person.relationships_out.select_related("to_person"), "to_person"),
+        ("in", person.relationships_in.select_related("from_person"), "from_person"),
+    )
+    for direction, queryset, other_field in legs:
+        for rel in queryset:
+            other = getattr(rel, other_field)
+            if is_anonymized_person(other):
+                continue
+            relation = (
+                rel.get_kind_display()
+                if direction == "out"
+                else RELATIONSHIP_INVERSE_LABEL[rel.kind]
+            )
+            rows.append(
+                {
+                    "RES_ID": rel.pk,
+                    "id": rel.pk,
+                    "kind": rel.kind,
+                    "direction": direction,
+                    "relation": relation,
+                    "note": rel.note,
+                    "person": _relationship_party(other),
+                }
+            )
+    return rows
 
 
 def _email_payload(email: PersonEmail) -> dict[str, Any]:
@@ -124,6 +179,7 @@ def build_person_payload(person: Person) -> dict[str, Any]:
         "mobile": mobiles[0] if mobiles else None,
         "emails": [_email_payload(e) for e in emails],
         "phones": [_phone_payload(p) for p in phones],
+        "relationships": _relationship_payloads(person),
         "created_at": _iso(person.created_at),
         "updated_at": _iso(person.updated_at),
     }

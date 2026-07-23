@@ -8,9 +8,9 @@ from typing import Any, cast
 
 import pytest
 
-from accounts.enums import PersonTag, PhoneLabel
+from accounts.enums import PersonRelationshipKind, PersonStatus, PersonTag, PhoneLabel
 from accounts.factories import PersonFactory
-from accounts.models import Organisation, Person, PersonEmail, PersonPhone
+from accounts.models import Organisation, Person, PersonEmail, PersonPhone, PersonRelationship
 from integrations.services import zoho_payloads
 from integrations.services.zoho_payloads import SENSITIVE_TAGS, build_person_payload
 from properties.models.geo import Country
@@ -33,7 +33,9 @@ def country() -> Country:
 
 @pytest.fixture
 def full_person(country: Country) -> Person:
-    agency = Organisation.objects.create(name="Acme Travel", country=country)
+    agency = Organisation.objects.create(
+        name="Acme Travel", country=country, notes="Preferred partner — NET rates"
+    )
     person = _person(
         title="Mr",
         first_name="Alan",
@@ -83,6 +85,8 @@ def test_payload_nests_country_and_agency_with_res_ids(full_person: Person) -> N
     assert agency["RES_ID"] == full_person.agency_id
     assert agency["name"] == "Acme Travel"
     assert agency["country"]["iso2"] == "GB"
+    # Org notes push too (user decision 2026-07-23, same call as Person.notes).
+    assert agency["notes"] == "Preferred partner — NET rates"
 
 
 def test_payload_carries_all_emails_and_phones_with_primary_flagged(
@@ -130,6 +134,62 @@ def test_payload_includes_notes(full_person: Person) -> None:
     assert payload["notes"] == "private operator notes"
 
 
+def test_payload_relationships_cover_both_legs(full_person: Person) -> None:
+    pa = _person(first_name="Petra", last_name="Aide")
+    parent = _person(first_name="Carol", last_name="Partridge")
+    rel_out = PersonRelationship.objects.create(
+        from_person=full_person,
+        to_person=pa,
+        kind=PersonRelationshipKind.PA,
+        note="books all travel",
+    )
+    rel_in = PersonRelationship.objects.create(
+        from_person=parent, to_person=full_person, kind=PersonRelationshipKind.CHILD
+    )
+
+    payload = build_person_payload(full_person)
+
+    rows = {r["RES_ID"]: r for r in payload["relationships"]}
+    assert set(rows) == {rel_out.pk, rel_in.pk}
+
+    out = rows[rel_out.pk]
+    assert out["id"] == rel_out.pk
+    assert out["direction"] == "out"
+    assert out["kind"] == PersonRelationshipKind.PA.value
+    assert out["relation"] == "PA"
+    assert out["note"] == "books all travel"
+    assert out["person"]["RES_ID"] == pa.pk
+    assert out["person"]["full_name"] == "Petra Aide"
+
+    # Stored row reads "full_person is Carol's child" — on this profile the
+    # other party (Carol) therefore shows as the Parent.
+    inbound = rows[rel_in.pk]
+    assert inbound["direction"] == "in"
+    assert inbound["kind"] == PersonRelationshipKind.CHILD.value
+    assert inbound["relation"] == "Parent"
+    assert inbound["person"]["RES_ID"] == parent.pk
+
+    assert json.loads(json.dumps(payload)) == payload
+
+
+def test_payload_omits_relationships_to_anonymized_persons(full_person: Person) -> None:
+    erased = _person(first_name="Erased", last_name="Party")
+    kept = _person(first_name="Kept", last_name="Party")
+    PersonRelationship.objects.create(
+        from_person=full_person, to_person=erased, kind=PersonRelationshipKind.SPOUSE
+    )
+    rel_kept = PersonRelationship.objects.create(
+        from_person=kept, to_person=full_person, kind=PersonRelationshipKind.SIBLING
+    )
+    # Bypass anonymize() (which deletes relationship rows) to pin the builder's
+    # own guard for the in-flight window where the row still exists.
+    Person.objects.filter(pk=erased.pk).update(status=PersonStatus.ANONYMIZED)
+
+    payload = build_person_payload(full_person)
+
+    assert [r["RES_ID"] for r in payload["relationships"]] == [rel_kept.pk]
+
+
 def test_payload_json_round_trips(full_person: Person) -> None:
     payload = build_person_payload(full_person)
     assert json.loads(json.dumps(payload)) == payload
@@ -169,6 +229,7 @@ def test_payload_handles_bare_person() -> None:
     assert payload["primary_email"] is None
     assert payload["primary_phone"] is None
     assert payload["mobile"] is None
+    assert payload["relationships"] == []
     assert json.loads(json.dumps(payload)) == payload
 
 

@@ -11,6 +11,7 @@ import pytest
 from accounts.enums import PersonTag, PhoneLabel
 from accounts.factories import PersonFactory
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone
+from integrations.services import zoho_payloads
 from integrations.services.zoho_payloads import SENSITIVE_TAGS, build_person_payload
 from properties.models.geo import Country
 
@@ -104,15 +105,29 @@ def test_payload_carries_all_emails_and_phones_with_primary_flagged(
     assert payload["mobile"] == "+447700900001"
 
 
-def test_payload_filters_sensitive_tags_and_keeps_the_rest(full_person: Person) -> None:
+def test_payload_pushes_all_tags_while_denylist_is_empty(full_person: Person) -> None:
     payload = build_person_payload(full_person)
-    assert payload["tags"] == [PersonTag.VIP.value]
+    assert set(payload["tags"]) == {
+        PersonTag.VIP.value,
+        PersonTag.DISABILITY.value,
+        PersonTag.APPROACH_WITH_CARE.value,
+    }
 
 
-def test_payload_never_includes_notes(full_person: Person) -> None:
+def test_denylist_mechanism_filters_tags_when_populated(
+    full_person: Person, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(zoho_payloads, "SENSITIVE_TAGS", frozenset({PersonTag.DISABILITY.value}))
     payload = build_person_payload(full_person)
-    assert "notes" not in payload
-    assert "private operator notes" not in json.dumps(payload)
+    assert set(payload["tags"]) == {
+        PersonTag.VIP.value,
+        PersonTag.APPROACH_WITH_CARE.value,
+    }
+
+
+def test_payload_includes_notes(full_person: Person) -> None:
+    payload = build_person_payload(full_person)
+    assert payload["notes"] == "private operator notes"
 
 
 def test_payload_json_round_trips(full_person: Person) -> None:
@@ -165,8 +180,8 @@ def test_payload_timestamps_are_iso_strings(full_person: Person) -> None:
     assert datetime.fromisoformat(payload["created_at"])
 
 
-def test_sensitive_tags_denylist_is_valid_and_covers_special_category() -> None:
+def test_sensitive_tags_denylist_holds_only_valid_tags() -> None:
+    # Starts empty (user decision 2026-07-23: include everything to begin
+    # with); anything later added must be a real PersonTag value.
     valid = {tag.value for tag in PersonTag}
     assert SENSITIVE_TAGS <= valid
-    assert PersonTag.DISABILITY.value in SENSITIVE_TAGS
-    assert PersonTag.APPROACH_WITH_CARE.value in SENSITIVE_TAGS

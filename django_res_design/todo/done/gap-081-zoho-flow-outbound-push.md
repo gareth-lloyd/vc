@@ -3,8 +3,9 @@
 > **✅ RESOLVED (2026-07-23)** — built as a thin webhook pusher in 4 TDD units
 > on `feat/gap-081` (`d5dcc61`, `f07c5c4`, `a1ceb37`, `df9f37a`): `zoho_flow`
 > registry (`register_zoho_flow` / `enqueue_zoho_push` / `suppress_zoho_push`)
-> + full-fat payload builders for **contact** (Person; `notes` excluded,
-> sensitive tags denylisted, ANONYMIZED never pushed — including the enquiry's
+> + full-fat payload builders for **contact** (Person; `notes` and all `tags`
+> included — the `SENSITIVE_TAGS` denylist starts empty, revised user decision
+> 2026-07-23; ANONYMIZED never pushed — including the enquiry's
 > denormalised capture columns), **enquiry** (auto-push on every save;
 > `person_merged` re-push), and **quote** (send paths only, `auto_push=False`;
 > re-send re-pushes); `push_sync_record` delivery with retry/backoff +

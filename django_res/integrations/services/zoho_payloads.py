@@ -10,9 +10,10 @@ Covers the legacy `ZohoContactPostData` minimum checklist
 First_Name, Last_Name, Full_Name, Phone, Title, Mobile, Address_Line_1)
 mapped onto current model fields — there is no `accounts.Contact` model.
 
-Two deliberate exclusions (user decision 2026-07-23):
-- `notes` is NEVER included — free-text operator notes stay internal.
-- `tags` is filtered through the `SENSITIVE_TAGS` denylist below.
+`notes` and `tags` push in full (user decision 2026-07-23): the
+`SENSITIVE_TAGS` denylist below starts EMPTY — everything is included until
+the business decides otherwise. Add `accounts.enums.PersonTag` values to the
+frozenset to withhold specific tags from the CRM.
 """
 
 from __future__ import annotations
@@ -20,22 +21,13 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from accounts.enums import PersonTag, PhoneLabel
+from accounts.enums import PhoneLabel
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone
 
-# GAP-040 tag taxonomy (`accounts.enums.PersonTag`) carries two
-# special-category / duty-of-care markers that must never leave res —
-# `Person.anonymize()` already treats exactly these as special-category data
-# (it scrubs `tags` from the audit trail because "disability was added" would
-# stay recoverable). The remaining tags (VIP / Trade / PA / Nick's … /
-# Past issues / Specific preferences / Time waster) are ordinary operator
-# flags and push in clear.
-SENSITIVE_TAGS: frozenset[str] = frozenset(
-    {
-        PersonTag.DISABILITY.value,
-        PersonTag.APPROACH_WITH_CARE.value,
-    }
-)
+# Denylist of `accounts.enums.PersonTag` values withheld from the CRM.
+# Deliberately empty for now — all tags (including the GAP-040
+# special-category markers) push until the business asks to withhold any.
+SENSITIVE_TAGS: frozenset[str] = frozenset()
 
 
 def _iso(value: datetime | date | None) -> str | None:
@@ -124,6 +116,7 @@ def build_person_payload(person: Person) -> dict[str, Any]:
         "country": _country_payload(person.country),
         "marketing_consent": person.marketing_consent,
         "tags": [tag for tag in person.tags if tag not in SENSITIVE_TAGS],
+        "notes": person.notes,
         "status": person.status,
         "kind": person.kind,
         "primary_email": person.primary_email(),

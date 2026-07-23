@@ -54,9 +54,8 @@ the underlying problem.
   **DB:** PostgreSQL via `docker compose`.
 - **MCP servers** (`.claude/settings.json`): `context7` (library docs),
   `postgres` (schema introspection), `playwright` (browser FE checks).
-- **Git worktrees** live in a sibling directory, never nested in the repo:
-  `git worktree add -b feat/<slug> ../villacollective-worktrees/<slug> HEAD`
-  (keeps the second checkout out of lint/test walks and `git status`).
+- **Git worktrees** live under `.claude/worktrees/` (gitignored):
+  `git worktree add -b feat/<slug> .claude/worktrees/<slug> HEAD`.
   **Always edit through the worktree path** — main-repo paths land changes on
   the wrong branch.
 

@@ -127,6 +127,27 @@ def _enquiry_note_post_save(
 
 
 # ---------------------------------------------------------------------------
+# EnquiryNote → Zoho enquiry re-push (GAP-081)
+# ---------------------------------------------------------------------------
+
+
+def _enquiry_note_zoho_bump(sender: type, instance: Any, **_: Any) -> None:
+    """Note rows ride the nested notes endpoint without touching the Enquiry
+    row, yet push inside the enquiry payload's `notes` list — so a note
+    save/delete must bump the parent's Zoho push itself (GAP-081)."""
+    from integrations.services.zoho_flow import enqueue_zoho_push
+    from reservations.models.enquiry import Enquiry
+
+    try:
+        enquiry = instance.enquiry
+    except Enquiry.DoesNotExist:
+        # Cascade delete mid-flight (parent row already gone) — the reaper
+        # clears the parent's own records.
+        return
+    enqueue_zoho_push(enquiry)
+
+
+# ---------------------------------------------------------------------------
 # BookingChargeItem → booking_total_changed
 # ---------------------------------------------------------------------------
 
@@ -278,6 +299,16 @@ def _connect() -> None:
         _enquiry_note_post_save,
         sender=EnquiryNote,
         dispatch_uid="reservations.enquiry_note_post_save",
+    )
+    post_save.connect(
+        _enquiry_note_zoho_bump,
+        sender=EnquiryNote,
+        dispatch_uid="reservations.enquiry_note_zoho_bump_post_save",
+    )
+    post_delete.connect(
+        _enquiry_note_zoho_bump,
+        sender=EnquiryNote,
+        dispatch_uid="reservations.enquiry_note_zoho_bump_post_delete",
     )
     post_save.connect(
         _charge_item_changed,

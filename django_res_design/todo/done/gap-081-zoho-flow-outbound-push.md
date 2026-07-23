@@ -5,9 +5,14 @@
 > registry (`register_zoho_flow` / `enqueue_zoho_push` / `suppress_zoho_push`)
 > + full-fat payload builders for **contact** (Person; `notes` and all `tags`
 > included — the `SENSITIVE_TAGS` denylist starts empty, revised user decision
-> 2026-07-23; ANONYMIZED never pushed — including the enquiry's
-> denormalised capture columns), **enquiry** (auto-push on every save;
-> `person_merged` re-push), and **quote** (send paths only, `auto_push=False`;
+> 2026-07-23; GAP-041 `relationships` both legs + agency `notes`, with
+> PersonRelationship/Organisation child-bumps, added 2026-07-24; ANONYMIZED
+> never pushed — including the enquiry's denormalised capture columns),
+> **enquiry** (auto-push on every save; `person_merged` re-push; operator
+> `EnquiryNote` rows push as a RES_ID-keyed `notes` list with their own
+> child-bump, blanked on erasure, and person/agent summaries carry a keyed
+> `agency` sub-object — 2026-07-24, superseding the stay-internal call), and
+> **quote** (send paths only, `auto_push=False`;
 > re-send re-pushes); `push_sync_record` delivery with retry/backoff +
 > `push_pending` 10-min sweep (15-min grace, cap 200); `zoho_backfill`
 > replay command (SyncRun MANUAL; quote eligibility requires an actual send).

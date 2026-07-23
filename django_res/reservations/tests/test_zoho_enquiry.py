@@ -382,6 +382,41 @@ def test_unset_url_is_full_noop(delay_mock: mock.Mock) -> None:
     delay_mock.assert_not_called()
 
 
+# --- EnquiryNote bumps ----------------------------------------------------
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "enquiry_webhook", "delay_mock")
+def test_note_create_bumps_enquiry_pending() -> None:
+    """Notes ride the nested endpoint without touching Enquiry, yet push in
+    the enquiry payload's `notes` list — the child save must bump the parent."""
+    enquiry = _enquiry()
+    record = _record_for(enquiry)
+    record.status = SyncStatus.IN_SYNC.value
+    record.save(update_fields=["status", "updated_at"])
+
+    EnquiryNote.objects.create(enquiry=enquiry, body="called back")
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "enquiry_webhook", "delay_mock")
+def test_enquiry_cascade_delete_with_notes_is_benign() -> None:
+    """The note's post_delete fires mid-cascade (parent row still present, so
+    a PENDING record is briefly re-created) — the reaper must still leave
+    nothing behind."""
+    enquiry = _enquiry()
+    EnquiryNote.objects.create(enquiry=enquiry, body="soon gone")
+    enquiry_pk = enquiry.pk
+
+    enquiry.events.all().delete()  # EnquiryEvent.enquiry is PROTECT
+    enquiry.delete()
+
+    assert not SyncRecord.objects.filter(content_type=_enquiry_ct(), object_id=enquiry_pk).exists()
+
+
 # --- person_merged --------------------------------------------------------
 
 

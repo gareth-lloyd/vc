@@ -24,8 +24,16 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import override_settings
 from django.utils import timezone
 
+from accounts.enums import PersonRelationshipKind
 from accounts.factories import PersonFactory
-from accounts.models import Person, PersonEmail, PersonPhone, User
+from accounts.models import (
+    Organisation,
+    Person,
+    PersonEmail,
+    PersonPhone,
+    PersonRelationship,
+    User,
+)
 from integrations import tasks
 from integrations.enums import SyncDirection, SyncProvider, SyncStatus
 from integrations.models import SyncRecord
@@ -326,6 +334,98 @@ def test_person_merge_enqueues_survivor(delay_mock: mock.Mock) -> None:
 
     record = SyncRecord.objects.get(content_type=_person_ct(), object_id=survivor.pk)
     assert record.status == SyncStatus.PENDING
+
+
+# --- PersonRelationship / Organisation bumps ------------------------------
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "delay_mock")
+def test_person_relationship_save_and_delete_bump_both_parties() -> None:
+    alice = _person()
+    bob = _person()
+    record_a = _make_record(alice.pk)
+    record_b = _make_record(bob.pk)
+    _mark_in_sync(record_a)
+    _mark_in_sync(record_b)
+
+    rel = PersonRelationship.objects.create(
+        from_person=alice, to_person=bob, kind=PersonRelationshipKind.PA
+    )
+    record_a.refresh_from_db()
+    record_b.refresh_from_db()
+    assert record_a.status == SyncStatus.PENDING
+    assert record_b.status == SyncStatus.PENDING
+
+    _mark_in_sync(record_a)
+    _mark_in_sync(record_b)
+    rel.delete()
+    record_a.refresh_from_db()
+    record_b.refresh_from_db()
+    assert record_a.status == SyncStatus.PENDING
+    assert record_b.status == SyncStatus.PENDING
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "delay_mock")
+def test_person_cascade_delete_still_bumps_surviving_party() -> None:
+    alice = _person()
+    bob = _person()
+    PersonRelationship.objects.create(
+        from_person=alice, to_person=bob, kind=PersonRelationshipKind.SPOUSE
+    )
+    record_b = _make_record(bob.pk)
+    _mark_in_sync(record_b)
+
+    alice.delete()  # cascades the relationship; the reaper clears alice's records
+
+    record_b.refresh_from_db()
+    assert record_b.status == SyncStatus.PENDING
+    assert not SyncRecord.objects.filter(content_type=_person_ct(), object_id=alice.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "delay_mock")
+def test_anonymize_bumps_surviving_relationship_party_only() -> None:
+    """anonymize() flips status to ANONYMIZED before its per-instance
+    relationship deletes, so the erased party is skipped at enqueue while the
+    other party re-pushes — pin that ordering."""
+    alice = _person()
+    bob = _person()
+    PersonRelationship.objects.create(
+        from_person=alice, to_person=bob, kind=PersonRelationshipKind.SPOUSE
+    )
+    record_a = _make_record(alice.pk)
+    record_b = _make_record(bob.pk)
+    _mark_in_sync(record_a)
+    _mark_in_sync(record_b)
+
+    alice.anonymize()
+
+    record_a.refresh_from_db()
+    record_b.refresh_from_db()
+    assert record_a.status == SyncStatus.IN_SYNC
+    assert record_b.status == SyncStatus.PENDING
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "delay_mock")
+def test_organisation_save_bumps_member_persons() -> None:
+    org = Organisation.objects.create(name="Acme Travel")
+    member = _person(agency=org)
+    outsider = _person()
+    record_member = _make_record(member.pk)
+    record_outsider = _make_record(outsider.pk)
+    _mark_in_sync(record_member)
+    _mark_in_sync(record_outsider)
+
+    org.notes = "now with NET rates"
+    org.save()
+
+    record_member.refresh_from_db()
+    record_outsider.refresh_from_db()
+    assert record_member.status == SyncStatus.PENDING
+    assert record_outsider.status == SyncStatus.IN_SYNC
 
 
 # --- push_sync_record -----------------------------------------------------

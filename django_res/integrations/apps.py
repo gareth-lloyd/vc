@@ -25,6 +25,41 @@ def _person_channel_changed(
     enqueue_zoho_push(person)
 
 
+def _person_relationship_changed(
+    sender: type[models.Model],
+    instance: Any,
+    **_: Any,
+) -> None:
+    """A PersonRelationship row changes BOTH parties' pushed `relationships`
+    list without touching either Person row — bump each leg (GAP-081).
+    Per-leg guard: a cascade delete can have removed one party already."""
+    from accounts.models import Person
+    from integrations.services.zoho_flow import enqueue_zoho_push
+
+    for field in ("from_person", "to_person"):
+        try:
+            person = getattr(instance, field)
+        except Person.DoesNotExist:
+            continue
+        enqueue_zoho_push(person)
+
+
+def _organisation_changed(
+    sender: type[models.Model],
+    instance: Any,
+    **_: Any,
+) -> None:
+    """Agency fields (incl. `notes`) are embedded in member contacts' payloads
+    and Organisation is not a pushed kind itself, so an org edit must re-push
+    its agents (GAP-081). Residual: `Organisation.merge` repoints
+    `Person.agency` via bulk `.update()` (no signals) — those members stay
+    stale until their next own bump."""
+    from integrations.services.zoho_flow import enqueue_zoho_push
+
+    for person in instance.agents.all():
+        enqueue_zoho_push(person)
+
+
 def _person_merged_receiver(sender: type[models.Model], **kwargs: Any) -> None:
     """`Person.merge` rewrites FKs via `.update()` (no post_save) — re-push the
     survivor so the CRM record absorbs the folded-in channels (GAP-081). The
@@ -65,7 +100,13 @@ class IntegrationsConfig(AppConfig):
         )
 
         # --- Zoho Flow outbound push (GAP-081) ---------------------------
-        from accounts.models import Person, PersonEmail, PersonPhone
+        from accounts.models import (
+            Organisation,
+            Person,
+            PersonEmail,
+            PersonPhone,
+            PersonRelationship,
+        )
         from accounts.signals import person_merged
         from integrations.services.zoho_flow import register_zoho_flow
         from integrations.services.zoho_payloads import build_person_payload
@@ -83,6 +124,24 @@ class IntegrationsConfig(AppConfig):
                 sender=child_model,
                 dispatch_uid=f"integrations.zoho_flow:{label}:post_delete",
             )
+        rel_label = PersonRelationship._meta.label
+        models.signals.post_save.connect(
+            _person_relationship_changed,
+            sender=PersonRelationship,
+            dispatch_uid=f"integrations.zoho_flow:{rel_label}:post_save",
+        )
+        models.signals.post_delete.connect(
+            _person_relationship_changed,
+            sender=PersonRelationship,
+            dispatch_uid=f"integrations.zoho_flow:{rel_label}:post_delete",
+        )
+        # post_save only: PROTECT on Person.agency means an Organisation with
+        # agents can't be deleted, so there is no member-affecting post_delete.
+        models.signals.post_save.connect(
+            _organisation_changed,
+            sender=Organisation,
+            dispatch_uid=f"integrations.zoho_flow:{Organisation._meta.label}:post_save",
+        )
         person_merged.connect(
             _person_merged_receiver,
             dispatch_uid="integrations.zoho_flow:person_merged",

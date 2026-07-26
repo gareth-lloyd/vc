@@ -282,6 +282,8 @@ The public villacollective.com WordPress site originates a small number of write
 
 ### Auth: DRF `TokenAuthentication` + dedicated service user
 
+> **⚠️ As-built erratum (2026-07-26).** `accounts.User` has no username column (`username = None`, `USERNAME_FIELD = "email"`), so the service user is pinned by **email**: `settings.WORDPRESS_SERVICE_EMAIL` (default `wordpress-publisher@villacollective.com`), not `WORDPRESS_SERVICE_USERNAME`. Bootstrap is `./manage.py bootstrap_wordpress_user` (idempotent; `--rotate` replaces the token), not a data migration.
+
 - One Django user per WordPress site (e.g. `wordpress-publisher`). Created via data migration with `is_staff=False`, `is_active=True`, and an unusable password (`set_unusable_password()`) — the token is the only credential. No new `Role` enum value, no `INTEGRATION_SERVICE` flag; the user is identified by username, configured in `settings.WORDPRESS_SERVICE_USERNAME`.
 - One `authtoken.Token` per service user. Token is generated once and copied into the WordPress side; never stored in Django plaintext outside the `authtoken` table.
 - WordPress stores the token in `wp-config.php` as a `define('VC_RES_API_TOKEN', '…')` constant — **not** in the WP database, **not** committed to the plugin source. Reason: `wp-config.php` is the established convention for secrets in WP and is excluded from plugin distributions, theme exports, and most backup tooling. Storing in `wp_options` would surface the token to any WP plugin with DB read access.
@@ -312,6 +314,8 @@ Each endpoint:
 - Logs every call to `AuditLog` with `actor` = the service user, `action` = the endpoint, and the request payload (with PII fields hashed per `00-conventions.md`).
 
 ### Idempotency
+
+> **⚠️ As-built erratum (2026-07-26).** `IntegrationInboundCall` stores the full `response_body` (JSON) alongside `response_body_hash` — a hash alone cannot replay a response (step 2 below). And because the legacy WP payload carries no client key, the enquiry endpoint derives one server-side (SHA-256 of the normalised payload + a coarse time bucket) when the caller sends none.
 
 Every WP-originated mutation carries a client-supplied idempotency key derived from a stable WordPress identifier (post id, form submission id, Flywire reference). The endpoint:
 1. Looks up `IntegrationInboundCall(provider=WORDPRESS_SITE, idempotency_key=…)` (a small append-only table — `provider`, `idempotency_key`, `response_status`, `response_body_hash`, `created_at`, unique on `(provider, idempotency_key)`).

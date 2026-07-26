@@ -97,3 +97,15 @@ def test_reseeding_is_idempotent_and_preserves_enrolment() -> None:
     users = User.objects.filter(email="glloyd@gmail.com")
     assert users.count() == 1
     assert users.get().tfa_method == TfaMethod.TOTP
+
+
+def test_users_stage_bootstraps_the_wordpress_service_user() -> None:
+    from django.conf import settings
+    from rest_framework.authtoken.models import Token
+
+    _run(_ctx())
+
+    wp_user = User.objects.get(email=settings.WORDPRESS_SERVICE_EMAIL)
+    assert wp_user.is_staff is False
+    assert not wp_user.has_usable_password()
+    assert Token.objects.filter(user=wp_user).exists()

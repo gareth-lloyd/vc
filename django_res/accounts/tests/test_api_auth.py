@@ -375,6 +375,54 @@ def test_password_reset_request_is_silent_for_unknown_email(
     assert mail.outbox == []
 
 
+@pytest.mark.django_db
+def test_password_reset_request_is_silent_for_token_only_service_account(
+    api_client: APIClient,
+    user: User,
+) -> None:
+    # Service principals (e.g. the WordPress inbound user) have an unusable
+    # password by design — their API token is the only credential. The reset
+    # flow must not offer a side door to attach a session-login password.
+    from django.core import mail
+
+    user.set_unusable_password()
+    user.save(update_fields=["password"])
+    mail.outbox.clear()
+
+    response = api_client.post(
+        "/api/v1/auth/password-reset:request",
+        {"email": user.email},
+        format="json",
+    )
+
+    assert response.status_code == 204
+    assert mail.outbox == []
+
+
+@pytest.mark.django_db
+def test_password_reset_confirm_rejects_token_only_service_account(
+    api_client: APIClient, user: User
+) -> None:
+    # Defence in depth: a token issued while the user still had a usable
+    # password must die once the account is converged to token-only.
+    from accounts.services.password_reset import _make_token
+
+    token = _make_token(user)
+    user.set_unusable_password()
+    user.save(update_fields=["password"])
+
+    response = api_client.post(
+        "/api/v1/auth/password-reset:confirm",
+        {"token": token, "new_password": "brand-new-Passw0rd!"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "password_reset_token_invalid"
+    user.refresh_from_db()
+    assert not user.has_usable_password()
+
+
 @pytest.mark.usefixtures("run_on_commit_immediately")
 @pytest.mark.django_db
 def test_password_reset_request_is_idempotent_on_repeat(

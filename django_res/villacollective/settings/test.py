@@ -86,5 +86,6 @@ REST_FRAMEWORK = {
         "auth.login": "10000/min",
         "auth.tfa": "10000/min",
         "auth.password_reset": "10000/min",
+        "wordpress_inbound": "10000/min",
     },
 }

@@ -72,7 +72,9 @@ class PasswordResetService:
         ``(template_key, version, sorted(to), correlation)``.
         """
         user = User.objects.filter(email__iexact=email, is_active=True).first()
-        if user is None:
+        # Token-only service principals (unusable password by design, e.g. the
+        # WordPress inbound user) must not gain a session password via reset.
+        if user is None or not user.has_usable_password():
             return
         token = _make_token(user)
         EmailService.send(
@@ -100,6 +102,10 @@ class PasswordResetService:
             # Token was validly signed, but the user was deleted or deactivated
             # after signing. Degrade to a 400 invalid-token rather than a 500.
             raise PasswordResetTokenInvalid() from exc
+        if not user.has_usable_password():
+            # Mirror of the `request` guard: the account was converged to
+            # token-only after this reset token was signed.
+            raise PasswordResetTokenInvalid()
         user.set_password(new_password)
         user.save(update_fields=["password"])
         return user

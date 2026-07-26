@@ -31,6 +31,10 @@ INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.postgres",
     "rest_framework",
+    # Token auth for the WordPress inbound service user only (08-integrations.md
+    # §"Inbound: WordPress → Django") — TokenAuthentication is NOT in the DRF
+    # defaults; the /api/wordpress/* views opt in explicitly.
+    "rest_framework.authtoken",
     "django_filters",
     "django_structlog",
     "django_extensions",
@@ -185,6 +189,10 @@ REST_FRAMEWORK = {
         "auth.login": "10/min",
         "auth.tfa": "10/min",
         "auth.password_reset": "5/hour",
+        # Server-to-server enquiry posts from the WordPress site. No CACHES
+        # configured ⇒ LocMemCache ⇒ per-process counters: effective ceiling is
+        # rate x worker count. Generous — this is a lead-capture surface.
+        "wordpress_inbound": "60/min",
     },
 }
 
@@ -211,6 +219,16 @@ ZOHO_FLOW_WEBHOOKS = {
     "quote": env.str("ZOHO_FLOW_WEBHOOK_QUOTE", default=""),
     "booking": env.str("ZOHO_FLOW_WEBHOOK_BOOKING", default=""),
 }
+
+# The WordPress inbound service user (08-integrations.md §"Inbound: WordPress →
+# Django"). The design pins the caller by username; our User model is
+# email-keyed (accounts.User has no username column), so the pin is by email.
+# Non-staff, unusable password — its authtoken is the only credential; created
+# by `./manage.py bootstrap_wordpress_user`.
+WORDPRESS_SERVICE_EMAIL = env.str(
+    "WORDPRESS_SERVICE_EMAIL",
+    default="wordpress-publisher@villacollective.com",
+)
 
 # Public-facing SPA origin used to build user-clickable URLs in transactional
 # email (password reset, magic link, account setup). Must include the scheme

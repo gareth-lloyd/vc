@@ -17,6 +17,9 @@ from accounts.enums import TfaMethod
 from accounts.factories import PersonEmailFactory, PersonPhoneFactory, UserFactory
 from accounts.models import User
 from core.enums import StaffRole
+from integrations.management.commands.bootstrap_wordpress_user import (
+    ensure_wordpress_service_user,
+)
 from seeding.context import SeedContext
 from seeding.registry import Stage, register
 
@@ -90,6 +93,11 @@ def _run(ctx: SeedContext) -> int:
     made = 0
     for email, password, first_name, last_name, tfa_secret in _SUPERUSERS:
         made += _ensure_superuser(email, password, first_name, last_name, tfa_secret)
+
+    # WordPress inbound service user (token-only credential) so the local
+    # /api/wordpress/* endpoint is callable straight after a reseed.
+    _, _, token_created = ensure_wordpress_service_user()
+    made += int(token_created)
 
     for _ in range(ctx.n_users):
         contact = PersonEmailFactory().contact

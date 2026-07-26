@@ -19,6 +19,8 @@ _SPA_FALLBACK = r"^(?!(?:{})).*$".format("|".join(NON_SPA_PREFIXES))
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/", include("villacollective.api_urls")),
+    # Inbound WordPress surface — token-authed service user only.
+    path("api/wordpress/", include("reservations.urls_wordpress")),
     # Smoke test
     path("api/", include("core.urls")),
     # Single-origin SPA history fallback — MUST stay last. Static assets, the

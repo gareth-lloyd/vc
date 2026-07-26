@@ -8,9 +8,13 @@ region / country resolution goes through `legacy_id` — the WP site sends
 numeric ResSystem ids (with `0` / `"0"` meaning "none selected"), the same
 bridge the data-migration loaders use.
 
-Deduplication is the endpoint's job: the view wraps this service in the
-`IntegrationInboundCall` record-or-replay ledger (Unit 4), keyed by
-`derive_idempotency_key`; the service itself always creates.
+`handle_wordpress_enquiry` is the endpoint's whole business layer: dedupe via
+the `IntegrationInboundCall` record-or-replay ledger keyed by
+`derive_idempotency_key` over the *validated* payload (so undeclared keys the
+serializer ignores — nonces, timestamps — can't defeat dedupe), plus one
+AuditLog row per handled call. The audit write sits after the ledger commit:
+best-effort — a crash in between loses only the audit row, never the lead
+(the WP retry replays and audits).
 """
 
 from __future__ import annotations
@@ -18,16 +22,25 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.utils import timezone
 
+from core.models import AuditLog
+from core.request_context import get_correlation_id
+from integrations.enums import SyncProvider
+from integrations.models import IntegrationInboundCall
+from integrations.services.inbound import record_or_replay
 from properties.models import Country, Property, Region
 from reservations.enums import EnquiryRequestType, EnquirySource
 from reservations.models import Enquiry
 from reservations.phone import to_e164
+
+if TYPE_CHECKING:
+    from accounts.models import User
 
 logger = structlog.get_logger(__name__)
 
@@ -220,3 +233,30 @@ def create_enquiry_from_wordpress(data: dict[str, Any]) -> Enquiry:
         unmapped_count=len(leftovers),
     )
     return enquiry
+
+
+def handle_wordpress_enquiry(
+    validated_data: dict[str, Any], *, actor: User
+) -> IntegrationInboundCall:
+    """Create-or-replay one inbound WP enquiry call and audit it."""
+
+    def produce() -> tuple[int, dict[str, Any]]:
+        enquiry = create_enquiry_from_wordpress(validated_data)
+        return 201, {"reference": enquiry.reference}
+
+    call, replayed = record_or_replay(
+        provider=SyncProvider.WORDPRESS_SITE,
+        idempotency_key=derive_idempotency_key(dict(validated_data)),
+        produce=produce,
+    )
+    AuditLog.objects.create(
+        content_type=ContentType.objects.get_for_model(IntegrationInboundCall),
+        object_id=str(call.pk),
+        actor=actor,
+        field_diffs={
+            "replayed": [None, replayed],
+            "response_status": [None, call.response_status],
+        },
+        correlation_id=get_correlation_id(),
+    )
+    return call

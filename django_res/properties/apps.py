@@ -216,3 +216,25 @@ class PropertiesConfig(AppConfig):
                 "is_active",
             ),
         )
+
+        # --- Zoho Flow outbound push (GAP-082 Unit 3) --------------------
+        # auto_push: every Property create/edit pushes, EXCEPT the
+        # availability-freshness stamps — `PropertyAvailabilityService` writes
+        # them with exactly these narrow `update_fields`, and that churn (every
+        # owner-block edit / staff confirm) must never re-push the villa. The
+        # ignored columns are deliberately absent from `build_property_payload`.
+        from integrations.services.zoho_flow import register_zoho_flow
+        from properties.services.zoho_payload import build_property_payload
+
+        register_zoho_flow(
+            Property,
+            kind="villa",
+            build_payload=build_property_payload,
+            ignore_update_fields=frozenset(
+                {
+                    "availability_owner_updated_at",
+                    "availability_confirmed_at",
+                    "availability_confirmed_by",
+                }
+            ),
+        )

@@ -48,7 +48,7 @@ from integrations.services.zoho_flow import (
     webhook_url,
 )
 from integrations.tasks import TransientPushError, push_pending, push_sync_record
-from properties.models.property import Property
+from properties.models.rooms import Room
 
 CONTACT_URL = "https://flow.zoho.example/contact"
 WEBHOOKS = {"contact": CONTACT_URL, "villa": "", "enquiry": "", "quote": "", "booking": ""}
@@ -134,7 +134,7 @@ def test_villa_is_a_registrable_kind() -> None:
 
 
 def test_unregistered_model_has_no_spec() -> None:
-    assert get_zoho_spec(Property) is None
+    assert get_zoho_spec(Room) is None
 
 
 def test_person_is_registered_by_app_ready() -> None:
@@ -854,7 +854,7 @@ def test_sweep_skips_kinds_without_url(delay_mock: mock.Mock) -> None:
 def test_sweep_excludes_unregistered_content_types(delay_mock: mock.Mock) -> None:
     record = _make_record(
         1001,
-        content_type=ContentType.objects.get_for_model(Property),
+        content_type=ContentType.objects.get_for_model(Room),
     )
     _age(record, minutes=30)
 

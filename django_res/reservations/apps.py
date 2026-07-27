@@ -6,15 +6,15 @@ from django.apps import AppConfig
 from django.db import models
 
 
-def _person_merged_re_enqueue_enquiries(sender: type[models.Model], **kwargs: Any) -> None:
-    """`Person.merge` repoints the absorbed person's enquiries (both the
-    `person` and `agent` FKs) onto the survivor via `.update()` — no
-    post_save, so the auto-push never fires (GAP-081). The signal doesn't
+def _person_merged_re_enqueue(sender: type[models.Model], **kwargs: Any) -> None:
+    """`Person.merge` repoints the absorbed person's enquiries and bookings
+    (both the `person` and `agent` FKs) onto the survivor via `.update()` — no
+    post_save, so the auto-push never fires (GAP-081/082). The signal doesn't
     carry *which* rows moved, so simplest-correct: re-enqueue ALL of the
-    survivor's enquiries — pushes are idempotent upserts keyed on RES_ID and
+    survivor's rows — pushes are idempotent upserts keyed on RES_ID and
     per-person volume is tiny, so the over-push is a few redundant upserts."""
     from integrations.services.zoho_flow import enqueue_zoho_push
-    from reservations.models import Enquiry
+    from reservations.models import Booking, Enquiry
 
     survivor = kwargs["survivor"]
     enquiries = Enquiry.objects.filter(
@@ -22,6 +22,11 @@ def _person_merged_re_enqueue_enquiries(sender: type[models.Model], **kwargs: An
     ).select_related("person", "agent")
     for enquiry in enquiries:
         enqueue_zoho_push(enquiry)
+    bookings = Booking.objects.filter(
+        models.Q(person=survivor) | models.Q(agent=survivor)
+    ).select_related("person", "agent")
+    for booking in bookings:
+        enqueue_zoho_push(booking)
 
 
 class ReservationsConfig(AppConfig):
@@ -238,16 +243,21 @@ class ReservationsConfig(AppConfig):
             ],
         )
 
-        # --- Zoho Flow outbound push (GAP-081 Units 2-3) -----------------
+        # --- Zoho Flow outbound push (GAP-081 Units 2-3, GAP-082 Unit 6) --
         # Enquiry auto_push: every create/update pushes — all lifecycle
         # transitions (`contact`/`lose`/`set_lead_status`/…) end in `.save()`.
         # Quotation auto_push=False: drafts must NEVER push; the only enqueue
         # path is `quotation_transmission.record_quote_sent` (both the SMTP
-        # and manual-mark send paths route through it). The delete-reaper is
-        # connected regardless of auto_push.
+        # and manual-mark send paths route through it). Booking auto_push, no
+        # ignore set: every transition ends in `_transition`'s `.save()` — all
+        # meaningful, low-frequency; creation transitions inside one
+        # transaction, so PENDING dedupe collapses to a single post-commit
+        # dispatch (DRAFT is never delivered for live bookings). The
+        # delete-reaper is connected regardless of auto_push.
         from accounts.signals import person_merged
         from integrations.services.zoho_flow import register_zoho_flow
         from reservations.services.zoho_payload import (
+            build_booking_payload,
             build_enquiry_payload,
             build_quotation_payload,
         )
@@ -259,7 +269,8 @@ class ReservationsConfig(AppConfig):
             build_payload=build_quotation_payload,
             auto_push=False,
         )
+        register_zoho_flow(Booking, kind="booking", build_payload=build_booking_payload)
         person_merged.connect(
-            _person_merged_re_enqueue_enquiries,
+            _person_merged_re_enqueue,
             dispatch_uid="reservations.zoho_flow:person_merged",
         )

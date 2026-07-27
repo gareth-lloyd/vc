@@ -208,6 +208,20 @@ def _booking_guest_post_save(sender: type, instance: Any, **_: Any) -> None:
         person_id=instance.person_id
     )
 
+    # GAP-082: the denorm sync above is a queryset .update() — no Booking
+    # post_save — yet a LEAD change rewrites the booking payload's `person`,
+    # so the re-push must ride this receiver. Guard before the booking deref
+    # (this handler fires on every LEAD BookingGuest save).
+    from integrations.services.zoho_flow import enqueue_zoho_push, push_suppressed, webhook_url
+
+    if push_suppressed() or not webhook_url("booking"):
+        return
+    try:
+        booking = instance.booking
+    except Booking.DoesNotExist:
+        return
+    enqueue_zoho_push(booking)
+
 
 # ---------------------------------------------------------------------------
 # BookingGuest(role=LEAD) → orphan-guard on delete

@@ -52,6 +52,22 @@ Net_Booking / Cost_of_Sale) are booking/payment-domain figures the legacy
 computed from its finance view at push time — they have no Quotation-model
 source and ship with the ~Sept booking build (`booking` kind), not here.
 `Zoho_ID` is omitted (external ids stay blank by contract).
+
+`build_booking_payload` (GAP-082 Unit 6) is a single upsert keyed on the res
+booking pk (`RES_ID`), no delete push by agreement — purpose is
+reporting/segmentation, never recalculation. Contact/agent by RES_ID
+(`_person_summary`, anonymized fails closed to None), villa by RES_ID via
+`property`, quote + enquiry links, and `line` = the accepted QuotationLine in
+the EXACT quote-line shape (`_line_payload`) so the Flow mapping shares one
+line schema with the quote kind. `quote.is_synthetic` flags
+booking-synthesised legacy quotations (`legacy_id` `booking-*`) — those never
+push as the quote kind, so the flag prevents dangling Flow joins.
+`booking_date` = `created_at` (the historic-import filter; the loader
+back-stamps it from legacy `CreatedAt`). `financials` is an explicit null
+placeholder: key presence pins the contract position for Flow pre-wiring,
+null can't read as "zero money" — the block's content is finalized on the
+next Limitless call (the header money columns deliberately do not push until
+then; per-line money rides `line`).
 """
 
 from __future__ import annotations
@@ -65,7 +81,7 @@ if TYPE_CHECKING:
     from accounts.models import Person
     from properties.models.geo import Region
     from properties.models.property import Property
-    from reservations.models import Enquiry, Quotation
+    from reservations.models import Booking, Enquiry, Quotation
     from reservations.models.enquiry import EnquiryNote
     from reservations.models.quotation import QuotationLine
 
@@ -274,4 +290,93 @@ def build_quotation_payload(quotation: Quotation) -> dict[str, Any]:
         "lines": [_line_payload(line) for line in lines],
         "created_at": _iso(quotation.created_at),
         "updated_at": _iso(quotation.updated_at),
+    }
+
+
+def build_booking_payload(booking: Booking) -> dict[str, Any]:
+    """Full-field JSON-safe payload for one `reservations.Booking`.
+
+    Built at push time from the live row (see
+    `integrations.tasks.push_sync_record`) — the delivery task hands over a
+    bare instance, so re-read it here with the full select_related chain
+    rather than walking a dozen FKs lazily.
+    """
+    from reservations.models import Booking
+    from reservations.models.quotation import SYNTHETIC_LEGACY_PREFIX
+
+    booking = (
+        Booking.objects.select_related(
+            "person__agency",
+            "agent__agency",
+            "assigned_to",
+            "property__region__country",
+            "currency",
+            "terms_version",
+            "quotation_line__quotation__enquiry",
+            "quotation_line__property__region__country",
+            "quotation_line__currency",
+        )
+        # primary_email()/primary_phone() iterate the prefetched collections.
+        .prefetch_related("person__emails", "person__phones", "agent__emails", "agent__phones")
+        .get(pk=booking.pk)
+    )
+    line = booking.quotation_line
+    quotation = line.quotation
+    enquiry = quotation.enquiry
+    return {
+        "RES_ID": booking.pk,
+        "id": booking.pk,
+        "reference": booking.reference,
+        "legacy_id": booking.legacy_id,
+        "status": booking.status,
+        "person": _person_summary(booking.person),
+        "agent": _person_summary(booking.agent),
+        "assigned_to": _assigned_to_payload(booking.assigned_to),
+        "property": _property_payload(booking.property),
+        "quote": {
+            "RES_ID": quotation.pk,
+            "id": quotation.pk,
+            "reference": quotation.reference,
+            "number": quotation.number,
+            "legacy_id": quotation.legacy_id,
+            # Booking-synthesised quotations never push as the quote kind —
+            # the flag stops Flow joining a dangling quote RES_ID.
+            "is_synthetic": (quotation.legacy_id or "").startswith(SYNTHETIC_LEGACY_PREFIX),
+        },
+        "enquiry": (
+            {"RES_ID": enquiry.pk, "id": enquiry.pk, "reference": enquiry.reference}
+            if enquiry is not None
+            else None
+        ),
+        # EXACT quote-line shape — the Flow mapping shares one line schema.
+        "line": _line_payload(line),
+        # The booking's own dates/party — may drift from the line via
+        # modify_dates / modify_guests.
+        "date_from": _iso(booking.date_from),
+        "date_to": _iso(booking.date_to),
+        "nights": (booking.date_to - booking.date_from).days,
+        "adults": booking.adults,
+        "children": booking.children,
+        "currency": booking.currency.code,
+        "site_source": booking.site_source,
+        "payment_method": booking.payment_method,
+        "terms_version": {
+            "RES_ID": booking.terms_version_id,
+            "id": booking.terms_version_id,
+            "version": booking.terms_version.version,
+        },
+        "terms_accepted_at": _iso(booking.terms_accepted_at),
+        # Historic-import filter; the loader back-stamps created_at from the
+        # legacy CreatedAt so this is faithful for imported rows.
+        "booking_date": _iso(booking.created_at),
+        "cancel_reason": booking.cancel_reason,
+        "cancelled_at": _iso(booking.cancelled_at),
+        "is_archived": booking.is_archived,
+        "archived_at": _iso(booking.archived_at),
+        # Explicit placeholder: key presence pins the contract position for
+        # Flow pre-wiring; null can never read as "zero money". Content is
+        # finalized on the next Limitless call.
+        "financials": None,
+        "created_at": _iso(booking.created_at),
+        "updated_at": _iso(booking.updated_at),
     }

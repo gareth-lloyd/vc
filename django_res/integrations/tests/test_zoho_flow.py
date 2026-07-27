@@ -175,6 +175,152 @@ def test_reregister_is_idempotent_single_enqueue_per_save(delay_mock: mock.Mock)
     assert delay_mock.call_count == 1
 
 
+# --- ignore_update_fields -------------------------------------------------
+
+
+@pytest.fixture
+def person_ignores_notes() -> Iterator[None]:
+    """Temporarily re-register Person with an ignore set; restore the ready()
+    spec (empty ignore set) afterwards. Re-registering (not unregistering)
+    keeps the signal wiring intact under xdist."""
+    original = get_zoho_spec(Person)
+    assert original is not None
+    register_zoho_flow(
+        Person,
+        kind=original.kind,
+        build_payload=original.build_payload,
+        ignore_update_fields=frozenset({"notes"}),
+    )
+    try:
+        yield
+    finally:
+        register_zoho_flow(
+            Person,
+            kind=original.kind,
+            build_payload=original.build_payload,
+            auto_push=original.auto_push,
+            ignore_update_fields=original.ignore_update_fields,
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "person_ignores_notes")
+def test_ignored_only_update_fields_save_is_not_enqueued(delay_mock: mock.Mock) -> None:
+    person = _person()
+    record = SyncRecord.objects.get()
+    _mark_in_sync(record)
+
+    person.notes = "availability-style churn"
+    person.save(update_fields=["notes"])
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.IN_SYNC
+    assert delay_mock.call_count == 1  # the create only
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "person_ignores_notes")
+def test_ignored_fields_plus_updated_at_still_suppressed(delay_mock: mock.Mock) -> None:
+    """Writers commonly append `updated_at` to narrow update_fields (auto_now
+    only fires when listed) — it must not defeat the ignore set."""
+    person = _person()
+    record = SyncRecord.objects.get()
+    _mark_in_sync(record)
+
+    person.notes = "churn"
+    person.save(update_fields=["notes", "updated_at"])
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.IN_SYNC
+    assert delay_mock.call_count == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "person_ignores_notes")
+def test_full_save_without_update_fields_enqueues(delay_mock: mock.Mock) -> None:
+    person = _person()
+    record = SyncRecord.objects.get()
+    _mark_in_sync(record)
+
+    person.first_name = "Changed"
+    person.save()
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+    assert delay_mock.call_count == 2  # create + bump
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "person_ignores_notes")
+def test_mixed_update_fields_enqueues(delay_mock: mock.Mock) -> None:
+    person = _person()
+    record = SyncRecord.objects.get()
+    _mark_in_sync(record)
+
+    person.notes = "churn"
+    person.first_name = "Changed"
+    person.save(update_fields=["notes", "first_name"])
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+    assert delay_mock.call_count == 2  # create + bump
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "person_ignores_notes")
+def test_create_always_enqueues_despite_ignore_set(delay_mock: mock.Mock) -> None:
+    _person()
+
+    record = SyncRecord.objects.get()
+    assert record.status == SyncStatus.PENDING
+    assert delay_mock.call_count == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook", "person_ignores_notes")
+def test_explicit_enqueue_bypasses_ignore_set(delay_mock: mock.Mock) -> None:
+    """The ignore check lives in the post_save handler ONLY — a service-layer
+    `enqueue_zoho_push` must always push, whatever the surrounding save wrote."""
+    person = _person()
+    record = SyncRecord.objects.get()
+    _mark_in_sync(record)
+
+    enqueue_zoho_push(person)
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook")
+def test_empty_ignore_set_narrow_update_fields_still_enqueues(delay_mock: mock.Mock) -> None:
+    """Default registrations (empty ignore set) must keep enqueuing on narrow
+    update_fields saves — the suppression guard is opt-in only."""
+    person = _person()
+    record = SyncRecord.objects.get()
+    _mark_in_sync(record)
+
+    person.notes = "changed"
+    person.save(update_fields=["notes"])
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+
+
+def test_register_rejects_unknown_ignore_field() -> None:
+    """A typo'd ignore field would silently disable the churn suppression —
+    fail fast at registration instead."""
+    with pytest.raises(ValueError, match="no_such_field"):
+        register_zoho_flow(
+            User,
+            kind="contact",
+            build_payload=lambda i: {},
+            auto_push=False,
+            ignore_update_fields=frozenset({"no_such_field"}),
+        )
+    assert get_zoho_spec(User) is None
+
+
 # --- enqueue --------------------------------------------------------------
 
 

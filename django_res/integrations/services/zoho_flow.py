@@ -43,6 +43,7 @@ class ZohoFlowSpec:
     kind: str
     build_payload: Callable[[Any], dict[str, Any]]
     auto_push: bool
+    ignore_update_fields: frozenset[str] = frozenset()
 
 
 _registry: dict[type[models.Model], ZohoFlowSpec] = {}
@@ -58,6 +59,7 @@ def register_zoho_flow(
     kind: str,
     build_payload: Callable[[Any], dict[str, Any]],
     auto_push: bool = True,
+    ignore_update_fields: frozenset[str] = frozenset(),
 ) -> None:
     """Register `model` for Zoho Flow pushes.
 
@@ -65,10 +67,34 @@ def register_zoho_flow(
     a `post_save` handler enqueues a push on every save (dispatch_uid-deduped,
     so re-registering is idempotent). With `auto_push=False` the model only
     pushes when a service calls `enqueue_zoho_push` explicitly.
+
+    `ignore_update_fields`: saves whose `update_fields` fall entirely inside
+    this set (`updated_at` disregarded — so a pure-touch save is suppressed
+    too) do NOT auto-enqueue — for high-churn bookkeeping columns (e.g.
+    Property availability-freshness stamps) that are always written with
+    narrow `update_fields`. Full saves (`update_fields=None`) and creates
+    always enqueue; the failure mode is an extra idempotent push, never a
+    missed one — PROVIDED the caller keeps ignored fields out of
+    `build_payload`'s output (an ignored-but-pushed field would go stale in
+    Zoho until the next unrelated full save). Only affects the auto_push
+    post_save path; explicit `enqueue_zoho_push` calls always push.
     """
     if kind not in ZOHO_FLOW_KINDS:
         raise ValueError(f"Unknown Zoho Flow kind {kind!r}; expected one of {ZOHO_FLOW_KINDS}")
-    _registry[model] = ZohoFlowSpec(kind=kind, build_payload=build_payload, auto_push=auto_push)
+    field_names = {f.name for f in model._meta.concrete_fields} | {
+        f.attname for f in model._meta.concrete_fields
+    }
+    unknown = ignore_update_fields - field_names
+    if unknown:
+        # Fail fast at ready(): a typo here would silently disable the churn
+        # suppression (over-push is invisible by design).
+        raise ValueError(f"ignore_update_fields not on {model._meta.label}: {sorted(unknown)}")
+    _registry[model] = ZohoFlowSpec(
+        kind=kind,
+        build_payload=build_payload,
+        auto_push=auto_push,
+        ignore_update_fields=ignore_update_fields,
+    )
     if auto_push:
         models.signals.post_save.connect(
             _post_save_handler,
@@ -212,8 +238,19 @@ def enqueue_zoho_push(instance: models.Model) -> None:
 def _post_save_handler(
     sender: type[models.Model],
     instance: models.Model,
+    created: bool = False,
+    update_fields: frozenset[str] | None = None,
     **_: Any,
 ) -> None:
+    spec = _registry.get(sender)
+    if (
+        spec is not None
+        and spec.ignore_update_fields
+        and not created
+        and update_fields is not None
+        and set(update_fields) - {"updated_at"} <= spec.ignore_update_fields
+    ):
+        return
     enqueue_zoho_push(instance)
 
 

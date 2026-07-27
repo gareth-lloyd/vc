@@ -34,6 +34,7 @@ ENQUIRY_URL = "https://flow.zoho.example/enquiry"
 QUOTE_URL = "https://flow.zoho.example/quote"
 ALL_WEBHOOKS = {
     "contact": CONTACT_URL,
+    "villa": "",
     "enquiry": ENQUIRY_URL,
     "quote": QUOTE_URL,
     "booking": "",

@@ -33,7 +33,7 @@ from django.db import models, transaction
 if TYPE_CHECKING:
     from integrations.models import SyncRecord
 
-ZOHO_FLOW_KINDS = ("contact", "enquiry", "quote", "booking")
+ZOHO_FLOW_KINDS = ("contact", "villa", "enquiry", "quote", "booking")
 
 
 @dataclass(frozen=True)

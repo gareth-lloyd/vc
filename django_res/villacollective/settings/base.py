@@ -215,6 +215,7 @@ PAYMENT_WEBHOOK_SECRETS = {
 # disabled — see `integrations.services.zoho_flow`.
 ZOHO_FLOW_WEBHOOKS = {
     "contact": env.str("ZOHO_FLOW_WEBHOOK_CONTACT", default=""),
+    "villa": env.str("ZOHO_FLOW_WEBHOOK_VILLA", default=""),
     "enquiry": env.str("ZOHO_FLOW_WEBHOOK_ENQUIRY", default=""),
     "quote": env.str("ZOHO_FLOW_WEBHOOK_QUOTE", default=""),
     "booking": env.str("ZOHO_FLOW_WEBHOOK_BOOKING", default=""),

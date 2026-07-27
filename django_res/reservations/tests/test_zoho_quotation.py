@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from reservations.models import Enquiry, TermsVersion
 
 QUOTE_URL = "https://flow.zoho.example/quote"
-WEBHOOKS = {"contact": "", "enquiry": "", "quote": QUOTE_URL, "booking": ""}
+WEBHOOKS = {"contact": "", "villa": "", "enquiry": "", "quote": QUOTE_URL, "booking": ""}
 
 
 @pytest.fixture

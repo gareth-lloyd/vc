@@ -28,7 +28,7 @@ from reservations.models.enquiry import EnquiryNote
 from reservations.services.zoho_payload import build_enquiry_payload
 
 ENQUIRY_URL = "https://flow.zoho.example/enquiry"
-WEBHOOKS = {"contact": "", "enquiry": ENQUIRY_URL, "quote": "", "booking": ""}
+WEBHOOKS = {"contact": "", "villa": "", "enquiry": ENQUIRY_URL, "quote": "", "booking": ""}
 
 
 def _enquiry(**kwargs: Any) -> Enquiry:

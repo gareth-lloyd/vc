@@ -38,6 +38,7 @@ from integrations import tasks
 from integrations.enums import SyncDirection, SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from integrations.services.zoho_flow import (
+    ZOHO_FLOW_KINDS,
     ZohoFlowSpec,
     enqueue_zoho_push,
     get_zoho_spec,
@@ -50,7 +51,7 @@ from integrations.tasks import TransientPushError, push_pending, push_sync_recor
 from properties.models.property import Property
 
 CONTACT_URL = "https://flow.zoho.example/contact"
-WEBHOOKS = {"contact": CONTACT_URL, "enquiry": "", "quote": "", "booking": ""}
+WEBHOOKS = {"contact": CONTACT_URL, "villa": "", "enquiry": "", "quote": "", "booking": ""}
 
 
 def _person(**kwargs: Any) -> Person:
@@ -118,8 +119,18 @@ def test_register_and_lookup_spec() -> None:
 
 
 def test_register_rejects_unknown_kind() -> None:
-    with pytest.raises(ValueError, match="villa"):
-        register_zoho_flow(User, kind="villa", build_payload=lambda i: {}, auto_push=False)
+    with pytest.raises(ValueError, match="pigeon"):
+        register_zoho_flow(User, kind="pigeon", build_payload=lambda i: {}, auto_push=False)
+
+
+def test_villa_is_a_registrable_kind() -> None:
+    register_zoho_flow(User, kind="villa", build_payload=lambda i: {}, auto_push=False)
+    try:
+        spec = get_zoho_spec(User)
+        assert spec is not None
+        assert spec.kind == "villa"
+    finally:
+        unregister_zoho_flow(User)
 
 
 def test_unregistered_model_has_no_spec() -> None:
@@ -147,10 +158,15 @@ def test_test_settings_hard_disable_all_webhooks() -> None:
 
     assert settings.ZOHO_FLOW_WEBHOOKS == {
         "contact": "",
+        "villa": "",
         "enquiry": "",
         "quote": "",
         "booking": "",
     }
+    # Drift guard: `webhook_url` treats a missing key as "" (silently
+    # disabled), so a kind added to the tuple but forgotten in settings would
+    # be an invisible failure.
+    assert set(settings.ZOHO_FLOW_WEBHOOKS) == set(ZOHO_FLOW_KINDS)
 
 
 def test_httpx_logger_is_pinned_to_warning() -> None:

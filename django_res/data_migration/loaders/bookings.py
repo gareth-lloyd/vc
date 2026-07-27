@@ -182,6 +182,19 @@ class BookingLoader(BaseLoader):
             legacy_id=str(row["Id"]),
             defaults=defaults,
         )
+        # GAP-082: the Zoho booking payload's `booking_date` is `created_at`
+        # (the CRM's historic-import filter), so imported rows must carry the
+        # legacy creation date. `auto_now_add` ignores assignment on INSERT,
+        # so back-stamp via a queryset `.update()` (bypasses auto_now_add,
+        # fires no signals). SQL Server datetimes are naive → `make_aware`
+        # (USE_TZ, same as the integrations loader). Idempotent: re-runs
+        # rewrite the same value. NOTE a `--since` delta run skips unmodified
+        # rows — repairing earlier loads needs one FULL run (CUTOVER.md).
+        legacy_created = row.get("CreatedAt")
+        if legacy_created is not None:
+            if timezone.is_naive(legacy_created):
+                legacy_created = timezone.make_aware(legacy_created)
+            Booking.objects.filter(pk=booking.pk).update(created_at=legacy_created)
         # Loader is idempotent (upsert keyed on legacy_id), so the LEAD row
         # must be too: `get_or_create` on (booking, role=LEAD) reuses the
         # row a previous run already wrote and otherwise births it here so

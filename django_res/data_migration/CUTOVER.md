@@ -86,6 +86,14 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
   Like `rate_rule` it ignores `--since` and full-replaces its own
   `avail-*` slice per run.
 
+> **GAP-082 — booking `created_at` back-stamp:** `BookingLoader` back-stamps
+> `Booking.created_at` from legacy `CreatedAt` (the Zoho booking payload's
+> `booking_date`, the CRM's historic-import filter). A `--since` delta run
+> skips rows whose `UpdatedAt` did not advance, so bookings loaded **before**
+> this stamp existed keep their load-time `created_at`. Run one FULL booking
+> load (`loadlegacy booking`, no `--since`) before the production
+> `zoho_backfill --kinds booking`.
+
 ## 4b. Capture external IDs into `SyncRecord` (Zoho)
 
 This step **captures** the external ids Zoho already issued against legacy

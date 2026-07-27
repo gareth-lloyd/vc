@@ -13,6 +13,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
+from django.utils import timezone
 
 from data_migration.base import LoadReport
 from data_migration.loaders.bookings import BookingLoader
@@ -88,6 +89,57 @@ def test_booking_balance_due_at_absent_when_legacy_date_missing(seeded: Property
     booking = Booking.objects.get(legacy_id="7")
     assert booking.balance_due == Decimal("1400.00")
     assert booking.balance_due_at is None
+
+
+@pytest.mark.django_db
+def test_booking_created_at_backstamped_from_legacy(seeded: Property) -> None:
+    """`booking_date` in the Zoho booking payload is `created_at` (GAP-082) —
+    the historic-import filter — so imported rows must carry the legacy
+    creation date. `auto_now_add` ignores assignment, so the loader
+    back-stamps via a post-upsert queryset `.update()`; SQL Server datetimes
+    are naive → `make_aware` per loader precedent."""
+    report = LoadReport(loader="booking")
+    BookingLoader()._process_row(_row(CreatedAt=datetime(2019, 3, 4, 12, 30)), report)
+
+    booking = Booking.objects.get(legacy_id="7")
+    assert timezone.is_aware(booking.created_at)
+    assert booking.created_at == timezone.make_aware(datetime(2019, 3, 4, 12, 30))
+
+
+@pytest.mark.django_db
+def test_booking_created_at_backstamp_survives_rerun(seeded: Property) -> None:
+    report = LoadReport(loader="booking")
+    row = _row(CreatedAt=datetime(2019, 3, 4, 12, 30))
+    BookingLoader()._process_row(row, report)
+    BookingLoader()._process_row(row, report)
+
+    booking = Booking.objects.get(legacy_id="7")
+    assert booking.created_at == timezone.make_aware(datetime(2019, 3, 4, 12, 30))
+
+
+@pytest.mark.django_db
+def test_booking_created_at_repaired_by_full_rerun(seeded: Property) -> None:
+    """The CUTOVER-prescribed repair: a booking loaded BEFORE the back-stamp
+    existed (auto created_at) must get the legacy date on a later FULL run —
+    the stamp must stay unconditional, not created-only or changed-only."""
+    report = LoadReport(loader="booking")
+    BookingLoader()._process_row(_row(), report)  # pre-GAP-082 shape: no CreatedAt
+    BookingLoader()._process_row(_row(CreatedAt=datetime(2019, 3, 4, 12, 30)), report)
+
+    booking = Booking.objects.get(legacy_id="7")
+    assert booking.created_at == timezone.make_aware(datetime(2019, 3, 4, 12, 30))
+
+
+@pytest.mark.django_db
+def test_booking_created_at_keeps_auto_value_without_legacy(seeded: Property) -> None:
+    """The base `_row` has no CreatedAt — the auto_now_add value must
+    survive untouched (no NULL write, no epoch stamp)."""
+    before = timezone.now()
+    report = LoadReport(loader="booking")
+    BookingLoader()._process_row(_row(), report)
+
+    booking = Booking.objects.get(legacy_id="7")
+    assert booking.created_at >= before
 
 
 @pytest.mark.django_db

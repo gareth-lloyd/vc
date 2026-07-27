@@ -125,6 +125,49 @@ def test_pushes_kinds_in_dependency_order_and_records_sync_run(post_mock: mock.M
     assert SyncRecord.objects.count() == 6
 
 
+def test_villa_backfill_order_and_all_statuses(post_mock: mock.Mock) -> None:
+    """Villas push between contacts and enquiries (villa payloads nest person
+    RES_IDs; enquiry/quote payloads nest property RES_IDs), and EVERY property
+    status pushes — enquiries/quotes already nest archived-villa RES_IDs, so
+    excluding any status would leave dangling references (plan decision 7)."""
+    from properties.enums import PropertyStatus
+    from properties.factories import PropertyFactory
+
+    _person()
+    for status in PropertyStatus:
+        PropertyFactory(status=status)
+    enquiry = _enquiry(property=None)  # no extra property rows
+
+    villa_url = "https://flow.zoho.example/villa"
+    webhooks = {**ALL_WEBHOOKS, "villa": villa_url}
+    with override_settings(ZOHO_FLOW_WEBHOOKS=webhooks):
+        _run()
+
+    urls = _posted_urls(post_mock)
+    assert urls.count(villa_url) == len(PropertyStatus)
+    assert enquiry is not None
+    assert max(i for i, u in enumerate(urls) if u == CONTACT_URL) < min(
+        i for i, u in enumerate(urls) if u == villa_url
+    )
+    assert max(i for i, u in enumerate(urls) if u == villa_url) < min(
+        i for i, u in enumerate(urls) if u == ENQUIRY_URL
+    )
+
+
+def test_kinds_filter_villa_only(post_mock: mock.Mock) -> None:
+    from properties.factories import PropertyFactory
+
+    _person()
+    PropertyFactory()
+
+    villa_url = "https://flow.zoho.example/villa"
+    webhooks = {**ALL_WEBHOOKS, "villa": villa_url}
+    with override_settings(ZOHO_FLOW_WEBHOOKS=webhooks):
+        _run("--kinds", "villa")
+
+    assert _posted_urls(post_mock) == [villa_url]
+
+
 def test_failure_marks_run_partial_with_error_summary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -296,7 +339,7 @@ def test_kinds_filter_respected(post_mock: mock.Mock) -> None:
 
 def test_invalid_kind_rejected() -> None:
     with pytest.raises(CommandError):
-        _run("--kinds", "contact,villa")
+        _run("--kinds", "contact,pigeon")
 
 
 def test_unset_url_skips_kind_with_message(post_mock: mock.Mock) -> None:

@@ -1,15 +1,16 @@
 """`zoho_send_sample` — push one maximally-populated sample of each kind.
 
-Ops utility for exercising the GAP-081 payload contract against real Zoho
-Flow webhooks before the backfill: picks the richest contact / enquiry /
-quote (every FK and collection the payload builders traverse populated) and
-pushes each through the SAME production pipeline as live traffic —
+Ops utility for exercising the GAP-081/082 payload contracts against real
+Zoho Flow webhooks before the backfill: picks the richest contact / villa /
+enquiry / quote (every FK and collection the payload builders traverse
+populated) and pushes each through the SAME production pipeline as live traffic —
 `ensure_pending_record` + a synchronous `push_sync_record` call — so no
 Celery worker is needed and `SyncRecord` state updates identically.
 
-Contacts go first, and the enquiry's / quote's own person and agent are
-pushed too, so every RES_ID nested in the enquiry/quote payloads resolves to
-a contact the CRM side has already received.
+Contacts go first (including the villa's assigned persons and the enquiry's /
+quote's own person and agent), then villas (the picked one plus the
+enquiry's / quote-lines' own properties), so every RES_ID nested in the
+downstream payloads resolves to a record the CRM side has already received.
 
 Selection degrades gracefully: richness requirements are applied greedily in
 priority order, keeping each only if some row still satisfies it alongside
@@ -52,7 +53,7 @@ def _blank(value: Any) -> bool:
 
 class Command(BaseCommand):
     help = (
-        "Pick the richest contact/enquiry/quote (all payload FKs and "
+        "Pick the richest contact/villa/enquiry/quote (all payload FKs and "
         "collections populated, relaxing requirements if the data can't "
         "satisfy them) and push each synchronously to the Zoho Flow webhooks."
     )
@@ -67,7 +68,9 @@ class Command(BaseCommand):
     def handle(self, *args: Any, **options: Any) -> None:
         self.stdout.write(
             "webhook URLs configured: "
-            + ", ".join(f"{k}={bool(webhook_url(k))}" for k in ("contact", "enquiry", "quote"))
+            + ", ".join(
+                f"{k}={bool(webhook_url(k))}" for k in ("contact", "villa", "enquiry", "quote")
+            )
         )
 
         # The import spine forbids integrations → reservations, so the
@@ -76,6 +79,7 @@ class Command(BaseCommand):
         models_by_kind = {spec.kind: model for model, spec in registered_zoho_models().items()}
 
         person = self._pick_person()
+        villa = self._pick_villa(models_by_kind.get("villa"))
         enquiry = self._pick_enquiry(models_by_kind.get("enquiry"))
         quotation = self._pick_quotation(models_by_kind.get("quote"))
 
@@ -83,12 +87,22 @@ class Command(BaseCommand):
             self.stdout.write("dry run — nothing pushed")
             return
 
-        # Contacts first so the RES_IDs nested inside the enquiry/quote
-        # payloads already exist Zoho-side.
+        # Contacts first, then villas, so the RES_IDs nested inside the
+        # downstream payloads already exist Zoho-side.
+        villa_persons = (
+            [
+                a.contact
+                for a in villa.contact_assignments.all()
+                if a.contact is not None and a.contact.status != PersonStatus.ANONYMIZED
+            ]
+            if villa
+            else []
+        )
         contacts = {
             p.pk: p
             for p in (
                 person,
+                *villa_persons,
                 enquiry.person if enquiry else None,
                 enquiry.agent if enquiry else None,
                 quotation.person if quotation else None,
@@ -98,6 +112,22 @@ class Command(BaseCommand):
         }
         for contact in contacts.values():
             self._send(contact, "contact")
+        # The enquiry/quote payloads nest their own properties' RES_IDs — push
+        # those as villas too, not just the independently-picked richest one.
+        quote_line_properties = (
+            [line.property for line in quotation.lines.real()] if quotation else []
+        )
+        villas = {
+            v.pk: v
+            for v in (
+                villa,
+                enquiry.property if enquiry else None,
+                *quote_line_properties,
+            )
+            if v is not None
+        }
+        for villa_obj in villas.values():
+            self._send(villa_obj, "villa")
         self._send(enquiry, "enquiry")
         self._send(quotation, "quote")
 
@@ -193,6 +223,63 @@ class Command(BaseCommand):
             candidates,
             dropped,
             ["title", "address_line_1", "town", "post_code", "website_url", "legacy_id"],
+        )
+
+    def _pick_villa(self, model: type[models.Model] | None) -> Any:
+        if model is None:
+            self.stdout.write("[villa] no registered model — skipped")
+            return None
+        from accounts.enums import ContactRole
+
+        base = model._default_manager.select_related(
+            "category", "region__country", "location__country", "capacity"
+        ).prefetch_related("contact_assignments__contact", "rooms__beds")
+        requirements: list[Requirement] = [
+            ("location", lambda qs: qs.filter(location__isnull=False)),
+            ("capacity", lambda qs: qs.filter(capacity__isnull=False)),
+            (
+                "rooms",
+                lambda qs: qs.annotate(n_rooms=Count("rooms", distinct=True)).filter(n_rooms__gt=0),
+            ),
+            (
+                "features",
+                lambda qs: qs.annotate(n_features=Count("feature_links", distinct=True)).filter(
+                    n_features__gt=0
+                ),
+            ),
+            (
+                "owner_person",
+                lambda qs: qs.filter(
+                    contact_assignments__role=ContactRole.OWNER,
+                    contact_assignments__contact__isnull=False,
+                ),
+            ),
+            (
+                "management_org",
+                lambda qs: qs.filter(
+                    contact_assignments__role=ContactRole.MANAGEMENT_COMPANY,
+                    contact_assignments__organisation__isnull=False,
+                ),
+            ),
+            (
+                "images",
+                lambda qs: qs.annotate(n_images=Count("images", distinct=True)).filter(
+                    n_images__gt=0
+                ),
+            ),
+            ("room_beds", lambda qs: qs.filter(rooms__beds__isnull=False)),
+            (
+                "room_attributes",
+                lambda qs: qs.filter(rooms__attribute_links__isnull=False),
+            ),
+            ("coordinates", lambda qs: qs.filter(location__latitude__isnull=False)),
+        ]
+        candidates, dropped = self._candidates(base, requirements)
+        return self._pick(
+            "villa",
+            candidates,
+            dropped,
+            ["licence_number", "video_url", "legacy_id"],
         )
 
     def _pick_enquiry(self, model: type[models.Model] | None) -> Any:

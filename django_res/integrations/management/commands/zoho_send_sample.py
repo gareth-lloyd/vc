@@ -2,15 +2,22 @@
 
 Ops utility for exercising the GAP-081/082 payload contracts against real
 Zoho Flow webhooks before the backfill: picks the richest contact / villa /
-enquiry / quote (every FK and collection the payload builders traverse
-populated) and pushes each through the SAME production pipeline as live traffic —
-`ensure_pending_record` + a synchronous `push_sync_record` call — so no
-Celery worker is needed and `SyncRecord` state updates identically.
+enquiry / quote / booking (every FK and collection the payload builders
+traverse populated) and pushes each through the SAME production pipeline as
+live traffic — `ensure_pending_record` + a synchronous `push_sync_record`
+call — so no Celery worker is needed and `SyncRecord` state updates
+identically.
 
 Contacts go first (including the villa's assigned persons and the enquiry's /
-quote's own person and agent), then villas (the picked one plus the
-enquiry's / quote-lines' own properties), so every RES_ID nested in the
-downstream payloads resolves to a record the CRM side has already received.
+quote's / booking's own person and agent), then villas (the picked one plus
+the enquiry's / quote-lines' / booking's own properties), then enquiry /
+quote / booking, so every RES_ID nested in the downstream payloads resolves
+to a record the CRM side has already received. The booking's own quotation
+pushes as the quote kind only when sent/accepted with a real line — a
+deliberately conservative subset of the backfill's eligibility (which also
+counts expired/cancelled quotes carrying a QUOTE_SENT marker); a booking
+sampled off a quotation outside that subset nests a quote RES_ID this run
+leaves unresolved (`is_synthetic` flags only the legacy `booking-*` case).
 
 Selection degrades gracefully: richness requirements are applied greedily in
 priority order, keeping each only if some row still satisfies it alongside
@@ -32,6 +39,7 @@ from django.db.models import Count, QuerySet
 from accounts.enums import PersonStatus, PhoneLabel
 from accounts.models import Person
 from integrations.services.zoho_flow import (
+    ZOHO_FLOW_KINDS,
     ensure_pending_record,
     registered_zoho_models,
     webhook_url,
@@ -53,9 +61,10 @@ def _blank(value: Any) -> bool:
 
 class Command(BaseCommand):
     help = (
-        "Pick the richest contact/villa/enquiry/quote (all payload FKs and "
-        "collections populated, relaxing requirements if the data can't "
-        "satisfy them) and push each synchronously to the Zoho Flow webhooks."
+        "Pick the richest contact/villa/enquiry/quote/booking (all payload "
+        "FKs and collections populated, relaxing requirements if the data "
+        "can't satisfy them) and push each synchronously to the Zoho Flow "
+        "webhooks."
     )
 
     def add_arguments(self, parser: Any) -> None:
@@ -68,9 +77,7 @@ class Command(BaseCommand):
     def handle(self, *args: Any, **options: Any) -> None:
         self.stdout.write(
             "webhook URLs configured: "
-            + ", ".join(
-                f"{k}={bool(webhook_url(k))}" for k in ("contact", "villa", "enquiry", "quote")
-            )
+            + ", ".join(f"{k}={bool(webhook_url(k))}" for k in ZOHO_FLOW_KINDS)
         )
 
         # The import spine forbids integrations → reservations, so the
@@ -82,10 +89,23 @@ class Command(BaseCommand):
         villa = self._pick_villa(models_by_kind.get("villa"))
         enquiry = self._pick_enquiry(models_by_kind.get("enquiry"))
         quotation = self._pick_quotation(models_by_kind.get("quote"))
+        booking = self._pick_booking(models_by_kind.get("booking"))
 
         if options["dry_run"]:
             self.stdout.write("dry run — nothing pushed")
             return
+
+        booking_quotation = booking.quotation_line.quotation if booking else None
+        booking_enquiry = booking_quotation.enquiry if booking_quotation else None
+        # Quote-kind eligibility for the booking's own quotation (see module
+        # docstring): drafts and synthetic fill rows never push as quotes.
+        eligible_booking_quotation = (
+            booking_quotation
+            if booking_quotation is not None
+            and booking_quotation.status in ("sent", "accepted")
+            and booking_quotation.lines.real().exists()
+            else None
+        )
 
         # Contacts first, then villas, so the RES_IDs nested inside the
         # downstream payloads already exist Zoho-side.
@@ -107,15 +127,30 @@ class Command(BaseCommand):
                 enquiry.agent if enquiry else None,
                 quotation.person if quotation else None,
                 quotation.agent if quotation else None,
+                quotation.enquiry.person if quotation and quotation.enquiry else None,
+                quotation.enquiry.agent if quotation and quotation.enquiry else None,
+                booking.person if booking else None,
+                booking.agent if booking else None,
+                booking_enquiry.person if booking_enquiry else None,
+                booking_enquiry.agent if booking_enquiry else None,
+                # The eligible booking-quotation's own agent can differ from
+                # the booking's agent (it's a create-time parameter).
+                eligible_booking_quotation.agent if eligible_booking_quotation else None,
             )
-            if p is not None
+            if p is not None and p.status != PersonStatus.ANONYMIZED
         }
         for contact in contacts.values():
             self._send(contact, "contact")
-        # The enquiry/quote payloads nest their own properties' RES_IDs — push
-        # those as villas too, not just the independently-picked richest one.
+        # The enquiry/quote/booking payloads nest their own properties'
+        # RES_IDs — push those as villas too, not just the independently-
+        # picked richest one.
         quote_line_properties = (
             [line.property for line in quotation.lines.real()] if quotation else []
+        )
+        booking_quote_line_properties = (
+            [line.property for line in eligible_booking_quotation.lines.real()]
+            if eligible_booking_quotation
+            else []
         )
         villas = {
             v.pk: v
@@ -123,13 +158,31 @@ class Command(BaseCommand):
                 villa,
                 enquiry.property if enquiry else None,
                 *quote_line_properties,
+                booking.property if booking else None,
+                booking.quotation_line.property if booking else None,
+                *booking_quote_line_properties,
             )
             if v is not None
         }
         for villa_obj in villas.values():
             self._send(villa_obj, "villa")
-        self._send(enquiry, "enquiry")
-        self._send(quotation, "quote")
+        enquiries = {
+            e.pk: e
+            for e in (
+                enquiry,
+                quotation.enquiry if quotation else None,
+                booking_enquiry,
+            )
+            if e is not None
+        }
+        for enquiry_obj in enquiries.values() if enquiries else [None]:
+            self._send(enquiry_obj, "enquiry")
+        quotations = {q.pk: q for q in (quotation,) if q is not None}
+        if eligible_booking_quotation is not None:
+            quotations.setdefault(eligible_booking_quotation.pk, eligible_booking_quotation)
+        for quotation_obj in quotations.values() if quotations else [None]:
+            self._send(quotation_obj, "quote")
+        self._send(booking, "booking")
 
     # ── pickers ──────────────────────────────────────────────────────────
 
@@ -345,6 +398,44 @@ class Command(BaseCommand):
 
         candidates, dropped = self._candidates(base, requirements, post_filter=has_real_line)
         return self._pick("quote", candidates, dropped, ["number", "legacy_id"])
+
+    def _pick_booking(self, model: type[models.Model] | None) -> Any:
+        if model is None:
+            self.stdout.write("[booking] no registered model — skipped")
+            return None
+        # No terminal-failure statuses (never relaxed — a cancelled/expired/
+        # declined row is a poor first sample of the contract). Status/prefix
+        # literals are duck-typed strings, same as the quote picker.
+        base = (
+            model._default_manager.exclude(person__status=PersonStatus.ANONYMIZED)
+            .exclude(status__in=("cancelled", "expired", "declined"))
+            .select_related(
+                "person__agency",
+                "agent",
+                "assigned_to",
+                "property__region__country",
+                "quotation_line__quotation__enquiry",
+                "currency",
+                "terms_version",
+            )
+        )
+        requirements: list[Requirement] = [
+            # A real (non-booking-synthesised) quotation, so the nested quote
+            # RES_ID can resolve against a pushed quote record.
+            (
+                "real_quote",
+                lambda qs: qs.exclude(quotation_line__quotation__legacy_id__startswith="booking-"),
+            ),
+            (
+                "sent_quote",
+                lambda qs: qs.filter(quotation_line__quotation__status__in=("sent", "accepted")),
+            ),
+            ("agent", lambda qs: qs.filter(agent__isnull=False)),
+            ("assigned_to", lambda qs: qs.filter(assigned_to__isnull=False)),
+            ("property_region", lambda qs: qs.filter(property__region__isnull=False)),
+        ]
+        candidates, dropped = self._candidates(base, requirements)
+        return self._pick("booking", candidates, dropped, ["legacy_id"])
 
     # ── delivery ─────────────────────────────────────────────────────────
 

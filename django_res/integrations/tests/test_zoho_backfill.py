@@ -154,6 +154,85 @@ def test_villa_backfill_order_and_all_statuses(post_mock: mock.Mock) -> None:
     )
 
 
+def _booking(*, status: str | None = None, legacy_id: str | None = None) -> Any:
+    """An occupying booking with its full quotation graph (DRAFT quotation —
+    never quote-eligible, so booking tests don't leak quote pushes)."""
+    from pricing.models import Currency
+    from properties.factories import PropertyFactory
+    from properties.models import Property
+    from reservations.factories import make_occupying_booking
+
+    currency, _ = Currency.objects.get_or_create(
+        code="GBP", defaults={"name": "Pound sterling", "symbol": "£"}
+    )
+    terms = cast(TermsVersion, TermsVersionFactory(version=f"bk-{uuid.uuid4().hex[:12]}"))
+    booking = make_occupying_booking(
+        property=cast(Property, PropertyFactory()),
+        person=_person(),
+        currency=currency,
+        terms=terms,
+        date_from=timezone.now().date() + timedelta(days=30),
+        date_to=timezone.now().date() + timedelta(days=37),
+    )
+    if status is not None or legacy_id is not None:
+        from reservations.enums import BookingStatus
+
+        booking.status = status or booking.status
+        booking.legacy_id = legacy_id
+        if status == BookingStatus.CANCELLED.value:
+            booking.cancelled_at = timezone.now()  # CHECK: cancelled requires it
+        booking.save(update_fields=["status", "legacy_id", "cancelled_at", "updated_at"])
+    return booking
+
+
+def test_booking_backfill_all_statuses_and_order(post_mock: mock.Mock) -> None:
+    """Bookings push LAST (the payload nests contact/villa/enquiry/quote
+    RES_IDs) and in EVERY status — legacy imports rest in DRAFT by design and
+    a booking row is a commitment in any status (plan decision 7), unlike
+    never-sent draft quotes."""
+    from reservations.enums import BookingStatus
+
+    live = _booking()
+    resting_draft = _booking(status=BookingStatus.DRAFT.value, legacy_id="4711")
+    cancelled = _booking(status=BookingStatus.CANCELLED.value)
+    sent_quote = _quotation()  # quote-eligible, pins quote-before-booking order
+
+    booking_url = "https://flow.zoho.example/booking"
+    webhooks = {**ALL_WEBHOOKS, "booking": booking_url}
+    with override_settings(ZOHO_FLOW_WEBHOOKS=webhooks):
+        _run()
+
+    urls = _posted_urls(post_mock)
+    assert urls.count(booking_url) == 3
+    assert urls.count(QUOTE_URL) == 1
+    assert max(i for i, u in enumerate(urls) if u == QUOTE_URL) < min(
+        i for i, u in enumerate(urls) if u == booking_url
+    )
+    booking_ids = {
+        call.kwargs["json"]["RES_ID"]
+        for call in post_mock.call_args_list
+        if call.args[0] == booking_url
+    }
+    assert booking_ids == {live.pk, resting_draft.pk, cancelled.pk}
+    assert sent_quote.pk in {
+        call.kwargs["json"]["RES_ID"]
+        for call in post_mock.call_args_list
+        if call.args[0] == QUOTE_URL
+    }
+
+
+def test_kinds_filter_booking_only(post_mock: mock.Mock) -> None:
+    booking = _booking()
+
+    booking_url = "https://flow.zoho.example/booking"
+    webhooks = {**ALL_WEBHOOKS, "booking": booking_url}
+    with override_settings(ZOHO_FLOW_WEBHOOKS=webhooks):
+        _run("--kinds", "booking")
+
+    assert _posted_urls(post_mock) == [booking_url]
+    assert post_mock.call_args_list[0].kwargs["json"]["RES_ID"] == booking.pk
+
+
 def test_kinds_filter_villa_only(post_mock: mock.Mock) -> None:
     from properties.factories import PropertyFactory
 

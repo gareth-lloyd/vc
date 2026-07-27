@@ -1,5 +1,21 @@
 # GAP-082 — Zoho Flow villa push (descoped from GAP-081)
 
+> **✅ RESOLVED (2026-07-27)** — shipped on `main`, and **extended to include
+> the booking push** (stakeholder-call contract): villa kind (identity /
+> location / capacity / contacts-by-RES_ID / rooms / amenities — NO
+> availability or pricing, res stays sole source of truth) with
+> `ignore_update_fields` availability-churn suppression and child/M2M bump
+> receivers; booking kind (single upsert keyed on booking RES_ID, contact +
+> villa + quote + enquiry links, `line` in the exact quote-line shape,
+> `booking_date`, **`financials: null` placeholder — block content deferred
+> to the next Limitless call**, no delete by agreement); backfill order
+> contact → villa → enquiry → quote → booking; send-sample pickers for both;
+> `BookingLoader` back-stamps `created_at` from legacy `CreatedAt` (a FULL
+> booking load is required before the production booking backfill —
+> `data_migration/CUTOVER.md`). Manual post-merge: set
+> `ZOHO_FLOW_WEBHOOK_VILLA` / `ZOHO_FLOW_WEBHOOK_BOOKING` env vars, run
+> `zoho_send_sample`, then the backfill.
+
 - **Severity:** Gap
 - **Source:** Descoped from [GAP-081](done/gap-081-zoho-flow-outbound-push.md)
   by user decision (2026-07-23) when the Limitless sandbox endpoints landed —

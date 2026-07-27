@@ -16,7 +16,9 @@ from unittest import mock
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 
 from accounts.enums import ContactRole, OrgType
 from accounts.factories import OrganisationFactory, PersonFactory, UserFactory
@@ -24,7 +26,7 @@ from accounts.models import Organisation, Person, User
 from integrations import tasks
 from integrations.enums import SyncProvider, SyncStatus
 from integrations.models import SyncRecord
-from integrations.services.zoho_flow import get_zoho_spec
+from integrations.services.zoho_flow import get_zoho_spec, suppress_zoho_push
 from properties.enums import BedSize, PropertyStatus
 from properties.factories import (
     FeatureFactory,
@@ -35,6 +37,7 @@ from properties.factories import (
 )
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.features import Feature, PropertyFeature
+from properties.models.location import PropertyLocation
 from properties.models.property import Property
 from properties.models.rooms import Room, RoomAttribute, RoomAttributeAssignment
 from properties.services.availability import PropertyAvailabilityService
@@ -482,5 +485,218 @@ def test_availability_stamp_saves_do_not_enqueue(delay_mock: mock.Mock) -> None:
 def test_unset_url_is_full_noop(delay_mock: mock.Mock) -> None:
     _property()
 
+    assert SyncRecord.objects.count() == 0
+    delay_mock.assert_not_called()
+
+
+# --- child-row bumps (Unit 4) ---------------------------------------------
+
+
+def _make_feature_link(prop: Property) -> Any:
+    return PropertyFeature.objects.create(property=prop, feature=_feature())
+
+
+def _make_contact_assignment(prop: Property) -> Any:
+    return _assignment(property=prop, contact=PersonFactory(), role=ContactRole.OWNER)
+
+
+def _get_location(prop: Property) -> Any:
+    return prop.location
+
+
+def _get_capacity(prop: Property) -> Any:
+    return prop.capacity
+
+
+def _make_room(prop: Property) -> Any:
+    return RoomFactory(property=prop)
+
+
+def _make_beds(prop: Property) -> Any:
+    return cast(Room, RoomFactory(property=prop)).beds
+
+
+def _make_room_attribute_link(prop: Property) -> Any:
+    room = cast(Room, RoomFactory(property=prop))
+    attribute = cast(RoomAttribute, RoomAttributeFactory())
+    return RoomAttributeAssignment.objects.create(room=room, attribute=attribute)
+
+
+def _get_image(prop: Property) -> Any:
+    return prop.images.get()
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately", "villa_webhook")
+@pytest.mark.parametrize(
+    "make_child",
+    [
+        _make_feature_link,
+        _make_contact_assignment,
+        _get_location,
+        _get_capacity,
+        _make_room,
+        _make_beds,
+        _make_room_attribute_link,
+        _get_image,
+    ],
+    ids=[
+        "PropertyFeature",
+        "PropertyContactAssignment",
+        "PropertyLocation",
+        "PropertyCapacity",
+        "Room",
+        "RoomBeds",
+        "RoomAttributeAssignment",
+        "PropertyImage",
+    ],
+)
+def test_child_save_and_delete_bump_parent(make_child: Any, delay_mock: mock.Mock) -> None:
+    prop = _property()
+    child = make_child(prop)
+    record = _record_for(prop)
+    _mark_in_sync(record)
+    delay_mock.reset_mock()
+
+    child.save()
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+    delay_mock.assert_called_once()  # bump-without-dispatch would strand delivery on the sweep
+
+    _mark_in_sync(record)
+    delay_mock.reset_mock()
+    child.delete()
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+    delay_mock.assert_called_once()
+    assert SyncRecord.objects.filter(content_type=_property_ct()).count() == 1
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately", "villa_webhook")
+def test_features_m2m_set_remove_clear_bump_parent(delay_mock: mock.Mock) -> None:
+    """`Property.features.set()` additions ride `bulk_create` (no per-row
+    `post_save`) — only `m2m_changed` covers them. Removals DO also fire
+    per-row `post_delete` (connected receivers disable fast-delete), so the
+    remove/clear legs here pass through either path; the add leg is the one
+    that truly needs the m2m handler."""
+    prop = _property()
+    pool = _feature()
+    wifi = _feature()
+    record = _record_for(prop)
+    _mark_in_sync(record)
+
+    prop.features.set([pool, wifi])
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+
+    _mark_in_sync(record)
+    prop.features.set([pool])  # the post_remove leg
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+
+    _mark_in_sync(record)
+    prop.features.clear()  # the post_clear leg
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately", "villa_webhook")
+def test_features_reverse_m2m_write_does_not_bump(delay_mock: mock.Mock) -> None:
+    """`feature.properties.add(...)` (reverse side) is deliberately skipped —
+    no codebase writer uses the reverse manager; pin the skip so the handler
+    comment stays honest."""
+    prop = _property()
+    feature = _feature()
+    record = _record_for(prop)
+    _mark_in_sync(record)
+    delay_mock.reset_mock()
+
+    feature.properties.add(prop)
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.IN_SYNC
+    delay_mock.assert_not_called()
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately", "villa_webhook")
+def test_property_cascade_delete_is_benign(delay_mock: mock.Mock) -> None:
+    """Deleting a villa cascades every child; mid-cascade bumps must not blow
+    up on the vanishing parent, and the reaper clears the villa's records."""
+    prop = _property()
+    room = cast(Room, RoomFactory(property=prop))
+    RoomAttributeAssignment.objects.create(
+        room=room, attribute=cast(RoomAttribute, RoomAttributeFactory())
+    )
+    PropertyFeature.objects.create(property=prop, feature=_feature())
+    _assignment(property=prop, contact=PersonFactory(), role=ContactRole.OWNER)
+    record = _record_for(prop)
+    _mark_in_sync(record)
+    delay_mock.reset_mock()
+
+    prop.delete()
+
+    assert not SyncRecord.objects.filter(content_type=_property_ct()).exists()
+    # N child bumps must collapse to ONE dispatch via the PENDING dedupe —
+    # each extra .delay would post-commit POST a dead record.
+    assert delay_mock.call_count == 1
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately", "villa_webhook")
+def test_room_reorder_endpoint_bumps_villa(
+    delay_mock: mock.Mock,
+    api_client: Any,
+    staff: User,
+) -> None:
+    """The reorder view writes via `queryset.update()` — no post_save — so it
+    enqueues the villa explicitly; room order is embedded in the payload."""
+    prop = _property()
+    room_a = cast(Room, RoomFactory(property=prop, sort_order=0))
+    room_b = cast(Room, RoomFactory(property=prop, sort_order=1))
+    record = _record_for(prop)
+    _mark_in_sync(record)
+    delay_mock.reset_mock()
+    api_client.force_authenticate(staff)
+
+    response = api_client.post(
+        f"/api/v1/properties/{prop.pk}/rooms:reorder",
+        {"room_ids": [room_b.pk, room_a.pk]},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+    delay_mock.assert_called_once()
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately", "villa_webhook")
+def test_suppressed_child_bump_is_noop_without_parent_select(delay_mock: mock.Mock) -> None:
+    prop = _property()
+    # Fresh fetch: the reverse one-to-one accessor would have pre-cached the
+    # parent, hiding an unwanted SELECT from the query capture.
+    location = PropertyLocation.objects.get(pk=prop.pk)
+    record = _record_for(prop)
+    _mark_in_sync(record)
+    delay_mock.reset_mock()
+
+    with suppress_zoho_push(), CaptureQueriesContext(connection) as ctx:
+        location.save()
+
+    assert not [q for q in ctx.captured_queries if '"properties_property"' in q["sql"]]
+    record.refresh_from_db()
+    assert record.status == SyncStatus.IN_SYNC
+    delay_mock.assert_not_called()
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately")
+def test_unset_url_child_bump_is_noop_without_parent_select(delay_mock: mock.Mock) -> None:
+    prop = _property()  # no webhook → no record for the create either
+    location = PropertyLocation.objects.get(pk=prop.pk)
+
+    with CaptureQueriesContext(connection) as ctx:
+        location.save()
+
+    assert not [q for q in ctx.captured_queries if '"properties_property"' in q["sql"]]
     assert SyncRecord.objects.count() == 0
     delay_mock.assert_not_called()

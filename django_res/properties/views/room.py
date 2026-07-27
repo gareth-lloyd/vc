@@ -17,6 +17,7 @@ from core.api import (
     ConfigurablePageSizePagination,
     IsReservationsWriter,
 )
+from integrations.services.zoho_flow import enqueue_zoho_push
 from properties.models import Property, Room, RoomAttribute, RoomAttributeAssignment
 from properties.serializers import RoomAttributeSerializer, RoomSerializer
 from properties.services.features import recompute_derived_features
@@ -105,6 +106,12 @@ class PropertyRoomReorderView(APIView):
         with transaction.atomic():
             for position, room_id in enumerate(ids):
                 Room.objects.filter(pk=room_id, property_id=property_id).update(sort_order=position)
+            # queryset.update() fires no post_save, so the villa child-bump
+            # receivers never see a reorder — yet the Zoho payload embeds
+            # room order. Bump the parent explicitly.
+            prop = Property.objects.filter(pk=property_id).first()
+            if prop is not None:
+                enqueue_zoho_push(prop)
         return Response(RoomSerializer(_room_queryset(property_id), many=True).data)
 
 

@@ -19,6 +19,13 @@ Last_Activity_Time→`created_at`/`updated_at`.
 Deliberately NO availability or pricing data — res stays the sole source of
 truth for both; the Zoho record is for segmentation/reporting only.
 
+Embedded copies of catalog/related rows (feature + room-attribute names,
+category, region/country, organisation details, person summaries) refresh
+only when the villa itself next pushes — a catalog rename does NOT fan out
+re-pushes to every villa embedding it. Accepted trade-off for
+segmentation-only data; person/organisation records push their own `contact`
+kind and stay current there.
+
 `_iso`/`_person_summary`/`_region_payload` are duplicated byte-identical from
 `reservations/services/zoho_payload.py` (the established cross-app pattern —
 the import spine forbids properties importing reservations).

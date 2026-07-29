@@ -138,6 +138,17 @@ def test_multiple_region_ids_are_preserved_not_dropped() -> None:
     assert "[regions: 9,10]" in enquiry.inbound_message
 
 
+def test_null_region_id_entries_are_tolerated() -> None:
+    # The WP contact + wishlist forms have no RegionIds input; the theme's
+    # ajax handler wraps the missing key into array(null), so the wire shape
+    # is "RegionIds": [null]. Must behave like the "0" sentinel: no region,
+    # no leftover suffix, lead still created.
+    enquiry = _create({"Email": "x@example.com", "RegionIds": [None]})
+
+    assert enquiry.region is None
+    assert "[regions:" not in enquiry.inbound_message
+
+
 def test_wide_flexibility_clamps_to_model_max_and_preserves_raw() -> None:
     enquiry = _create({"Email": "x@example.com", "EnquireDateType": 7})
 

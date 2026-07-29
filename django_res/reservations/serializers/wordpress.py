@@ -30,8 +30,10 @@ class WordPressEnquirySerializer(serializers.Serializer):
     CountryIds = serializers.CharField(required=False, allow_blank=True, max_length=1024)
     Countries = serializers.CharField(required=False, allow_blank=True, max_length=1024)
     Regions = serializers.CharField(required=False, allow_blank=True, max_length=1024)
+    # allow_null: the contact + wishlist forms have no RegionIds input, and the
+    # theme's ajax handler wraps the missing key into array(null) on the wire.
     RegionIds = serializers.ListField(
-        child=serializers.IntegerField(), required=False, allow_empty=True
+        child=serializers.IntegerField(allow_null=True), required=False, allow_empty=True
     )
 
     EnquireDateType = serializers.IntegerField(required=False, allow_null=True)

@@ -84,52 +84,23 @@ The enquiry POST lives in the theme, wired as an admin-ajax action:
 
 ### Exact change for the WP developer (Mojo)
 
-In `wp-config.php` (values delivered over a secure channel, never committed):
+**Single source of truth: the handoff package at
+[`wp-enquiry-handoff/`](wp-enquiry-handoff/)** — full modified copies of the
+theme's `api.php` + `functions.php`, `enquiry-endpoint.patch` (verified to
+apply against the received source and reproduce the drop-in copies exactly),
+a separate `optional-tls-fix.patch` for `post_api_call`'s payment-flow
+`sslverify => false` (cert caveat inside), and a `README.md` for Mojo with
+the apply options, both wp-config constant sets (dev site → staging
+URL/token; live → production values), the dev-site-first test procedure,
+and rollback.
 
-```php
-define('VC_RES_ENQUIRY_URL', 'https://<django-host>/api/wordpress/enquiries');
-define('VC_RES_API_TOKEN', '<token from bootstrap_wordpress_user>');
-```
-
-New function (theme `api.php`) — note: no `sslverify` override, `Token` auth,
-201 + `reference` as the success signal:
-
-```php
-function post_enquiry_to_vc($data)
-{
-    $response = wp_remote_post(VC_RES_ENQUIRY_URL, array(
-        'body' => $data,
-        'headers' => array(
-            'Content-Type' => 'application/json',
-            'Authorization' => 'Token ' . VC_RES_API_TOKEN,
-        ),
-    ));
-    if (is_wp_error($response)) {
-        return false;
-    }
-    $code = wp_remote_retrieve_response_code($response);
-    $body = json_decode(wp_remote_retrieve_body($response));
-    return ($code === 201 && !empty($body->reference)) ? $body->reference : false;
-}
-```
-
-In `ajax_enquire_record()` replace the `Properties/PostEnquire` +
-`post_api_call` + `Status` check with:
-
-```php
-$reference = post_enquiry_to_vc($post_data);
-if ($reference !== false) {
-    $status = true;
-    $message = "Your enquiry has been sent successfully";
-} else {
-    // existing error-mail fallback unchanged
-}
-```
-
-Everything else (local `wp_villa_enquiries` save, error-mail fallback, the
-form itself) stays as is. Separately flag to Mojo: `post_api_call`'s
-`'sslverify' => false` also disables TLS verification on the **payment**
-posts — worth fixing independently of this cutover.
+The shipped code goes beyond the earlier inline sketch: `defined()` guard on
+the wp-config constants (missing config degrades to the error-mail path, no
+fatal), 30s timeout (Render cold start), failure diagnostics to `error_log`
+**and** the theme's `my-custom-log.json`, and a `RegionIds` sentinel default
+for the contact/wishlist forms (they have no region input; the old code sent
+`[null]`, which the backend now also tolerates server-side). Do not
+re-derive the PHP from this doc — hand over the folder.
 
 ## Smoke test (staging)
 
@@ -151,9 +122,10 @@ curl -sS -X POST https://<staging-host>/api/wordpress/enquiries \
 > passes there, the same change + wp-config constants are copied to live at
 > cutover (steps 1 and 4 below run against dev, step 5 is the live copy).
 
-1. WP developer applies the exact change above (dedicated function; do not
-   touch `post_api_call` or `API_SITE_URL`). Source received + verified
-   2026-07-27.
+1. Hand Mojo the [`wp-enquiry-handoff/`](wp-enquiry-handoff/) package; they
+   apply it (drop-in copies or patch — dedicated function; `post_api_call`
+   and `API_SITE_URL` untouched). Source received + verified 2026-07-27;
+   package built 2026-07-29.
 2. `./manage.py bootstrap_wordpress_user` on production; copy the token to
    `wp-config.php` (secure channel).
 3. Ensure `ZOHO_FLOW_WEBHOOK_ENQUIRY` is set in the Django environment if

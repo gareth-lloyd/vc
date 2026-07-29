@@ -142,6 +142,16 @@ def test_repeat_payload_replays_without_a_duplicate_lead(wp_client: APIClient) -
     assert IntegrationInboundCall.objects.count() == 1
 
 
+def test_contact_form_null_region_ids_is_201(wp_client: APIClient) -> None:
+    # The WP contact + wishlist forms have no RegionIds input; the theme's
+    # ajax handler sends "RegionIds": [null]. Must not 400 the lead.
+    response = wp_client.post(_URL, {**_PAYLOAD, "RegionIds": [None]}, format="json")
+
+    assert response.status_code == 201
+    enquiry = Enquiry.objects.get()
+    assert enquiry.region is None
+
+
 def test_invalid_types_are_rejected_and_nothing_recorded(wp_client: APIClient) -> None:
     response = wp_client.post(_URL, {"FromDate": "not-a-date"}, format="json")
 

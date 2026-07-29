@@ -1,0 +1,98 @@
+diff -ruN a/api.php b/api.php
+--- a/api.php	2026-07-29 16:35:27
++++ b/api.php	2026-07-29 16:36:00
+@@ -57,6 +57,48 @@
+ 	return $response_data;
+ }
+ 
++// Post enquiry to the new Villa Collective reservations system (Django).
++// Success = HTTP 201 with a {"reference": "E..."} body; retried duplicates
++// within the hour replay the same 201, so a resubmit is safe. Deliberately
++// NOT using post_api_call: that helper is shared by the payment flows still
++// pointed at the legacy system, only accepts HTTP 200, and disables TLS
++// verification.
++function post_enquiry_to_vc($data)
++{
++	if (!defined('VC_RES_ENQUIRY_URL') || !defined('VC_RES_API_TOKEN')) {
++		error_log('Villa enquiry: VC_RES_ENQUIRY_URL / VC_RES_API_TOKEN not defined in wp-config.php');
++		return false;
++	}
++
++	$response = wp_remote_post(VC_RES_ENQUIRY_URL, array(
++		'body' => $data,
++		'timeout' => 30,
++		'headers' => array(
++			'Content-Type' => 'application/json',
++			'Authorization' => 'Token ' . VC_RES_API_TOKEN,
++		),
++	));
++
++	if (is_wp_error($response)) {
++		error_log('Villa enquiry: ' . $response->get_error_message());
++		return false;
++	}
++
++	$code = wp_remote_retrieve_response_code($response);
++	$raw_body = wp_remote_retrieve_body($response);
++	$body = json_decode($raw_body);
++
++	if ($code == 201 && !empty($body->reference)) {
++		return $body->reference;
++	}
++
++	error_log('Villa enquiry: unexpected response ' . $code . ' ' . $raw_body);
++	if (function_exists('write_json_to_log')) {
++		write_json_to_log(['timestamp' => current_time('mysql'), 'event' => 'vc_enquiry_failed', 'meta' => ['code' => $code, 'body' => $raw_body]]);
++	}
++	return false;
++}
++
+ /************************************ Sync Country Start ***************************************/
+ add_action('rest_api_init', 'wp_sync_country');
+ 
+diff -ruN a/functions.php b/functions.php
+--- a/functions.php	2026-07-29 16:35:27
++++ b/functions.php	2026-07-29 16:36:00
+@@ -546,8 +546,11 @@
+ 		$_POST['CountryIds'] = "";
+ 	}
+ 
+-	// Region Ids
+-	//$_POST['RegionIds'] = !empty($_POST['RegionIds']) ? $_POST['RegionIds'] : "";
++	// Region Ids (contact + wishlist forms have no RegionIds input;
++	// default to the "none selected" sentinel instead of array(null))
++	if (!isset($_POST['RegionIds'])) {
++		$_POST['RegionIds'] = array("0");
++	}
+ 	$_POST['RegionIds'] = is_array($_POST['RegionIds']) ? $_POST['RegionIds'] : array($_POST['RegionIds']);
+ 
+ 	unset($_POST['week_range']);
+@@ -597,14 +600,11 @@
+ 		   END SAVE TO DATABASE
+ 		=================================== */
+ 
+-		$url = "Properties/PostEnquire";
+-		$response_data = post_api_call($url, $post_data);
+-		if ((isset($response_data->Status) && $response_data->Status == true) || (isset($response_data->status) && $response_data->status == true)) {
++		$reference = post_enquiry_to_vc($post_data);
++		if ($reference !== false) {
+ 			$status = true;
+ 			$message = "Your enquiry has been sent successfully";
+ 		} else {
+-			// $message = $response_data->Data;
+-			// Custom fallback message instead of null/empty API error
+ 			// Send error mail
+ 			$to = array(
+ 				"connectusdemo12@gmail.com",
+@@ -627,9 +627,9 @@
+ 			);
+ 
+ 			wp_mail($to, $subject, $body, $headers);
+-			$message = !empty($response_data->Data) ? $response_data->Data : "There is an issue with our form, please email us directly on info@villacollective.com with your enquiry.";
++			$message = "There is an issue with our form, please email us directly on info@villacollective.com with your enquiry.";
+ 		}
+-		write_json_to_log(['timestamp' => current_time('mysql'), 'user_id'   => get_current_user_id(), 'event'     => 'custom_action_triggered', 'meta'      => ['key' => json_encode($response_data)]]);
++		write_json_to_log(['timestamp' => current_time('mysql'), 'user_id'   => get_current_user_id(), 'event'     => 'custom_action_triggered', 'meta'      => ['key' => json_encode(['reference' => $reference])]]);
+ 	}
+ 
+ 	echo json_encode(['msg' => $message, 'status' => $status]);

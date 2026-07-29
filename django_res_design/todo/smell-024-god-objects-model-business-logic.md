@@ -2,10 +2,11 @@
 
 - **Severity:** 🟡 Smell
 - **Source:** the 2026-07-02 backend complexity audit (oversized modules / logic in the wrong layer)
-- **Files:** `reservations/models/booking.py` (913 lines — esp. `_rerun_pricing`
-  `:500–523`, `modify_dates`/`modify_guests` `:541–669`, confirmation-email
-  dispatch `:699–725`), `reservations/views/quotation.py:405–430`
-  (`perform_update`), `:261–331` (`convert`), `:222–259` (`duplicate`),
+- **Files:** `reservations/models/booking.py` (955 lines as of 2026-07-29 — esp.
+  `_rerun_pricing`, `modify_dates`/`modify_guests`, confirmation-email
+  dispatch), `reservations/views/quotation.py`
+  (`perform_update` ~`:387`, `convert` ~`:244`; `duplicate` no longer inline —
+  see the 2026-07-29 note below),
   `pricing/services/engine.py:86–374` (`PricingEngine.quote`, ~270 lines +
   52-line inline breakdown dict `:302–354`),
   `reservations/services/stay_options.py` (554 lines;
@@ -26,10 +27,11 @@ Business logic has accreted in layers CLAUDE.md reserves for other roles:
 - **Orchestration in the quotation viewset.** `perform_update`
   (`quotation.py:405–430`) hand-codes save-before-reprice ordering, currency
   re-defaulting, pin/unpin, reprice, then hold relocation; `convert`
-  (`:261–331`) runs accept+booking-create with inline race recovery;
-  `duplicate` (`:222–259`) deep-clones header+lines inline — all recipes the
-  vertical-layering contract puts in `services/`. (Overlaps SMELL-009's clone
-  finding.)
+  (`:261–331`) runs accept+booking-create with inline race recovery — recipes
+  the vertical-layering contract puts in `services/`. *(2026-07-29: the third
+  example struck — ~~`duplicate` deep-clones header+lines inline~~ was fixed
+  by SMELL-009, the view now delegates to `QuotationService.duplicate`,
+  `quotation.py:237`.)*
 - **Oversized methods.** `PricingEngine.quote` is one ~270-line method ending
   in a 52-line breakdown dict that interleaves money, provenance, and a UI
   badge; `StayOptionsService` (554 lines) duplicates the Q-013
@@ -53,8 +55,8 @@ app is touched, not as one big-bang:
 - Move `modify_dates`/`modify_guests`/`_rerun_pricing`/reference derivation off
   `Booking` into `BookingService`; leave the model = fields + the transition
   primitive (see BUG-015 / Q-024).
-- Push `perform_update`'s reprice/hold recipe, `convert`, and `duplicate` into
-  `QuotationService` (folds into SMELL-009).
+- Push `perform_update`'s reprice/hold recipe and `convert` into
+  `QuotationService` (`duplicate` already extracted there by SMELL-009).
 - Split `PricingEngine.quote` into `_price_nights(...)` and
   `_build_breakdown(...)`; leave `quote` a thin orchestrator. Centralise the
   Q-013 error-shaping in `stay_options` into one helper.

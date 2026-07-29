@@ -2,373 +2,93 @@
 
 - **Severity:** Gap (frontend + backend) — tracker
 - **Source:** stakeholder-driven parity review of the enquiry→quotation
-  flow against legacy `ResSystem/` (the combined `Booking.razor` screen —
-  the wrong baseline; see the ⚠️ correction in Context below),
-  plus a second round of stakeholder UX feedback (2026-06-08) — the "spine
-  UX overhaul" program below.
-- **Key files:**
-  - `frontend/src/features/quotations/` (builder, detail, send dialog)
-  - `frontend/src/features/enquiries/` (list, detail layout,
-    `EnquiryFormDialog`, `tabs/ActivityTab`, `tabs/NotesTab`)
-  - `frontend/src/components/layout/Sidebar.tsx` (nav items)
-  - `frontend/src/features/contacts/components/ContactPicker.tsx` +
-    `useSearchContacts` (template for the new `GuestPicker`)
-  - `django_res/reservations/models/{quotation,guest,enquiry}.py`
-  - `django_res/reservations/serializers/enquiry.py`,
-    `views/guest.py`, `core/fields.py` (`CIEmailField`),
-    `reservations/apps.py` (AuditLog)
-  - Legacy reference: `ResSystem/NewResSystem/Pages/Bookings/Booking.razor`,
-    `ResSystem/Database/Data/TblVillaQuotationMaster.cs`
+  flow against legacy `ResSystem/` (baseline corrected 2026-07-02 by
+  GAP-010: legacy was a 4-screen flow, not the single `Booking.razor`
+  workspace; see
+  [`../legacy/quote-enquiry-reference.md`](../legacy/quote-enquiry-reference.md)),
+  plus the 2026-06-08 stakeholder UX feedback round (the "spine UX
+  overhaul", shipped — see the prune note).
+- **Key files (for the surviving items):**
+  - `frontend/src/features/quotations/components/` — `SendPreviewDialog`
+    (auto-hold checkbox home), `QuoteResultLine.tsx` (availability badges)
+  - `frontend/src/features/quotations/hooks.ts:41,62–66` — the 50-line cap
+  - `django_res/reservations/models/quotation.py:260–261`
+    (`QuotationLine.adults`/`children` — TBC mode)
+  - `django_res/reservations/services/quotations.py:144`
+    (`HoldService.place` — the existing hold path)
 
-## Context — the one-screen → three-stage split
-
-> ⚠️ **Baseline corrected (2026-07-02, GAP-010).** The premise below is wrong: legacy was a
-> **4-screen flow**, not this single `Booking.razor` workspace. The concrete findings below mostly
-> survive (incl. preview-before-send, imagery, copy-to-Outlook, per-line discount, inclusions)
-> because `Booking.razor` is a component-sharing *sibling* — but the "one screen → three stages"
-> rationale does not. See
-> [`../workflows/legacy-quote-enquiry-reference.md`](../legacy/quote-enquiry-reference.md) §3.2/§4.
-
-Legacy `Booking.razor` (1,151 lines) is a single combined workspace:
-enquiry capture + quote pricing + full payment schedule + concierge +
-owner details + email, all at once. The rebuild deliberately splits this
-into **enquiry → quotation → booking** stages (design improvement #7).
-That split is the root cause of most "missing" findings: several things
-the operator did *at quote time* in legacy now live one stage later, on
-the booking.
-
-> ℹ️ **Note (2026-06-18) — unified `Person` (GAP-045).** The planned
-> `GuestPicker` and the agent `ContactPicker` collapse into **one reusable
-> `Person` picker** (filtered by capacity), and the rich client detail (tags /
-> connected contacts / history, GAP-042) becomes reachable from the quote
-> builder — the owner's "same contact interface replicated across quoting" ask.
-
-## Resolved by stakeholder decision (NOT gaps — record only)
-
-- **Payment schedule at quote time → keep deferred to booking.** Legacy
-  showed deposit / balance / security-deposit, deposit-override % (10–80%),
-  editable balance-due-date, and CC-Pre-Auth vs Bank-Transfer method on
-  the quote screen (`Booking.razor:298–343`). These fields live on the
-  `Booking` model (`booking.py:89–92`) and the quote stays price-only.
-  **Decision (2026-06-02): accepted as designed.** No indicative schedule
-  on the quote.
-- **Concierge → booking-only.** Legacy let operators build concierge
-  line-items on the quote screen (`Booking.razor:389–449`). The rebuild's
-  concierge system is a booking tab
-  (`features/bookings/tabs/ConciergeTab.tsx`, `reservations/models/concierge.py`).
-  **Decision (2026-06-02): accepted; no quote-time concierge.**
-
-## Foundation correctness gaps (found while grounding the parity work)
-
-Two bugs sat *underneath* the cosmetic parity gaps; the parity work would have
-sat on sand without them. Both are now fixed on branch
-`gap-005-quotation-flow-parity` (Phase 0 of the program of work).
-
-- **F1 — API-created quotation lines were never priced.**
-  `QuotationLineViewSet.perform_create` only called `serializer.save()`; there
-  was no pricing hook on `QuotationLine` and no signal, so lines saved via
-  `POST /quotations/{id}/lines` (then the builder's save path; the builder
-  now saves atomically via nested `lines` on `POST /quotations`) landed with
-  `total=0` and an empty `pricing_snapshot`. Only
-  `QuotationService.create_from_enquiry` priced correctly, which masked the bug
-  in `seed_dev` data. **Fix:** extracted `QuotationService.price_line` and call
-  it from `perform_create`/`perform_update` (non-manual lines), under
-  `select_for_update` per [FG-006](done/fg-006-modify-without-select-for-update.md).
-- **F2 — The quotation email was a content-less stub.**
-  `quotation_sent_handler` passed only guest/agent/reference (and never the
-  `{{ property_name }}` the template referenced); the MJML body had no line
-  items, dates, prices, or terms. Guests received an email that didn't contain
-  the quote. **Fix:** new shared render seam
-  `reservations/services/quotation_render.py`
-  (`build_quotation_context` / `render_quotation_html`) now backs the email,
-  the `:preview` endpoint, and copy-to-clipboard from one source of truth.
-
-## Open implementation gaps (design says yes, code says no)
-
-Priority order below reflects operator-pain / spec-commitment.
-
-> **Implementation status (branch `gap-005-quotation-flow-parity`):**
-> ✅ done — #1 preview-before-send, #2 copy-to-Outlook, #4 imagery,
-> #5 per-line discount, #6 inclusions, #7 price-override-with-reason.
-> ⏸ deferred — #3 auto-hold (needs hold surface), #9 two-pane builder,
-> #10 availability badges (Q-013 resolved; incomplete-pricing flag built,
-> richer badge taxonomy still open), #11 TBC mode,
-> #12 line pagination.
-> ❌ dropped — #8 PDF (beyond-legacy overreach; see below).
-
-### P1 — Send experience (highest operator-touch)
-
-1. **Preview-before-send is missing.** Design improvement #9 mandates
-   every outbound send shows an editable **subject + intro + sign-off**
-   with an HTML preview, then an awaited send. Today
-   `components/SendQuotationDialog.tsx` is a bare confirm dialog
-   (title + Cancel/Confirm, no preview, no editable copy).
-2. **Path B (copy-to-Outlook) has no payload.** Backend
-   `:mark-manually-sent` flips state, but the design's whole point — a
-   **"Copy HTML to clipboard"** button handing the operator the rendered
-   quote to paste into Outlook — isn't built. Nick specifically wanted
-   Outlook formatting control; without the clipboard payload, "manual
-   send" just changes status.
-3. **48h auto-hold checkbox on send** — specced on the preview modal
-   (improvement #7); not implemented. Depends on the availability/hold
-   surface.
-
-### P2 — Visual richness (property imagery)
-
-4. **No property imagery anywhere in the quote flow.** Legacy renders the
-   villa hero image on every line of the quote workspace
-   (`Booking.razor:91–92`, CDN `vc2.mojodev.co.uk/{folder}/{villaId}/{img}`)
-   — operators quote while looking at the villa. Our flow is text-only end
-   to end: `QuoteResultsList.tsx` (name + price rows), `QuoteLinesPanel.tsx:48`
-   (name cell), `QuotationDetailLayout.tsx:86` (name or `#id`). The
-   `quoteOption` schema (`schemas.ts:89`) and `pricing/serializers/quote.py`
-   carry **no image URL**. The design only specs a thumbnail on the search
-   result card and never carries imagery to saved lines, detail, or the
-   guest-facing quote.
-   - **Cheap to close — data already exists:** `PropertyImage` model +
-     serializer (`properties/serializers/image.py`) has `image`,
-     `sort_order`, and a set-hero concept. Slice: (a) add `hero_image_url`
-     to the quote-search/quote-bulk response, (b) render it on result card +
-     lines panel + detail lines, (c) carry it into the guest-facing
-     quote/email.
-
-### P2 — Line richness
-
-5. **Per-line discount** — design specifies a quote-line discount
-   (amount or %); `QuotationLine` has no discount field (only `total`,
-   `is_manual`, `notes`). (`adjustment`/`discount` exist on `Booking`,
-   not the quote.) Discount-cap rule is also still open in the design.
-6. **Inclusions per line** — design calls for a per-line `Inclusion`
-   field defaulting from the villa/rate-card and shown to the guest;
-   the model has only a single `notes` TextField.
-7. **Price override with required reason** — design wants an inline
-   override + audit reason; we have `is_manual` + `total` but capture no
-   reason.
-
-### P3 — Artifacts & builder shape
-
-8. **Quotation PDF** — ❌ **DROPPED (2026-06-02).** Beyond-legacy
-   overreach. Legacy sends quotations as inline HTML email only — no PDF,
-   no attachment, no download/print (legacy's `wkhtmltopdf` is used solely
-   for booking receipts). The rebuild already matches legacy with the rich
-   HTML preview + copy-to-Outlook path, so a guest-saveable PDF is net-new
-   scope, not parity. Decision #19 reversed in
-   `../product-design/07-api-schema-reconciliation.md`; the `:pdf` endpoint
-   stub is removed. Revisit post-v1 only on a concrete requirement — the
-   `render_quotation_html` seam would back it cheaply.
-9. **Builder shape diverges from spec.** → **Owned by the Spine UX overhaul
-   below (M4)** — the merged enquiry+quote workspace is the builder rework.
-   Design specs a two-pane,
-   always-visible **cart** with inline price-edit under each result card,
-   drag-reorder, and a "From £X / To £Y" range. We built a linear wizard
-   (`QuoteCriteriaForm → QuoteResultsList → QuoteLinesPanel →
-   SaveQuoteDialog`). Functional, but not the reviewed UX.
-
-### P4 — Minor / polish
-
-10. **Availability badge richness** — design wants
-    `Available / Hold-able / Partial / Unavailable` + an "incomplete
-    pricing — manual quote" flag on result cards. The incomplete-pricing
-    flag + manual-quote path landed with
-    [Q-013](done/q-013-rate-card-incomplete-pricing.md) (resolved); the richer
-    `Hold-able / Partial` badge taxonomy stays open here.
-11. **TBC occupancy mode** — legacy TBC checkbox (`Booking.razor:119`)
-    clears adults/children for flexible group quotes; `QuotationLine`
-    requires both. Confirm if still needed.
-12. **Quotation line list hard-caps at 50** (frontend `hooks.ts` TODO) —
-    acceptable for real quotes; wire a paginator only if a quote ever
-    exceeds the cap.
-
-## Follow-up surfaced by code review (not yet fixed)
-
-- **Builder line create/update changeover.** ✅ Resolved by
-  [GAP-007](done/gap-007-changeover-autoshift-parity.md). There is no separate
-  changeover *validation* to reinstate: changeover is now always handled by the
-  auto-shift inside `PricingEngine.quote()`, and `QuotationLineViewSet._reprice`
-  reflects the engine's shifted `date_from`/`date_to` (plus
-  `changeover_shifted_from`) back onto the response. A line added or re-dated
-  via `POST`/`PATCH /quotations/{id}/lines` on a forbidden changeover day is
-  nudged forward and surfaced rather than rejected. (Hold placement on this
-  builder path stays deferred per #3 — holds are still only placed by
-  `create_from_enquiry`.)
-
-## Spine UX overhaul (stakeholder feedback — 2026-06-08)
-
-A second round of feedback asks us to collapse the split enquiry/quote UI into
-one dense "spine" where agents live, and to enrich client capture. Item #9
-above — builder shape — is part of **M4** here.
-
-**Parity decisions (from legacy `ResSystem/`).** Guest required on a quote;
-agent optional; both may be present (`VillaQuotationMaster`: `ClientDetailsId`
-NOT NULL, `AgentId` nullable — `TblVillaQuotationMaster.cs`). No standalone
-quotes (`EnquireId` NOT NULL). The rebuild already matches on guest/agent
-(`Quotation.guest` PROTECT/required, `Quotation.agent` nullable —
-`reservations/models/quotation.py:23–41`); `Quotation.enquiry` is tightened to
-NOT NULL here (M4). ⇒ the searchable "client" is the first-class **`Guest`**
-(`GET /guests?search=`, already has `phone` + `contact_method`); the optional
-travel agent stays a separate `accounts.Person` field via the existing
-`ContactPicker`.
-
-> **Not strict parity:** legacy captured the guest as per-enquiry free-text and
-> has no confirmed deduped guest *search* or per-client *history* view. M3
-> (search + history) is an **enhancement enabled by the rebuild's first-class
-> `Guest`**, not legacy parity.
-
-**Status (2026-06-09).** ✅ **M1–M4 landed.** M2 shipped with the `people-model-cleanup` merge; M1 (phone +
-`contact_method` capture/display/audit/carry) and M3 (`GuestPicker` +
-`useSearchGuests`, ACTIVE-only; `GET /guests/{id}/enquiries` enriched with
-`quote_count` + `converted_booking`; collapsible history panel) landed in
-`feat/gap-005-m1-m3` (merged to `main`). Notes for M4 and future work:
-> - `converted_booking` = the **most-recently-created non-archived** booking off
->   the enquiry's ACCEPTED quotations' selected lines (`null` otherwise); ties on
->   `created_at` currently resolve arbitrarily (no secondary sort — minor).
-> - Synthetic `booking-` quotation exclusion now routes through the shared
->   `Quotation.objects.real()` / `QuotationLine` queryset method (landed in M4);
->   the enquiry quote-stack prefetch and the `/enquiries/quotes` list both use it.
-> - The converted-booking chip passes a status **label** to `StatusBadge`, which
->   colour-codes off the raw enum → the chip renders neutral (cosmetic).
-> - `GuestEnquiryHistory` fetches on mount even while collapsed (the header shows
->   the count); gate the rows fetch on expand if it shows up in profiling.
-
-### M1 — Capture enrichment (additive; no IA change) ✅ done
-
-- **Expose `phone` on enquiry reads.** `Enquiry.phone` / `Guest.phone` exist;
-  the enquiry **write** serializer exposes `phone` but the **list/detail read**
-  serializers don't (`reservations/serializers/enquiry.py`). Add `phone` to the
-  read serializers and surface it on the form and detail header for new **and**
-  existing enquiries.
-- **Contact preference.** Add a denormalized `Enquiry.contact_method` mirroring
-  the existing denormalized `phone`/`email` pattern (`enquiry.py:41–45`) so
-  anonymous inbound web enquiries (`guest=null`) can carry it; capture
-  phone-vs-email (vs SMS) in `EnquiryFormDialog` and show it on the detail
-  header. Carry it forward onto `Guest.contact_method` (already exists,
-  EMAIL/PHONE/SMS) when a Guest is resolved/created. Add `contact_method` to the
-  Guest AuditLog field set (currently untracked — `reservations/apps.py:25–40`).
-
-### M2 — Guest as a deduped directory (foundation for M3) ✅ done
-
-**Data model settled in [`../people-model-cleanup.md`](../design/history/people-model-cleanup.md)**
-(decisions logged in [`../10-decisions.md`](../design/decisions.md)). M2 is the
-*implementation* of that record. In brief: `Guest.email` becomes optional and
-stays **non-unique**; `phone` normalized to E.164 (`phonenumbers`); contactability
-+ actionable-preference CHECK constraints replace the fake email-required; the
-synthetic `enquiry-{id}@noemail.local` fabrication in
-`SaveQuoteDialog.tsx:117–126` is removed; **dedup is advisory** (resolve-or-create
-suggestion + operator-confirmed `Guest.merge()`), *not* a hard unique index.
-Legacy duplicate collapse is a human-confirmed `Guest.merge()` pass (no auto-merge
-by email). See the record for the full field/constraint list and migration order.
-
-### M3 — Existing-client search + enquiry history (enhancement) ✅ done
-
-- **Guest search in the enquiry form.** Build a `GuestPicker` + `useSearchGuests`
-  mirroring `contacts/components/ContactPicker.tsx` + `useSearchContacts`. Wire
-  into `EnquiryFormDialog`: selecting an existing Guest prefills
-  name/email/phone/preference and **links `enquiry.guest`** (reuse the row — no
-  duplicate); "create new" keeps today's free-text path. The optional **agent**
-  stays a separate `ContactPicker` field.
-- **Per-guest history endpoint.** Add `GET /guests/{id}/enquiries` returning
-  enquiry summaries enriched with quote-count and the converted booking's
-  reference/status (reverse relations `Guest.enquiries` / `.quotations` exist).
-  Render a collapsible "Enquiry history" panel (collapsed by default — see mock)
-  when an existing Guest is selected.
-- **Mock-vs-real caveat (general).** The mock's reference formats
-  (`QVC-####`/`VCB-####`) and status words ("Booked"/"Completed") are
-  illustrative only. Use the real `QVC####` (quotation) / `VC####` (booking)
-  formats ([GAP-006](done/gap-006-legacy-reference-format-parity.md), `core/refs.py`)
-  and map to real enum values (booking status is DRAFT…CHECKED_OUT/CANCELLED,
-  not "Completed").
-
-### M4 — IA consolidation + merged workspace (highest-risk; last) ✅ done
-
-> **Done (2026-06-09).** Shipped across `feat/gap-005-m4` (single-spine enquiry
-> workspace + inline `<QuoteBuilder>`, slices 1–4, merged to `main`) and
-> `feat/gap-005-m4-final` — **5a:** the cross-enquiry quotes pipeline is preserved
-> as a "Quotes" tab under Enquiries (`/enquiries/quotes`, reusing the quotes
-> table); **5b:** the standalone Quotes nav item + `/quotations` list/builder
-> routes are removed (redirecting to the tab), `QuotationBuilderPage` deleted.
-> The `Quotation.enquiry` FK was **already** `NOT NULL` + `PROTECT` (migration
-> `0022`) — the "`SET_NULL` → `PROTECT`" note below was stale; **no migration this
-> phase**.
+> **✂️ Pruned 2026-07-29 (consistency review).** This tracker's body was
+> ~90% shipped history and several premises had gone stale against the
+> code; the detail lives in this file's git history and the tickets named
+> below. What was cut and why:
 >
-> **Post-review follow-ups (also on `feat/gap-005-m4-final`).** A high-effort
-> code review found no runtime bugs; the actionable items landed as: restored
-> `<QuoteBuilder>` orchestration tests (lost with the deleted `QuotationBuilderPage`);
-> the Enquiries↔Quotes tab strip moved into an `EnquiriesSectionLayout`
-> route + `<Outlet>` (mounted once, not per page); a shared `useListParams`
-> hook deduping the two list pages; and **quote detail re-homed under the
-> Enquiries IA at `/enquiries/quotes/:id`** (sidebar Enquiries stays highlighted,
-> URL matches the breadcrumb) — `/quotations/:id` now redirects there preserving
-> the id, and `/quotations/new` honours `?enquiry=` into the workspace.
+> - **Phase 0 foundations, parity items #1/#2/#4/#5/#6/#7, and the spine
+>   overhaul M1–M4** all shipped (per the previous status header; M4's
+>   merged workspace + the `/enquiries/quotes` IA are live). #8 (PDF) was
+>   dropped 2026-06-02. #9 (builder shape) was subsumed by M4 and then
+>   concretely delivered by GAP-043 (multi-week builder) — the "⏸ deferred"
+>   glyph it carried contradicted M4/GAP-043 being done.
+> - **Stale premises removed:** "`QuotationLine` has no discount field" —
+>   it does (`reservations/models/quotation.py:264`, shipped with the #5
+>   per-line-discount work); "`adjustment`/`discount` exist on `Booking`" —
+>   both columns were dropped by SMELL-020 (reservations.0005); the entire
+>   `Guest`/`GuestPicker`/`GET /guests` spine (M1–M3 text) — the `Guest`
+>   model and `/guests` surface were retired by GAP-045's `Person`
+>   unification (the shipped features live on, re-homed onto
+>   `Person`/`/contacts`).
+> - **Owner-Loom follow-up wave** spun out long ago and is done:
+>   GAP-038/039/043/044 (and GAP-040/041/042 for customer-profile).
+>
+> What remains open is exactly the four items below.
 
-- **One nav item.** ✅ Standalone "Quotes" sidebar item + `/quotations`
-  list/builder routes removed; the pipeline survives as the `/enquiries/quotes`
-  tab, and `/quotations` + `/quotations/new` redirect there. Quote **detail**
-  now lives under the Enquiries IA at `/enquiries/quotes/:id` (post-review
-  follow-up); legacy `/quotations/:id` bookmarks redirect to it, id preserved.
-- **`Quotation.enquiry` → NOT NULL.** ✅ Already `null=False` +
-  `on_delete=PROTECT` (migration `0022`, pre-dating this phase; the earlier
-  "`SET_NULL` → `PROTECT`" framing was stale — it was already `PROTECT`).
-  `SaveQuoteDialog` always sends `enquiry: enquiry.id` and agent-direct quotes
-  create a lightweight enquiry first, so no live UI creates enquiry-less quotes.
-- **Merged enquiry+quote workspace.** Clicking an enquiry lands on a combined
-  workspace (replacing the Details/Activity/Notes landing **and** the separate
-  `/quotations/new?enquiry=` builder): client/criteria header + existing
-  quotations for the enquiry inline (`EnquiryDetailSerializer` already inlines
-  `.quotations[].lines[]`) + the builder (reuse
-  `QuoteCriteriaForm`/`QuoteResultsList`/`QuoteCart`/`SaveQuoteDialog`, enquiry-
-  seeded inline by `QuoteBuilder.tsx` — the old `QuotationBuilderPage` was
-  deleted). **Preserve Activity &
-  Notes** as secondary panels (side rail / collapsible sections), reusing the
-  existing `ActivityTab`/`NotesTab` components. This subsumes #9 above.
+## Open items
 
-**Acceptance (per milestone).** M1: phone + preference visible/editable on new
-and existing enquiries. M2: the guest-create path resolves-or-suggests an
-existing match on normalized email/phone (advisory — operator confirms reuse),
-the `@noemail.local` fabrication is gone and no new synthetic-email rows are
-written, channel-less rows are dispositioned (`ARCHIVED`) before the
-contactability CHECK is added; `email` stays **non-unique**. M3: guest search
-returns existing guests, selection reuses the row and reveals a collapsed
-history panel with correct refs/statuses. M4: one Enquiries nav item; clicking
-an enquiry lands on the merged workspace showing existing quotes + builder +
-activity/notes; no enquiry-less quote-creation path; `Quotation.enquiry` NOT
-NULL constraint present.
+### 1. 48h auto-hold checkbox on send (was #3)
 
-**Sequencing.** M1 → M2 → M3 → M4 (cheap/additive first; M3 depends on M2's
-dedup being meaningful; the page rearchitecture + FK migration land last).
+Design improvement #7 specs an auto-hold checkbox on the send-preview
+modal. Not built: sending a quote places no hold. The hold machinery
+itself exists (`HoldService.place`, called from
+`QuotationService.create_from_enquiry`; line holds move on reprice via
+`move_line_hold`) — the missing piece is the send-dialog affordance wiring
+a hold per sent line, plus its expiry story (48h default).
 
-## Approach
+### 2. Availability badge richness (was #10)
 
-Tracker ticket — each P1/P2 item (and each spine-overhaul milestone) becomes
-its own ticket. Suggested first slice on the **parity** track: **#1 + #2
-together** (preview modal + copy-to-clipboard share the server-side HTML
-render), since they're the highest operator-pain and one render path backs both
-the SMTP and manual paths. The **spine overhaul** track sequences separately as
-M1→M4 above.
+Design wants `Available / Hold-able / Partial / Unavailable` + an
+"incomplete pricing — manual quote" flag on result cards. The
+incomplete-pricing flag + manual-quote path landed with
+[Q-013](done/q-013-rate-card-incomplete-pricing.md) (no-rate villas render
+as flagged manual-quote cards); the richer `Hold-able / Partial` taxonomy
+on `QuoteResultLine` is still open.
 
-## Owner Loom follow-up (2026-06-17)
+### 3. TBC occupancy mode (was #11)
 
-A later owner walkthrough (Loom + the Ben/owner mockup at
-https://vc-new-res-system.netlify.app/) asks for a next wave on top of the
-shipped M1–M4. Spun out as focused tickets rather than reopening this tracker:
+Legacy's TBC checkbox (`Booking.razor:119`) cleared adults/children for
+flexible group quotes. `QuotationLine.adults` is still required
+(`PositiveSmallIntegerField`, no default; `children` defaults 0 —
+`quotation.py:260–261`), so a party-TBC line cannot be represented.
+Confirm with the owner whether TBC is still wanted before building
+(occupancy-band pricing from GAP-044 has since made party size
+price-relevant, which raises the design cost of "no party yet").
 
-- [GAP-038](done/gap-038-enquiry-quote-stacking-conversion-metric.md) — stage-taxonomy
-  reconciliation + quotes-to-convert metric + per-quote status in the stack
-  (the stacking + `quote_count` foundation here is reused, not redone).
-- [GAP-039](done/gap-039-enquiry-dashboard-enrichment.md) — richer enquiry list.
-- [GAP-043](done/gap-043-quote-builder-multi-week-range.md) — multi-week range quoting
-  (the concrete shape of the deferred #9 two-pane builder rework).
-- [GAP-044](done/gap-044-occupancy-band-fanout-builder.md) — occupancy-band fan-out.
+### 4. Quotation line list hard-caps at 50 (was #12)
 
-(Customer-profile asks — tags, linked contacts, profile view — are
-[GAP-040](done/gap-040-customer-tags-taxonomy.md) /
-[GAP-041](done/gap-041-standing-linked-contacts.md) /
-[GAP-042](done/gap-042-customer-360-profile-view.md).)
+Still true: `QUOTATIONS_PAGE_SIZE = 50` and the lines fetch sees only
+DRF's default first page with no `page_size` override
+(`frontend/src/features/quotations/hooks.ts:41,62–66` — the TODO
+documents that a >50-line quote would silently truncate the convert
+dialog and lines table). Acceptable for real quotes; wire a paginator
+only if a quote ever exceeds the cap.
 
 ## Dependencies
 
-- #3 (auto-hold) depends on the availability/hold surface.
-- [Q-013](done/q-013-rate-card-incomplete-pricing.md) is resolved — the
-  incomplete-pricing manual-quote path is built; it no longer blocks
-  anything here.
-- [SMELL-002](done/smell-002-quotation-expire-draft.md) (quote expiry) is
-  related but tracked separately.
+- Item 1 builds on the existing `HoldService` path (no new hold surface
+  needed — that caveat is stale; the affordance + expiry policy are the
+  work).
+- Item 2 is FE-only over the existing `search-options` availability data;
+  coordinate with [GAP-013](gap-013-quote-builder-ux-feedback-loops.md)
+  (builder feedback-loop polish on the same result cards).
+- Item 3 needs an owner decision first (record in `10-decisions.md`).
+- [Q-013](done/q-013-rate-card-incomplete-pricing.md) resolved;
+  [SMELL-002](done/smell-002-quotation-expire-draft.md) (quote expiry)
+  related but separate.

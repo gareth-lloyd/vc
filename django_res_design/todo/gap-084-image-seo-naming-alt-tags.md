@@ -36,8 +36,8 @@ properties images again, which may or may not be worth the effort."
   per-country-unique `slug`).
 - **No res3 → WP image path exists.** WP integration today is inbound only
   (WP enquiry intake endpoint); outbound push is Zoho Flow
-  (GAP-081 done, GAP-082 villa push pending) — Zoho, not WP. So "pushes
-  through to WP" has no wire to ride yet.
+  (GAP-081 done; GAP-082 villa push done 2026-07-27) — Zoho, not WP. So
+  "pushes through to WP" has no wire to ride yet.
 
 ## Sketch (to be designed properly once the WP question is answered)
 
@@ -69,8 +69,12 @@ properties images again, which may or may not be worth the effort."
 2. **Slug stability**: villa renamed / region re-parented / images reordered —
    do filenames (and alt) re-derive (URL churn on WP) or freeze at upload?
    Lean: freeze filename, re-derive alt default.
-3. Does GAP-082's villa payload grow an `images` array (URL + alt) so Zoho/WP
-   gets this for free? Coordinate if GAP-082 lands first.
+3. Does the GAP-082 villa payload grow an `images` array (URL + alt) so
+   Zoho/WP gets this for free? *(2026-07-29 update: GAP-082 landed 2026-07-27
+   carrying a single `hero_image_url`
+   — `properties/services/zoho_payload.py:261` — no images array, no alt.
+   The question narrows to: extend that payload, or is the WP hand-off a
+   different wire entirely? Still gated on open question 1.)*
 
 ## Acceptance (draft)
 
@@ -86,6 +90,7 @@ properties images again, which may or may not be worth the effort."
 
 - **GAP-012** (S3 hosting) — key shape, `AWS_S3_FILE_OVERWRITE=False`
   suffixing, legacy flat `properties/legacy/<guid>` keys.
-- **GAP-082** (Zoho villa push) — candidate carrier for image URL + alt if
-  the WP feed rides Zoho Flow.
+- [GAP-082 ✅](done/gap-082-zoho-villa-push.md) (Zoho villa push, done
+  2026-07-27) — candidate carrier for image URL + alt if the WP feed rides
+  Zoho Flow; today it sends `hero_image_url` only.
 - **Not covered:** image resizing/variants/CDN (out of scope, as in GAP-012).

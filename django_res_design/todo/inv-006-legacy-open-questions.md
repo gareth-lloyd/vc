@@ -25,6 +25,10 @@ Line references are into `legacy/workflows/…` as of the reorg.
 2. **Password-reset flow hardening** — resist account enumeration, hash the
    reset token at rest, enforce a TTL, invalidate on use, and re-auth active
    sessions after a reset. `01-identity/password-management.md:35,67,93`.
+   *(2026-07-29: a forgot/reset-password flow has since shipped (confirm
+   endpoint + pages, expired-token → 400, anti-enumeration 204) — verify
+   which of these sub-items it already satisfies before promoting; likely
+   only a residue remains.)*
 3. **Staff-user GDPR erasure/anonymisation** — Q-010 covers guests; staff/User
    anonymisation is unspecified. `01-identity/user-administration.md:86`.
 
@@ -86,18 +90,31 @@ Line references are into `legacy/workflows/…` as of the reorg.
 19. **Payment evidence upload** — attach proof to manually-recorded payments /
     schedule status changes. `09-booking/payment-schedule.md:71`,
     `10-payment/payment-collection.md:138`; plus transactional save of checkout
-    personal info `10-payment/checkout-flow.md:62`.
+    personal info `10-payment/checkout-flow.md:62`. *(2026-07-29: overlaps
+    [GAP-087](gap-087-per-booking-deposit-override-manual-payment.md) step 2
+    — the manual-payment notes/reference convention; consider promoting this
+    item into that ticket when it's picked up.)*
 20. **Concierge diff-patch + 4th schedule tier** — concierge save semantics and
     treating concierge as a fourth payment-schedule tier. Concierge is M2-
     deferred. `09-booking/concierge.md:35,73`.
 
 ### Integrations
-21. **Zoho residuals** — wire the dead contact-push call, fix the `NewEnquire` /
-    `VILLLA_MASTER` typo round-trips, and make the Stage→module mapping
-    explicit. `11-integrations/zoho-crm.md:114,133,152,203`.
+21. ~~**Zoho residuals** — wire the dead contact-push call, fix the
+    `NewEnquire` / `VILLLA_MASTER` typo round-trips, and make the
+    Stage→module mapping explicit.
+    `11-integrations/zoho-crm.md:114,133,152,203`.~~ **Struck 2026-07-29 —
+    superseded by [GAP-081 ✅](done/gap-081-zoho-flow-outbound-push.md):**
+    the legacy Zoho client and its bidirectional design were abandoned; the
+    agreed integration is res-primary outbound push over Zoho Flow webhooks
+    (shipped, incl. contact push), so none of these legacy residuals carries
+    forward.
 22. **WP endpoint-schema ownership** — who owns the WordPress response schema
     the sync targets. `11-integrations/public-website-sync.md:371`. (Nearest:
-    GAP-028.)
+    GAP-028.) *(2026-07-29: partially superseded — the enquiry-intake half is
+    settled by fork C: res owns the inbound endpoint + response contract, see
+    [wp-enquiry-cutover.md](wp-enquiry-cutover.md); the outbound
+    WP-sync/backfill schema question stays open and is explicitly deferred
+    there.)*
 
 ## Disposition
 

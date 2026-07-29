@@ -78,8 +78,10 @@ Items 1–4 are the high-leverage, mechanical wins; item 5 is opportunistic.
 
 ## Dependencies
 
-- Complements [BUG-018](bug-018-frontend-cache-staleness-missing-invalidations.md):
-  BUG-018 owns the *cache-invalidation* consolidation (the entity→dependents
-  map); this ticket owns the *optimistic-update* consolidation. Coordinate so
-  the shared mutation helpers land once.
+- Complements [BUG-018 ✅](done/bug-018-frontend-cache-staleness-missing-invalidations.md)
+  (resolved 2026-07-05): BUG-018 owned the *cache-invalidation* consolidation
+  and its entity→dependents map now exists at
+  `frontend/src/lib/query/invalidate.ts`; this ticket owns the
+  *optimistic-update* consolidation. Build the shared mutation helpers on top
+  of that map rather than beside it.
 - No backend change.

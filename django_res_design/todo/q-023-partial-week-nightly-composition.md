@@ -3,11 +3,21 @@
 - **Severity:** Question (pricing correctness for non-whole-week stays).
 - **Source:** 2026-06-17 owner Loom (pricing walkthrough, 3:21–4:01).
 - **Files:**
-  - `django_res/pricing/services/rates.py` (`rule_nightly` —
-    `nightly = weekly/7` derivation)
+  - `django_res/pricing/services/rates.py:23` (`rule_nightly` —
+    `nightly = weekly/7` derivation, the single derive point)
   - `django_res/pricing/services/engine.py` (per-night line assembly)
-  - `django_res/pricing/models/rate.py` (`RateRule.nightly`/`weekly`)
+  - `django_res/pricing/models/rate.py` (`RateBand.nightly`/`weekly`)
   - design: `django_res_design/04-pricing.md` (engine steps), `10-decisions.md`
+
+> **2026-07-29 refresh:** `RateRule` is now `RateBand` (SMELL-019), and Q-018
+> added base + reduction fields with derived `effective_*` — all still quoted
+> through the same `rule_nightly` derive point, so the composition question
+> below is unchanged. **Overlap note:** GAP-074/075 build the nightly *output*
+> path (nightly-range quoting for no-changeover / ad-hoc-flexible villas);
+> this ticket's D1–D3 confirmation questions should ride the GAP-074
+> owner/Debbie call rather than a separate ask — see
+> [gap-074](gap-074-nightly-price-quoting-no-changeover.md) and
+> [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md).
 
 ## Problem
 
@@ -30,7 +40,7 @@ nights at an explicit nightly rate.
 ## Proposed direction
 
 Document the partial-week algorithm explicitly in `04-pricing.md`:
-- Confirm whether an explicit `RateRule.nightly` always **wins over** the
+- Confirm whether an explicit `RateBand.nightly` always **wins over** the
   `weekly/7` derivation for sub-week remainders.
 - State how full-week + remainder stays combine (per-night sum vs
   N×weekly + remainder×nightly).
@@ -52,8 +62,12 @@ Document the partial-week algorithm explicitly in `04-pricing.md`:
 
 ## Dependencies
 
-- Existing `nightly`/`weekly` on `RateRule`; `rule_nightly`
-  (`pricing/services/rates.py`).
+- Existing `nightly`/`weekly` on `RateBand`; `rule_nightly`
+  (`pricing/services/rates.py:23`).
 - `done/smell-003` (rounding — reuse, don't reopen), `done/gap-008`
   (`fallback_nightly`).
-- GAP-035 (rounding of the derived net↔gross figure); Q-018 (band splitting).
+- GAP-035 (rounding of the derived net↔gross figure); Q-018 (base+reduction —
+  resolved; effective prices derive through `rule_nightly`).
+- [GAP-074](gap-074-nightly-price-quoting-no-changeover.md) /
+  [GAP-075](gap-075-per-line-flexible-min-nights-override.md) — the nightly
+  quoting surfaces this composition rule feeds.

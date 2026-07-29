@@ -256,8 +256,13 @@ def _charge(booking: Booking, *, label: str, amount: str, commissionable: bool) 
     )
 
 
-def _funded_booking(booking: Booking, *, noncomm_charge: str | None = None) -> Booking:
-    _set_snapshot(booking, FINANCIALS_SNAPSHOT)
+def _funded_booking(
+    booking: Booking,
+    *,
+    noncomm_charge: str | None = None,
+    snapshot: dict[str, Any] | None = None,
+) -> Booking:
+    _set_snapshot(booking, snapshot if snapshot is not None else FINANCIALS_SNAPSHOT)
     if noncomm_charge is not None:
         # ⚠️ Charge items BEFORE Payment rows: the charge write fires
         # booking_total_changed → PaymentScheduler.resync_for_booking, which
@@ -377,6 +382,146 @@ def test_payload_financials_no_schedule_degrades_components_to_null(
     assert all(financials[key] is None for key in FINANCIALS_KEYS - {"total_gross", "total_net"})
 
 
+# --- cancelled bookings keep their money (GAP-085) ------------------------
+#
+# Call decision: a cancelled booking pushes `status=cancelled` and leaves the
+# figures for reporting. These tests stop a future "helpful" zero-on-cancel
+# regression (the builder has no status gate — that absence is the contract).
+
+
+def test_payload_cancelled_booking_keeps_full_financials(booking: Booking) -> None:
+    """Settled money survives cancellation untouched — the close-money
+    receiver only terminates unpaid PENDING rows."""
+    _set_snapshot(booking, {**FINANCIALS_SNAPSHOT, "extras": [SNAPSHOT_EXTRAS[0]]})
+    _payment(booking, purpose="deposit", amount="3000.00", status="succeeded")
+    _payment(booking, purpose="balance", amount="7000.00", status="succeeded")
+    booking.cancel("Guest illness")
+
+    payload = build_booking_payload(booking)
+
+    assert payload["status"] == BookingStatus.CANCELLED.value
+    assert payload["cancel_reason"] == "Guest illness"
+    assert payload["financials"] == {
+        "total_gross": "10000.00",
+        "total_net": "6960.00",
+        "gross_deposit": "3000.00",
+        "net_deposit": "2088.00",
+        "deposit_commission": "522.00",
+        "gross_balance": "7000.00",
+        "net_balance": "4872.00",
+        "balance_commission": "1218.00",
+    }
+    assert payload["extras"] == [
+        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": None}
+    ]
+
+
+def test_payload_cancelled_with_pending_schedule_pushes_authority_zeros(
+    booking: Booking,
+) -> None:
+    """Cancel terminates unpaid PENDING rows, so the splits authority — and
+    FinanceTab — report 0.00 components; the push agrees byte-for-byte
+    rather than inventing pre-cancellation figures. The booking-level pair
+    still carries the money for reporting. Semantics flagged for the
+    2026-08-12 Limitless call (see ticket close-out)."""
+    _funded_booking(booking)
+    booking.cancel("Change of plans")
+
+    payload = build_booking_payload(booking)
+
+    assert payload["financials"] == {
+        "total_gross": "10000.00",
+        "total_net": "6960.00",
+        "gross_deposit": "0.00",
+        "net_deposit": "0.00",
+        "deposit_commission": "0.00",
+        "gross_balance": "0.00",
+        "net_balance": "0.00",
+        "balance_commission": "0.00",
+    }
+
+
+# --- extras (GAP-085) -----------------------------------------------------
+#
+# Itemized separately per the 2026-07-29 call, commissionable flags included.
+# `category` is explicitly null until the GAP-088 taxonomy lands — key
+# presence pins the contract, we do not fake a taxonomy. Two sources: the
+# engine-applied pricing extras inside the snapshot, then manual
+# BookingChargeItem lines. Purely informational — both already sit inside
+# total_gross (snapshot total / charge overlay); Zoho must not re-add them.
+
+# Fixture simplification: a real engine snapshot's `total` already includes
+# its extras; these tests graft `extras` on without recomputing the worked
+# example because the money authority ignores the key — the extras list is
+# informational, never additive.
+SNAPSHOT_EXTRAS = [
+    {
+        "extra_id": 7,
+        "name": "Heated pool",
+        "kind": "mandatory",
+        "calc": "fixed",
+        "computed_amount": "350.00",
+        "commissionable": True,
+    },
+    {
+        "extra_id": 9,
+        "name": "Chef (pass-through)",
+        "kind": "optional",
+        "calc": "fixed",
+        "computed_amount": "900.00",
+        "commissionable": False,
+    },
+]
+
+
+def test_payload_extras_itemizes_engine_snapshot_extras(booking: Booking) -> None:
+    _set_snapshot(booking, {**FINANCIALS_SNAPSHOT, "extras": SNAPSHOT_EXTRAS})
+
+    payload = build_booking_payload(booking)
+
+    assert payload["extras"] == [
+        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": None},
+        {
+            "label": "Chef (pass-through)",
+            "amount": "900.00",
+            "commissionable": False,
+            "category": None,
+        },
+    ]
+
+
+def test_payload_extras_appends_manual_charge_items(booking: Booking) -> None:
+    """Manual lines after engine extras; signed amounts survive verbatim —
+    a negative line is a credit, not a data error."""
+    _set_snapshot(booking, {**FINANCIALS_SNAPSHOT, "extras": [SNAPSHOT_EXTRAS[0]]})
+    _charge(booking, label="Late checkout", amount="120.00", commissionable=True)
+    _charge(booking, label="Negotiated rate adjustment", amount="-150.00", commissionable=True)
+
+    payload = build_booking_payload(booking)
+
+    assert payload["extras"] == [
+        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": None},
+        {"label": "Late checkout", "amount": "120.00", "commissionable": True, "category": None},
+        {
+            "label": "Negotiated rate adjustment",
+            "amount": "-150.00",
+            "commissionable": True,
+            "category": None,
+        },
+    ]
+
+
+def test_payload_extras_empty_when_sparse_and_unchargeed(booking: Booking) -> None:
+    """Imported `{}` snapshots have no `extras` key at all — the builder must
+    not KeyError, and an extras-less booking sends an empty list, not null
+    (the list itself is always computable)."""
+    assert booking.pricing_snapshot == {}
+
+    payload = build_booking_payload(booking)
+
+    assert payload["extras"] == []
+
+
 def test_payload_anonymized_person_fails_closed(booking: Booking) -> None:
     booking.person.anonymize()
     booking.refresh_from_db()
@@ -388,24 +533,29 @@ def test_payload_anonymized_person_fails_closed(booking: Booking) -> None:
 
 
 def test_payload_json_round_trips(booking: Booking) -> None:
-    # Funded: a Decimal leaking into the financials block must fail here.
-    _funded_booking(booking)
+    # Funded with a snapshot extra AND a charge item: a Decimal leaking into
+    # the financials block or either extras source must fail here.
+    _funded_booking(
+        booking,
+        noncomm_charge="500.00",
+        snapshot={**FINANCIALS_SNAPSHOT, "extras": [SNAPSHOT_EXTRAS[0]]},
+    )
     payload = build_booking_payload(booking)
     assert json.loads(json.dumps(payload)) == payload
 
 
 def test_payload_query_count_pinned(booking: Booking) -> None:
-    """One SELECT via the select_related chain + 5 prefetch buckets
-    (person/agent emails+phones, payments) — dropping a leg regresses to
-    lazy walks. Funded WITH a charge item so the financials block runs its
-    full overlay path: dropping the `with_charges_total` annotations (per-
-    call aggregate fallback) or the `property__finance` select_related leg
-    each cost an extra query and fail the pin."""
+    """One SELECT via the select_related chain + 6 prefetch buckets
+    (person/agent emails+phones, payments, charge_items) — dropping a leg
+    regresses to lazy walks. Funded WITH a charge item so the financials
+    block runs its full overlay path: dropping the `with_charges_total`
+    annotations (per-call aggregate fallback) or the `property__finance`
+    select_related leg each cost an extra query and fail the pin."""
     booking.agent = cast("Person", PersonFactory())
     booking.save()
     _funded_booking(booking, noncomm_charge="500.00")
 
-    with assert_max_queries(6):
+    with assert_max_queries(7):
         build_booking_payload(booking)
 
 

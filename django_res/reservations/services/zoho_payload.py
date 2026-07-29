@@ -71,7 +71,10 @@ nothing is left for Zoho to derive. Figures come from the FinanceTab
 authority (`owner_finance`), 2dp strings; keys are always present and
 degrade to null (sparse imported snapshot / no schedule rows) — never
 invented zeros. An authority 0.00 (e.g. a booking cancelled while its
-schedule was still PENDING) is pushed as-is.
+schedule was still PENDING) is pushed as-is. `extras` itemizes the
+engine-applied pricing extras plus manual charge lines with their
+commissionable flags — informational only (both already sit inside
+`total_gross`); `category` stays null until the GAP-088 taxonomy.
 """
 
 from __future__ import annotations
@@ -281,6 +284,44 @@ def _financials_payload(booking: Booking) -> dict[str, Any]:
     }
 
 
+def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
+    """GAP-085: itemized extras with commissionable flags, per the call.
+
+    Engine-applied pricing extras (snapshot `extras` — absent on imported
+    snapshots) then manual charge lines, one shared entry shape. Purely
+    informational: both sources already sit inside the financials
+    `total_gross` (snapshot total / charge overlay) — Zoho must not re-add
+    them. `category` is explicitly null until the GAP-088 taxonomy lands;
+    key presence pins the contract, we do not fake a taxonomy.
+    """
+    snapshot = booking.pricing_snapshot or {}
+    entries = [
+        {
+            "label": extra.get("name"),
+            # Degrade-to-null, not the string "None" — the engine writes
+            # str(Decimal), but future manual-override snapshot writes are
+            # unfenced (reservations/views/quotation.py).
+            "amount": (
+                str(extra["computed_amount"]) if extra.get("computed_amount") is not None else None
+            ),
+            "commissionable": extra.get("commissionable"),
+            "category": None,
+        }
+        for extra in snapshot.get("extras") or []
+    ]
+    entries.extend(
+        {
+            # Signed amounts verbatim — a negative line is a credit.
+            "label": item.label,
+            "amount": str(item.amount),
+            "commissionable": item.commissionable,
+            "category": None,
+        }
+        for item in booking.charge_items.all()
+    )
+    return entries
+
+
 def _line_payload(line: QuotationLine) -> dict[str, Any]:
     return {
         "RES_ID": line.pk,
@@ -377,13 +418,15 @@ def build_booking_payload(booking: Booking) -> dict[str, Any]:
             "quotation_line__currency",
         )
         # primary_email()/primary_phone() iterate the prefetched collections;
-        # the splits walk filters `payments` in Python.
+        # the splits walk filters `payments` in Python; `charge_items` feeds
+        # the extras itemization (the money path reads the annotations).
         .prefetch_related(
             "person__emails",
             "person__phones",
             "agent__emails",
             "agent__phones",
             "payments",
+            "charge_items",
         )
         .get(pk=booking.pk)
     )
@@ -441,6 +484,7 @@ def build_booking_payload(booking: Booking) -> dict[str, Any]:
         "is_archived": booking.is_archived,
         "archived_at": _iso(booking.archived_at),
         "financials": _financials_payload(booking),
+        "extras": _extras_payload(booking),
         "created_at": _iso(booking.created_at),
         "updated_at": _iso(booking.updated_at),
     }

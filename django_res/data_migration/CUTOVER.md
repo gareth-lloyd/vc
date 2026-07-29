@@ -86,13 +86,18 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
   Like `rate_rule` it ignores `--since` and full-replaces its own
   `avail-*` slice per run.
 
-> **GAP-082 — booking `created_at` back-stamp:** `BookingLoader` back-stamps
-> `Booking.created_at` from legacy `CreatedAt` (the Zoho booking payload's
-> `booking_date`, the CRM's historic-import filter). A `--since` delta run
-> skips rows whose `UpdatedAt` did not advance, so bookings loaded **before**
-> this stamp existed keep their load-time `created_at`. Run one FULL booking
-> load (`loadlegacy booking`, no `--since`) before the production
-> `zoho_backfill --kinds booking`.
+> **SUPERSEDED 2026-07-29 (import pivot — GAP-089):** the GAP-082 note that
+> stood here required one FULL booking load (`loadlegacy booking`, no
+> `--since`) before the production `zoho_backfill --kinds booking`, because
+> `BookingLoader` back-stamps `Booking.created_at` from legacy `CreatedAt`
+> (the Zoho payload's `booking_date`, the CRM's historic-import filter).
+> Per the 2026-07-29 Limitless call, historic bookings now arrive via the
+> **spreadsheet import** instead
+> (`django_res_design/todo/gap-089-spreadsheet-historic-import.md`), which
+> does its own `created_at` back-stamp from the sheet's booking date — the
+> legacy booking-loader step is no longer part of cutover (the loader code
+> stays as the schema record). The booking backfill runs **after** the
+> spreadsheet import.
 
 ## 4b. Capture external IDs into `SyncRecord` (Zoho)
 

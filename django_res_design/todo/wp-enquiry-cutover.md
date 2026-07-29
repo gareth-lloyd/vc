@@ -143,6 +143,14 @@ curl -sS -X POST https://<staging-host>/api/wordpress/enquiries \
 
 ## Cutover checklist
 
+> **2026-07-29 (Limitless call):** integration testing should target
+> **Mojo's detached dev WordPress site**, not live — the dev site was
+> detached from the res feeds because dual-site sync was slow, so it is
+> safe to point at Django staging. The PHP token tweak (the exact change
+> above) gets applied on the dev site first; once the end-to-end gate
+> passes there, the same change + wp-config constants are copied to live at
+> cutover (steps 1 and 4 below run against dev, step 5 is the live copy).
+
 1. WP developer applies the exact change above (dedicated function; do not
    touch `post_api_call` or `API_SITE_URL`). Source received + verified
    2026-07-27.

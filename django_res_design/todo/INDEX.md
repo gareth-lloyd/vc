@@ -46,6 +46,19 @@ Greek UI. Leads-stage-before-enquiry and Zoho/WordPress integration were
 discussed but not filed here (leads = extend `EnquiryStatus`, tracked via GAP-005/
 GAP-050; Zoho blocked on external spec, GAP-028)._
 
+_2026-07-29 additions from the Limitless call (each checked against the
+codebase before filing): **GAP-085** (Zoho booking financials block — all
+figures explicit, replaces GAP-082's `financials: null`), **GAP-086**
+(booking finance tab restructured to the Limitless breakdown), **GAP-087**
+(per-booking deposit override + manual payment recording — the agreed
+cancellation carry-over workaround), **GAP-088** (charge-item category
+taxonomy for Zoho reporting consistency), **GAP-089** (import pivot:
+historic bookings from Nick's spreadsheets, enquiry top-up; ⛔ blocked on
+sample sheets). Call also settled: cancelled bookings keep full figures in
+Zoho (already true); WP integration testing targets Mojo's detached dev
+site (note added to `wp-enquiry-cutover.md`); `CUTOVER.md`'s
+FULL-booking-load step superseded. Next call 2026-08-12._
+
 _2026-07-16: the Zoho external spec landed on the 2026-07-15 Limitless call —
 **GAP-081** (outbound push res → Zoho Flow webhooks, upsert-only, res PKs as
 dedupe keys) now tracks it. The agreed shape supersedes the OAuth
@@ -182,9 +195,14 @@ settled Res-primary)._
 | [GAP-079](done/gap-079-commission-after-local-vat.md) | Commission-after-local-VAT — verify GROSS branch matches real villa numbers + per-villa policy | ✅ resolved (2026-07-09) — verify-only: the GROSS branch already takes VAT off the gross then commission off the remainder (legacy `RatesModel.Calculate()` parity), **no per-villa toggle** (ordering is a function of `price_basis`; decision row in `design/decisions.md`); constructed 13%/20%/10,000 worked example pinned engine-side + through the 30/70 deposit/balance split (re-reconcile when Nick supplies real villa numbers); extras-taxability handed to GAP-076 via a coordination note |
 | [GAP-080](done/gap-080-currency-obvious-in-quote-builder.md) | Make currency unmistakable in the quote **builder** UI (email already shows codes) | ✅ resolved (2026-07-11) — `formatMoneyWithCode` renders the ISO code explicitly ("£4,500.00 GBP") across all 8 quotations money-display sites (builder + saved-quote detail + convert dialog); shared `formatMoney` untouched; grouping-by-currency deferred to GAP-078 |
 | [GAP-081](done/gap-081-zoho-flow-outbound-push.md) | Outbound push res → Zoho Flow webhooks (contacts, enquiries, quotes, bookings) — upsert-only, all fields, res PKs as dedupe keys | ✅ resolved (2026-07-23) — thin webhook pusher (4 TDD units): `zoho_flow` registry + suppression, full-fat contact/enquiry/quote payloads (PII exclusions: notes, sensitive tags, ANONYMIZED incl. enquiry capture columns), retry/backoff delivery + 10-min sweep, `zoho_backfill` replay (SyncRun MANUAL; quote eligibility = actually sent); URLs env-only, `httpx` logger pinned WARNING (zapikey never logged); villa push descoped → GAP-082, booking dormant until the ~Sept build |
-| [GAP-082](gap-082-zoho-villa-push.md) | Zoho Flow villa push — one more `register_zoho_flow` registration + builder in `properties` | ⬜ descoped from GAP-081 (user decision 2026-07-23); endpoint already provisioned (env name `ZOHO_FLOW_WEBHOOK_VILLA` reserved); wrinkles: features M2M change-signal, availability-timestamp churn needs `fields=`-style restriction, `Owner`/`Co_ordinates`/`Villa_URL` unmappable |
+| [GAP-082](done/gap-082-zoho-villa-push.md) | Zoho Flow villa push — one more `register_zoho_flow` registration + builder in `properties` | ✅ resolved (2026-07-27) — shipped villa kind **and** the booking kind (stakeholder-call contract): availability-churn suppression + M2M bump receivers, booking upsert with `financials: null` placeholder, backfill order contact → villa → enquiry → quote → booking; amendments 2026-07-29: FULL-booking-load precondition superseded by GAP-089, financials block specced as GAP-085, booking webhook URL delivered |
 | [GAP-083](gap-083-features-dirty-flag-navigation-guard.md) | Features tab: visible unsaved-changes flag + navigation guard (no leave without explicit discard) | ⬜ from 2026-07-08 GTD capture, filed 2026-07-29; `isDirty` exists but only signal is the Save button; route-based tabs silently discard edits (no `useBlocker`/`beforeunload` anywhere); pilot a reusable guard hook on FeaturesTab |
 | [GAP-084](gap-084-image-seo-naming-alt-tags.md) | SEO image naming + alt tags — `{country}-{region}-{villa}-{n}` for filename **and** alt text, pushed through to WP | ⬜ from Ben Wood (mojo) email 2026-06-25, filed 2026-07-29; alt tag is the higher-value half (filters into WP without re-import); no `alt_text` field today, legacy images GUID-named; **gated on**: how do images reach WP today? (ask Ben/Nick); coordinate with GAP-082 villa payload |
+| [GAP-085](gap-085-zoho-booking-financials-block.md) | Zoho booking financials block (replace null placeholder) — ALL 8 figures explicit + itemized `extras[]` + cancelled-keeps-figures test + `--person-pk` on `zoho_send_sample` | ⬜ from 2026-07-29 Limitless call; do NOT rely on Zoho formula-field proportionality (non-commissionable extras + residual-to-BALANCE break it); source = GAP-077 `payment_component_splits`; contract points (post-discount gross, discount field, security deposit, `balance_due_at`) to pin 2026-08-12 |
+| [GAP-086](gap-086-finance-tab-limitless-layout.md) | Booking finance tab: Limitless breakdown layout (total gross/net; deposit + balance gross/net/commission; security deposit) | ⬜ from 2026-07-29 Limitless call (Nick: "break it down more like this"); FE restructure of `FinanceTab.tsx`, data mostly exists (GAP-077 splits + SD track — verify/extend API exposure for the SD figure) |
+| [GAP-087](gap-087-per-booking-deposit-override-manual-payment.md) | Per-booking deposit override + manual payment recording (cancellation carry-over workaround) | ⬜ from 2026-07-29 Limitless call; deposit sizing is property-policy-only and `resync_for_booking` re-derives it (override has nowhere to live); manual `:mark-paid`-without-provider-txn largely exists — verify + close gaps; manual flexibility, NOT automated carry-over |
+| [GAP-088](gap-088-charge-item-category-taxonomy.md) | `BookingChargeItem` category taxonomy — dropdown + free-text fallback, aligned with pricing `ExtraKind` | ⬜ from 2026-07-29 Limitless call (Ben's reporting-consistency ask); charge items are free-text label only today; feeds the GAP-085 `extras[]` category |
+| [GAP-089](gap-089-spreadsheet-historic-import.md) | Historic import pivot: bookings from Nick's spreadsheets (res-DB booking data ignored), enquiry top-up importer | ⬜ from 2026-07-29 Limitless call; **⛔ blocked on Nick's sample sheets**; synthetic `booking-` quotes + `created_at` back-stamp (Zoho historic filter) + email person-match + villa name-match + tags; supersedes the CUTOVER.md FULL-booking-load step; must run before `zoho_backfill --kinds booking` |
 
 ## Open product questions
 

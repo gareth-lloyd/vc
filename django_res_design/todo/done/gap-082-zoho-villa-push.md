@@ -10,11 +10,15 @@
 > `booking_date`, **`financials: null` placeholder — block content deferred
 > to the next Limitless call**, no delete by agreement); backfill order
 > contact → villa → enquiry → quote → booking; send-sample pickers for both;
-> `BookingLoader` back-stamps `created_at` from legacy `CreatedAt` (a FULL
-> booking load is required before the production booking backfill —
-> `data_migration/CUTOVER.md`). Manual post-merge: set
-> `ZOHO_FLOW_WEBHOOK_VILLA` / `ZOHO_FLOW_WEBHOOK_BOOKING` env vars, run
-> `zoho_send_sample`, then the backfill.
+> `BookingLoader` back-stamps `created_at` from legacy `CreatedAt`. Manual
+> post-merge: set `ZOHO_FLOW_WEBHOOK_VILLA` / `ZOHO_FLOW_WEBHOOK_BOOKING`
+> env vars, run `zoho_send_sample`, then the backfill.
+>
+> **Amendments 2026-07-29 (Limitless call):** the FULL-booking-load-before-
+> booking-backfill action is **superseded by GAP-089** (import pivot —
+> historic bookings come from Nick's spreadsheets, not the legacy loader;
+> `CUTOVER.md` §4 updated). The booking webhook URL was delivered
+> 2026-07-29. The `financials` block content is now specced as **GAP-085**.
 
 - **Severity:** Gap
 - **Source:** Descoped from [GAP-081](done/gap-081-zoho-flow-outbound-push.md)

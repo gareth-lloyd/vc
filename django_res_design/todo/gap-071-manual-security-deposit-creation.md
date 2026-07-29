@@ -7,10 +7,20 @@
   (booking VC383, checked-out, has no SD — the empty state is a dead end). Fix for the
   empty-state crash landed as `c9e5fac` (204 instead of empty 200); this ticket is the
   product gap that fix exposed.
+> **2026-07-29 refresh (mechanism drift, premise intact):** GAP-070 deleted
+> `effective()`; the policy gate is now
+> `finance.effective_security_deposit_policy()` → `policy.get("required")`
+> (`payments/services/security_deposit.py:68-69`). Still no create endpoint
+> (`payments/urls.py:146` mounts only the read) and no FE create affordance.
+> **Coordinate with GAP-087** (per-booking deposit override + manual payment
+> recording, 2026-07-29 Limitless call) — both add operator money-flexibility
+> on the same payments track surface; the "amount source / policy override"
+> product decision below overlaps GAP-087's override design. Decide them once.
+
 - **Files:**
   - `payments/services/security_deposit.py` — `create_for_booking` (sole creator;
-    idempotent + gated on `effective("security_deposit_required")` and `amount > 0`;
-    only caller is the scheduler)
+    idempotent + gated on `effective_security_deposit_policy()["required"]` and
+    `amount > 0`; only caller is the scheduler)
   - `payments/services/payment_scheduler.py:152` — the one production caller
   - `payments/signals.py:49–84` — `_schedule_payments_on_booking_confirmed`, fires only
     on booking → `AWAITING_DEPOSIT` (the single creation trigger)

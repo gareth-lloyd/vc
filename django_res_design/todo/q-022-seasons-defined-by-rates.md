@@ -3,8 +3,10 @@
 - **Severity:** Question (modelling decision; reporting impact)
 - **Source:** 2026-06-11 email thread (Nick Cookson + Bryony Moger);
   2026-06-17 owner Loom (pricing walkthrough, 1:30–2:40)
-- **Files:** `django_res_design/04-pricing.md` (`RatePlan` "season",
-  `RateRule` bands), `django_res_design/02-properties.md`
+- **Files:** `django_res_design/04-pricing.md` (rewritten as-built by Q-018;
+  model now `Property → RatePlan → RatePeriod → RateBand` — see the
+  2026-07-29 note below), `django_res_design/02-properties.md`,
+  `django_res/pricing/models/rate.py` (`RatePeriod` — candidate tier home)
 
 ## Problem
 
@@ -51,25 +53,40 @@ standardisation, Bryony's concern) remains the one open question.
 
 ## Proposed fix / direction
 
+> **2026-07-29 rewrite (model drift):** this section originally targeted the
+> pre-GAP-056 `RatePlan`/`RateCard`/`RateRule` model — `RateCard` was dropped
+> and `RateRule` renamed `RateBand`; the current model is
+> `Property → RatePlan → RatePeriod → RateBand` (GAP-056 / SMELL-019). The
+> mechanics below are restated against it; the owner answer is unchanged.
+
 Introduce a controlled `season_tier` enum (curated set — confirm exact list
 with product; owner named TOP_PEAK / PEAK·HIGH / SHOULDER, plus a LOW for
-year-round flat villas) attached at the **rate-band level** (`RateRule`, or
-`RateCard` if a card cleanly equals one tier), so reporting aggregates on the
-tier while each villa keeps its own dates. Note that the tier must **copy with
-the base band** on carry-over (Q-018), not with any in-season reduction. Leave
-the cross-villa reporting standardisation (open question 1) for the reporting
-design.
+year-round flat villas). The natural home in the current model is
+**`RatePeriod`** — a period is already exactly the owner's "bunch of weeks
+with a label" (named, date-windowed, per-villa), so the tier is a second,
+controlled label alongside `RatePeriod.name` (GAP-059) rather than a per-band
+attribute; reporting aggregates on the tier while each villa keeps its own
+dates. Note that the tier must **copy with the base** on carry-over (Q-018 —
+carry-over already copies the base, not any in-season reduction), and that
+[SPEC-001](spec-001-rateplan-date-authority-regime-bucket.md) explores making
+`RatePeriod` the sole date authority — a tier-on-period decision here should
+be made with that exploration in view (it strengthens the period's claim to
+be the season-shaped object). Leave the cross-villa reporting standardisation
+(open question 1) for the reporting design.
 
 ## Acceptance
 
 - Decision recorded in `10-decisions.md`.
 - Relevant pricing design doc updated (`04-pricing.md` / `02-properties.md`).
-- Model implications scoped (`season_tier` placement on band vs card).
+- Model implications scoped (`season_tier` placement on `RatePeriod` vs
+  `RateBand`).
 
 ## Dependencies
 
-- Relates to GAP-025 / Q-018 (rate-band entry; tier copies with the base band
-  on carry-over).
+- Relates to GAP-025 / Q-018 (rate entry; tier copies with the base on
+  carry-over).
 - GAP-037 (services split): the **inclusions** half of the legacy "season"
   moves to a Services concept; this ticket keeps the **rate-tier** half.
-- The pricing model (`RatePlan` / `RateCard` / `RateRule`).
+- The pricing model (`Property → RatePlan → RatePeriod → RateBand`, GAP-056);
+  [SPEC-001](spec-001-rateplan-date-authority-regime-bucket.md) (period as
+  date authority — structural counterpart to this question).

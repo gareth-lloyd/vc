@@ -4,9 +4,17 @@
 - **Source:** 2026-06-11 new-villa setup transcript review
 - **Files:** `properties/models/property.py` (status enum),
   `django_res_design/02-properties.md` (reconciliation issue #23),
-  `pricing/models/rate.py` (`RateRule.is_approved`),
+  `pricing/models/rate.py:193` (`RateBand.is_approved`),
   `frontend/src/features/properties/tabs/SettingsTab.tsx` (LifecycleSection),
   quote-builder property search/result surfaces
+
+> **2026-07-29 refresh (naming/UI drift, premise intact):** `RateRule` is now
+> `RateBand` (SMELL-019) and the property Pricing tab was deleted in favour of
+> the Rate Workbench "Rates" tab (GAP-060) — references below retargeted. The
+> underlying gap is unchanged: `RateBand.is_approved` survives
+> (`pricing/models/rate.py:193`), the engine quotes approved bands only
+> (`pricing/services/engine.py:623`), and there is still no FE toggle
+> (`RateBandFormDialog` carries no `is_approved`) and no quote-builder badge.
 
 ## Problem
 
@@ -23,8 +31,9 @@ what the loader actually uses `live_offline` for**:
 
 Her stated unease is not that sales can see unapproved villas — it's that
 **nobody can tell it's unapproved**. Unconfirmed rates have the same
-problem: `RateRule.is_approved` exists in the backend (bulk imports land
-`False`) but has no UI toggle and is invisible in the quote builder.
+problem: `RateBand.is_approved` exists in the backend (the legacy loader
+stamps it from `IsApprove`, so imports can land `False`) but has no UI
+toggle and is invisible in the quote builder.
 
 ## Decision (2026-06-11 email)
 
@@ -51,14 +60,15 @@ orthogonal approval axis instead of a fourth status:
 - Badges, not hiding: quote builder / property search show
   "owner approval pending" and "unconfirmed rates" markers on affected
   properties so sales offer them knowingly.
-- Expose `RateRule.is_approved` (read + toggle) in the PricingTab.
+- Expose `RateBand.is_approved` (read + toggle) in the Rate Workbench
+  ("Rates" tab — the old Pricing tab was deleted by GAP-060).
 
 ## Acceptance (future target — not current scope)
 
 - Approval state settable from the property UI and visible in list/detail.
 - Preview link works for a DRAFT property without staff auth.
 - Quote builder rows show both badges where applicable; verified with a
-  seeded unapproved property + unapproved rate rules.
+  seeded unapproved property + unapproved rate bands.
 - `02-properties.md` #23 amended to document the approval axis.
 
 ## Dependencies

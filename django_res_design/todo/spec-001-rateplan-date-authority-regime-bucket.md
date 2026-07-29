@@ -215,8 +215,9 @@ even across a year boundary. Not worth it.
   discount columns, so the new `Extra`/`Discount` tables start **empty** for migrated
   villas. Inclusions *are* ported (GAP-037). Confirm whether the drop is intentional
   or an un-ported surface; if intentional, record it in `CUTOVER.md` expected-losses.
-- **Workbench carry-forward affordance** already filed as **GAP-069** (the
-  `…:carry-forward` endpoint exists but has no SPA caller).
+- **Workbench carry-forward affordance** already filed as **GAP-069** — since
+  resolved (2026-07-03): the `…:carry-forward` endpoint has its SPA caller
+  (`CarryForwardDialog`).
 
 ## Open decisions
 
@@ -253,9 +254,13 @@ even across a year boundary. Not worth it.
   counterpart to that question.
 - **Q-018** (rate reduction vs carryover) — same carryover service; shares the
   projection/materialise path.
-- **SMELL-021** (`PriceBasis` two sources) / **SMELL-022** (EXCLUDE constraints raw
-  SQL only) — the constraint work here should land alongside porting the EXCLUDE to
-  `ExclusionConstraint`.
-- **BUG-016** (rate-grid disjointness reimplemented by 4 producers) — the widened
-  constraint + period-native coverage reduce the surface this bug lives on.
-- **GAP-069** (workbench carry-forward affordance).
+- **SMELL-021 ✅** (`PriceBasis` single source, resolved 2026-07-13) /
+  **SMELL-022 ✅** (resolved 2026-07-12 — all four EXCLUDEs now live as
+  `ExclusionConstraint` in model `Meta`, so the widened
+  `(property_id, currency_id)` EXCLUDE proposed here lands there directly, no
+  raw-SQL porting step remains).
+- **BUG-016 ✅** (rate-grid disjointness — resolved 2026-07-05 via the single
+  canonical flattener; the widened constraint + period-native coverage would
+  further shrink that surface).
+- **GAP-069 ✅** (workbench carry-forward affordance — resolved 2026-07-03;
+  the `…:carry-forward` endpoint now has its SPA caller).

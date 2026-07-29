@@ -13,6 +13,14 @@ Format follows the 2026-06-11 email round: each question is numbered, has a
 nothing here blocks anything you can't see — it's all "what should the new
 system say/do", not "how".
 
+> **2026-07-29 — fold D1–D3 into the GAP-074 owner call.**
+> [GAP-074](gap-074-nightly-price-quoting-no-changeover.md) (2026-07-08 Nick
+> call) is gated on an owner/Debbie call about nightly-vs-weekly quote
+> presentation — the same nightly-pricing territory as D1–D3 below. To avoid
+> two separate owner asks on one topic, put D1–D3 on that call's agenda
+> instead of sending this section as a standalone email; C1 can still go by
+> email. Matching pointer added in gap-074.
+
 ---
 
 Hi both,

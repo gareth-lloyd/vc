@@ -14,6 +14,10 @@
   is guest confusion when one quote mixes weekly-priced and nightly-priced
   options. Also open: is nightly the *default* for no-changeover villas or an
   opt-in, and do we standardise all options in an email to one style?
+  *(2026-07-29: put the Q-023 odd-length-composition confirmations D1–D3 from
+  [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md) on this same
+  call's agenda — same nightly-pricing territory, one owner ask instead of
+  two.)*
 - **Files touched (best-guess):**
   - `django_res/reservations/services/stay_options.py` — `StayOptionsService`;
     no-changeover branch prices the requested dates as-is (`_plan_blocks`

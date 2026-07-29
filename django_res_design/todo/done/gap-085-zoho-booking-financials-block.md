@@ -1,5 +1,29 @@
 # GAP-085 — Zoho booking financials block (replace null placeholder)
 
+> **✅ RESOLVED (2026-07-29)** — built as specced (4 TDD units on
+> `feat/gap-085`): 8-figure `financials` block (2dp strings) sourced from
+> `owner_money_for_booking` / `payment_component_splits` — the FinanceTab
+> authority — with explicit degrade (sparse snapshot → all null; no
+> schedule → component figures null; never invented zeros); **top-level**
+> `extras[]` (engine snapshot extras then manual charge lines, each
+> `{label, amount, commissionable, category: null}` — category waits for
+> GAP-088); cancelled-booking figure pins; `zoho_send_sample --person-pk`
+> (CommandError on unknown/ANONYMIZED, empty-optional-fields report kept)
+> plus money-rich booking-picker requirements. Payload re-read carries
+> `with_charges_total` + `property__finance` + payments/charge_items
+> prefetch (query pin 5→7).
+>
+> **Flag for the 2026-08-12 call:** (a) this ticket's "nothing zeroes
+> money" claim was wrong for the split path — cancelling a booking with
+> unsettled PENDING rows terminates them, so the authority (and FinanceTab)
+> report **0.00** deposit/balance components; the push agrees byte-for-byte
+> rather than inventing pre-cancellation figures, and the booking-level
+> pair still carries the money for reporting. Confirm Limitless is happy
+> reading 0.00 components on such cancellations (the alternative — null
+> instead of authority zeros — is a one-branch change). (b) `extras` rides
+> as a **sibling** of `financials`, not inside it. The open contract points
+> below still stand for that call.
+
 - **Severity:** 🟢 Gap (integration contract — the booking push works, but
   carries no money).
 - **Source:** Limitless call 2026-07-29 (Villa Collective / Limitless

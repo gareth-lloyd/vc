@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, TypeVar
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import models
 from django.db.models import Count, QuerySet
 
@@ -73,6 +73,17 @@ class Command(BaseCommand):
             action="store_true",
             help="Pick and report the samples without pushing anything.",
         )
+        parser.add_argument(
+            "--person-pk",
+            type=int,
+            help=(
+                "Push exactly this contact instead of the richness-picked one "
+                "(GAP-085: the picker prefers-but-relaxes agency/tags/"
+                "relationships — reported, but not forceable — so a curated "
+                "contact must be selectable deliberately). Empty optional "
+                "fields are still reported."
+            ),
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         self.stdout.write(
@@ -85,7 +96,7 @@ class Command(BaseCommand):
         # `reservations.apps` at startup) — same as `zoho_backfill`.
         models_by_kind = {spec.kind: model for model, spec in registered_zoho_models().items()}
 
-        person = self._pick_person()
+        person = self._pick_person(pk=options["person_pk"])
         villa = self._pick_villa(models_by_kind.get("villa"))
         enquiry = self._pick_enquiry(models_by_kind.get("enquiry"))
         quotation = self._pick_quotation(models_by_kind.get("quote"))
@@ -238,7 +249,32 @@ class Command(BaseCommand):
         )
         return best
 
-    def _pick_person(self) -> Person | None:
+    _PERSON_OPTIONAL_SCALARS = [
+        "title",
+        "address_line_1",
+        "town",
+        "post_code",
+        "website_url",
+        "legacy_id",
+    ]
+
+    def _pick_person(self, *, pk: int | None = None) -> Person | None:
+        if pk is not None:
+            try:
+                person = Person.objects.select_related("agency__country", "country").get(pk=pk)
+            except Person.DoesNotExist:
+                raise CommandError(f"--person-pk {pk}: no Person with that pk") from None
+            if person.status == PersonStatus.ANONYMIZED:
+                # Would "succeed" while pushing nothing: the payload fails
+                # closed to null and the contacts push drops anonymized rows.
+                raise CommandError(
+                    f"--person-pk {pk}: person is ANONYMIZED — its payload "
+                    "fails closed and the push would silently drop it; pick "
+                    "a live contact"
+                )
+            # Route through _pick so the empty-optional-fields report (the
+            # "what this sample does NOT demonstrate" contract) still fires.
+            return self._pick("contact", [person], [], self._PERSON_OPTIONAL_SCALARS)
         base = Person.objects.exclude(status=PersonStatus.ANONYMIZED).select_related(
             "agency__country", "country"
         )
@@ -271,12 +307,7 @@ class Command(BaseCommand):
             ),
         ]
         candidates, dropped = self._candidates(base, requirements)
-        return self._pick(
-            "contact",
-            candidates,
-            dropped,
-            ["title", "address_line_1", "town", "post_code", "website_url", "legacy_id"],
-        )
+        return self._pick("contact", candidates, dropped, self._PERSON_OPTIONAL_SCALARS)
 
     def _pick_villa(self, model: type[models.Model] | None) -> Any:
         if model is None:
@@ -430,9 +461,31 @@ class Command(BaseCommand):
                 "sent_quote",
                 lambda qs: qs.filter(quotation_line__quotation__status__in=("sent", "accepted")),
             ),
+            # GAP-085: the financials block / extras itemization are the new
+            # contract centerpiece — a sample with an all-null money block is
+            # the one shape a first-contact push should not demonstrate, so
+            # money outranks the agent/assignment cosmetics below. `has_keys`
+            # matches what `owner_money_for_booking` actually consumes (a
+            # bare `total` is not enough to produce figures).
+            (
+                "money_snapshot",
+                lambda qs: qs.filter(pricing_snapshot__has_keys=["total", "commission", "tax"]),
+            ),
+            (
+                "payment_schedule",
+                lambda qs: qs.annotate(n_payments=Count("payments", distinct=True)).filter(
+                    n_payments__gt=0
+                ),
+            ),
             ("agent", lambda qs: qs.filter(agent__isnull=False)),
             ("assigned_to", lambda qs: qs.filter(assigned_to__isnull=False)),
             ("property_region", lambda qs: qs.filter(property__region__isnull=False)),
+            (
+                "charge_items",
+                lambda qs: qs.annotate(n_charges=Count("charge_items", distinct=True)).filter(
+                    n_charges__gt=0
+                ),
+            ),
         ]
         candidates, dropped = self._candidates(base, requirements)
         return self._pick("booking", candidates, dropped, ["legacy_id"])

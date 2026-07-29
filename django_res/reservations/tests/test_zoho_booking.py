@@ -194,13 +194,187 @@ def test_payload_booking_date_is_created_at(booking: Booking) -> None:
     assert payload["booking_date"] == payload["created_at"]
 
 
-def test_payload_financials_is_explicit_null(booking: Booking) -> None:
-    """Key presence pins the contract position for Flow pre-wiring; null can't
-    read as "zero money". Content lands after the next Limitless call."""
+# --- financials (GAP-085) -------------------------------------------------
+#
+# Contract from the 2026-07-29 Limitless call: res sends EVERY figure
+# explicitly (Zoho formula fields can't reproduce non-proportional
+# commission — GAP-076 pass-through extras + GAP-077 residual-on-BALANCE).
+# Source of truth = owner_money_for_booking / payment_component_splits, the
+# same authority the FinanceTab reads, so res-UI and Zoho can never disagree.
+
+FINANCIALS_KEYS = frozenset(
+    {
+        "total_gross",
+        "total_net",
+        "gross_deposit",
+        "net_deposit",
+        "deposit_commission",
+        "gross_balance",
+        "net_balance",
+        "balance_commission",
+    }
+)
+
+# GAP-079 worked example: GROSS 13%-VAT / 20%-commission villa, 10,000 split
+# 30/70 — divides exactly, so figures are verifiable by hand.
+FINANCIALS_SNAPSHOT = {
+    "total": "10000.00",
+    "commission": "1740.00",
+    "tax": "1300.00",
+    "net_to_owner": "6960.00",
+    "price_basis": "gross",
+}
+
+
+def _set_snapshot(booking: Booking, snapshot: dict[str, Any]) -> None:
+    booking.pricing_snapshot = snapshot
+    booking.save(update_fields=["pricing_snapshot", "updated_at"])
+
+
+def _payment(booking: Booking, *, purpose: str, amount: str, status: str = "pending") -> None:
+    # Test scaffolding may import `payments` (layers contract ignores tests).
+    from payments.models import Payment
+
+    Payment.objects.create(
+        booking=booking,
+        purpose=purpose,
+        status=status,
+        amount=Decimal(amount),
+        currency=booking.currency,
+    )
+
+
+def _charge(booking: Booking, *, label: str, amount: str, commissionable: bool) -> None:
+    from reservations.models import BookingChargeItem
+
+    BookingChargeItem.objects.create(
+        booking=booking,
+        label=label,
+        amount=Decimal(amount),
+        currency=booking.currency,
+        commissionable=commissionable,
+    )
+
+
+def _funded_booking(booking: Booking, *, noncomm_charge: str | None = None) -> Booking:
+    _set_snapshot(booking, FINANCIALS_SNAPSHOT)
+    if noncomm_charge is not None:
+        # ⚠️ Charge items BEFORE Payment rows: the charge write fires
+        # booking_total_changed → PaymentScheduler.resync_for_booking, which
+        # rewrites PENDING rows (a no-op only on an empty schedule).
+        _charge(booking, label="Chef pass-through", amount=noncomm_charge, commissionable=False)
+    _payment(booking, purpose="deposit", amount="3000.00")
+    _payment(booking, purpose="balance", amount="7000.00")
+    return booking
+
+
+def test_payload_financials_full_figures(booking: Booking) -> None:
+    """All 8 figures explicit, 2dp strings — exact dict equality also pins
+    that no keys beyond the agreed contract ride along."""
+    _funded_booking(booking)
+
     payload = build_booking_payload(booking)
 
-    assert "financials" in payload
-    assert payload["financials"] is None
+    assert payload["financials"] == {
+        "total_gross": "10000.00",
+        "total_net": "6960.00",
+        "gross_deposit": "3000.00",
+        "net_deposit": "2088.00",
+        "deposit_commission": "522.00",
+        "gross_balance": "7000.00",
+        "net_balance": "4872.00",
+        "balance_commission": "1218.00",
+    }
+
+
+def test_payload_financials_includes_charge_overlay(booking: Booking) -> None:
+    """Manual charge lines move the booking-level pair through the GAP-076
+    overlay — the non-proportionality that is the whole reason res sends
+    every figure. A non-commissionable line passes through to the owner
+    verbatim (gross and net +500, commission untouched); the schedule stays
+    3000/7000, so the component figures don't move — exactly the shape a
+    Zoho-side pro-rata formula could never reproduce."""
+    _funded_booking(booking, noncomm_charge="500.00")
+
+    payload = build_booking_payload(booking)
+
+    assert payload["financials"] == {
+        "total_gross": "10500.00",
+        "total_net": "7460.00",
+        "gross_deposit": "3000.00",
+        "net_deposit": "2088.00",
+        "deposit_commission": "522.00",
+        "gross_balance": "7000.00",
+        "net_balance": "4872.00",
+        "balance_commission": "1218.00",
+    }
+
+
+def test_payload_financials_agrees_with_split_authority(booking: Booking) -> None:
+    """Byte-agreement with the FinanceTab authority (the acceptance
+    criterion), plus the conservation the authority guarantees: commission
+    is conserved unconditionally whenever gross is scheduled; gross/net sum
+    because this fixture's schedule equals the booking total (a fixture
+    property, not a service guarantee — see owner_finance docstring)."""
+    from reservations.services.owner_finance import (
+        owner_money_for_booking,
+        payment_component_splits,
+    )
+
+    _funded_booking(booking)
+
+    payload = build_booking_payload(booking)
+
+    financials = payload["financials"]
+    money = owner_money_for_booking(booking)
+    assert money is not None
+    splits = {s["purpose"]: s for s in payment_component_splits(booking, money=money) or []}
+    assert financials["total_gross"] == f"{money['gross_total']:.2f}"
+    assert financials["total_net"] == f"{money['net_to_owner']:.2f}"
+    assert financials["gross_deposit"] == f"{splits['deposit']['gross']:.2f}"
+    assert financials["net_deposit"] == f"{splits['deposit']['net_to_owner']:.2f}"
+    assert financials["deposit_commission"] == f"{splits['deposit']['commission']:.2f}"
+    assert financials["gross_balance"] == f"{splits['balance']['gross']:.2f}"
+    assert financials["net_balance"] == f"{splits['balance']['net_to_owner']:.2f}"
+    assert financials["balance_commission"] == f"{splits['balance']['commission']:.2f}"
+    # Conservation: commission unconditional, gross/net fixture-conditional.
+    for total_key, part_keys in [
+        ("total_gross", ("gross_deposit", "gross_balance")),
+        ("total_net", ("net_deposit", "net_balance")),
+    ]:
+        assert Decimal(financials[total_key]) == sum(Decimal(financials[k]) for k in part_keys)
+    assert money["commission"] == sum(
+        Decimal(financials[k]) for k in ("deposit_commission", "balance_commission")
+    )
+
+
+def test_payload_financials_sparse_snapshot_is_all_null(booking: Booking) -> None:
+    """Imported bookings carry `{}` snapshots — no owner money. Degrade
+    explicitly: keys present, values null, never invented zeros (the
+    GAP-082 placeholder posture, now per-figure)."""
+    assert booking.pricing_snapshot == {}  # the fixture IS the sparse case
+
+    payload = build_booking_payload(booking)
+
+    financials = payload["financials"]
+    assert set(financials) == FINANCIALS_KEYS
+    assert all(value is None for value in financials.values())
+
+
+def test_payload_financials_no_schedule_degrades_components_to_null(
+    booking: Booking,
+) -> None:
+    """Owner money but no deposit/balance rows (financeless property):
+    booking-level pair populated, the six component figures null."""
+    _set_snapshot(booking, FINANCIALS_SNAPSHOT)
+
+    payload = build_booking_payload(booking)
+
+    financials = payload["financials"]
+    assert set(financials) == FINANCIALS_KEYS
+    assert financials["total_gross"] == "10000.00"
+    assert financials["total_net"] == "6960.00"
+    assert all(financials[key] is None for key in FINANCIALS_KEYS - {"total_gross", "total_net"})
 
 
 def test_payload_anonymized_person_fails_closed(booking: Booking) -> None:
@@ -214,17 +388,24 @@ def test_payload_anonymized_person_fails_closed(booking: Booking) -> None:
 
 
 def test_payload_json_round_trips(booking: Booking) -> None:
+    # Funded: a Decimal leaking into the financials block must fail here.
+    _funded_booking(booking)
     payload = build_booking_payload(booking)
     assert json.loads(json.dumps(payload)) == payload
 
 
 def test_payload_query_count_pinned(booking: Booking) -> None:
-    """One SELECT via the select_related chain + 4 prefetch buckets
-    (person/agent emails+phones) — dropping a leg regresses to lazy walks."""
+    """One SELECT via the select_related chain + 5 prefetch buckets
+    (person/agent emails+phones, payments) — dropping a leg regresses to
+    lazy walks. Funded WITH a charge item so the financials block runs its
+    full overlay path: dropping the `with_charges_total` annotations (per-
+    call aggregate fallback) or the `property__finance` select_related leg
+    each cost an extra query and fail the pin."""
     booking.agent = cast("Person", PersonFactory())
     booking.save()
+    _funded_booking(booking, noncomm_charge="500.00")
 
-    with assert_max_queries(5):
+    with assert_max_queries(6):
         build_booking_payload(booking)
 
 

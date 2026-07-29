@@ -63,11 +63,15 @@ line schema with the quote kind. `quote.is_synthetic` flags
 booking-synthesised legacy quotations (`legacy_id` `booking-*`) — those never
 push as the quote kind, so the flag prevents dangling Flow joins.
 `booking_date` = `created_at` (the historic-import filter; the loader
-back-stamps it from legacy `CreatedAt`). `financials` is an explicit null
-placeholder: key presence pins the contract position for Flow pre-wiring,
-null can't read as "zero money" — the block's content is finalized on the
-next Limitless call (the header money columns deliberately do not push until
-then; per-line money rides `line`).
+back-stamps it from legacy `CreatedAt`). `financials` (GAP-085, contract
+pinned on the 2026-07-29 Limitless call) carries every owner-money figure
+explicitly — Zoho-side formula fields cannot reproduce our non-proportional
+commission (GAP-076 pass-through extras, GAP-077 residual-on-BALANCE), so
+nothing is left for Zoho to derive. Figures come from the FinanceTab
+authority (`owner_finance`), 2dp strings; keys are always present and
+degrade to null (sparse imported snapshot / no schedule rows) — never
+invented zeros. An authority 0.00 (e.g. a booking cancelled while its
+schedule was still PENDING) is pushed as-is.
 """
 
 from __future__ import annotations
@@ -227,6 +231,56 @@ def build_enquiry_payload(enquiry: Enquiry) -> dict[str, Any]:
     }
 
 
+_FINANCIALS_KEYS = (
+    "total_gross",
+    "total_net",
+    "gross_deposit",
+    "net_deposit",
+    "deposit_commission",
+    "gross_balance",
+    "net_balance",
+    "balance_commission",
+)
+
+
+def _financials_payload(booking: Booking) -> dict[str, Any]:
+    """GAP-085: the 8-figure owner-money block, every figure explicit.
+
+    Source of truth = `owner_finance` (the FinanceTab authority), so res-UI
+    and Zoho can never disagree. Keys always present; a figure the authority
+    can't produce is null (sparse imported snapshot → all null; owner money
+    but no deposit/balance schedule rows → component figures null), never an
+    invented zero.
+    """
+    from reservations.services.owner_finance import (
+        owner_money_for_booking,
+        payment_component_splits,
+    )
+
+    money = owner_money_for_booking(booking)
+    if money is None:
+        return dict.fromkeys(_FINANCIALS_KEYS)
+    # ≤1 component per purpose: `payment_component_splits`' aggregation loop
+    # emits one summed component per purpose, so this keyed collapse is
+    # lossless and the per-purpose figures ARE the FinanceTab row figures.
+    splits = {s["purpose"]: s for s in payment_component_splits(booking, money=money) or []}
+
+    def _component(purpose: str, field: str) -> str | None:
+        split = splits.get(purpose)
+        return f"{split[field]:.2f}" if split is not None else None  # type: ignore[literal-required]
+
+    return {
+        "total_gross": f"{money['gross_total']:.2f}",
+        "total_net": f"{money['net_to_owner']:.2f}",
+        "gross_deposit": _component("deposit", "gross"),
+        "net_deposit": _component("deposit", "net_to_owner"),
+        "deposit_commission": _component("deposit", "commission"),
+        "gross_balance": _component("balance", "gross"),
+        "net_balance": _component("balance", "net_to_owner"),
+        "balance_commission": _component("balance", "commission"),
+    }
+
+
 def _line_payload(line: QuotationLine) -> dict[str, Any]:
     return {
         "RES_ID": line.pk,
@@ -303,21 +357,34 @@ def build_booking_payload(booking: Booking) -> dict[str, Any]:
     """
     from reservations.models import Booking
     from reservations.models.quotation import SYNTHETIC_LEGACY_PREFIX
+    from reservations.services.charges import with_charges_total
 
     booking = (
-        Booking.objects.select_related(
+        # `with_charges_total` + `property__finance`: the financials block's
+        # charge overlay reads the annotations (the un-annotated fallback
+        # aggregates per call and bypasses prefetch).
+        with_charges_total(Booking.objects.all())
+        .select_related(
             "person__agency",
             "agent__agency",
             "assigned_to",
             "property__region__country",
+            "property__finance",
             "currency",
             "terms_version",
             "quotation_line__quotation__enquiry",
             "quotation_line__property__region__country",
             "quotation_line__currency",
         )
-        # primary_email()/primary_phone() iterate the prefetched collections.
-        .prefetch_related("person__emails", "person__phones", "agent__emails", "agent__phones")
+        # primary_email()/primary_phone() iterate the prefetched collections;
+        # the splits walk filters `payments` in Python.
+        .prefetch_related(
+            "person__emails",
+            "person__phones",
+            "agent__emails",
+            "agent__phones",
+            "payments",
+        )
         .get(pk=booking.pk)
     )
     line = booking.quotation_line
@@ -373,10 +440,7 @@ def build_booking_payload(booking: Booking) -> dict[str, Any]:
         "cancelled_at": _iso(booking.cancelled_at),
         "is_archived": booking.is_archived,
         "archived_at": _iso(booking.archived_at),
-        # Explicit placeholder: key presence pins the contract position for
-        # Flow pre-wiring; null can never read as "zero money". Content is
-        # finalized on the next Limitless call.
-        "financials": None,
+        "financials": _financials_payload(booking),
         "created_at": _iso(booking.created_at),
         "updated_at": _iso(booking.updated_at),
     }

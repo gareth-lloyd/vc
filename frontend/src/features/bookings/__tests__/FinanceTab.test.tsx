@@ -128,6 +128,14 @@ function clearRole() {
 
 beforeEach(() => {
   grantWriterRole();
+  // GAP-086: FinanceTab now fetches the live security deposit on every
+  // render — default to "none exists" (204) so each test opts into a row.
+  server.use(
+    http.get(
+      `/api/v1/bookings/${BOOKING_ID}/security/deposit`,
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+  );
 });
 
 afterEach(() => {
@@ -308,6 +316,101 @@ describe("FinanceTab — money flow lead", () => {
     // No owner money on a sparse/imported snapshot — never invent a net.
     const netLabel = screen.getByText("Total net");
     expect(netLabel.parentElement!.textContent).toContain("—");
+  });
+});
+
+// GAP-086 — security-deposit row in the money-flow lead: live SD row wins,
+// snapshot `security` key is the fallback, absence renders nothing.
+const sdFixture = {
+  id: 5,
+  reference: "SD-2026-001",
+  kind: "pre_auth_hold",
+  status: "held",
+  amount: "400.00",
+  currency_code: "GBP",
+  hold_expires_at: null,
+  due_at: null,
+  release_scheduled_for: null,
+  captured_amount: null,
+  refunded_amount: null,
+  damage_claim: null,
+  created_at: "2026-06-01T00:00:00Z",
+  updated_at: "2026-06-01T00:00:00Z",
+};
+
+function useSecurityDepositResponse(response: () => Response) {
+  server.use(http.get(`/api/v1/bookings/${BOOKING_ID}/security/deposit`, response));
+}
+
+describe("FinanceTab — security deposit row", () => {
+  it("shows the live SD amount and status when a security deposit exists", async () => {
+    useSecurityDepositResponse(() => HttpResponse.json(sdFixture));
+    useBooking({});
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    const label = await screen.findByText("Security deposit");
+    const row = label.closest("div")!;
+    expect(row.textContent).toContain("£400.00");
+    expect(row.textContent).toContain("Held");
+  });
+
+  it("is absent when no security deposit exists (204) and the snapshot has none", async () => {
+    useBooking({});
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    // Let the tab's queries settle so absence isn't just "still loading".
+    await screen.findByText(/no manual charges/i);
+    expect(screen.queryByText("Security deposit")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the snapshot security figure when no live SD row exists", async () => {
+    useBooking({ pricing_snapshot: { currency_code: "GBP", security_deposit: "300.00" } });
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    const label = await screen.findByText("Security deposit");
+    const row = label.closest("div")!;
+    expect(row.textContent).toContain("£300.00");
+  });
+
+  it("prefers the live SD row over a snapshot security figure when both exist", async () => {
+    useSecurityDepositResponse(() => HttpResponse.json(sdFixture));
+    useBooking({ pricing_snapshot: { currency_code: "GBP", security_deposit: "300.00" } });
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    const label = await screen.findByText("Security deposit");
+    const row = label.closest("div")!;
+    expect(row.textContent).toContain("£400.00");
+    expect(row.textContent).toContain("Held");
+    expect(row.textContent).not.toContain("£300.00");
+  });
+
+  it("shows unavailable — not the snapshot figure — when the fetch fails with a fallback present", async () => {
+    useSecurityDepositResponse(() => new HttpResponse(null, { status: 500 }));
+    useBooking({ pricing_snapshot: { currency_code: "GBP", security_deposit: "300.00" } });
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    expect(await screen.findByText(/security deposit unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/£300\.00/)).not.toBeInTheDocument();
+  });
+
+  it("shows an unavailable state when the SD fetch fails — distinct from absence", async () => {
+    useSecurityDepositResponse(() => new HttpResponse(null, { status: 500 }));
+    useBooking({});
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    expect(await screen.findByText(/security deposit unavailable/i)).toBeInTheDocument();
   });
 });
 

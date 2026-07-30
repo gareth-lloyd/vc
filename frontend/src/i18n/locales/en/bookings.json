@@ -712,7 +712,9 @@
     "engine_breakdown": "Price breakdown",
     "money_flow": {
       "total_gross": "Total gross",
-      "total_net": "Total net"
+      "total_net": "Total net",
+      "security_deposit": "Security deposit",
+      "security_unavailable": "Security deposit unavailable"
     },
     "empty": {
       "title": "Pricing snapshot not available",

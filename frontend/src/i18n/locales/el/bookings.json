@@ -712,7 +712,9 @@
     "engine_breakdown": "Ανάλυση τιμής",
     "money_flow": {
       "total_gross": "Συνολικό μικτό ποσό",
-      "total_net": "Συνολικό καθαρό ποσό"
+      "total_net": "Συνολικό καθαρό ποσό",
+      "security_deposit": "Εγγύηση",
+      "security_unavailable": "Η εγγύηση δεν είναι διαθέσιμη"
     },
     "empty": {
       "title": "Δεν υπάρχει διαθέσιμο στιγμιότυπο τιμολόγησης",

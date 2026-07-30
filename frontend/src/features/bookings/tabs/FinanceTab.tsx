@@ -7,16 +7,18 @@ import { Collapsible } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FactList, FactRow } from "@/components/data/FactList";
+import { StatusBadge } from "@/components/data/StatusBadge";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney, parseMoney } from "@/lib/format/money";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import { useBookingChargeItems, useDeleteChargeItem } from "../hooks";
+import { useBookingChargeItems, useDeleteChargeItem, useSecurityDeposit } from "../hooks";
 import { ChargeItemFormDialog } from "../components/ChargeItemFormDialog";
 import {
   pricingSnapshotSchema,
+  securityDepositStatusLabel,
   type BookingChargeItem,
   type BookingNetToOwner,
   type PaymentComponentSplit,
@@ -303,17 +305,28 @@ function PaymentSplitSection({
 // keeps. Reads the same owner-money authority (net_to_owner + payment_splits)
 // as the GAP-085 Zoho financials block, so res-UI and Zoho can never disagree.
 function MoneyFlowSection({
+  bookingId,
   netToOwner,
   splits,
   bookingTotal,
   currency,
+  bookingCurrency,
+  securityFallback,
 }: {
+  bookingId: number;
   netToOwner: BookingNetToOwner | null | undefined;
   splits: PaymentComponentSplit[] | null | undefined;
   bookingTotal: string | null | undefined;
   currency: string | null;
+  /** Booking currency — the SD is guest-side money, so its fallback must not
+      route through the owner-money block's currency. */
+  bookingCurrency: string | null;
+  /** Snapshot `security` figure, pre-formatted — shown when no live SD row. */
+  securityFallback: string | null;
 }) {
   const { t } = useTranslation("bookings");
+  const sd = useSecurityDeposit(bookingId);
+  const deposit = sd.data ?? null;
 
   // Sparse/imported snapshots carry no owner money — fall back to the
   // guest-facing gross; a net figure is never invented.
@@ -345,6 +358,35 @@ function MoneyFlowSection({
           netToOwner={netToOwner ?? undefined}
           currency={currency}
         />
+      ) : null}
+
+      {/* Security deposit: live SD row wins, snapshot figure is the fallback,
+          true absence renders nothing. A failed fetch renders "unavailable" —
+          never disguised as absence. Nothing renders while the query is in
+          flight, so the fallback can't flash before a live row loads. */}
+      {!sd.isLoading && (sd.isError || deposit || securityFallback != null) ? (
+        <div className="border-border bg-card flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+          <span className="text-muted-foreground text-sm">
+            {t("finance.money_flow.security_deposit")}
+          </span>
+          {sd.isError ? (
+            <span className="text-muted-foreground text-sm">
+              {t("finance.money_flow.security_unavailable")}
+            </span>
+          ) : deposit ? (
+            <span className="flex items-center gap-2">
+              <span className="text-foreground font-semibold tabular-nums">
+                {formatMoney(deposit.amount, deposit.currency_code ?? bookingCurrency)}
+              </span>
+              <StatusBadge
+                status={deposit.status}
+                label={securityDepositStatusLabel(deposit.status)}
+              />
+            </span>
+          ) : (
+            <span className="text-foreground font-semibold tabular-nums">{securityFallback}</span>
+          )}
+        </div>
       ) : null}
     </section>
   );
@@ -385,10 +427,20 @@ export function FinanceTab() {
       <h2 className="text-foreground text-lg font-semibold">{t("finance.title")}</h2>
 
       <MoneyFlowSection
+        bookingId={booking.id}
         netToOwner={booking.net_to_owner}
         splits={booking.payment_splits}
         bookingTotal={booking.total}
         currency={booking.net_to_owner?.currency_code ?? currency}
+        bookingCurrency={currency}
+        securityFallback={
+          snapshot
+            ? moneyOrNull(
+                pickMoney(snapshot, ["security", "security_deposit"]),
+                snapshot.currency_code ?? currency,
+              )
+            : null
+        }
       />
 
       {/* GAP-086: the engine breakdown answers "why is the gross what it is" —

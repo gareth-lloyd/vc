@@ -228,7 +228,9 @@
   "bookings": [
     "finance.engine_breakdown",
     "finance.money_flow.total_gross",
-    "finance.money_flow.total_net"
+    "finance.money_flow.total_net",
+    "finance.money_flow.security_deposit",
+    "finance.money_flow.security_unavailable"
   ],
   "admin": [
     "email_templates.title",

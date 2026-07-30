@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Collapsible } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FactList, FactRow } from "@/components/data/FactList";
@@ -28,6 +29,38 @@ function parseSnapshot(value: unknown): PricingSnapshot | null {
   if (!value || typeof value !== "object") return null;
   const parsed = pricingSnapshotSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
+}
+
+// Money rows SnapshotSection renders, in display order. snapshotHasContent
+// derives its key set from this same list so the two can never drift (a key
+// rendered but not counted would hide real data behind the empty state).
+const SNAPSHOT_MONEY_ROWS: Array<{ labelKey: string; keys: (keyof PricingSnapshot)[] }> = [
+  { labelKey: "finance.fields.nightly_rate", keys: ["nightly_rate"] },
+  { labelKey: "finance.fields.rate_subtotal", keys: ["rate_subtotal"] },
+  { labelKey: "finance.fields.extras_total", keys: ["extras_total"] },
+  { labelKey: "finance.fields.fees", keys: ["fees"] },
+  { labelKey: "finance.fields.adjustments", keys: ["adjustments"] },
+  { labelKey: "finance.fields.discount", keys: ["discount"] },
+  { labelKey: "finance.fields.commission", keys: ["commission"] },
+  { labelKey: "finance.fields.tax", keys: ["tax", "taxes"] },
+  { labelKey: "finance.fields.deposit", keys: ["deposit"] },
+  { labelKey: "finance.fields.balance", keys: ["balance"] },
+  { labelKey: "finance.fields.security", keys: ["security", "security_deposit"] },
+  { labelKey: "finance.fields.total", keys: ["grand_total", "total"] },
+];
+
+// GAP-086 — a snapshot that would render zero rows and no lines (legacy
+// imports often carry `{}`) is treated like a missing snapshot, so the empty
+// state stays immediately visible instead of hiding inside the disclosure.
+const SNAPSHOT_MONEY_KEYS = SNAPSHOT_MONEY_ROWS.flatMap((row) => row.keys);
+
+function snapshotHasContent(snapshot: PricingSnapshot): boolean {
+  if (snapshot.date_from || snapshot.date_to || snapshot.nights != null) return true;
+  if ((snapshot.lines ?? []).length > 0) return true;
+  return SNAPSHOT_MONEY_KEYS.some((key) => {
+    const v = snapshot[key];
+    return v != null && v !== "";
+  });
 }
 
 function pickMoney(snapshot: PricingSnapshot, keys: (keyof PricingSnapshot)[]): unknown {
@@ -72,18 +105,9 @@ function SnapshotSection({
     rows.push({ label: t("finance.fields.nights"), value: String(snapshot.nights) });
   }
 
-  push(t("finance.fields.nightly_rate"), pickMoney(snapshot, ["nightly_rate"]));
-  push(t("finance.fields.rate_subtotal"), pickMoney(snapshot, ["rate_subtotal"]));
-  push(t("finance.fields.extras_total"), pickMoney(snapshot, ["extras_total"]));
-  push(t("finance.fields.fees"), pickMoney(snapshot, ["fees"]));
-  push(t("finance.fields.adjustments"), pickMoney(snapshot, ["adjustments"]));
-  push(t("finance.fields.discount"), pickMoney(snapshot, ["discount"]));
-  push(t("finance.fields.commission"), pickMoney(snapshot, ["commission"]));
-  push(t("finance.fields.tax"), pickMoney(snapshot, ["tax", "taxes"]));
-  push(t("finance.fields.deposit"), pickMoney(snapshot, ["deposit"]));
-  push(t("finance.fields.balance"), pickMoney(snapshot, ["balance"]));
-  push(t("finance.fields.security"), pickMoney(snapshot, ["security", "security_deposit"]));
-  push(t("finance.fields.total"), pickMoney(snapshot, ["grand_total", "total"]));
+  for (const row of SNAPSHOT_MONEY_ROWS) {
+    push(t(row.labelKey), pickMoney(snapshot, row.keys));
+  }
 
   const lines: PricingSnapshotLine[] = snapshot.lines ?? [];
 
@@ -275,15 +299,66 @@ function PaymentSplitSection({
   );
 }
 
+// GAP-086 — the Limitless money-flow lead: who pays what, and what the owner
+// keeps. Reads the same owner-money authority (net_to_owner + payment_splits)
+// as the GAP-085 Zoho financials block, so res-UI and Zoho can never disagree.
+function MoneyFlowSection({
+  netToOwner,
+  splits,
+  bookingTotal,
+  currency,
+}: {
+  netToOwner: BookingNetToOwner | null | undefined;
+  splits: PaymentComponentSplit[] | null | undefined;
+  bookingTotal: string | null | undefined;
+  currency: string | null;
+}) {
+  const { t } = useTranslation("bookings");
+
+  // Sparse/imported snapshots carry no owner money — fall back to the
+  // guest-facing gross; a net figure is never invented.
+  const gross = netToOwner?.gross_total ?? bookingTotal;
+  const net = netToOwner?.net_to_owner;
+
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="border-border bg-card rounded-lg border px-4 py-3">
+          <div className="text-muted-foreground text-sm">{t("finance.money_flow.total_gross")}</div>
+          <div className="text-foreground text-lg font-semibold tabular-nums">
+            {moneyOrNull(gross, currency) ?? "—"}
+          </div>
+        </div>
+        <div className="border-border bg-card rounded-lg border px-4 py-3">
+          <div className="text-muted-foreground text-sm">{t("finance.money_flow.total_net")}</div>
+          <div className="text-foreground text-lg font-semibold tabular-nums">
+            {moneyOrNull(net, currency) ?? "—"}
+          </div>
+        </div>
+      </div>
+
+      {/* GAP-077: absent (not empty-stated) when null/[] — a schedule-less or
+          no-owner-money booking simply has nothing to split. */}
+      {splits && splits.length > 0 ? (
+        <PaymentSplitSection
+          splits={splits}
+          netToOwner={netToOwner ?? undefined}
+          currency={currency}
+        />
+      ) : null}
+    </section>
+  );
+}
+
 export function FinanceTab() {
   const { t } = useTranslation("bookings");
   const { booking } = useOutletContext<BookingOutletContext>();
   const canWrite = useHasReservationsRole();
 
-  const snapshot = useMemo(
-    () => parseSnapshot(booking.pricing_snapshot),
-    [booking.pricing_snapshot],
-  );
+  const snapshot = useMemo(() => {
+    const parsed = parseSnapshot(booking.pricing_snapshot);
+    return parsed && snapshotHasContent(parsed) ? parsed : null;
+  }, [booking.pricing_snapshot]);
   const currency = booking.currency_code ?? null;
 
   const charges = useBookingChargeItems(booking.id);
@@ -309,21 +384,31 @@ export function FinanceTab() {
     <div className="space-y-6 p-6">
       <h2 className="text-foreground text-lg font-semibold">{t("finance.title")}</h2>
 
+      <MoneyFlowSection
+        netToOwner={booking.net_to_owner}
+        splits={booking.payment_splits}
+        bookingTotal={booking.total}
+        currency={booking.net_to_owner?.currency_code ?? currency}
+      />
+
+      {/* GAP-086: the engine breakdown answers "why is the gross what it is" —
+          demoted behind a closed disclosure. No snapshot → the empty state
+          renders directly (a disclosure hiding an empty state helps no one). */}
       {snapshot ? (
-        <SnapshotSection snapshot={snapshot} currency={snapshot.currency_code ?? currency} />
+        <Collapsible
+          title={
+            <span className="text-foreground text-base font-semibold">
+              {t("finance.engine_breakdown")}
+            </span>
+          }
+        >
+          <div className="space-y-6 pt-4">
+            <SnapshotSection snapshot={snapshot} currency={snapshot.currency_code ?? currency} />
+          </div>
+        </Collapsible>
       ) : (
         <EmptyState title={t("finance.empty.title")} description={t("finance.empty.description")} />
       )}
-
-      {/* GAP-077: absent (not empty-stated) when null/[] — a schedule-less or
-          no-owner-money booking simply has nothing to split. */}
-      {booking.payment_splits && booking.payment_splits.length > 0 ? (
-        <PaymentSplitSection
-          splits={booking.payment_splits}
-          netToOwner={booking.net_to_owner}
-          currency={booking.net_to_owner?.currency_code ?? currency}
-        />
-      ) : null}
 
       {/* Manual charges live outside the immutable snapshot, so this section
           renders snapshot-or-not — legacy-imported bookings (no snapshot) are

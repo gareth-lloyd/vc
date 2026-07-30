@@ -135,8 +135,13 @@ afterEach(() => {
   clearRole();
 });
 
+// GAP-086 — the engine snapshot is demoted behind a closed disclosure.
+async function expandBreakdown() {
+  await userEvent.click(screen.getByRole("button", { name: /price breakdown/i }));
+}
+
 describe("FinanceTab — pricing snapshot", () => {
-  it("renders snapshot fact rows when pricing_snapshot is populated", async () => {
+  it("hides snapshot fact rows behind the breakdown disclosure until expanded", async () => {
     const snapshot = {
       currency_code: "GBP",
       date_from: "2026-07-01",
@@ -159,6 +164,11 @@ describe("FinanceTab — pricing snapshot", () => {
     setup();
 
     expect(await screen.findByRole("heading", { name: "Finance" })).toBeInTheDocument();
+    // Collapsed by default — the engine shape no longer leads the tab.
+    expect(screen.queryByText("Rate subtotal")).not.toBeInTheDocument();
+    expect(screen.queryByText("Grand total")).not.toBeInTheDocument();
+
+    await expandBreakdown();
     expect(screen.getByText("Rate subtotal")).toBeInTheDocument();
     expect(screen.getAllByText(/£1,400\.00/).length).toBeGreaterThan(0);
     expect(screen.getByText("Grand total")).toBeInTheDocument();
@@ -177,7 +187,9 @@ describe("FinanceTab — pricing snapshot", () => {
     );
     useCharges([]);
     setup();
-    expect(await screen.findByText("Line items")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Finance" });
+    await expandBreakdown();
+    expect(screen.getByText("Line items")).toBeInTheDocument();
     expect(screen.getByText("Base rate")).toBeInTheDocument();
   });
 
@@ -188,11 +200,13 @@ describe("FinanceTab — pricing snapshot", () => {
     );
     useCharges([]);
     setup();
-    expect(await screen.findByText(/fixed at confirmation/i)).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Finance" });
+    await expandBreakdown();
+    expect(screen.getByText(/fixed at confirmation/i)).toBeInTheDocument();
     expect(screen.queryByText(/Line-item editing coming/i)).not.toBeInTheDocument();
   });
 
-  it("shows the snapshot empty state when pricing_snapshot is missing", async () => {
+  it("shows the snapshot empty state immediately (no disclosure) when pricing_snapshot is missing", async () => {
     server.use(
       http.get(`/api/v1/bookings/${BOOKING_ID}`, () => HttpResponse.json(bookingFixture(null))),
     );
@@ -201,6 +215,21 @@ describe("FinanceTab — pricing snapshot", () => {
     await waitFor(() =>
       expect(screen.getByText(/Pricing snapshot not available/i)).toBeInTheDocument(),
     );
+    expect(screen.queryByRole("button", { name: /price breakdown/i })).not.toBeInTheDocument();
+  });
+
+  it("treats a snapshot carrying only empty values as missing (no disclosure)", async () => {
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () =>
+        HttpResponse.json(bookingFixture({ currency_code: "GBP", total: "", rate_subtotal: "" })),
+      ),
+    );
+    useCharges([]);
+    setup();
+    await waitFor(() =>
+      expect(screen.getByText(/Pricing snapshot not available/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: /price breakdown/i })).not.toBeInTheDocument();
   });
 });
 
@@ -240,6 +269,47 @@ function useBooking(overrides: Record<string, unknown>) {
     ),
   );
 }
+
+// GAP-086 — money-flow lead: the tab opens on the Limitless shape (totals
+// pair + schedule split), same authority as the GAP-085 Zoho block.
+describe("FinanceTab — money flow lead", () => {
+  it("leads with the totals pair off net_to_owner, above the breakdown disclosure", async () => {
+    useBooking({
+      pricing_snapshot: { currency_code: "GBP", total: "2500.00" },
+      // gross_total deliberately differs from booking.total (2500.00) so the
+      // test pins the owner-money block as the source, not the fallback.
+      net_to_owner: { ...netToOwnerBlock, gross_total: "2600.00" },
+      payment_splits: [depositSplit, balanceSplit],
+    });
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    const grossLabel = screen.getByText("Total gross");
+    expect(grossLabel.parentElement!.textContent).toContain("£2,600.00");
+    const netLabel = screen.getByText("Total net");
+    expect(netLabel.parentElement!.textContent).toContain("£1,675.00");
+
+    // The totals pair precedes the demoted engine breakdown in the DOM.
+    const toggle = screen.getByRole("button", { name: /price breakdown/i });
+    expect(
+      grossLabel.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("falls back to the guest-facing booking total for gross when net_to_owner is absent", async () => {
+    useBooking({ total: "3000.00" });
+    useCharges([]);
+    setup();
+
+    await screen.findByRole("heading", { name: "Finance" });
+    const grossLabel = screen.getByText("Total gross");
+    expect(grossLabel.parentElement!.textContent).toContain("£3,000.00");
+    // No owner money on a sparse/imported snapshot — never invent a net.
+    const netLabel = screen.getByText("Total net");
+    expect(netLabel.parentElement!.textContent).toContain("—");
+  });
+});
 
 describe("FinanceTab — payment schedule split", () => {
   it("renders one row per component plus a totals row, all money formatted", async () => {

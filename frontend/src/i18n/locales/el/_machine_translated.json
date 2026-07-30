@@ -225,6 +225,11 @@
     "detail.lines.selected_badge",
     "detail.lines.thumbnail_alt"
   ],
+  "bookings": [
+    "finance.engine_breakdown",
+    "finance.money_flow.total_gross",
+    "finance.money_flow.total_net"
+  ],
   "admin": [
     "email_templates.title",
     "email_templates.description",

@@ -709,6 +709,11 @@
       "total": "Total"
     },
     "alert": "The engine-priced snapshot is fixed at confirmation. Add manual charges below, or recalculate via Modify dates / Modify guests on the Overview tab.",
+    "engine_breakdown": "Price breakdown",
+    "money_flow": {
+      "total_gross": "Total gross",
+      "total_net": "Total net"
+    },
     "empty": {
       "title": "Pricing snapshot not available",
       "description": "This booking has no pricing snapshot to display."

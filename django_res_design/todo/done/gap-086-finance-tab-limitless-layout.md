@@ -1,5 +1,25 @@
 # GAP-086 — Booking finance tab: Limitless breakdown layout
 
+> **✅ RESOLVED (2026-07-30)** — built frontend-only (2 TDD units on
+> `feat/gap-086`): FinanceTab now leads with a `MoneyFlowSection` — Total
+> gross / Total net card pair off `net_to_owner` (gross falls back to the
+> guest-facing `booking.total` on sparse imported snapshots; net is never
+> invented) with the GAP-077 split table promoted beneath it (its rows ARE
+> the deposit/balance gross/commission/tax/net triplets; tax stays visible),
+> plus a security-deposit row: live `SecurityDeposit` row wins (amount +
+> status badge via the existing `useSecurityDeposit` hook — step 3's
+> "verify exposure" resolved as **no backend gap**, the separate
+> `/bookings/{id}/security/deposit` endpoint already serves it), snapshot
+> `security`/`security_deposit` key as fallback, absence renders nothing,
+> fetch error renders an explicit "unavailable" state, nothing while
+> in-flight. Engine breakdown demoted behind a default-closed "Price
+> breakdown" disclosure; contentless snapshots (`{}`/only-empty values)
+> keep the immediate empty state. Figure parity with the GAP-085 Zoho block
+> is by construction (same `net_to_owner`/`payment_splits` serializer
+> fields). en+el i18n. Deferred: policy-derived "expected SD" when no row
+> exists, retry affordance on the SD row (Payments tab has it), 0.00-on-
+> cancel presentation (GAP-085 flag, 2026-08-12 call).
+
 - **Severity:** 🟢 Gap (UX restructure). Frontend-only, or nearly so.
 - **Source:** Limitless call 2026-07-29 — Nick, seeing the Limitless Zoho
   booking layout: "we probably should break it down more like this". Filed

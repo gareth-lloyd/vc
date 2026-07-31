@@ -14,6 +14,7 @@ function makeItem(overrides: Partial<BookingChargeItem> = {}): BookingChargeItem
   return {
     id: 1,
     booking: BOOKING_ID,
+    category: "other",
     label: "Late checkout",
     amount: "150.00",
     currency: 1,
@@ -88,6 +89,7 @@ describe("useCreateChargeItem", () => {
     let returned: BookingChargeItem | undefined;
     await act(async () => {
       returned = await result.current.mutateAsync({
+        category: "other",
         label: "Late checkout",
         amount: "150.00",
         notes: "",
@@ -122,7 +124,12 @@ describe("charge mutations — BUG-018 cross-entity fan-out", () => {
     });
 
     await act(async () => {
-      await result.current.mutateAsync({ label: "Late checkout", amount: "150.00", notes: "" });
+      await result.current.mutateAsync({
+        category: "other",
+        label: "Late checkout",
+        amount: "150.00",
+        notes: "",
+      });
     });
 
     expect(client.getQueryState(contactKey)?.isInvalidated).toBe(true);

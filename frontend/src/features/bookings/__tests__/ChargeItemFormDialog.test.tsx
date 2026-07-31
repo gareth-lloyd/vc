@@ -19,6 +19,7 @@ function makeItem(overrides: Partial<BookingChargeItem> = {}): BookingChargeItem
   return {
     id: 7,
     booking: BOOKING_ID,
+    category: "other",
     label: "Late checkout",
     amount: "150.00",
     currency: 1,
@@ -68,10 +69,31 @@ describe("ChargeItemFormDialog (create)", () => {
 
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(receivedBody).toMatchObject({
+      category: "other",
       label: "Late checkout",
       amount: "150.00",
       commissionable: true,
     });
+  });
+
+  it("sends the selected category", async () => {
+    let receivedBody: unknown = null;
+    server.use(
+      http.post(`/api/v1/bookings/${BOOKING_ID}/charge-items`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json(makeItem({ id: 102, category: "cleaning" }), { status: 201 });
+      }),
+    );
+    setupCreate();
+
+    await userEvent.click(screen.getByRole("combobox", { name: /category/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Cleaning" }));
+    await userEvent.type(screen.getByLabelText(/label/i), "Final clean");
+    await userEvent.type(screen.getByLabelText(/amount/i), "80.00");
+    await userEvent.click(screen.getByRole("button", { name: /add charge/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(receivedBody).toMatchObject({ category: "cleaning", label: "Final clean" });
   });
 
   it("sends commissionable: false when the checkbox is unticked", async () => {
@@ -130,6 +152,29 @@ describe("ChargeItemFormDialog (create)", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  it("maps a 400 category error inline under the select", async () => {
+    server.use(
+      http.post(`/api/v1/bookings/${BOOKING_ID}/charge-items`, () =>
+        HttpResponse.json(
+          {
+            code: "validation_error",
+            detail: "Validation failed",
+            field_errors: { category: ['"other" is not a valid choice.'] },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    setupCreate();
+
+    await userEvent.type(screen.getByLabelText(/label/i), "Drifted enum");
+    await userEvent.type(screen.getByLabelText(/amount/i), "10.00");
+    await userEvent.click(screen.getByRole("button", { name: /add charge/i }));
+
+    expect(await screen.findByText(/not a valid choice/i)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("toasts on a 500 and stays open", async () => {
     server.use(
       http.post(`/api/v1/bookings/${BOOKING_ID}/charge-items`, () =>
@@ -174,6 +219,32 @@ describe("ChargeItemFormDialog (edit)", () => {
 
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(receivedBody).toMatchObject({ label: "Late checkout", amount: "-75.00" });
+  });
+
+  it("seeds the category select from the item", async () => {
+    let receivedBody: unknown = null;
+    server.use(
+      http.patch(`/api/v1/bookings/${BOOKING_ID}/charge-items/7`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json(makeItem({ category: "heating" }));
+      }),
+    );
+    renderWithProviders(
+      <ChargeItemFormDialog
+        mode="edit"
+        bookingId={BOOKING_ID}
+        currencyCode="GBP"
+        item={makeItem({ category: "heating" })}
+        open
+        onOpenChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("combobox", { name: /category/i })).toHaveTextContent("Heating");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(receivedBody).toMatchObject({ category: "heating" });
   });
 
   it("seeds the commissionable checkbox from the item", async () => {

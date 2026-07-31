@@ -58,6 +58,7 @@ function chargeItem(overrides: Partial<BookingChargeItem> = {}): BookingChargeIt
   return {
     id: 1,
     booking: BOOKING_ID,
+    category: "other",
     label: "Late checkout",
     amount: "150.00",
     currency: 1,

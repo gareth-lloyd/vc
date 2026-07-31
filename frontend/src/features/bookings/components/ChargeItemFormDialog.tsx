@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { EnumSelect } from "@/components/form/EnumSelect";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +22,7 @@ import { fieldErrorText } from "@/lib/forms/fieldError";
 import type { BookingId } from "@/lib/query/keys";
 import { useCreateChargeItem, useUpdateChargeItem } from "../hooks";
 import {
+  CHARGE_CATEGORIES,
   chargeItemWriteInputSchema,
   type BookingChargeItem,
   type ChargeItemWriteInput,
@@ -45,6 +47,7 @@ interface EditProps extends CommonProps {
 type Props = CreateProps | EditProps;
 
 const createDefaults: ChargeItemWriteInput = {
+  category: "other",
   label: "",
   amount: "",
   notes: "",
@@ -53,6 +56,7 @@ const createDefaults: ChargeItemWriteInput = {
 
 function defaultsFromItem(item: BookingChargeItem): ChargeItemWriteInput {
   return {
+    category: item.category ?? "other",
     label: item.label,
     amount: item.amount,
     notes: item.notes ?? "",
@@ -71,6 +75,7 @@ export function ChargeItemFormDialog(props: Props) {
   });
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const commissionable = form.watch("commissionable") ?? true;
+  const category = form.watch("category");
 
   const createMutation = useCreateChargeItem(bookingId);
   const updateMutation = useUpdateChargeItem(bookingId);
@@ -122,6 +127,24 @@ export function ChargeItemFormDialog(props: Props) {
           <DialogDescription>{t("finance.charges.form_dialog.description")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4" noValidate>
+          <div className="space-y-2">
+            <Label htmlFor="charge-category">
+              {t("finance.charges.form_dialog.fields.category")}
+            </Label>
+            <EnumSelect
+              id="charge-category"
+              value={category}
+              onChange={(v) => form.setValue("category", v, { shouldValidate: true })}
+              options={CHARGE_CATEGORIES}
+              labelFor={(v) => t(`finance.charges.enums.category.${v}`)}
+            />
+            {form.formState.errors.category ? (
+              <p className="text-destructive text-sm" role="alert">
+                {fieldErrorText(t, form.formState.errors.category.message)}
+              </p>
+            ) : null}
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="charge-label">{t("finance.charges.form_dialog.fields.label")}</Label>
             <Input

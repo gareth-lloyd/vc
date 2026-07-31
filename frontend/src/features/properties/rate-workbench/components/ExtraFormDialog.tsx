@@ -26,7 +26,7 @@ import {
   type ExtraWriteInput,
   type ExtraWritePayload,
 } from "../schemas";
-import { EnumSelect } from "./EnumSelect";
+import { EnumSelect } from "@/components/form/EnumSelect";
 import type { Extra } from "@/features/properties/schemas";
 
 interface CommonProps {

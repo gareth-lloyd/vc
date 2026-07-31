@@ -495,7 +495,19 @@ describe("bookingChargeItemSchema", () => {
 });
 
 describe("chargeItemWriteInputSchema", () => {
-  const base = { label: "Late checkout", amount: "150.00", notes: "" };
+  const base = { category: "other", label: "Late checkout", amount: "150.00", notes: "" };
+
+  it("requires a known category", () => {
+    expect(chargeItemWriteInputSchema.safeParse({ ...base, category: "cleaning" }).success).toBe(
+      true,
+    );
+    expect(chargeItemWriteInputSchema.safeParse({ ...base, category: "final clean" }).success).toBe(
+      false,
+    );
+    expect(chargeItemWriteInputSchema.safeParse({ ...base, category: undefined }).success).toBe(
+      false,
+    );
+  });
 
   it("accepts signed decimals", () => {
     for (const amount of ["150.00", "-500.00", "1.5", "-3", "200"]) {

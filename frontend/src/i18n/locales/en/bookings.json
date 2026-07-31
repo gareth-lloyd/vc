@@ -756,6 +756,7 @@
         "edit_title": "Edit charge",
         "description": "Positive amounts charge the guest, negative amounts credit them. Amounts are gross (tax-inclusive) in the booking currency and flow into the payment schedule.",
         "fields": {
+          "category": "Category",
           "label": "Label",
           "amount": "Amount",
           "notes": "Notes",
@@ -763,6 +764,20 @@
           "currency": "Currency"
         },
         "submit_create": "Add charge"
+      },
+      "enums": {
+        "category": {
+          "cleaning": "Cleaning",
+          "pet_fee": "Pet fee",
+          "heating": "Heating",
+          "linen": "Linen",
+          "extra_bed": "Extra bed",
+          "service_fee": "Service fee",
+          "resort_fee": "Resort fee",
+          "damage": "Damage",
+          "credit": "Credit",
+          "other": "Other"
+        }
       }
     },
     "component_splits": {

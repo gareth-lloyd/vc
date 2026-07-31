@@ -24,7 +24,7 @@ import {
   type DiscountWriteInput,
   type DiscountWritePayload,
 } from "../schemas";
-import { EnumSelect } from "./EnumSelect";
+import { EnumSelect } from "@/components/form/EnumSelect";
 import type { Discount } from "@/features/properties/schemas";
 
 interface CommonProps {

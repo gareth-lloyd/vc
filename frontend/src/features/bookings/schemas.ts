@@ -609,9 +609,28 @@ export type RefundRequestInput = z.infer<typeof refundRequestInputSchema>;
 // Manual charge items — signed money lines outside the pricing snapshot.
 // ----------------------------------------------------------------------
 
+// Mirrors `reservations.enums.ChargeCategory` (GAP-088): the ExtraKind
+// vocabulary plus the charge-only `damage`/`credit`.
+export const CHARGE_CATEGORIES = [
+  "cleaning",
+  "pet_fee",
+  "heating",
+  "linen",
+  "extra_bed",
+  "service_fee",
+  "resort_fee",
+  "damage",
+  "credit",
+  "other",
+] as const;
+export type ChargeCategory = (typeof CHARGE_CATEGORIES)[number];
+
 export const bookingChargeItemSchema = z.object({
   id: z.number(),
   booking: z.number().optional(),
+  // `.catch` tolerates a future backend-added category (reads as undefined →
+  // the form seeds "other") instead of failing the whole charge-items parse.
+  category: z.enum(CHARGE_CATEGORIES).optional().catch(undefined),
   label: z.string(),
   amount: z.string(),
   currency: z.number(),
@@ -628,6 +647,7 @@ export const bookingChargeItemsResponseSchema = paginated(bookingChargeItemSchem
 // Currency is deliberately absent from the write body — the backend pins
 // charge lines to the booking's currency.
 export const chargeItemWriteInputSchema = z.object({
+  category: z.enum(CHARGE_CATEGORIES),
   label: z.string().trim().min(1, i18n.t("bookings:schema_errors.label_required")).max(200),
   amount: z
     .string()

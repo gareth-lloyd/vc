@@ -230,7 +230,10 @@
     "finance.money_flow.total_gross",
     "finance.money_flow.total_net",
     "finance.money_flow.security_deposit",
-    "finance.money_flow.security_unavailable"
+    "finance.money_flow.security_unavailable",
+    "finance.charges.form_dialog.fields.category",
+    "finance.charges.enums.category.damage",
+    "finance.charges.enums.category.credit"
   ],
   "admin": [
     "email_templates.title",

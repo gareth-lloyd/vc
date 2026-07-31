@@ -1,5 +1,29 @@
 # GAP-088 — BookingChargeItem category taxonomy
 
+> **✅ RESOLVED (2026-07-31)** — built as 3 TDD units on `feat/gap-088`.
+> Decision (proposed-fix item 2): **superset**, not shared enum —
+> `ChargeCategory` in `reservations/enums.py` embeds all 8 `ExtraKind`
+> values verbatim (string+label equality pinned by test, so the vocabularies
+> cannot drift) plus charge-only `damage`/`credit`. `category` column on
+> `BookingChargeItem` (migration 0007, default/backfill `other` incl.
+> GAP-017 legacy rows), read+write serializers (unknown values 400),
+> `ChargeItemService.create()` kwarg + BookingEvent snapshot + AuditLog
+> tracked fields. Zoho `extras[]` placeholders filled: snapshot extras pass
+> their stored `ExtraKind` through **sanitized** (kind outside the
+> vocabulary → null — manual-override snapshot writes are unfenced; a
+> charge-only value like `damage` passes), charge lines send
+> `item.category`; SNAPSHOT_EXTRAS fixture's fake kinds corrected to real
+> values in the same commit as the assertion flips. FE: category
+> `EnumSelect` above the free-text label in `ChargeItemFormDialog`
+> (defaults "other"), `CHARGE_CATEGORIES` mirror + tolerant read schema
+> (`.catch(undefined)` so a future backend value can't break the Finance
+> tab), backend category 400s render inline, en+el labels (shared 8 copy
+> the reviewed `extra_kind` Greek; 3 new strings manifest-tracked);
+> `EnumSelect` lifted to `src/components/form/` (generic). No read-side
+> category display (FinanceTab columns unchanged) — Zoho is the only
+> consumer for now. Zoho-side dropdown config is Ben's half (2026-08-12
+> call).
+
 - **Severity:** 🟢 Gap (reporting consistency).
 - **Source:** Limitless call 2026-07-29 — Ben's reporting-consistency ask:
   extras labels must be consistent between res and Zoho, so a

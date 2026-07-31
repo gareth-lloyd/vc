@@ -19,6 +19,7 @@ class BookingChargeItemSerializer(serializers.ModelSerializer[BookingChargeItem]
         fields = [
             "id",
             "booking",
+            "category",
             "label",
             "amount",
             "currency",
@@ -38,6 +39,7 @@ class BookingChargeItemWriteSerializer(serializers.ModelSerializer[BookingCharge
     class Meta:
         model = BookingChargeItem
         fields = [
+            "category",
             "label",
             "amount",
             "currency",

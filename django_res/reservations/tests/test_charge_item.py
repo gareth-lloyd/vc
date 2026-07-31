@@ -11,9 +11,11 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from accounts.models import Person
+from core.audit import get_spec
+from pricing.enums import ExtraKind
 from pricing.models import Currency
 from properties.models import Property
-from reservations.enums import PaymentMethod
+from reservations.enums import ChargeCategory, PaymentMethod
 from reservations.models import (
     Booking,
     BookingChargeItem,
@@ -108,6 +110,34 @@ def test_zero_amount_violates_check_constraint(booking: Booking, gbp: Currency) 
         BookingChargeItem.objects.create(
             booking=booking, label="Nothing", amount=Decimal("0"), currency=gbp
         )
+
+
+@pytest.mark.django_db
+def test_category_defaults_to_other(booking: Booking, gbp: Currency) -> None:
+    """GAP-088: rows created without a category (incl. legacy imports) read `other`."""
+    item = BookingChargeItem.objects.create(
+        booking=booking,
+        label="Late checkout",
+        amount=Decimal("150.00"),
+        currency=gbp,
+    )
+    assert item.category == ChargeCategory.OTHER
+
+
+def test_charge_category_embeds_extra_kind_verbatim() -> None:
+    """GAP-088: Zoho must see ONE vocabulary — every quote-time `ExtraKind`
+    value appears in `ChargeCategory` with the same string and label."""
+    assert set(ExtraKind.values) <= set(ChargeCategory.values)
+    for member in ExtraKind:
+        assert ChargeCategory(member.value).label == member.label
+
+
+def test_category_is_audit_tracked() -> None:
+    """`category` drives Zoho reporting, so its changes belong in the audit
+    trail (the registry test only pins the model set, not per-model fields)."""
+    spec = get_spec(BookingChargeItem)
+    assert spec is not None
+    assert "category" in spec.fields
 
 
 @pytest.mark.django_db

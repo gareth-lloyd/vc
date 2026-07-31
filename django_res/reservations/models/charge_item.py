@@ -12,6 +12,7 @@ from __future__ import annotations
 from django.db import models
 
 from core.models.base import AuditedModel
+from reservations.enums import ChargeCategory
 
 
 class BookingChargeItem(AuditedModel):
@@ -21,6 +22,13 @@ class BookingChargeItem(AuditedModel):
         "reservations.Booking",
         on_delete=models.CASCADE,
         related_name="charge_items",
+    )
+    # Fixed reporting vocabulary shared with quote-time extras (GAP-088);
+    # `label` stays free text for the human detail.
+    category = models.CharField(
+        max_length=16,
+        choices=ChargeCategory.choices,
+        default=ChargeCategory.OTHER,
     )
     label = models.CharField(max_length=200)
     amount = models.DecimalField(max_digits=12, decimal_places=2)

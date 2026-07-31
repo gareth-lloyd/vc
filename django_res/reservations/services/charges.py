@@ -23,7 +23,7 @@ from django.db.models.functions import Coalesce
 
 from core.exceptions import DomainValidationError, InvalidTransition
 from properties.enums import CommissionCalcType
-from reservations.enums import ACTIVE_BOOKING_STATUSES
+from reservations.enums import ACTIVE_BOOKING_STATUSES, ChargeCategory
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -269,6 +269,7 @@ def charges_owner_adjustments(booking: Booking) -> ChargesOwnerAdjustments:
 def _snapshot_fields(item: BookingChargeItem) -> dict[str, Any]:
     """The before/after payload BookingEvent meta carries per mutation."""
     return {
+        "category": item.category,
         "label": item.label,
         "amount": f"{item.amount:.2f}",
         "commissionable": item.commissionable,
@@ -287,6 +288,7 @@ class ChargeItemService:
         *,
         label: str,
         amount: Decimal,
+        category: str = ChargeCategory.OTHER.value,
         currency: Currency | None = None,
         commissionable: bool = True,
         notes: str = "",
@@ -301,6 +303,7 @@ class ChargeItemService:
             booking=booking,
             label=label,
             amount=amount,
+            category=category,
             currency=currency,
             commissionable=commissionable,
             notes=notes,

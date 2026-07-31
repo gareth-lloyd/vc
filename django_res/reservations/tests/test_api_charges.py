@@ -15,7 +15,7 @@ from core.enums import StaffRole
 from core.tests import assert_max_queries
 from pricing.models import Currency
 from properties.models import Property
-from reservations.enums import BookingStatus, PaymentMethod
+from reservations.enums import BookingStatus, ChargeCategory, PaymentMethod
 from reservations.models import (
     Booking,
     BookingChargeItem,
@@ -174,6 +174,56 @@ def test_charge_commissionable_round_trips_and_defaults_true(
     assert patch.data["commissionable"] is True
     item.refresh_from_db()
     assert item.commissionable is True
+
+
+@pytest.mark.django_db
+def test_charge_category_round_trips_and_defaults_other(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """GAP-088: the category round-trips through create/patch; omitted → other."""
+    api_client.force_login(staff)
+
+    default_create = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/charge-items",
+        {"label": "Late checkout", "amount": "150.00"},
+        format="json",
+    )
+    assert default_create.status_code == 201, default_create.data
+    assert default_create.data["category"] == ChargeCategory.OTHER
+
+    create = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/charge-items",
+        {"label": "Final clean", "amount": "300.00", "category": "cleaning"},
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    assert create.data["category"] == ChargeCategory.CLEANING
+    item = BookingChargeItem.objects.get(pk=create.data["id"])
+    assert item.category == ChargeCategory.CLEANING
+
+    patch = api_client.patch(
+        f"/api/v1/bookings/{booking.pk}/charge-items/{item.pk}",
+        {"category": "damage"},
+        format="json",
+    )
+    assert patch.status_code == 200, patch.data
+    assert patch.data["category"] == ChargeCategory.DAMAGE
+    item.refresh_from_db()
+    assert item.category == ChargeCategory.DAMAGE
+
+
+@pytest.mark.django_db
+def test_charge_category_rejects_unknown_value(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/charge-items",
+        {"label": "Mystery", "amount": "10.00", "category": "final clean"},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "category" in response.data["field_errors"]
 
 
 @pytest.mark.django_db
@@ -371,6 +421,7 @@ def test_mutations_write_booking_events(
     created, updated, deleted = events
     assert created.actor == staff
     assert created.meta["after"]["amount"] == "150.00"
+    assert created.meta["after"]["category"] == ChargeCategory.OTHER
     assert created.meta["before"] is None
     assert created.meta["charges_total"] == "150.00"
     assert updated.meta["before"]["amount"] == "150.00"

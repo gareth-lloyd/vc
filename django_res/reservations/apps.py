@@ -156,6 +156,7 @@ class ReservationsConfig(AppConfig):
             BookingChargeItem,
             fields=[
                 "booking_id",
+                "category",
                 "label",
                 "amount",
                 "currency_id",

@@ -326,3 +326,25 @@ class BookingGuestRole(models.TextChoices):
     CO_TRAVELLER = "co_traveller", "Co-traveller"
     PAYER = "payer", "Payer"
     CC_ONLY = "cc_only", "CC only"
+
+
+class ChargeCategory(models.TextChoices):
+    """Reporting taxonomy for manual `BookingChargeItem` lines (GAP-088).
+
+    Superset of `pricing.enums.ExtraKind`: the shared values are verbatim
+    copies (same strings and labels — pinned by test) so quote-time extras and
+    manual charge lines present ONE vocabulary to Zoho, plus the charge-only
+    concepts (`damage`, `credit`) that never occur at quote time. The
+    free-text `label` stays alongside for detail.
+    """
+
+    CLEANING = "cleaning", "Cleaning"
+    PET_FEE = "pet_fee", "Pet fee"
+    HEATING = "heating", "Heating"
+    LINEN = "linen", "Linen"
+    EXTRA_BED = "extra_bed", "Extra bed"
+    SERVICE_FEE = "service_fee", "Service fee"
+    RESORT_FEE = "resort_fee", "Resort fee"
+    DAMAGE = "damage", "Damage"
+    CREDIT = "credit", "Credit"
+    OTHER = "other", "Other"

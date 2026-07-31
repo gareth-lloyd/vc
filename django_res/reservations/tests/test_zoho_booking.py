@@ -244,7 +244,14 @@ def _payment(booking: Booking, *, purpose: str, amount: str, status: str = "pend
     )
 
 
-def _charge(booking: Booking, *, label: str, amount: str, commissionable: bool) -> None:
+def _charge(
+    booking: Booking,
+    *,
+    label: str,
+    amount: str,
+    commissionable: bool,
+    category: str = "other",
+) -> None:
     from reservations.models import BookingChargeItem
 
     BookingChargeItem.objects.create(
@@ -253,6 +260,7 @@ def _charge(booking: Booking, *, label: str, amount: str, commissionable: bool) 
         amount=Decimal(amount),
         currency=booking.currency,
         commissionable=commissionable,
+        category=category,
     )
 
 
@@ -412,7 +420,7 @@ def test_payload_cancelled_booking_keeps_full_financials(booking: Booking) -> No
         "balance_commission": "1218.00",
     }
     assert payload["extras"] == [
-        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": None}
+        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": "heating"}
     ]
 
 
@@ -444,9 +452,10 @@ def test_payload_cancelled_with_pending_schedule_pushes_authority_zeros(
 # --- extras (GAP-085) -----------------------------------------------------
 #
 # Itemized separately per the 2026-07-29 call, commissionable flags included.
-# `category` is explicitly null until the GAP-088 taxonomy lands — key
-# presence pins the contract, we do not fake a taxonomy. Two sources: the
-# engine-applied pricing extras inside the snapshot, then manual
+# `category` carries the GAP-088 taxonomy: snapshot extras pass their stored
+# `ExtraKind` through (sanitized — an unfenced/garbage kind degrades to
+# null), manual charge lines send `BookingChargeItem.category`. Two sources:
+# the engine-applied pricing extras inside the snapshot, then manual
 # BookingChargeItem lines. Purely informational — both already sit inside
 # total_gross (snapshot total / charge overlay); Zoho must not re-add them.
 
@@ -458,7 +467,7 @@ SNAPSHOT_EXTRAS = [
     {
         "extra_id": 7,
         "name": "Heated pool",
-        "kind": "mandatory",
+        "kind": "heating",
         "calc": "fixed",
         "computed_amount": "350.00",
         "commissionable": True,
@@ -466,7 +475,7 @@ SNAPSHOT_EXTRAS = [
     {
         "extra_id": 9,
         "name": "Chef (pass-through)",
-        "kind": "optional",
+        "kind": "service_fee",
         "calc": "fixed",
         "computed_amount": "900.00",
         "commissionable": False,
@@ -480,12 +489,12 @@ def test_payload_extras_itemizes_engine_snapshot_extras(booking: Booking) -> Non
     payload = build_booking_payload(booking)
 
     assert payload["extras"] == [
-        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": None},
+        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": "heating"},
         {
             "label": "Chef (pass-through)",
             "amount": "900.00",
             "commissionable": False,
-            "category": None,
+            "category": "service_fee",
         },
     ]
 
@@ -494,21 +503,54 @@ def test_payload_extras_appends_manual_charge_items(booking: Booking) -> None:
     """Manual lines after engine extras; signed amounts survive verbatim —
     a negative line is a credit, not a data error."""
     _set_snapshot(booking, {**FINANCIALS_SNAPSHOT, "extras": [SNAPSHOT_EXTRAS[0]]})
-    _charge(booking, label="Late checkout", amount="120.00", commissionable=True)
+    _charge(
+        booking,
+        label="Late checkout",
+        amount="120.00",
+        commissionable=True,
+        category="service_fee",
+    )
     _charge(booking, label="Negotiated rate adjustment", amount="-150.00", commissionable=True)
 
     payload = build_booking_payload(booking)
 
     assert payload["extras"] == [
-        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": None},
-        {"label": "Late checkout", "amount": "120.00", "commissionable": True, "category": None},
+        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": "heating"},
+        {
+            "label": "Late checkout",
+            "amount": "120.00",
+            "commissionable": True,
+            "category": "service_fee",
+        },
         {
             "label": "Negotiated rate adjustment",
             "amount": "-150.00",
             "commissionable": True,
-            "category": None,
+            "category": "other",
         },
     ]
+
+
+def test_payload_extras_sanitizes_unknown_snapshot_kind_to_null(booking: Booking) -> None:
+    """Manual-override snapshot writes are unfenced — a kind outside the
+    ChargeCategory vocabulary (or a missing key) degrades to null rather than
+    leaking a second vocabulary into Zoho. The gate is ChargeCategory, not
+    ExtraKind: a charge-only value like `damage` passes through."""
+    _set_snapshot(
+        booking,
+        {
+            **FINANCIALS_SNAPSHOT,
+            "extras": [
+                {**SNAPSHOT_EXTRAS[0], "kind": "Final Clean!!"},
+                {k: v for k, v in SNAPSHOT_EXTRAS[1].items() if k != "kind"},
+                {**SNAPSHOT_EXTRAS[0], "kind": "damage"},
+            ],
+        },
+    )
+
+    payload = build_booking_payload(booking)
+
+    assert [e["category"] for e in payload["extras"]] == [None, None, "damage"]
 
 
 def test_payload_extras_empty_when_sparse_and_unchargeed(booking: Booking) -> None:

@@ -74,7 +74,7 @@ invented zeros. An authority 0.00 (e.g. a booking cancelled while its
 schedule was still PENDING) is pushed as-is. `extras` itemizes the
 engine-applied pricing extras plus manual charge lines with their
 commissionable flags — informational only (both already sit inside
-`total_gross`); `category` stays null until the GAP-088 taxonomy.
+`total_gross`); `category` carries the GAP-088 `ChargeCategory` taxonomy.
 """
 
 from __future__ import annotations
@@ -83,6 +83,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from integrations.services.zoho_flow import is_anonymized_person
+from reservations.enums import ChargeCategory
 
 if TYPE_CHECKING:
     from accounts.models import Person
@@ -291,8 +292,10 @@ def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
     snapshots) then manual charge lines, one shared entry shape. Purely
     informational: both sources already sit inside the financials
     `total_gross` (snapshot total / charge overlay) — Zoho must not re-add
-    them. `category` is explicitly null until the GAP-088 taxonomy lands;
-    key presence pins the contract, we do not fake a taxonomy.
+    them. `category` is the GAP-088 taxonomy: snapshot extras pass their
+    stored `ExtraKind` through (every value is a `ChargeCategory` — pinned by
+    test), charge lines send `BookingChargeItem.category`, so Zoho sees ONE
+    vocabulary.
     """
     snapshot = booking.pricing_snapshot or {}
     entries = [
@@ -305,7 +308,9 @@ def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
                 str(extra["computed_amount"]) if extra.get("computed_amount") is not None else None
             ),
             "commissionable": extra.get("commissionable"),
-            "category": None,
+            # Same unfenced-write caveat: a kind outside the vocabulary
+            # degrades to null rather than leaking into Zoho's dropdown.
+            "category": (extra.get("kind") if extra.get("kind") in ChargeCategory.values else None),
         }
         for extra in snapshot.get("extras") or []
     ]
@@ -315,7 +320,7 @@ def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
             "label": item.label,
             "amount": str(item.amount),
             "commissionable": item.commissionable,
-            "category": None,
+            "category": item.category,
         }
         for item in booking.charge_items.all()
     )

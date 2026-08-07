@@ -365,3 +365,87 @@ def test_create_for_booking__ignores_unrelated_payments_for_idempotency(
     purposes = {p.purpose for p in created}
     assert PaymentPurpose.DEPOSIT.value in purposes
     assert PaymentPurpose.BALANCE.value in purposes
+
+
+# ---------------------------------------------------------------------------
+# GAP-087: per-booking deposit override at the create site
+# ---------------------------------------------------------------------------
+
+
+def _booking_with_override(booking: Any, amount: Decimal | None) -> Any:
+    """Re-fetch the booking with `deposit_override_amount` persisted."""
+    from reservations.models import Booking
+
+    Booking.objects.filter(pk=booking.pk).update(deposit_override_amount=amount)
+    return Booking.objects.get(pk=booking.pk)
+
+
+@pytest.mark.django_db
+def test_create_for_booking__honours_deposit_override(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """A non-null override pins the deposit instead of the 30% policy."""
+    _ensure_finance(property_)
+    booking = _booking_with_override(booking, Decimal("500.00"))
+
+    created = PaymentScheduler.create_for_booking(booking)
+
+    deposit = next(p for p in created if p.purpose == PaymentPurpose.DEPOSIT.value)
+    balance = next(p for p in created if p.purpose == PaymentPurpose.BALANCE.value)
+    assert deposit.amount == Decimal("500.00")
+    assert balance.amount == Decimal("900.00")  # total 1400 - 500
+    assert deposit.amount + balance.amount == Decimal("1400.00")
+
+
+@pytest.mark.django_db
+def test_create_for_booking__override_forces_deposit_when_not_required(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """An override mints a deposit row even when policy `deposit_required` is False."""
+    finance = _ensure_finance(property_)
+    finance.deposit_required = False
+    finance.save(update_fields=["deposit_required"])
+    booking = _booking_with_override(booking, Decimal("500.00"))
+
+    created = PaymentScheduler.create_for_booking(booking)
+
+    deposit = next(p for p in created if p.purpose == PaymentPurpose.DEPOSIT.value)
+    balance = next(p for p in created if p.purpose == PaymentPurpose.BALANCE.value)
+    assert deposit.amount == Decimal("500.00")
+    assert balance.amount == Decimal("900.00")
+
+
+@pytest.mark.django_db
+def test_create_for_booking__override_clamps_to_total(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """An override larger than the total clamps the deposit to the total (balance 0)."""
+    _ensure_finance(property_)
+    booking = _booking_with_override(booking, Decimal("2000.00"))
+
+    created = PaymentScheduler.create_for_booking(booking)
+
+    deposit = next(p for p in created if p.purpose == PaymentPurpose.DEPOSIT.value)
+    balance = next(p for p in created if p.purpose == PaymentPurpose.BALANCE.value)
+    assert deposit.amount == Decimal("1400.00")
+    assert balance.amount == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_create_for_booking__zero_override_creates_no_deposit_row(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """A zero override means 'no deposit' — the whole total owes on the balance."""
+    _ensure_finance(property_)
+    booking = _booking_with_override(booking, Decimal("0.00"))
+
+    created = PaymentScheduler.create_for_booking(booking)
+
+    purposes = {p.purpose for p in created}
+    assert PaymentPurpose.DEPOSIT.value not in purposes
+    balance = next(p for p in created if p.purpose == PaymentPurpose.BALANCE.value)
+    assert balance.amount == Decimal("1400.00")

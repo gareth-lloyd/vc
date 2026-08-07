@@ -85,11 +85,21 @@ class PaymentScheduler:
 
         to_create: list[Payment] = []
 
-        deposit_amount = cls._calc_amount(
-            calculation_type=schedule.get("deposit_calculation_type"),
-            amount=schedule.get("deposit_amount"),
-            base=total,
-        )
+        # GAP-087: a per-booking override pins the deposit (clamped to the total)
+        # instead of the property policy, and forces a deposit row even when
+        # policy `deposit_required` is False. A zero override still means "no
+        # deposit" (the `deposit_amount > 0` gate below). The durable path is
+        # `resync_for_booking` (an override is normally set post-creation); this
+        # honours the rare case where the field is already set at creation.
+        override = getattr(booking, "deposit_override_amount", None)
+        if override is not None:
+            deposit_amount = min(override, total)
+        else:
+            deposit_amount = cls._calc_amount(
+                calculation_type=schedule.get("deposit_calculation_type"),
+                amount=schedule.get("deposit_amount"),
+                base=total,
+            )
         # Quantise once and derive the balance from the quantised value, so
         # `deposit_saved + balance_saved == total` holds by construction even
         # for non-2dp currencies at exact-half splits. The balance subtracts
@@ -97,7 +107,7 @@ class PaymentScheduler:
         # row is created (deposit_required False / deposit_amount 0), the same
         # quantised value is subtracted as before, only now quantised.
         quantised_deposit = quantise_money(deposit_amount, currency)
-        if schedule.get("deposit_required") and deposit_amount > 0:
+        if (override is not None or schedule.get("deposit_required")) and deposit_amount > 0:
             to_create.append(
                 Payment(
                     booking=booking,
@@ -197,23 +207,54 @@ class PaymentScheduler:
             )
 
             remaining = max(Decimal("0"), total - committed)
+            # GAP-087: a per-booking override pins the deposit to a concrete
+            # figure (clamped to what's collectable) instead of the property
+            # policy — and survives this resync, which is what makes a hand-tuned
+            # deposit durable across charge-item edits.
+            override = getattr(booking, "deposit_override_amount", None)
             deposit = next((r for r in pending if r.purpose == PaymentPurpose.DEPOSIT.value), None)
-            if deposit is not None:
+
+            def _deposit_target() -> Decimal:
+                if override is not None:
+                    return min(remaining, override)
                 finance = getattr(booking.property, "finance", None)
                 schedule = finance.effective_payment_schedule() if finance else {}
-                deposit.amount = quantise_money(
-                    min(
-                        remaining,
-                        cls._calc_amount(
-                            calculation_type=schedule.get("deposit_calculation_type"),
-                            amount=schedule.get("deposit_amount"),
-                            base=total,
-                        ),
+                return min(
+                    remaining,
+                    cls._calc_amount(
+                        calculation_type=schedule.get("deposit_calculation_type"),
+                        amount=schedule.get("deposit_amount"),
+                        base=total,
                     ),
-                    booking.currency,
                 )
+
+            if deposit is not None:
+                deposit.amount = quantise_money(_deposit_target(), booking.currency)
                 deposit.save(update_fields=["amount", "updated_at"])
                 remaining -= deposit.amount
+            elif override is not None and not any(
+                r.purpose == PaymentPurpose.DEPOSIT.value for r in rows
+            ):
+                # An override wants a deposit but policy created none (and none
+                # is settled) — mint the PENDING deposit row now. This is the
+                # only path that materialises a deposit for a
+                # `deposit_required=False` booking, since overrides are set
+                # post-creation and `create_for_booking` runs once, at booking
+                # confirmation.
+                minted = quantise_money(min(remaining, override), booking.currency)
+                if minted > 0:
+                    minted_row = Payment.objects.create(
+                        booking=booking,
+                        purpose=PaymentPurpose.DEPOSIT.value,
+                        status=PaymentStatus.PENDING.value,
+                        amount=minted,
+                        currency=booking.currency,
+                        due_at=timezone.now(),
+                    )
+                    # Fold into `pending` so the residual reconciliation below
+                    # accounts for the newly minted deposit.
+                    pending.append(minted_row)
+                    remaining -= minted
 
             balance = next((r for r in pending if r.purpose == PaymentPurpose.BALANCE.value), None)
             if balance is not None:

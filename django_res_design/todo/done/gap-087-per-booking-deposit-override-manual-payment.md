@@ -1,3 +1,21 @@
+> **✅ RESOLVED (2026-08-07)** — Shipped on local `main` (ff `6fe42ea5`…`3bcfe33a`,
+> 8 commits). Added a nullable `Booking.deposit_override_amount` (non-negative
+> CHECK, audited) that `PaymentScheduler` honours at **both** write-sites —
+> `create_for_booking` and, the durable path, `resync_for_booking`, which now
+> also **mints** a PENDING deposit row when an override wants one and none is
+> active (fixing the `deposit_required=False` / FAILED-deposit no-ops). A
+> status-gated `Booking.set_deposit_override(amount, *, actor, reason)` (rejects
+> once the deposit is settled; keys on booking status, honouring the
+> reservations→payments layer ban) + a writer-gated `:deposit-override` staff
+> endpoint + a FinanceTab set/edit/clear UI (en+el). Manual offline settlement
+> (`:mark-paid` without a provider txn) was confirmed already complete — no
+> rebuild. Splits + GAP-085 Zoho financials reshape automatically (derive-on-read,
+> pinned by tests). Carry-over stays **manual** (free-text `Payment.notes` /
+> `cancel_reason`); no automation, per the call. Two adversarial reviews (plan +
+> backend diff); acceptance proven by an end-to-end cancel→rebook→override→
+> mark-paid walkthrough. Deferred: percent/calc-type override, SD override, and
+> FE-wiring the existing PENDING-edit `PATCH` (superseded by the durable override).
+
 # GAP-087 — Per-booking deposit override + manual payment recording
 
 - **Severity:** 🟢 Gap (operator flexibility — blocks the agreed

@@ -263,3 +263,30 @@ def test_resync_does_not_mint_second_deposit_when_settled(scheduled_booking: Boo
     # Settled deposit keeps its 420; balance carries the rest (1400 - 420).
     assert _row(fresh, PaymentPurpose.DEPOSIT).amount == Decimal("420.00")
     assert _row(fresh, PaymentPurpose.BALANCE).amount == Decimal("980.00")
+
+
+@pytest.mark.django_db
+def test_resync_mints_deposit_when_only_a_failed_deposit_exists(
+    scheduled_booking: Booking,
+) -> None:
+    """A FAILED deposit is not active — an override must still mint a live one.
+
+    Regression guard: a failed deposit attempt leaves the booking in
+    AWAITING_DEPOSIT with a FAILED (non-active) deposit row. Setting an override
+    must mint a fresh PENDING deposit (the unique-active constraint permits it),
+    not silently no-op because *some* deposit row exists.
+    """
+    deposit = _row(scheduled_booking, PaymentPurpose.DEPOSIT)
+    Payment.objects.filter(pk=deposit.pk).update(status=PaymentStatus.FAILED.value)
+
+    fresh = _set_override(scheduled_booking, Decimal("500.00"))
+    PaymentScheduler.resync_for_booking(fresh)
+
+    active = Payment.objects.filter(
+        booking=fresh,
+        purpose=PaymentPurpose.DEPOSIT.value,
+        status=PaymentStatus.PENDING.value,
+    )
+    assert active.count() == 1
+    assert active.get().amount == Decimal("500.00")
+    assert _row(fresh, PaymentPurpose.BALANCE).amount == Decimal("900.00")

@@ -19,7 +19,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.logging.operations import log_operation
-from payments.enums import PaymentPurpose, PaymentStatus
+from payments.enums import ACTIVE_PAYMENT_STATUSES, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from pricing.services.currency import quantise_money
 from properties.enums import DepositCalcType
@@ -233,7 +233,8 @@ class PaymentScheduler:
                 deposit.save(update_fields=["amount", "updated_at"])
                 remaining -= deposit.amount
             elif override is not None and not any(
-                r.purpose == PaymentPurpose.DEPOSIT.value for r in rows
+                r.purpose == PaymentPurpose.DEPOSIT.value and r.status in ACTIVE_PAYMENT_STATUSES
+                for r in rows
             ):
                 # An override wants a deposit but policy created none (and none
                 # is settled) — mint the PENDING deposit row now. This is the

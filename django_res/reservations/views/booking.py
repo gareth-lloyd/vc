@@ -58,6 +58,11 @@ def _parse_optional_money(value: Any) -> Decimal | None:
         parsed = Decimal(str(value))
     except (InvalidOperation, ValueError) as exc:
         raise ValidationError({"amount": "Enter a valid amount."}) from exc
+    # `Decimal("NaN")`/`Decimal("Infinity")` construct fine; reject them before
+    # the comparison (`NaN < 0` itself raises InvalidOperation → 500, and
+    # Infinity would pass the CHECK and clamp the deposit to the full total).
+    if not parsed.is_finite():
+        raise ValidationError({"amount": "Enter a valid amount."})
     if parsed < 0:
         raise ValidationError({"amount": "Amount must not be negative."})
     return parsed

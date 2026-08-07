@@ -477,6 +477,23 @@ def test_deposit_override_rejects_negative(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("bad", ["NaN", "Infinity", "-Infinity", "abc"])
+def test_deposit_override_rejects_non_finite_and_garbage(
+    api_client: APIClient, staff: User, booking: Booking, bad: str
+) -> None:
+    """NaN/Infinity/garbage must be a clean 400, never a 500 or a clamp."""
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}:deposit-override",
+        {"amount": bad},
+        format="json",
+    )
+    assert response.status_code == 400
+    booking.refresh_from_db()
+    assert booking.deposit_override_amount is None
+
+
+@pytest.mark.django_db
 def test_deposit_override_rejected_once_deposit_paid(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:

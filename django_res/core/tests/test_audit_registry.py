@@ -34,6 +34,7 @@ EXPECTED_TRACKED_MODELS = {
     "properties.Property",
     "properties.PropertyContactAssignment",
     "properties.PropertyDefaults",
+    "properties.PropertyDescription",
     "properties.PropertyFeature",
     "properties.PropertyImage",
     "properties.PropertyNearbyPlace",

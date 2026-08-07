@@ -102,12 +102,29 @@ class RoomAccess(models.TextChoices):
 
 
 class DescriptionSection(models.TextChoices):
+    """Long-form copy blocks on a property, one row per section.
+
+    `INTERNAL_NOTES` is staff-only: the SPA groups it apart from the website
+    copy and property duplication drops it
+    (`PropertyLifecycleService.duplicate`). There is no per-row visibility
+    column — the whole properties API is staff-gated, so the split is a UI
+    affordance, not access control.
+
+    The rest are guest-facing (house rules ride into the guest quotation —
+    legacy `QuotationArgs.HouseRules`) with one open question: `FURTHER_INFO`
+    loads from legacy `VillaMaster.Notes`, which has no editing surface
+    anywhere in the legacy UI, so its audience is undetermined. If the prod
+    snapshot shows it reads as internal, those rows move to `INTERNAL_NOTES`
+    — see `django_res_design/todo/q-020-description-sections-parity.md`.
+    """
+
     OVERVIEW = "overview", "Overview"
     HOUSE_RULES = "house_rules", "House rules"
     VILLA_INFO = "villa_info", "Villa info"
     FURTHER_INFO = "further_info", "Further info"
     LOCATION = "location", "Location"
     WEB_DESCRIPTION = "web_description", "Web description"
+    INTERNAL_NOTES = "internal_notes", "Internal notes"
 
 
 class FeatureServiceType(models.TextChoices):

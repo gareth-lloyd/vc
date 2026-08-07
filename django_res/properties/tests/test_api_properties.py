@@ -13,13 +13,14 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from core.tests import assert_max_queries
 from properties import factories
-from properties.enums import ImageKind, PropertyStatus
+from properties.enums import DescriptionSection, ImageKind, PropertyStatus
 from properties.models import (
     Feature,
     FeatureCategory,
     Property,
     PropertyCalendarFeed,
     PropertyCategory,
+    PropertyDescription,
     PropertyFeature,
     PropertyImage,
     PropertyLocation,
@@ -278,6 +279,28 @@ def test_duplicate_creates_new_property(
     assert payload["slug"] != property_.slug
     # The clone is provisioned with a location, like API-created properties.
     assert PropertyLocation.objects.filter(property_id=payload["id"]).exists()
+
+
+@pytest.mark.django_db
+def test_duplicate_clones_website_copy_but_not_internal_notes(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """Website copy carries to the clone; staff notes are property-specific and
+    would be misleading on a new property, so they are dropped."""
+    PropertyDescription.objects.filter(property=property_).delete()
+    for section in DescriptionSection.values:
+        PropertyDescription.objects.create(property=property_, section=section, body=section)
+
+    api_client.force_login(staff)
+    response = api_client.post(f"/api/v1/properties/{property_.pk}:duplicate", format="json")
+    assert response.status_code == 201, response.content
+
+    cloned = set(
+        PropertyDescription.objects.filter(property_id=response.json()["id"]).values_list(
+            "section", flat=True
+        )
+    )
+    assert cloned == set(DescriptionSection.values) - {DescriptionSection.INTERNAL_NOTES.value}
 
 
 @pytest.mark.django_db

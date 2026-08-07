@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from django.db import transaction
 
 from core.exceptions import InvalidTransition
-from properties.enums import PropertyStatus
+from properties.enums import DescriptionSection, PropertyStatus
 from properties.models import (
     Collection,
     CollectionMembership,
@@ -97,7 +97,11 @@ class PropertyLifecycleService:
         clone.save()
         if features:
             clone.features.set(features)
-        for desc in PropertyDescription.objects.filter(property_id=original_pk):
+        # Website copy carries over; staff-only notes do not — they are specific
+        # to the original property and would read as fact on the clone.
+        for desc in PropertyDescription.objects.filter(property_id=original_pk).exclude(
+            section=DescriptionSection.INTERNAL_NOTES
+        ):
             PropertyDescription.objects.create(
                 property=clone,
                 section=desc.section,

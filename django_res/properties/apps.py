@@ -14,6 +14,7 @@ class PropertiesConfig(AppConfig):
         from properties.models.changeover import ChangeOverRule
         from properties.models.contacts import PropertyContactAssignment
         from properties.models.defaults import PropertyDefaults
+        from properties.models.descriptions import PropertyDescription
         from properties.models.features import PropertyFeature
         from properties.models.finance import PropertyFinance
         from properties.models.geo import PropertyNearbyPlace
@@ -168,6 +169,14 @@ class PropertiesConfig(AppConfig):
         audit.track(
             PropertyImage,
             fields=("property_id", "kind", "name", "is_active", "sort_order"),
+        )
+        # Same tombstone rationale, sharpened by `internal_notes`: Clear hard-
+        # deletes staff commentary about an owner. `body` is deliberately NOT
+        # tracked — long free text would bloat every row; the trail records
+        # which section of which property went, and who did it.
+        audit.track(
+            PropertyDescription,
+            fields=("property_id", "section"),
         )
         audit.track(
             PropertyNearbyPlace,

@@ -11,7 +11,10 @@ from rest_framework.response import Response
 from core.api import IsReservationsWriter
 from properties.enums import DescriptionSection
 from properties.models import Property, PropertyDescription
-from properties.serializers import PropertyDescriptionSerializer
+from properties.serializers import (
+    PropertyDescriptionSerializer,
+    PropertyDescriptionWriteSerializer,
+)
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -62,14 +65,20 @@ class PropertyDescriptionDetailView(generics.GenericAPIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
-        body = ""
-        if isinstance(request.data, dict):
-            body = request.data.get("body", "")
-        instance, created = PropertyDescription.objects.update_or_create(
+        write = PropertyDescriptionWriteSerializer(data=request.data)
+        write.is_valid(raise_exception=True)
+        instance, created = PropertyDescription.objects.get_or_create(
             property=property_obj,
             section=section,
-            defaults={"body": body},
+            defaults={"body": write.validated_data["body"]},
         )
+        if not created:
+            instance.body = write.validated_data["body"]
+            # Deliberately not `update_or_create`: its update path saves with
+            # `update_fields` covering only `defaults` + auto_now columns, so the
+            # `updated_by` that `core.signals.populate_user_fields` assigns is
+            # discarded and an edited section keeps its original author.
+            instance.save(update_fields=["body", "updated_at", "updated_by"])
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(PropertyDescriptionSerializer(instance).data, status=code)
 

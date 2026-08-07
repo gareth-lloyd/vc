@@ -111,6 +111,12 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
    (31 links) → new `Property.video_url`. Content verified distinct from the
    `OverView` blurb already migrated (WebDesc = activities/extras, Location =
    location copy). Loader change under way.
+   **2026-08-07:** both sections are now actually reachable in the SPA. The
+   frontend had pinned four sections in a `z.enum`, so every property carrying
+   a `web_description` or `location` row failed the response parse and
+   collapsed the whole Descriptions panel — i.e. this migrated copy was loaded
+   but invisible, and it took the other sections down with it. The schema now
+   accepts any `section` string and the UI filters to what it knows.
 3. **`VillaRoomsPlacement` — 46 rows → LOAD (GAP-065).** Curator-entered
    building labels referenced by 1,819 rooms; `RoomLoader` was hardcoding
    MAIN_HOUSE for all of them (live data-loss bug, already ticketed).

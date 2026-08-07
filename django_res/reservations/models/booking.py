@@ -141,6 +141,14 @@ class Booking(AuditedModel):
     balance_due = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     balance_due_at = models.DateField(null=True, blank=True)
 
+    # GAP-087: per-booking deposit override. Non-null pins the deposit to this
+    # exact figure (e.g. net of a cancellation carry-over credit) instead of the
+    # property's payment-schedule policy; null follows policy. Honoured by
+    # `PaymentScheduler` at both create and resync — see `set_deposit_override`.
+    deposit_override_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+
     status = models.CharField(
         max_length=32,
         choices=BookingStatus.choices,
@@ -208,6 +216,11 @@ class Booking(AuditedModel):
             models.CheckConstraint(
                 condition=Q(archived_at__isnull=True) | Q(status__in=TERMINAL_BOOKING_STATUSES),
                 name="booking_archived_at_requires_terminal_status",
+            ),
+            models.CheckConstraint(
+                condition=Q(deposit_override_amount__isnull=True)
+                | Q(deposit_override_amount__gte=0),
+                name="booking_deposit_override_amount_non_negative",
             ),
             # A QuotationLine is a single guest commitment — exactly one
             # Booking. Backstops the service's `filter(...).first()`

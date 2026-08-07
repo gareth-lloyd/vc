@@ -558,6 +558,24 @@ def test_archived_at_requires_terminal_status(booking: Booking) -> None:
 
 
 @pytest.mark.django_db
+def test_deposit_override_amount_defaults_null_and_accepts_value(booking: Booking) -> None:
+    """GAP-087: the override is null by default and stores a concrete figure."""
+    assert booking.deposit_override_amount is None
+    booking.deposit_override_amount = Decimal("500.00")
+    booking.save(update_fields=["deposit_override_amount", "updated_at"])
+    booking.refresh_from_db()
+    assert booking.deposit_override_amount == Decimal("500.00")
+
+
+@pytest.mark.django_db
+def test_deposit_override_amount_rejects_negative(booking: Booking) -> None:
+    with pytest.raises(Exception, match="booking_deposit_override_amount_non_negative"):
+        Booking.objects.filter(pk=booking.pk).update(
+            deposit_override_amount=Decimal("-1.00"),
+        )
+
+
+@pytest.mark.django_db
 def test_archived_at_allowed_on_terminal_status(booking: Booking) -> None:
     Booking.objects.filter(pk=booking.pk).update(
         archived_at=timezone.now(),

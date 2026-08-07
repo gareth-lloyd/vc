@@ -52,6 +52,7 @@ import {
   requestPayment,
   resendBookingConfirmation,
   resendBookingEmail,
+  setDepositOverride,
   restoreBooking,
   updateBookingNote,
   updateChargeItem,
@@ -254,6 +255,17 @@ export function useResendBookingConfirmation(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => resendBookingConfirmation(bookingId),
+    onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
+  });
+}
+
+// GAP-087: set or clear the per-booking deposit override. Returns the fresh
+// BookingDetail, so it rides the same setQueryData path as the lifecycle actions.
+export function useSetDepositOverride(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { amount: string | null; reason: string }) =>
+      setDepositOverride(bookingId, body),
     onSuccess: (updated) => onActionSuccess(queryClient, bookingId, updated),
   });
 }

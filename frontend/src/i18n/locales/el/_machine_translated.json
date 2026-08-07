@@ -233,7 +233,20 @@
     "finance.money_flow.security_unavailable",
     "finance.charges.form_dialog.fields.category",
     "finance.charges.enums.category.damage",
-    "finance.charges.enums.category.credit"
+    "finance.charges.enums.category.credit",
+    "finance.deposit_override.title",
+    "finance.deposit_override.none",
+    "finance.deposit_override.active",
+    "finance.deposit_override.set",
+    "finance.deposit_override.edit",
+    "finance.deposit_override.clear",
+    "finance.deposit_override.dialog_title",
+    "finance.deposit_override.dialog_description",
+    "finance.deposit_override.fields.amount",
+    "finance.deposit_override.fields.reason",
+    "finance.deposit_override.submit_label",
+    "finance.deposit_override.set_success",
+    "finance.deposit_override.clear_success"
   ],
   "admin": [
     "email_templates.title",

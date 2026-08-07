@@ -716,6 +716,23 @@
       "security_deposit": "Security deposit",
       "security_unavailable": "Security deposit unavailable"
     },
+    "deposit_override": {
+      "title": "Deposit override",
+      "none": "Following the property's deposit policy",
+      "active": "Pinned at {{amount}}",
+      "set": "Set override",
+      "edit": "Edit override",
+      "clear": "Clear override",
+      "dialog_title": "Set deposit override",
+      "dialog_description": "Pin this booking's deposit to a specific figure — for example, net of a cancellation carry-over credit. Clearing it reverts to the property's payment-schedule policy.",
+      "fields": {
+        "amount": "Deposit amount",
+        "reason": "Reason (optional)"
+      },
+      "submit_label": "Save override",
+      "set_success": "Deposit override saved",
+      "clear_success": "Deposit override cleared"
+    },
     "empty": {
       "title": "Pricing snapshot not available",
       "description": "This booking has no pricing snapshot to display."

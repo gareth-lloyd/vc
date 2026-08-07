@@ -14,8 +14,14 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { formatDate } from "@/lib/format/date";
 import { formatMoney, parseMoney } from "@/lib/format/money";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import { useBookingChargeItems, useDeleteChargeItem, useSecurityDeposit } from "../hooks";
+import {
+  useBookingChargeItems,
+  useDeleteChargeItem,
+  useSecurityDeposit,
+  useSetDepositOverride,
+} from "../hooks";
 import { ChargeItemFormDialog } from "../components/ChargeItemFormDialog";
+import { DepositOverrideDialog } from "../components/DepositOverrideDialog";
 import {
   pricingSnapshotSchema,
   securityDepositStatusLabel,
@@ -405,11 +411,23 @@ export function FinanceTab() {
 
   const charges = useBookingChargeItems(booking.id);
   const deleteMutation = useDeleteChargeItem(booking.id);
+  const clearOverride = useSetDepositOverride(booking.id);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<BookingChargeItem | null>(null);
   const [deleting, setDeleting] = useState<BookingChargeItem | null>(null);
+  const [overrideOpen, setOverrideOpen] = useState(false);
 
   const chargeRows = charges.data?.results ?? [];
+  const depositOverride = booking.deposit_override_amount ?? null;
+
+  const handleClearOverride = async () => {
+    try {
+      await clearOverride.mutateAsync({ amount: null, reason: "" });
+      toast.success(t("finance.deposit_override.clear_success"));
+    } catch {
+      toast.error(t("common:errors.generic"));
+    }
+  };
 
   const handleDelete = async () => {
     if (!deleting) return;
@@ -442,6 +460,55 @@ export function FinanceTab() {
             : null
         }
       />
+
+      {/* GAP-087: per-booking deposit override — pin the deposit to a concrete
+          figure (e.g. net of a cancellation carry-over credit), or clear it back
+          to the property's payment-schedule policy. Writer-gated. */}
+      <section className="border-border bg-card flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+        <div className="space-y-0.5">
+          <div className="text-foreground text-sm font-medium">
+            {t("finance.deposit_override.title")}
+          </div>
+          <div className="text-muted-foreground text-sm tabular-nums">
+            {depositOverride != null
+              ? t("finance.deposit_override.active", {
+                  amount: formatMoney(depositOverride, currency) ?? depositOverride,
+                })
+              : t("finance.deposit_override.none")}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {depositOverride != null && canWrite ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive"
+              onClick={handleClearOverride}
+              disabled={clearOverride.isPending}
+            >
+              {t("finance.deposit_override.clear")}
+            </Button>
+          ) : null}
+          {canWrite ? (
+            <Button size="sm" variant="outline" onClick={() => setOverrideOpen(true)}>
+              {depositOverride != null
+                ? t("finance.deposit_override.edit")
+                : t("finance.deposit_override.set")}
+            </Button>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button size="sm" variant="outline" disabled>
+                    {t("finance.deposit_override.set")}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{t("finance.charges.role_required_tooltip")}</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </section>
 
       {/* GAP-086: the engine breakdown answers "why is the gross what it is" —
           demoted behind a closed disclosure. No snapshot → the empty state
@@ -580,6 +647,15 @@ export function FinanceTab() {
           </FactList>
         ) : null}
       </section>
+
+      {overrideOpen ? (
+        <DepositOverrideDialog
+          bookingId={booking.id}
+          currentAmount={depositOverride}
+          open={overrideOpen}
+          onOpenChange={setOverrideOpen}
+        />
+      ) : null}
 
       {createOpen ? (
         <ChargeItemFormDialog

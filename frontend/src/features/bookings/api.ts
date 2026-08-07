@@ -205,6 +205,15 @@ export async function resendBookingConfirmation(id: BookingId): Promise<BookingD
   return bookingDetailSchema.parse(data);
 }
 
+// GAP-087: set (amount) or clear (amount=null) the per-booking deposit override.
+export async function setDepositOverride(
+  id: BookingId,
+  body: { amount: string | null; reason: string },
+): Promise<BookingDetail> {
+  const data = await apiSend<unknown>("POST", `/bookings/${id}:deposit-override`, body);
+  return bookingDetailSchema.parse(data);
+}
+
 // ----------------------------------------------------------------------
 // Payment tracks
 // ----------------------------------------------------------------------

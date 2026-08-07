@@ -436,6 +436,87 @@ def test_modify_guests_recomputes_pricing(
 
 
 @pytest.mark.django_db
+def test_deposit_override_set_and_clear(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """GAP-087: a writer pins the deposit override and clears it back to policy."""
+    api_client.force_login(staff)
+
+    set_resp = api_client.post(
+        f"/api/v1/bookings/{booking.pk}:deposit-override",
+        {"amount": "500.00", "reason": "Carry-over from VC-0001"},
+        format="json",
+    )
+    assert set_resp.status_code == 200
+    assert set_resp.data["deposit_override_amount"] == "500.00"
+    booking.refresh_from_db()
+    assert booking.deposit_override_amount == Decimal("500.00")
+
+    clear_resp = api_client.post(
+        f"/api/v1/bookings/{booking.pk}:deposit-override",
+        {"amount": None},
+        format="json",
+    )
+    assert clear_resp.status_code == 200
+    assert clear_resp.data["deposit_override_amount"] is None
+    booking.refresh_from_db()
+    assert booking.deposit_override_amount is None
+
+
+@pytest.mark.django_db
+def test_deposit_override_rejects_negative(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}:deposit-override",
+        {"amount": "-1.00"},
+        format="json",
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_deposit_override_rejected_once_deposit_paid(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """Overriding a settled deposit is an InvalidTransition → 409."""
+    booking.status = BookingStatus.DEPOSIT_PAID.value
+    booking.save(update_fields=["status"])
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}:deposit-override",
+        {"amount": "500.00"},
+        format="json",
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.django_db
+def test_deposit_override_forbidden_for_viewer(
+    api_client: APIClient, viewer: User, booking: Booking
+) -> None:
+    api_client.force_login(viewer)
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}:deposit-override",
+        {"amount": "500.00"},
+        format="json",
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_deposit_override_requires_auth(api_client: APIClient, booking: Booking) -> None:
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}:deposit-override",
+        {"amount": "500.00"},
+        format="json",
+    )
+    assert response.status_code in (401, 403)
+
+
+@pytest.mark.django_db
 def test_archive_blocked_on_active_booking(
     api_client: APIClient, staff: User, booking: Booking
 ) -> None:

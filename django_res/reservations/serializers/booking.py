@@ -151,11 +151,19 @@ class BookingDetailSerializer(BookingListSerializer):
             "payment_method",
             "cancel_reason",
             "cancelled_at",
+            # GAP-087: the active per-booking deposit override (null = policy),
+            # so the FinanceTab can render/clear it. Mutated only via the
+            # :deposit-override action, never this serializer.
+            "deposit_override_amount",
             "owner",
             "commission",
             "prices_entered_as",
             "net_to_owner",
             "payment_splits",
+        ]
+        read_only_fields = [
+            *BookingListSerializer.Meta.read_only_fields,
+            "deposit_override_amount",
         ]
 
     # ------------------------------------------------------------------

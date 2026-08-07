@@ -59,9 +59,9 @@ export function DetailsTab() {
         </FactList>
       </Section>
 
-      <Section title={t("details.sections.description")}>
-        <DescriptionsSection propertyId={property.id} />
-      </Section>
+      {/* Renders its own "Website copy" / "Internal notes" headings — wrapping
+          it in a third would put two h2s of equal weight back to back. */}
+      <DescriptionsSection propertyId={property.id} />
 
       <Section title={t("details.sections.features")}>
         {features.isLoading ? (

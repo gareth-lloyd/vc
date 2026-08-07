@@ -85,7 +85,6 @@
   "details": {
     "sections": {
       "overview": "Overview",
-      "description": "Description",
       "features": "Features",
       "rooms": "Rooms",
       "capacity": "Capacity"
@@ -117,11 +116,6 @@
       "save_failed": "Couldn't save capacity",
       "error_title": "Couldn't load capacity",
       "error_body": "Try again."
-    },
-    "descriptions": {
-      "error_title": "Couldn't load descriptions",
-      "error_body": "Try again.",
-      "empty_title": "No descriptions yet"
     },
     "features": {
       "error_title": "Couldn't load features",
@@ -745,9 +739,12 @@
     "body_placeholder": "Write the section content here.",
     "sections": {
       "overview": "Overview",
+      "web_description": "Web description",
+      "villa_info": "Villa information",
+      "further_info": "Further villa information",
+      "location": "Location",
       "house_rules": "House rules",
-      "villa_info": "Villa info",
-      "further_info": "Further info"
+      "internal_notes": "Internal notes"
     },
     "errors": {
       "load_title": "Couldn't load descriptions",
@@ -756,7 +753,10 @@
     "actions": {
       "save": "Save",
       "saving": "Saving…",
-      "clear": "Clear"
+      "clear": "Clear",
+      "save_internal": "Save internal notes",
+      "clear_internal": "Clear internal notes",
+      "saving_internal": "Saving internal notes…"
     },
     "toasts": {
       "saved": "Description saved",
@@ -768,7 +768,13 @@
       "title": "Clear this description?",
       "description": "The section content will be permanently removed.",
       "confirm": "Clear"
-    }
+    },
+    "groups": {
+      "website": "Website copy",
+      "internal": "Internal notes",
+      "internal_badge": "Not shown to guests"
+    },
+    "internal_placeholder": "Not shown to guests — staff-only notes about this villa."
   },
   "changeover": {
     "section_title": "Changeover overrides",

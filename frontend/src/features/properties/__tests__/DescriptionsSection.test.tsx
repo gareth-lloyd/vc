@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
@@ -46,6 +46,97 @@ describe("DescriptionsSection", () => {
       /Write the section content here/i,
     )) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea.value).toBe("Welcome to Casa Sur."));
+    useAuthStore.getState().clear();
+  });
+
+  it("renders when the response carries sections the SPA doesn't know", async () => {
+    // Regression: the schema pinned four sections while the backend had six, so
+    // any imported property with `location`/`web_description` copy threw a
+    // ZodError that React Query doesn't retry — collapsing the whole panel to
+    // "Couldn't load descriptions". Unknown sections must degrade to
+    // "not rendered", not take the known ones down with them (GAP-062).
+    setReservationsUser();
+    server.use(
+      http.get("/api/v1/properties/7/descriptions", () =>
+        HttpResponse.json(
+          drfPage([
+            overviewRecord,
+            { id: 2, property: 7, section: "location", body: "Ten minutes from Chania." },
+            { id: 3, property: 7, section: "something_new", body: "From a newer backend." },
+          ]),
+        ),
+      ),
+    );
+    renderWithProviders(<DescriptionsSection propertyId={7} />);
+    expect(await screen.findByRole("tab", { name: /location/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load descriptions/i)).not.toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
+  it("keeps internal notes out of the website copy tabs and saves them separately", async () => {
+    setReservationsUser();
+    server.use(
+      http.get("/api/v1/properties/7/descriptions", () =>
+        HttpResponse.json(
+          drfPage([
+            { id: 4, property: 7, section: "internal_notes", body: "Owner prefers email." },
+          ]),
+        ),
+      ),
+    );
+    let putBody: { body?: string } | null = null;
+    server.use(
+      http.put("/api/v1/properties/7/descriptions/internal-notes", async ({ request }) => {
+        putBody = (await request.json()) as { body?: string };
+        return HttpResponse.json({
+          id: 4,
+          property: 7,
+          section: "internal_notes",
+          body: putBody?.body ?? "",
+        });
+      }),
+    );
+    renderWithProviders(<DescriptionsSection propertyId={7} />);
+
+    const notes = (await screen.findByPlaceholderText(
+      /Not shown to guests/i,
+    )) as HTMLTextAreaElement;
+    await waitFor(() => expect(notes.value).toBe("Owner prefers email."));
+    expect(screen.queryByRole("tab", { name: /internal notes/i })).not.toBeInTheDocument();
+
+    await userEvent.type(notes, " Calls after 6pm.");
+    await userEvent.click(screen.getByRole("button", { name: /save internal notes/i }));
+    await waitFor(() => expect(putBody).not.toBeNull());
+    expect(putBody!.body).toBe("Owner prefers email. Calls after 6pm.");
+    useAuthStore.getState().clear();
+  });
+
+  it("empties the textarea after clearing a section", async () => {
+    // The `seeded` ref blocks reseeding from refetches, so a successful delete
+    // left the deleted copy sitting in the textarea — and re-enabled Save,
+    // one click away from silently re-creating the section it just removed.
+    setReservationsUser();
+    server.use(
+      http.get("/api/v1/properties/7/descriptions", () =>
+        HttpResponse.json(drfPage([overviewRecord])),
+      ),
+      http.delete(
+        "/api/v1/properties/7/descriptions/overview",
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    renderWithProviders(<DescriptionsSection propertyId={7} />);
+
+    const textarea = (await screen.findByPlaceholderText(
+      /Write the section content here/i,
+    )) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.value).toBe("Welcome to Casa Sur."));
+
+    await userEvent.click(screen.getByRole("button", { name: /^clear$/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /^clear$/i }));
+
+    await waitFor(() => expect(textarea.value).toBe(""));
     useAuthStore.getState().clear();
   });
 

@@ -96,13 +96,25 @@ export type PropertyDetail = z.infer<typeof propertyDetailSchema>;
 
 export const propertyListResponseSchema = paginated(propertyListItemSchema);
 
-export const DESCRIPTION_SECTIONS = [
+/** Guest-facing copy, in tab order. */
+export const WEBSITE_SECTIONS = [
   "overview",
-  "house_rules",
+  "web_description",
   "villa_info",
   "further_info",
+  "location",
+  "house_rules",
 ] as const;
+
+/** Staff-only; grouped apart from website copy in the UI. */
+export const INTERNAL_SECTION = "internal_notes";
+
+export const DESCRIPTION_SECTIONS = [...WEBSITE_SECTIONS, INTERNAL_SECTION] as const;
 export type DescriptionSection = (typeof DESCRIPTION_SECTIONS)[number];
+
+export function isKnownSection(section: string): section is DescriptionSection {
+  return (DESCRIPTION_SECTIONS as readonly string[]).includes(section);
+}
 
 export function sectionToSlug(section: DescriptionSection): string {
   return section.replace(/_/g, "-");
@@ -111,7 +123,10 @@ export function sectionToSlug(section: DescriptionSection): string {
 export const propertyDescriptionSchema = z.object({
   id: z.number(),
   property: z.number(),
-  section: z.enum(DESCRIPTION_SECTIONS),
+  // Deliberately `z.string()`, not `z.enum(DESCRIPTION_SECTIONS)`: a section
+  // the SPA doesn't know must degrade to "not rendered", not throw a ZodError
+  // that kills the whole panel. Callers filter with `isKnownSection`.
+  section: z.string(),
   body: z.string(),
   updated_at: z.string().nullable().optional(),
 });

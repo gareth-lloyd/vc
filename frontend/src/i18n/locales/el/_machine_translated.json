@@ -166,7 +166,18 @@
     "rate_workbench.probe.result.owner_heading",
     "rate_workbench.probe.result.net_to_owner",
     "rate_workbench.probe.result.commission",
-    "rate_workbench.probe.result.tax"
+    "rate_workbench.probe.result.tax",
+    "descriptions.sections.web_description",
+    "descriptions.sections.further_info",
+    "descriptions.sections.location",
+    "descriptions.sections.internal_notes",
+    "descriptions.groups.website",
+    "descriptions.groups.internal",
+    "descriptions.groups.internal_badge",
+    "descriptions.internal_placeholder",
+    "descriptions.actions.save_internal",
+    "descriptions.actions.clear_internal",
+    "descriptions.actions.saving_internal"
   ],
   "quotations": [
     "builder.shortlist.line.manual_locked_hint",

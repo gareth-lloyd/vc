@@ -1,9 +1,41 @@
 # Q-020 — Description sections: spec enum vs the sections actually written
 
+> **🟡 PARTIAL PROGRESS (2026-08-07)** — the enum is no longer four sections.
+> `LOCATION` and `WEB_DESCRIPTION` were added by the WebDesc/Location loader
+> work, and `INTERNAL_NOTES` landed with the villa-description-sections change,
+> which also fixed the SPA pinning a stale four-value section list (any
+> property carrying a `location` or `web_description` row failed the response
+> parse and collapsed the whole Descriptions panel — the migrated copy was
+> loaded but invisible). **The ticket stays open** for the two questions this
+> did not touch:
+>
+> 1. the summary **short/long** split — still flattened into one `OVERVIEW`;
+> 2. **interior/exterior** — legacy `Interior1/2`/`Exterior1/2` currently land
+>    as image-slot captions (`data_migration/loaders/property_children.py:92`),
+>    not description sections.
+>
+> A third question was **opened** by this work: legacy `VillaMaster.Notes` maps
+> to `FURTHER_INFO` (`data_migration/loaders/properties.py:243`) but has no
+> editing surface anywhere in the legacy Properties UI, so its audience is
+> undetermined. If the prod snapshot shows it reads as internal, those rows
+> should move to `INTERNAL_NOTES`. Query to run once `ResSystem-prod` is stood
+> up (`LEGACY_DATABASE_URL` is currently unset and there is no mssql service in
+> `docker-compose.yml`):
+>
+> ```sql
+> SELECT TOP 20 Id, LEFT(Notes, 200) FROM VillaMaster
+> WHERE Notes IS NOT NULL AND LTRIM(Notes) <> '';
+> ```
+>
+> Any such remap must land **after** the SPA accepts `internal_notes` (it now
+> does), scoped to `section="further_info"` AND
+> `legacy_id__endswith="-further_info"` so hand-authored copy stays put.
+
 - **Severity:** Question (customer-facing parity check)
 - **Source:** 2026-06-11 new-villa setup transcript review
-- **Files:** `properties/models/descriptions.py` (`PropertyDescription.section`:
-  OVERVIEW / HOUSE_RULES / VILLA_INFO / FURTHER_INFO),
+- **Files:** `properties/enums.py` (`DescriptionSection` — see the banner above
+  for the current value set; it was four when this ticket was raised),
+  `properties/models/descriptions.py`,
   `django_res_design/02-properties.md` (~line 156 section mapping)
 
 ## Problem

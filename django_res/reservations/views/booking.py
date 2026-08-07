@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date as date_type
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django.db import transaction
@@ -19,6 +19,7 @@ from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -43,6 +44,28 @@ def _parse_date(value: Any) -> date_type:
     if isinstance(value, date_type):
         return value
     return date_type.fromisoformat(str(value))
+
+
+def _parse_optional_money(value: Any) -> Decimal | None:
+    """Parse an optional non-negative money amount; `None`/`""` clears the field.
+
+    Negatives and non-numeric input raise a DRF `ValidationError` (→ 400); the
+    model's CHECK constraint is the DB-level backstop.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValidationError({"amount": "Enter a valid amount."}) from exc
+    # `Decimal("NaN")`/`Decimal("Infinity")` construct fine; reject them before
+    # the comparison (`NaN < 0` itself raises InvalidOperation → 500, and
+    # Infinity would pass the CHECK and clamp the deposit to the full total).
+    if not parsed.is_finite():
+        raise ValidationError({"amount": "Enter a valid amount."})
+    if parsed < 0:
+        raise ValidationError({"amount": "Amount must not be negative."})
+    return parsed
 
 
 def _with_amount_paid(qs: QuerySet[Booking]) -> QuerySet[Booking]:
@@ -223,6 +246,21 @@ class BookingViewSet(
         children = int(request.data.get("children", 0))
         reason = request.data.get("reason", "")
         booking.modify_guests(adults, children, actor=request.user, reason=reason)
+        return self._refresh(booking)
+
+    @action(detail=True, methods=["post"], url_path="deposit-override")
+    def deposit_override(self, request: Request, pk: str | None = None) -> Response:
+        """Set (or clear) the per-booking deposit override (GAP-087).
+
+        Body: `{"amount": <number|null>, "reason": <str>}`. A null/absent
+        amount clears the override back to property policy; a number pins the
+        deposit. Negatives → 400; setting it once the deposit is settled →
+        409 (InvalidTransition). `IsReservationsWriter` gates to ADMIN/RESERVATIONS.
+        """
+        booking = self.get_object()
+        amount = _parse_optional_money(request.data.get("amount"))
+        reason = request.data.get("reason", "")
+        booking.set_deposit_override(amount, actor=request.user, reason=reason)
         return self._refresh(booking)
 
     @action(detail=True, methods=["post"], url_path="archive")

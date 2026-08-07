@@ -603,3 +603,63 @@ describe("FinanceTab — manual charges", () => {
     await waitFor(() => expect(deleted).toBe(true));
   });
 });
+
+// GAP-087 — deposit override section
+describe("FinanceTab — deposit override", () => {
+  it("shows the policy-following state and a Set button for a writer", async () => {
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () => HttpResponse.json(bookingFixture({}))),
+    );
+    useCharges([]);
+    setup();
+
+    await screen.findByText(/following the property's deposit policy/i);
+    expect(screen.getByRole("button", { name: /set override/i })).toBeEnabled();
+  });
+
+  it("renders the active override and a Clear button", async () => {
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () =>
+        HttpResponse.json(bookingFixture({}, { deposit_override_amount: "500.00" })),
+      ),
+    );
+    useCharges([]);
+    setup();
+
+    await screen.findByText(/pinned at/i);
+    expect(screen.getByText(/£500\.00/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /clear override/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /edit override/i })).toBeInTheDocument();
+  });
+
+  it("clears the override by POSTing amount=null", async () => {
+    let receivedBody: unknown = null;
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () =>
+        HttpResponse.json(bookingFixture({}, { deposit_override_amount: "500.00" })),
+      ),
+      http.post(`/api/v1/bookings/${BOOKING_ID}:deposit-override`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json(bookingFixture({}, { deposit_override_amount: null }));
+      }),
+    );
+    useCharges([]);
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /clear override/i }));
+
+    await waitFor(() => expect(receivedBody).toEqual({ amount: null, reason: "" }));
+  });
+
+  it("disables the Set button for a non-writer", async () => {
+    clearRole();
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () => HttpResponse.json(bookingFixture({}))),
+    );
+    useCharges([]);
+    setup();
+
+    await screen.findByText(/following the property's deposit policy/i);
+    expect(screen.getByRole("button", { name: /set override/i })).toBeDisabled();
+  });
+});

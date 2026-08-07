@@ -175,6 +175,8 @@ export const bookingDetailSchema = bookingListItemSchema.extend({
   commission: bookingCommissionSchema.optional(),
   net_to_owner: bookingNetToOwnerSchema.optional(),
   payment_splits: z.array(paymentComponentSplitSchema).nullable().optional(),
+  // GAP-087: the active per-booking deposit override (null = property policy).
+  deposit_override_amount: z.string().nullable().optional(),
 });
 export type BookingDetail = z.infer<typeof bookingDetailSchema>;
 
@@ -727,6 +729,17 @@ export const waiveTrackInputSchema = z.object({
   reason: z.string().trim().max(500),
 });
 export type WaiveTrackInput = z.infer<typeof waiveTrackInputSchema>;
+
+// GAP-087: the deposit-override set form. Clearing the override is a separate
+// action (posts amount=null), so this schema only covers pinning a figure.
+export const depositOverrideInputSchema = z.object({
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,2})?$/, i18n.t("bookings:schema_errors.decimal_amount_format")),
+  reason: z.string().trim().max(500),
+});
+export type DepositOverrideInput = z.infer<typeof depositOverrideInputSchema>;
 
 export interface BookingFilters {
   q?: string;

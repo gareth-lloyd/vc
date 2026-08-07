@@ -452,6 +452,73 @@ def test_modify_dates_resizes_security_deposit(booking: Booking, rate_rule: Rate
 
 
 # ---------------------------------------------------------------------------
+# GAP-087 — set_deposit_override
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_set_deposit_override_resizes_pending_schedule(booking: Booking) -> None:
+    """Setting an override pins the PENDING deposit; the balance is the remainder."""
+    from payments.enums import PaymentPurpose
+
+    _with_schedule(booking)
+    assert _schedule_row(booking, PaymentPurpose.DEPOSIT.value).amount == Decimal("420.00")
+
+    booking.set_deposit_override(Decimal("500.00"))
+
+    assert booking.deposit_override_amount == Decimal("500.00")
+    assert _schedule_row(booking, PaymentPurpose.DEPOSIT.value).amount == Decimal("500.00")
+    assert _schedule_row(booking, PaymentPurpose.BALANCE.value).amount == Decimal("900.00")
+
+
+@pytest.mark.django_db
+def test_set_deposit_override_clear_reverts_to_policy(booking: Booking) -> None:
+    """Clearing (None) restores the property policy deposit figure."""
+    from payments.enums import PaymentPurpose
+
+    _with_schedule(booking)
+    booking.set_deposit_override(Decimal("500.00"))
+    assert _schedule_row(booking, PaymentPurpose.DEPOSIT.value).amount == Decimal("500.00")
+
+    booking.set_deposit_override(None)
+
+    assert booking.deposit_override_amount is None
+    assert _schedule_row(booking, PaymentPurpose.DEPOSIT.value).amount == Decimal("420.00")
+    assert _schedule_row(booking, PaymentPurpose.BALANCE.value).amount == Decimal("980.00")
+
+
+@pytest.mark.django_db
+def test_set_deposit_override_writes_event(booking: Booking) -> None:
+    """A non-transitional BookingEvent records the from/to figures."""
+    _with_schedule(booking)
+
+    booking.set_deposit_override(Decimal("500.00"), reason="Carry-over from VC-0001")
+
+    event = BookingEvent.objects.filter(booking=booking).latest("created_at")
+    assert event.from_status == event.to_status == BookingStatus.AWAITING_DEPOSIT.value
+    assert event.reason == "Carry-over from VC-0001"
+    assert event.meta == {"from": None, "to": "500.00"}
+
+
+@pytest.mark.django_db
+def test_set_deposit_override_rejected_once_deposit_paid(booking: Booking) -> None:
+    """Overriding a settled deposit would silently reshape only the balance —
+    it is rejected."""
+    _with_schedule(booking)
+    _set_status(booking, BookingStatus.DEPOSIT_PAID.value)
+
+    with pytest.raises(InvalidTransition):
+        booking.set_deposit_override(Decimal("500.00"))
+
+
+@pytest.mark.django_db
+def test_set_deposit_override_rejected_in_terminal_state(booking: Booking) -> None:
+    _set_status(booking, BookingStatus.CHECKED_OUT.value)
+    with pytest.raises(InvalidTransition):
+        booking.set_deposit_override(Decimal("500.00"))
+
+
+# ---------------------------------------------------------------------------
 # archive / restore
 # ---------------------------------------------------------------------------
 
@@ -554,6 +621,24 @@ def test_archived_at_requires_terminal_status(booking: Booking) -> None:
         Booking.objects.filter(pk=booking.pk).update(
             archived_at=timezone.now(),
             status=BookingStatus.DRAFT.value,
+        )
+
+
+@pytest.mark.django_db
+def test_deposit_override_amount_defaults_null_and_accepts_value(booking: Booking) -> None:
+    """GAP-087: the override is null by default and stores a concrete figure."""
+    assert booking.deposit_override_amount is None
+    booking.deposit_override_amount = Decimal("500.00")
+    booking.save(update_fields=["deposit_override_amount", "updated_at"])
+    booking.refresh_from_db()
+    assert booking.deposit_override_amount == Decimal("500.00")
+
+
+@pytest.mark.django_db
+def test_deposit_override_amount_rejects_negative(booking: Booking) -> None:
+    with pytest.raises(Exception, match="booking_deposit_override_amount_non_negative"):
+        Booking.objects.filter(pk=booking.pk).update(
+            deposit_override_amount=Decimal("-1.00"),
         )
 
 

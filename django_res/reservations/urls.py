@@ -244,6 +244,11 @@ _booking_actions: list[URLPattern | URLResolver] = [
         name="booking-modify-guests",
     ),
     path(
+        "bookings/<int:pk>:deposit-override",
+        BookingViewSet.as_view({"post": "deposit_override"}),
+        name="booking-deposit-override",
+    ),
+    path(
         "bookings/<int:pk>:archive",
         BookingViewSet.as_view({"post": "archive"}),
         name="booking-archive",

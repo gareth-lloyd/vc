@@ -68,6 +68,7 @@ class ReservationsConfig(AppConfig):
                 "rental_price",
                 "balance_due",
                 "balance_due_at",
+                "deposit_override_amount",
                 "person_id",
                 "agent_id",
                 "assigned_to_id",

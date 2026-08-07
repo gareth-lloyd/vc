@@ -704,6 +704,57 @@ class Booking(AuditedModel):
         self._resync_payment_schedule()
         return self
 
+    def _deposit_override_allowed_states(self) -> tuple[str, ...]:
+        """States in which the deposit is still unpaid, so an override is
+        meaningful.
+
+        Once the deposit settles (DEPOSIT_PAID onward) the resync never touches
+        the committed row — an override there would silently reshape only the
+        balance — so it is rejected. DRAFT / PENDING_OWNER_APPROVAL are admitted
+        so an override set before approval is applied by `create_for_booking`
+        when the schedule is first built.
+        """
+        return (
+            BookingStatus.DRAFT.value,
+            BookingStatus.PENDING_OWNER_APPROVAL.value,
+            BookingStatus.AWAITING_DEPOSIT.value,
+        )
+
+    @transaction.atomic
+    def set_deposit_override(
+        self,
+        amount: Decimal | None,
+        *,
+        actor: Any = None,
+        reason: str = "",
+    ) -> Booking:
+        """Pin the deposit to `amount` (or clear it with `None`); preserves status.
+
+        GAP-087: the durable home for a hand-tuned deposit (e.g. net of a
+        cancellation carry-over credit). `None` reverts to property policy.
+        Rejected once the deposit is settled. Fires the same
+        `booking_total_changed` resync as the modify endpoints, so the deposit
+        re-sizes (or is minted / reverted) in this atomic block. Non-negativity
+        is enforced by the DB CHECK; the API layer rejects negatives up front.
+        """
+        self._lock_for_update()
+        allowed = self._deposit_override_allowed_states()
+        if self.status not in allowed:
+            raise InvalidTransition(self.status, self.status, allowed=list(allowed))
+        old = self.deposit_override_amount
+        self.deposit_override_amount = amount
+        self.save(update_fields=["deposit_override_amount", "updated_at"])
+        self._write_event(
+            actor=actor,
+            reason=reason,
+            meta={
+                "from": str(old) if old is not None else None,
+                "to": str(amount) if amount is not None else None,
+            },
+        )
+        self._resync_payment_schedule()
+        return self
+
     @transaction.atomic
     def archive(self, *, actor: Any = None) -> Booking:
         """Tidy terminal-state booking out of the default list."""

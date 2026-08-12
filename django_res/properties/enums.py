@@ -111,11 +111,12 @@ class DescriptionSection(models.TextChoices):
     affordance, not access control.
 
     The rest are guest-facing (house rules ride into the guest quotation —
-    legacy `QuotationArgs.HouseRules`) with one open question: `FURTHER_INFO`
-    loads from legacy `VillaMaster.Notes`, which has no editing surface
-    anywhere in the legacy UI, so its audience is undetermined. If the prod
-    snapshot shows it reads as internal, those rows move to `INTERNAL_NOTES`
-    — see `django_res_design/todo/q-020-description-sections-parity.md`.
+    legacy `QuotationArgs.HouseRules`), except `FURTHER_INFO`, which is on its
+    way out: it loads from legacy `VillaMaster.Notes`, and the 2026-07-20 Nick
+    recording settles that as staff copy ("we can get rid of further info, just
+    make it internal notes"). The remap of those rows, and the replacement of
+    this whole set with the legacy sub/para block set, belong to GAP-090 —
+    don't extend this enum piecemeal ahead of it.
     """
 
     OVERVIEW = "overview", "Overview"

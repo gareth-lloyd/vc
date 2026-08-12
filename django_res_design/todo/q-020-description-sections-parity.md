@@ -1,9 +1,28 @@
 # Q-020 — Description sections: spec enum vs the sections actually written
 
-- **Severity:** Question (customer-facing parity check)
+> ⏸ **SUPERSEDED-PENDING (2026-08-11) — folded into
+> [GAP-090](gap-090-description-block-set-parity.md); drop when that lands.**
+>
+> **Answered.** The 2026-07-20 Nick screen-recording
+> (`Recording-20260720_134424`) captures the legacy Descriptions screen
+> directly at `[01:48]`, which is the verification step 1 below asked for.
+> The suspicion was right on both counts: the loader's structure is real, and
+> our enum **has** flattened it. Legacy holds nine fields as short-"sub" /
+> long-"para" pairs — `Web des 1 (top larger text)` + `Web des 2 (opening
+> para)`, `Interior sub` + `Interior Para`, `Exterior Sub` + `Exterior Para`,
+> `Location sub` + `Location Para`, plus `Video Url`. Interior and exterior
+> are absent from our enum entirely, and `_write_descriptions`
+> (`loaders/properties.py:247–254`) joins each surviving pair with `"\n\n"`.
+>
+> Step 2's "extend the enum" is too small a fix — the sub/para split means the
+> section set is replaced, not extended, and the fused rows need a loader
+> re-run rather than a string split. GAP-090 carries that work.
+
+- **Severity:** Question (customer-facing parity check) — **answered**
 - **Source:** 2026-06-11 new-villa setup transcript review
-- **Files:** `properties/models/descriptions.py` (`PropertyDescription.section`:
-  OVERVIEW / HOUSE_RULES / VILLA_INFO / FURTHER_INFO),
+- **Files:** `properties/enums.py:104` (`DescriptionSection` — four values when
+  this was filed, seven now; GAP-090 replaces the set),
+  `properties/models/descriptions.py`,
   `django_res_design/02-properties.md` (~line 156 section mapping)
 
 ## Problem

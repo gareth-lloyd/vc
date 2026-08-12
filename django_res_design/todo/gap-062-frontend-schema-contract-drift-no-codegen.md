@@ -46,6 +46,27 @@ and for the many loose fields, not even then. Evidence the mirrors already lag:
 
 This is unbuilt safety infrastructure, not a bug in any one schema — hence Gap.
 
+**Drift has since caused a real outage (2026-08-12).** `properties/schemas.ts`
+pinned a four-value `z.enum` for `PropertyDescription.section` while the backend
+enum had grown to six. `fetchPropertyDescriptions` parses strictly, and
+`shouldRetryQuery` (`lib/query/client.ts:28`) returns `false` on a `ZodError`,
+so the query landed as `isError` on the first try: **any** property carrying a
+`location` or `web_description` row showed "Couldn't load descriptions" with
+every section gone — 298 and 276 villas respectively (`COVERAGE.md:109`). It had
+been live and unnoticed since those loader sections were added, and read to the
+business as "the fields don't exist", generating a request to build them.
+
+Two lessons for the fix above:
+
+- The damage was **whole-response**, not per-field. `paginated()` is a bare
+  `z.object` (`lib/api/pagination.ts:3-10`) — one unknown enum value in one row
+  takes down every row. A contract test (option 1) would have caught this the
+  day the backend enum grew.
+- The stopgap applied there is worth copying while this ticket is open: type
+  the field as `z.string()` and filter to known values at the component
+  boundary, so an unrecognised value degrades to "not rendered". Enum-typed
+  fields the SPA doesn't own are the highest-risk shape in the mirrors.
+
 ## Proposed fix
 
 Pick one (in rough order of leverage-per-effort):

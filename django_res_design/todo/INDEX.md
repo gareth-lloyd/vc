@@ -16,9 +16,10 @@ Status icons:
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
 
 Scoreboard (2026-07-29 recount from the files themselves — close-outs to 2026-07-27 incl. GAP-082, BUG-018 and GAP-072; BUG-017 deleted outright 2026-07-10; `done/gap-081-dev-exercise.md` is a runbook companion, not a ticket): **141 done** (134 resolved + 7 dropped), **38 open**
-(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080; +1 from the 2026-07-15 Limitless call, GAP-081; +1 descoped from GAP-081, GAP-082; +5 from the 2026-07-29 Limitless call, GAP-085–089; +3 filed 2026-07-29 from earlier captures, BUG-019 + GAP-083/084). Recently-resolved tickets stay
+(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080; +1 from the 2026-07-15 Limitless call, GAP-081; +1 descoped from GAP-081, GAP-082; +5 from the 2026-07-29 Limitless call, GAP-085–089; +3 filed 2026-07-29 from earlier captures, BUG-019 + GAP-083/084; +6 from the 2026-07-20 Nick recording filed 2026-08-11, GAP-090–094 + Q-025). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
-scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-064–068 room-model
+scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-090–094 property-onboarding
+parity (2026-07-20 Nick recording); GAP-064–068 room-model
 (superseded Q-019/Q-021); GAP-030–037 availability/commission/region/services; GAP-038–044
 enquiry/quote/customer-profile (2026-06-17 owner Loom); GAP-048 + GAP-052/053 contacts-
 directory (2026-06-29 owner Loom follow-up).
@@ -58,6 +59,37 @@ sample sheets). Call also settled: cancelled bookings keep full figures in
 Zoho (already true); WP integration testing targets Mojo's detached dev
 site (note added to `wp-enquiry-cutover.md`); `CUTOVER.md`'s
 FULL-booking-load step superseded. Next call 2026-08-12._
+
+_2026-08-12: an ad-hoc change off Nick's "we need some new fields: Villa
+information / Further villa information / Internal notes" email landed on `main`
+(`1872df1c`, `892d09c2`, `9524e8ac`) — filed no ticket of its own, but moves
+two. **Two of the three fields already existed** (`villa_info`, `further_info`,
+under truncated labels); what made them read as missing was a live outage —
+the SPA pinned a four-value `z.enum` for `section` against a six-value backend
+and parsed strictly, so any property with `location` or `web_description` copy
+(298 / 276 villas) lost the entire Descriptions panel. Now tolerant + filtered
+at the boundary, which is **concrete evidence for GAP-062** (noted there) and
+de-risks GAP-090's enum swap. `internal_notes` is built end-to-end, so
+**GAP-090 is now 🟡 partly built** — its step 6 UI half is done, the
+`further_info` data remap is not. Also fixed en route: a body-less PUT wiped a
+section, and `update_or_create` discarded `updated_by` (a pattern worth auditing
+elsewhere)._
+
+_2026-08-11 additions from the 2026-07-20 Nick screen-recording
+(`Recording-20260720_134424`, 6m16s — Nick relaying a 1.5–2hr property-onboarding
+session with Brian E; each item checked against the codebase and against the
+recording's own frames before filing): **GAP-090** (description sections rebuilt
+to the legacy sub/para block set + own tab, absorbing `further_info` →
+internal notes), **GAP-091** (villa info → structured WP-searchable tags + free
+text, ⛔ blocked on the vocabulary), **GAP-092** (room website copy is at the
+wrong level), **GAP-093** (remove `Property.category`), **GAP-094** (house rules
+→ booking contract; capture only), **Q-025** (room floor — confirmation +
+unparsed remainder). **Q-020 answered** and folded into GAP-090. Recording also
+confirmed **already-built**: the room floor dropdown (GAP-065 — Brian's ask,
+already shipped), room internal notes, and `Property.video_url`. **Nearby**:
+confirmed keep, but the recording ends mid-sentence at 6:15 (*"at the moment
+there's no nearby on our existing website…"*) — rationale unknown, no ticket
+filed; ask if a second recording exists._
 
 _2026-07-16: the Zoho external spec landed on the 2026-07-15 Limitless call —
 **GAP-081** (outbound push res → Zoho Flow webhooks, upsert-only, res PKs as
@@ -175,7 +207,7 @@ settled Res-primary)._
 | [GAP-059](done/gap-059-rate-period-name-compulsory.md) | `RatePeriod.name` compulsory (model+CHECK, loader/backfill placeholder names, required in dialog, one FE fallback) | ✅ resolved (2026-07-02, local main unpushed) — 4 units: `derive_period_name` + loader names every synthesized period, field required + CHECK + `0017` backfill, required in dialog, one shared FE fallback |
 | [GAP-060](done/gap-060-kill-old-pricing-tab.md) | Retire the legacy property "Pricing" tab; rename the Workbench tab to "Rates" | ✅ resolved (2026-07-02) — FE-only on local `main` (unpushed; `7f8fe63`, `f7bd8b9`, `fc27581`). Unit 1: rate-plan create/edit/duplicate/delete + period edit/delete + GAP-026 warning ported into the Workbench (add/duplicate no longer skeleton-blanks the page). Unit 2: renamed "Rates", dropped the Preview badge. Unit 3: deleted PricingTab + RatePlanDetailPanel, `/pricing`→Rates redirect, dropped the writer-only nav gate, pruned dead i18n. Full FE gate green (1642 tests) |
 | [GAP-061](gap-061-security-deposit-release-automation.md) | Security-deposit release/refund automation unbuilt (`process_sd_refunds` empty, unscheduled); holds sit open indefinitely | ⬜ from 2026-07-02 complexity audit; real money held on cards; needs idempotency key on the release refund |
-| [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md) | No frontend↔backend contract check — 20 hand-maintained Zod schemas drift silently from DRF (`currency`/`country` typed number in some features, string in others) | ⬜ from 2026-07-02 frontend complexity audit; add a fixtures contract test or OpenAPI type-gen |
+| [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md) | No frontend↔backend contract check — 20 hand-maintained Zod schemas drift silently from DRF (`currency`/`country` typed number in some features, string in others) | ⬜ from 2026-07-02 frontend complexity audit; add a fixtures contract test or OpenAPI type-gen; **drift caused a real outage 2026-08-12** — a four-value `z.enum` vs a six-value backend killed the whole Descriptions panel for ~300 villas, unnoticed until it read as "the fields don't exist" |
 | [GAP-063](done/gap-063-frontend-feature-coupling-and-cycles.md) | Frontend feature boundaries leak — cross-feature imports (rate-workbench→properties ×26) + schema-level cycles (enquiries⇄quotations, properties⇄availability); no import boundary rule | ✅ resolved (2026-07-05) — `eslint-plugin-boundaries` shrink-only ratchet (`boundaries.allowlist.js`, 32→27 pairs) + staleness vitest; rate-workbench folded into `properties/`; all four 2-cycles broken via `src/lib/domain/` + logout-cleanup registry; remaining edge pay-down → GAP-072 |
 | [GAP-064](done/gap-064-structured-room-attributes.md) | Structured room attributes — enum-column facets (ensuite type, access) + an admin-editable `RoomAttribute` catalog for open-ended amenities | ✅ resolved (2026-07-05) — shipped with ticket-default A1 vocabulary (all admin-editable data; owner confirmation pending, see `design/decisions.md`); backfill re-run + placement source → GAP-065; derivation → GAP-067 |
 | [GAP-065](done/gap-065-room-location-building-floor.md) | Room location: split placement into **building** + **floor** — and fix the lossy migration (`RoomLoader` hardcodes `MAIN_HOUSE`, discards every `PlacementId`) | ✅ resolved (2026-07-05) — two blank-able axes + `placement_note` no-loss preserve + parsing loader + reconcile row + grouped rooms list; shipped on ticket-default A2 ladder (owner confirmation pending, see `design/decisions.md`); ambiguous rungs stay `""`+raw note |
@@ -203,6 +235,11 @@ settled Res-primary)._
 | [GAP-087](done/gap-087-per-booking-deposit-override-manual-payment.md) | Per-booking deposit override + manual payment recording (cancellation carry-over workaround) | ✅ resolved (2026-08-07, local main unpushed) — nullable `Booking.deposit_override_amount` honoured by `PaymentScheduler` at create + resync (durable: resync also mints a missing/FAILED-superseding deposit row); status-gated `set_deposit_override` + `:deposit-override` staff endpoint + FinanceTab set/edit/clear UI (en+el); manual `:mark-paid`-without-provider-txn confirmed already complete; splits + Zoho financials reshape derive-on-read; carry-over stays manual (no automation); two adversarial reviews + end-to-end walkthrough |
 | [GAP-088](done/gap-088-charge-item-category-taxonomy.md) | `BookingChargeItem` category taxonomy — dropdown + free-text fallback, aligned with pricing `ExtraKind` | ✅ resolved (2026-07-31) — `ChargeCategory` **superset** enum (8 `ExtraKind` values verbatim, drift-pinned, + `damage`/`credit`), `category` column default `other` (migration 0007) through serializers/service/audit; GAP-085 `extras[]` placeholders filled (snapshot `kind` sanitized pass-through, charge lines send `item.category`); FE dropdown + free-text label in `ChargeItemFormDialog`, en+el, `EnumSelect` lifted to `src/components/form/`; Zoho-side dropdown config = Ben's half (2026-08-12 call) |
 | [GAP-089](gap-089-spreadsheet-historic-import.md) | Historic import pivot: bookings from Nick's spreadsheets (res-DB booking data ignored), enquiry top-up importer | ⬜ from 2026-07-29 Limitless call; **⛔ blocked on Nick's sample sheets**; synthetic `booking-` quotes + `created_at` back-stamp (Zoho historic filter) + email person-match + villa name-match + tags; supersedes the CUTOVER.md FULL-booking-load step; must run before `zoho_backfill --kinds booking` |
+| [GAP-090](gap-090-description-block-set-parity.md) | Description sections rebuilt to the legacy block set (sub/para pairs: web des 1/2, interior, exterior, location) + own tab; `further_info` → property internal notes | 🟨 from 2026-07-20 Nick recording, filed 2026-08-11; **partly built 2026-08-12** — `internal_notes` shipped end-to-end (step 6's UI half; the `further_info` data remap remains) and the SPA no longer crashes on unknown section values, so the enum swap can land backend-first; **answers + supersedes Q-020**; our enum has no interior/exterior at all and the loader fuses each pair with `"\n\n"` (`loaders/properties.py:247–254`), so the fix is a loader re-run not a string split; `Property.video_url` already exists; ⚠️ interior/exterior legacy column names unverified |
+| [GAP-091](gap-091-villa-info-other-information-tags.md) | Villa info → structured "Other information" tags + a free-text box (WP-searchable), on the Features surface | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; **⛔ blocked on the tag vocabulary** (never opened on screen); `FeatureCategory`/`Feature`/`PropertyFeature` spine already fits — but `FeatureServiceType` has no member for a non-service tag; splits the `FeatureDescription + RoomDescription` → `VILLA_INFO` concatenation with GAP-092 |
+| [GAP-092](gap-092-room-website-description-wrong-level.md) | Website room copy sits per-room; legacy has one blurb under all the bedrooms | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; legacy property-level `RoomDescription` (currently fused into `VILLA_INFO`) is very likely the box; ⚠️ **don't drop `Room.website_description` blind** — `backfill_room_attrs` mines it for GAP-064 facets, and legacy *does* carry a per-room column that contradicts the brief (verify, don't pick a side) |
+| [GAP-093](gap-093-remove-property-category.md) | Remove `Property.category` — country + region is enough | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; FK is non-nullable so it's a **required** create field + a fixture in ~10 test modules; **unblocks BUG-019**'s `PropertyFilter.category` name collision; same shape as GAP-070 (groups) |
+| [GAP-094](gap-094-house-rules-into-booking-contract.md) | House rules must flow into the booking contract (never public; snapshot at confirmation) | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; **requirement capture only — no code change today**, no booking-contract surface exists; field itself confirmed correct |
 
 ## Open product questions
 
@@ -211,7 +248,8 @@ settled Res-primary)._
 | [Q-010](q-010-guest-data-retention.md) | Guest data retention / GDPR | ⬜ |
 | [Q-018](done/q-018-rate-reduction-vs-carryover.md) | Rate reductions: base price + reduction so carry-over copies the base | ✅ resolved (2026-07-12) — built as designed (8 TDD units): base `nightly`/`weekly` + reduction alongside on `RateBand` (`reduction_percent` XOR fixed `reduced_nightly`/`reduced_weekly` + `reduced_at`/`reason`, 5 CHECKs), derived `effective_*` quoted via the single derive point `rule_nightly`; carry-over/projection/uplift read the **base** ("discounted 2026 → undiscounted 2027" pinned), `:duplicate` copies verbatim; staff "reduced from" surfaces (workbench matrix/timeline/probe + quote builder, `reduced_from` + `total_before_reduction` with basis math re-run on the un-reduced base). Decision row in `design/decisions.md`; `04-pricing.md` rewritten as-built |
 | [Q-019](done/q-019-structured-room-attributes.md) | Structured room attributes (bath/shower, aircon, views, accessibility, floor) | ✅ superseded (2026-07-02) by **GAP-064/065/066** — legacy-grounded build tickets; the A1/A2 owner-vocabulary decision is carried in their "Owner steer" sections |
-| [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written | ⬜ |
+| [Q-020](q-020-description-sections-parity.md) | Description sections: spec enum vs sections actually written | ⏸ **answered** (2026-08-11) by the 2026-07-20 Nick recording — legacy screen captured: nine fields as short-"sub"/long-"para" pairs; our enum lacks interior/exterior entirely and the loader fuses each pair. Folded into **GAP-090**; drop when that lands |
+| [Q-025](q-025-room-floor-ladder-confirmation-parse-gap.md) | Room floor: A2 ladder endorsed on screen; settle the unparsed remainder | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; **no new build** — GAP-065 already shipped the dropdown Brian asked for and `parse_placement` already handles `"Master - First floor"`; open residual is GAP-073's 49-row `Room placement` reconcile gap + the ambiguous rungs (mezzanine/upper level) left blank pending A2; pair with GAP-064's A1 confirmation |
 | [Q-021](done/q-021-defaults-and-feature-taxonomy.md) | Seed group defaults + curate feature taxonomy | ✅ superseded (2026-07-02) — split into **GAP-067** (feature taxonomy + room→property derivation) and **GAP-068** (group-defaults seeding, buildable now); groups stay |
 | [Q-022](q-022-seasons-defined-by-rates.md) | Seasons defined by rental rates not services | ⬜ owner answer recorded (season = named tier over rate bands); tier-list confirmation drafted (C1, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)) |
 | [Q-023](q-023-partial-week-nightly-composition.md) | Partial-week / nightly price composition for odd-length stays | ⬜ rounding + fallback already done; confirmation questions drafted (D1–D3, [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md)); docs+tests half can proceed ahead of answers |

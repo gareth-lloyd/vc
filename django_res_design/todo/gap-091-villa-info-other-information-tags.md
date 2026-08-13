@@ -14,10 +14,10 @@
   - `django_res/properties/models/features.py` — `FeatureCategory` (L9),
     `Feature` (L28), `PropertyFeature` (L56, has `sort_order` + `is_derived`),
     `Collection` (L97). The infrastructure this needs already exists.
-  - `django_res/properties/enums.py:113` — `FeatureServiceType`
+  - `django_res/properties/enums.py:131` — `FeatureServiceType`
     (`amenity / included_service / paid_addon`).
   - `django_res/properties/enums.py:104` — `DescriptionSection`, losing
-    `villa_info`.
+    `villa_info` (member at `:124`).
   - `django_res/data_migration/loaders/properties.py:237–241` — the
     `FeatureDescription + RoomDescription → VILLA_INFO` concatenation.
   - `frontend/src/features/properties/tabs/FeaturesTab.tsx`.

@@ -13,17 +13,45 @@
     serializers.
   - `django_res/properties/filters/property.py:25, 52` — `?category=` query
     param (`NumberFilter(field_name="category_id")`).
-  - `django_res/data_migration/registry.py:29, 64` — `PropertyCategoryLoader`.
-  - ~10 test modules construct a `PropertyCategory` purely to satisfy the
-    non-null FK (`data_migration/tests/conftest.py:29`,
+  - **A whole CRUD API surface, easy to miss:**
+    `django_res/properties/urls.py:50` registers `/property-categories` as a
+    full **`ModelViewSet`** (`views/metadata.py`, `serializers/metadata.py` —
+    both modules exist only for this model), plus the `__init__.py` exports in
+    `properties/{models,serializers,views}/`.
+  - `django_res/properties/admin.py:17, 36` — registered in Django admin.
+  - `django_res/properties/factories.py:195` (`PropertyCategoryFactory`) and
+    `:236` (`PropertyFactory.category = SubFactory(...)`). **This is why the
+    test blast radius is smaller than the file count suggests** — most suites
+    inherit the category through the factory and need no edit; deleting the
+    `SubFactory` line covers them.
+  - `django_res/data_migration/loaders/lookups.py` — where
+    `PropertyCategoryLoader` is actually *defined*;
+    `data_migration/registry.py:29, 64` only registers it.
+  - `django_res/data_migration/management/commands/reconcile_legacy.py:103` —
+    a `SELECT COUNT(*) FROM VillaPropertyCategory` check that must be removed
+    with the loader, not left to fail.
+  - `django_res/data_migration/loaders/sentinels.py:4` — its docstring cites
+    the in-line "Uncategorised" `PropertyCategory` fallback as the pattern it
+    mirrors; reword rather than orphan the reference.
+    Also `data_migration/COVERAGE.md` and `seeding/README.md`.
+  - **25 test modules** reference `PropertyCategory` — mostly conftests and
+    the loader tests (`data_migration/tests/conftest.py:29`,
     `test_property_loader.py:15`, `test_quotation_loader.py:124`,
-    `test_rate_band_loader.py:21`, …).
+    `test_rate_band_loader.py:21`, `properties/tests/*`, `comms/tests/*`, …),
+    plus `reservations/management/commands/demo_ical.py`.
   - `frontend/src/features/properties/components/CreatePropertyDialog.tsx` —
     default `category: 0` (L45), controller (L57), options fetch (L110),
     `<Select>` (L180–198).
-  - `frontend/src/features/properties/schemas.ts`,
-    `__tests__/CreatePropertyDialog.test.tsx`,
-    `frontend/src/i18n/locales/en/properties.json`.
+  - `frontend/src/features/properties/api.ts:384` — the `/property-categories`
+    fetch backing that options list; goes with the endpoint.
+  - `frontend/src/features/properties/schemas.ts` — **two** call sites: the
+    read shape (`:56`, already `.nullable().optional()`) and the create form's
+    `z.number().int().min(1)` (`:432`), which is what makes the field
+    mandatory in the UI.
+  - `__tests__/CreatePropertyDialog.test.tsx`,
+    `frontend/src/i18n/locales/en/properties.json:24, 25, 39`
+    (`category`, `category_placeholder`, `category_required`) — and the `el`
+    locale alongside it.
 
 ## Problem
 
@@ -42,17 +70,21 @@ field on the create form and a fixture in every test that builds a Property.
 
 ## Proposed fix
 
-1. Drop the field from the create dialog and the property serializers.
-2. Drop `Property.category` and the `PropertyCategory` model; retire
-   `PropertyCategoryLoader` from the registry.
-3. Drop the `?category=` filter from `PropertyFilter` — **and take the name
+1. Drop the field from the create dialog and the property serializers, and
+   the `/property-categories` fetch that feeds the dropdown.
+2. Retire the `/property-categories` endpoint — router registration, viewset,
+   serializer, `__init__` exports, admin registration, factory.
+3. Drop `Property.category` and the `PropertyCategory` model; retire
+   `PropertyCategoryLoader` (definition in `loaders/lookups.py`, registration
+   in `registry.py`) and its `reconcile_legacy` check.
+4. Drop the `?category=` filter from `PropertyFilter` — **and take the name
    with it**: BUG-019 needs `PropertyFilter.category` for feature-category
    filtering and is currently blocked by this collision (its own "traps"
    section names it). Landing this first removes the obstacle.
-4. Strip the now-pointless `PropertyCategory` fixtures from the test modules
-   that only create one to satisfy the FK.
-5. Check `reconcile_legacy` for a `PropertyCategory` row count and record the
-   deliberate drop in `CUTOVER.md`.
+5. Strip the now-pointless `PropertyCategory` fixtures — start with the
+   `PropertyFactory.category` `SubFactory`, which clears most of them at once.
+6. Record the deliberate drop of the legacy `VillaPropertyCategory` table in
+   `CUTOVER.md` and `COVERAGE.md`.
 
 ## Acceptance
 
@@ -61,8 +93,10 @@ field on the create form and a fixture in every test that builds a Property.
 - `PropertyCategory` and the FK are gone; migrations apply cleanly and the
   pending-migrations guard test passes.
 - `?category=` no longer resolves to property category on `/properties`.
-- `reconcile_legacy` gap for the dropped table is documented, not
-  unexplained.
+- `/api/v1/property-categories` is gone (404), and no frontend query still
+  requests it. (test)
+- `reconcile_legacy` runs clean with the `VillaPropertyCategory` check
+  removed; the deliberate drop is documented, not an unexplained gap.
 - Quality gate green (backend + frontend).
 
 ## Dependencies

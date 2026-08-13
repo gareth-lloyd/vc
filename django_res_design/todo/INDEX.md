@@ -60,6 +60,23 @@ Zoho (already true); WP integration testing targets Mojo's detached dev
 site (note added to `wp-enquiry-cutover.md`); `CUTOVER.md`'s
 FULL-booking-load step superseded. Next call 2026-08-12._
 
+_2026-08-13 accuracy pass over GAP-090–094 + Q-025 (re-verified against `main`
+after `c3fdb70e`). No ticket changed conclusion; six defects fixed. Two are
+substantive: **GAP-090's** interior/exterior columns are no longer unknown —
+they are `Interior1/2` + `Exterior1/2` on the row `PropertyLoader` already
+joins, but `PropertyImageLoader` **already consumes all four as image
+captions**, so the ticket now carries a surface-don't-decide flag on the
+double-read instead of a "names unverified" note. **GAP-093** was materially
+under-scoped: it missed a full CRUD `/property-categories` `ModelViewSet`
+(router + viewset + serializer modules that exist only for this model), the
+admin registration, `PropertyCategoryFactory` and the `PropertyFactory`
+`SubFactory` that is the real reason ~25 test modules touch it, the loader's
+own definition module, and a `reconcile_legacy` check that would fail on
+removal. The rest were stale refs the `main` landings moved
+(`FeatureServiceType` 113→131, `views/description.py` 39→42, `HOUSE_RULES`
+104→123), a broken `GAP-095` link (house rules is GAP-094), and GAP-092
+pointing at `RoomsTab.tsx` when the field lives in `RoomFormDialog.tsx`._
+
 _2026-08-12: an ad-hoc change off Nick's "we need some new fields: Villa
 information / Further villa information / Internal notes" email landed on `main`
 (`1872df1c`, `892d09c2`, `9524e8ac`) — filed no ticket of its own, but moves
@@ -70,7 +87,7 @@ and parsed strictly, so any property with `location` or `web_description` copy
 (298 / 276 villas) lost the entire Descriptions panel. Now tolerant + filtered
 at the boundary, which is **concrete evidence for GAP-062** (noted there) and
 de-risks GAP-090's enum swap. `internal_notes` is built end-to-end, so
-**GAP-090 is now 🟡 partly built** — its step 6 UI half is done, the
+**GAP-090 is now 🟨 partly built** — its step 6 UI half is done, the
 `further_info` data remap is not. Also fixed en route: a body-less PUT wiped a
 section, and `update_or_create` discarded `updated_by` (a pattern worth auditing
 elsewhere)._
@@ -235,10 +252,10 @@ settled Res-primary)._
 | [GAP-087](done/gap-087-per-booking-deposit-override-manual-payment.md) | Per-booking deposit override + manual payment recording (cancellation carry-over workaround) | ✅ resolved (2026-08-07, local main unpushed) — nullable `Booking.deposit_override_amount` honoured by `PaymentScheduler` at create + resync (durable: resync also mints a missing/FAILED-superseding deposit row); status-gated `set_deposit_override` + `:deposit-override` staff endpoint + FinanceTab set/edit/clear UI (en+el); manual `:mark-paid`-without-provider-txn confirmed already complete; splits + Zoho financials reshape derive-on-read; carry-over stays manual (no automation); two adversarial reviews + end-to-end walkthrough |
 | [GAP-088](done/gap-088-charge-item-category-taxonomy.md) | `BookingChargeItem` category taxonomy — dropdown + free-text fallback, aligned with pricing `ExtraKind` | ✅ resolved (2026-07-31) — `ChargeCategory` **superset** enum (8 `ExtraKind` values verbatim, drift-pinned, + `damage`/`credit`), `category` column default `other` (migration 0007) through serializers/service/audit; GAP-085 `extras[]` placeholders filled (snapshot `kind` sanitized pass-through, charge lines send `item.category`); FE dropdown + free-text label in `ChargeItemFormDialog`, en+el, `EnumSelect` lifted to `src/components/form/`; Zoho-side dropdown config = Ben's half (2026-08-12 call) |
 | [GAP-089](gap-089-spreadsheet-historic-import.md) | Historic import pivot: bookings from Nick's spreadsheets (res-DB booking data ignored), enquiry top-up importer | ⬜ from 2026-07-29 Limitless call; **⛔ blocked on Nick's sample sheets**; synthetic `booking-` quotes + `created_at` back-stamp (Zoho historic filter) + email person-match + villa name-match + tags; supersedes the CUTOVER.md FULL-booking-load step; must run before `zoho_backfill --kinds booking` |
-| [GAP-090](gap-090-description-block-set-parity.md) | Description sections rebuilt to the legacy block set (sub/para pairs: web des 1/2, interior, exterior, location) + own tab; `further_info` → property internal notes | 🟨 from 2026-07-20 Nick recording, filed 2026-08-11; **partly built 2026-08-12** — `internal_notes` shipped end-to-end (step 6's UI half; the `further_info` data remap remains) and the SPA no longer crashes on unknown section values, so the enum swap can land backend-first; **answers + supersedes Q-020**; our enum has no interior/exterior at all and the loader fuses each pair with `"\n\n"` (`loaders/properties.py:247–254`), so the fix is a loader re-run not a string split; `Property.video_url` already exists; ⚠️ interior/exterior legacy column names unverified |
+| [GAP-090](gap-090-description-block-set-parity.md) | Description sections rebuilt to the legacy block set (sub/para pairs: web des 1/2, interior, exterior, location) + own tab; `further_info` → property internal notes | 🟨 from 2026-07-20 Nick recording, filed 2026-08-11; **partly built 2026-08-12** — `internal_notes` shipped end-to-end (step 6's UI half; the `further_info` data remap remains) and the SPA no longer crashes on unknown section values, so the enum swap can land backend-first; **answers + supersedes Q-020**; our enum has no interior/exterior at all and the loader fuses each pair with `"\n\n"` (`loaders/properties.py:247–254`), so the fix is a loader re-run not a string split; `Property.video_url` already exists; ⚠️ the interior/exterior columns are **found** (`Interior1/2`, `Exterior1/2` on the same joined row) but `PropertyImageLoader` already reads all four as image captions — settle that double-read before mapping |
 | [GAP-091](gap-091-villa-info-other-information-tags.md) | Villa info → structured "Other information" tags + a free-text box (WP-searchable), on the Features surface | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; **⛔ blocked on the tag vocabulary** (never opened on screen); `FeatureCategory`/`Feature`/`PropertyFeature` spine already fits — but `FeatureServiceType` has no member for a non-service tag; splits the `FeatureDescription + RoomDescription` → `VILLA_INFO` concatenation with GAP-092 |
 | [GAP-092](gap-092-room-website-description-wrong-level.md) | Website room copy sits per-room; legacy has one blurb under all the bedrooms | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; legacy property-level `RoomDescription` (currently fused into `VILLA_INFO`) is very likely the box; ⚠️ **don't drop `Room.website_description` blind** — `backfill_room_attrs` mines it for GAP-064 facets, and legacy *does* carry a per-room column that contradicts the brief (verify, don't pick a side) |
-| [GAP-093](gap-093-remove-property-category.md) | Remove `Property.category` — country + region is enough | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; FK is non-nullable so it's a **required** create field + a fixture in ~10 test modules; **unblocks BUG-019**'s `PropertyFilter.category` name collision; same shape as GAP-070 (groups) |
+| [GAP-093](gap-093-remove-property-category.md) | Remove `Property.category` — country + region is enough | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; FK is non-nullable so it's a **required** create field + a fixture in ~10 test modules; **unblocks BUG-019**'s `PropertyFilter.category` name collision; wider than it looks — a full CRUD `/property-categories` ModelViewSet + admin + factory + reconcile check go with it; same shape as GAP-070 (groups) |
 | [GAP-094](gap-094-house-rules-into-booking-contract.md) | House rules must flow into the booking contract (never public; snapshot at confirmation) | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; **requirement capture only — no code change today**, no booking-contract surface exists; field itself confirmed correct |
 
 ## Open product questions

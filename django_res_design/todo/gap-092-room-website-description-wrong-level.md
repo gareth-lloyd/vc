@@ -15,8 +15,17 @@
     legacy `RoomDescription`, currently fused into `VILLA_INFO`.
   - `django_res/data_migration/management/commands/backfill_room_attrs.py:121,128`
     — **reads `website_description` as a keyword source** (see trap below).
-  - `frontend/src/features/properties/tabs/RoomsTab.tsx` (Add/Edit room
-    dialog — `Website description` sits above `Internal notes`).
+  - `frontend/src/features/properties/components/RoomFormDialog.tsx:76, 90,
+    465–470` — the Add/Edit room dialog field itself (`Website description`
+    sits above `Internal notes`); `tabs/RoomsTab.tsx` only mounts the dialog.
+  - `frontend/src/features/properties/schemas.ts:240` (read) and `:361`
+    (write form) — note the comment at `:356`/`:368`: `website_description`
+    is deliberately `z.string()` rather than nullable, part of the GAP-024
+    clearing-trap convention. Removing the field must not disturb `vc_notes`,
+    which shares it.
+  - `frontend/src/i18n/locales/{en,el}/properties.json:616` —
+    `rooms.dialog.fields.website_description` (**both** locales; Greek is
+    translated, so don't drop only the English key).
 
 ## Problem
 

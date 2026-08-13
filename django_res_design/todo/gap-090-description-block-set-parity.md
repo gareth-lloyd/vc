@@ -40,10 +40,13 @@
   - `django_res/properties/models/descriptions.py` — `PropertyDescription`
     (structure is right: one row per section, `UniqueConstraint(property,
     section)`; only the enum changes).
-  - `django_res/properties/views/description.py:39` — validates
+  - `django_res/properties/views/description.py:42` — validates
     `section.replace("-", "_")` against `DescriptionSection.values`.
   - `django_res/data_migration/loaders/properties.py:228–264`
     (`_write_descriptions`) — the concatenation to undo.
+  - `django_res/data_migration/loaders/property_children.py:87–109`
+    (`PropertyImageLoader`) — already reads
+    `Interior1/2` + `Exterior1/2` as image captions; see the ⚠️ in step 3.
   - `frontend/src/features/properties/components/DescriptionsSection.tsx` —
     tab strip over `WEBSITE_SECTIONS` + the internal-notes group. (The
     hardcoded `bodies` keys this originally named are gone — see the banner.)
@@ -91,7 +94,7 @@ parity break in the copy that sells the villas.
 1. **Replace the enum** with the legacy block set:
    `web_des_1`, `web_des_2`, `interior_sub`, `interior_para`, `exterior_sub`,
    `exterior_para`, `location_sub`, `location_para`.
-   `house_rules` stays (see GAP-095); `villa_info` leaves for the Features
+   `house_rules` stays (see GAP-094); `villa_info` leaves for the Features
    surface (GAP-091); `further_info` becomes property internal notes (below).
 2. **Video Url needs no work** — `Property.video_url` already exists
    (`models/property.py:39`) and the loader already maps legacy `VodeoUrl`
@@ -99,11 +102,26 @@ parity break in the copy that sells the villas.
 3. **Loader** — stop concatenating: `WebDesc1 → web_des_1`,
    `WebDesc2 → web_des_2`, `Location1 → location_sub`,
    `Location2 → location_para`, and add the interior/exterior pairs.
-   ⚠️ **Confirm the interior/exterior column names against the legacy
-   snapshot before writing the mapping** — the loader comment names
-   `VillaPropertyImagesDescription` as the source table for the website copy,
-   but only the WebDesc/Location columns are read today, so the interior and
-   exterior column names are unverified.
+
+   ⚠️ **The interior/exterior columns are found — and they are already being
+   read for something else.** They live on the same
+   `VillaPropertyImagesDescription` row this loader already joins
+   (`loaders/properties.py:89–107`): `Interior1`, `Interior2`, `Exterior1`,
+   `Exterior2` — the same 1/2 = sub/para shape as `WebDesc1`/`WebDesc2`. But
+   `PropertyImageLoader` **already consumes all four as image captions**
+   (`property_children.py:96–97, 106–109`), pairing each with its
+   `IsInterior1/2` / `IsExterior1/2` flag, and `PropertyLoader`'s own comment
+   records that as settled: *"Its Interior\*/Exterior\* columns are already
+   migrated as image slot captions there; not read here."*
+
+   So two readings of the same four columns are now in play — captions under
+   the interior/exterior photos, or the prose blocks the legacy Descriptions
+   screen shows at `[01:48]`. They may well be both (one text rendered beside
+   its image), but **do not assume**: check the live villa page against a
+   snapshot row before writing the mapping, and if it is genuinely one text
+   serving two surfaces, say so explicitly rather than importing it twice
+   under two names. **This is a spec-vs-code disagreement — surface it, don't
+   pick a side.**
 4. **Data migration** for already-imported rows: `overview → web_des_1`,
    `location → location_para`, `web_description → web_des_1`. The fused pairs
    cannot be split programmatically — the honest fix is a **re-run of the
@@ -151,5 +169,6 @@ parity break in the copy that sells the villas.
   property-level prose block; fold into this tab's layout if both are live.
 - Related: GAP-010 (spec areas reverse-engineered from the wrong codebase —
   the reason Q-020 distrusted the spec mapping in the first place).
-- Requires the legacy prod snapshot (`ResSystem-prod`) to confirm the
-  interior/exterior column names and to re-run the loader.
+- Requires the legacy prod snapshot (`ResSystem-prod`) to settle the
+  interior/exterior double-read (step 3) and to re-run the loader. The column
+  *names* no longer need discovery — they are `Interior1/2`, `Exterior1/2`.

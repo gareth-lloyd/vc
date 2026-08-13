@@ -5,7 +5,7 @@
 - **Source:** 2026-07-20 Nick screen-recording (`Recording-20260720_134424`,
   reviewed 2026-08-11). Transcript `[02:08–02:35]`, recap `[04:09–04:15]`.
 - **Files touched (best-guess, when built):**
-  - `django_res/properties/enums.py:104` — `DescriptionSection.HOUSE_RULES`
+  - `django_res/properties/enums.py:123` — `DescriptionSection.HOUSE_RULES`
     (the source content; keep it through the GAP-090 enum rewrite).
   - `django_res/data_migration/loaders/properties.py:235–236` — legacy
     `HouseRules` → `HOUSE_RULES`, already imported.

@@ -44,7 +44,14 @@ its raw string in `placement_note`, so nothing is lost. Two residuals remain:
    surfaced a `Room placement (GAP-065)` reconcile gap of **49** rows, listed
    there as a pre-existing follow-up and never chased. That is the concrete
    answer to Nick's question and should be quantified before the
-   conversation, not during it.
+   conversation, not during it. Note the check itself
+   (`reconcile_legacy.py:187–206`) still carries `expected_gap=0` marked
+   **PLACEHOLDER — recalibrate at the first cutover dry-run**, and already
+   names the two legitimate causes to apportion the 49 across: rooms whose
+   parent property wasn't loaded (the 307 slice above it), and dangling
+   `PlacementId` → blank `VillaRoomsPlacement.Name`. So the number is not
+   evidence of a parser failure until that apportionment is done — and it may
+   resolve to "recalibrate the constant", not "extend the patterns".
 2. **Ambiguous rungs stay blank by design** — `"upper floor"`, `"upper
    level"`, `"lower level"`, `"mezzanine"`, `"basement"` deliberately parse to
    `""` pending the A2 steer. With Nick on the call this is answerable: do

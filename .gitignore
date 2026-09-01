@@ -48,3 +48,4 @@ logs/
 # Generated media from local dev seeding (MEDIA_ROOT = django_res/media).
 django_res/media/
 .playwright-mcp/
+data_imports/

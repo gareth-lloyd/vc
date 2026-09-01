@@ -6,16 +6,30 @@ property) so tests don't need to know the full `properties` schema.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
+import time_machine
 
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 
 if TYPE_CHECKING:
     from properties.models import Property
+
+# The shared fixtures below are 2026-dated (a Jun-Aug `period`, 2026 plans) and
+# the elapsed-period lock + currency projection compare against "today", so the
+# suite rotted once the wall clock passed 2026-08-31. Pin the clock inside the
+# fixtures' season; 2099-dated fixtures stay future, 20xx-past ones stay past.
+FROZEN_TODAY = "2026-06-10"
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock() -> Iterator[None]:
+    with time_machine.travel(FROZEN_TODAY, tick=False):
+        yield
 
 
 @pytest.fixture

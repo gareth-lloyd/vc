@@ -10,7 +10,7 @@ in tests (xdist worker leak); behaviour toggled via
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 from unittest import mock
@@ -31,6 +31,7 @@ from reservations.enums import BookingGuestRole, BookingStatus
 from reservations.models import Booking, BookingGuest, Enquiry, Quotation, QuotationLine
 from reservations.services.bookings import BookingService
 from reservations.services.zoho_payload import (
+    _iso,
     build_booking_payload,
     build_quotation_payload,
 )
@@ -212,6 +213,11 @@ FINANCIALS_KEYS = frozenset(
         "gross_balance",
         "net_balance",
         "balance_commission",
+        # GAP-099: per-component payment state (raw PaymentStatus + ISO due_at).
+        "deposit_status",
+        "deposit_due_at",
+        "balance_status",
+        "balance_due_at",
     }
 )
 
@@ -231,7 +237,14 @@ def _set_snapshot(booking: Booking, snapshot: dict[str, Any]) -> None:
     booking.save(update_fields=["pricing_snapshot", "updated_at"])
 
 
-def _payment(booking: Booking, *, purpose: str, amount: str, status: str = "pending") -> None:
+def _payment(
+    booking: Booking,
+    *,
+    purpose: str,
+    amount: str,
+    status: str = "pending",
+    due_at: datetime | None = None,
+) -> None:
     # Test scaffolding may import `payments` (layers contract ignores tests).
     from payments.models import Payment
 
@@ -241,6 +254,7 @@ def _payment(booking: Booking, *, purpose: str, amount: str, status: str = "pend
         status=status,
         amount=Decimal(amount),
         currency=booking.currency,
+        due_at=due_at,
     )
 
 
@@ -282,8 +296,9 @@ def _funded_booking(
 
 
 def test_payload_financials_full_figures(booking: Booking) -> None:
-    """All 8 figures explicit, 2dp strings — exact dict equality also pins
-    that no keys beyond the agreed contract ride along."""
+    """All 8 figures explicit, 2dp strings, plus the GAP-099 per-component
+    payment state — exact dict equality also pins that no keys beyond the
+    agreed contract ride along."""
     _funded_booking(booking)
 
     payload = build_booking_payload(booking)
@@ -297,6 +312,10 @@ def test_payload_financials_full_figures(booking: Booking) -> None:
         "gross_balance": "7000.00",
         "net_balance": "4872.00",
         "balance_commission": "1218.00",
+        "deposit_status": "pending",
+        "deposit_due_at": None,
+        "balance_status": "pending",
+        "balance_due_at": None,
     }
 
 
@@ -320,6 +339,10 @@ def test_payload_financials_includes_charge_overlay(booking: Booking) -> None:
         "gross_balance": "7000.00",
         "net_balance": "4872.00",
         "balance_commission": "1218.00",
+        "deposit_status": "pending",
+        "deposit_due_at": None,
+        "balance_status": "pending",
+        "balance_due_at": None,
     }
 
 
@@ -350,6 +373,12 @@ def test_payload_financials_agrees_with_split_authority(booking: Booking) -> Non
     assert financials["gross_balance"] == f"{splits['balance']['gross']:.2f}"
     assert financials["net_balance"] == f"{splits['balance']['net_to_owner']:.2f}"
     assert financials["balance_commission"] == f"{splits['balance']['commission']:.2f}"
+    # GAP-099: payment state is the authority's too — same latest-row status,
+    # same earliest-scheduled due_at, ISO-rendered.
+    assert financials["deposit_status"] == splits["deposit"]["status"]
+    assert financials["deposit_due_at"] == _iso(splits["deposit"]["due_at"])
+    assert financials["balance_status"] == splits["balance"]["status"]
+    assert financials["balance_due_at"] == _iso(splits["balance"]["due_at"])
     # Conservation: commission unconditional, gross/net fixture-conditional.
     for total_key, part_keys in [
         ("total_gross", ("gross_deposit", "gross_balance")),
@@ -418,6 +447,10 @@ def test_payload_cancelled_booking_keeps_full_financials(booking: Booking) -> No
         "gross_balance": "7000.00",
         "net_balance": "4872.00",
         "balance_commission": "1218.00",
+        "deposit_status": "succeeded",
+        "deposit_due_at": None,
+        "balance_status": "succeeded",
+        "balance_due_at": None,
     }
     assert payload["extras"] == [
         {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": "heating"}
@@ -431,7 +464,11 @@ def test_payload_cancelled_with_pending_schedule_pushes_authority_zeros(
     FinanceTab — report 0.00 components; the push agrees byte-for-byte
     rather than inventing pre-cancellation figures. The booking-level pair
     still carries the money for reporting. Semantics flagged for the
-    2026-08-12 Limitless call (see ticket close-out)."""
+    2026-08-12 Limitless call (see ticket close-out).
+
+    GAP-099 / CHECK-004 item 3: this is exactly the case where Limitless'
+    `status != "awaiting_deposit"` inference marked the deposit as received.
+    The payload now says `deposit_status: cancelled` — a fact, not a guess."""
     _funded_booking(booking)
     booking.cancel("Change of plans")
 
@@ -446,7 +483,68 @@ def test_payload_cancelled_with_pending_schedule_pushes_authority_zeros(
         "gross_balance": "0.00",
         "net_balance": "0.00",
         "balance_commission": "0.00",
+        "deposit_status": "cancelled",
+        "deposit_due_at": None,
+        "balance_status": "cancelled",
+        "balance_due_at": None,
     }
+
+
+# --- per-component payment state (GAP-099) --------------------------------
+#
+# The eight amounts say nothing about whether the deposit has been PAID;
+# Limitless inferred it from BookingStatus and got it wrong (CHECK-004 item 3).
+# Ship the split authority's `status` (latest schedule row, raw PaymentStatus)
+# and `due_at` (earliest scheduled, ISO-8601) per component — facts, not
+# derivations, null-degrading like every other figure in the block.
+
+
+def test_payload_financials_component_statuses_paid_deposit_pending_balance(
+    booking: Booking,
+) -> None:
+    """The headline case: deposit collected, balance outstanding — each
+    component reports its own raw PaymentStatus."""
+    _set_snapshot(booking, FINANCIALS_SNAPSHOT)
+    _payment(booking, purpose="deposit", amount="3000.00", status="succeeded")
+    _payment(booking, purpose="balance", amount="7000.00", status="pending")
+
+    financials = build_booking_payload(booking)["financials"]
+
+    assert financials["deposit_status"] == "succeeded"
+    assert financials["balance_status"] == "pending"
+
+
+def test_payload_financials_status_is_latest_row_not_failed_predecessor(
+    booking: Booking,
+) -> None:
+    """A FAILED deposit superseded by a fresh PENDING re-collection reports
+    the LATEST row (the authority's rule) — and the amount follows the same
+    row, so both facts describe the live schedule, not history."""
+    _set_snapshot(booking, FINANCIALS_SNAPSHOT)
+    _payment(booking, purpose="deposit", amount="3000.00", status="failed")
+    _payment(booking, purpose="deposit", amount="2500.00", status="pending")
+
+    financials = build_booking_payload(booking)["financials"]
+
+    assert financials["deposit_status"] == "pending"
+    assert financials["gross_deposit"] == "2500.00"
+
+
+def test_payload_financials_component_due_at_is_iso_or_null(booking: Booking) -> None:
+    """`due_at` is ISO-8601 when scheduled, null when not — and the whole
+    payload still JSON-serialises (the round-trip test's fixture sets no
+    due_at, so a raw datetime leaking through would otherwise stay green)."""
+    due = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    _set_snapshot(booking, FINANCIALS_SNAPSHOT)
+    _payment(booking, purpose="deposit", amount="3000.00", due_at=due)
+    _payment(booking, purpose="balance", amount="7000.00")
+
+    payload = build_booking_payload(booking)
+
+    financials = payload["financials"]
+    assert financials["deposit_due_at"] == due.isoformat()
+    assert financials["balance_due_at"] is None
+    json.dumps(payload)
 
 
 # --- extras (GAP-085) -----------------------------------------------------

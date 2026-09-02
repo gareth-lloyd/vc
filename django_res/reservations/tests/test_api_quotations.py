@@ -1466,6 +1466,55 @@ def _convert_priced_line(
 
 
 @pytest.mark.django_db
+def test_convert_manual_override_with_stale_snapshot_drops_old_operator_discount(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Price with a 150 discount, then PATCH to manual with discount 0: the
+    stale snapshot's `operator_discount` (150) must not reach the booking."""
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "discount": "150.00",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line_obj = QuotationLine.objects.get()
+    assert line_obj.pricing_snapshot["operator_discount"] == "150.00"
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line_obj.pk}",
+        {
+            "is_manual": True,
+            "total": "1000.00",
+            "discount": "0.00",
+            "price_override_reason": "Negotiated rate",
+        },
+        format="json",
+    )
+    assert patch.status_code == 200, patch.data
+    quotation.send()
+    convert = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line_obj.pk, "terms_accepted": True},
+        format="json",
+    )
+    assert convert.status_code == 201, convert.data
+    snap = Booking.objects.get(pk=convert.data["id"]).pricing_snapshot
+    assert snap["total"] == "1000.00"
+    assert snap["operator_discount"] == "0.00"
+
+
+@pytest.mark.django_db
 def test_convert_discounted_line_books_at_quoted_total(
     api_client: APIClient,
     staff: User,
@@ -1635,6 +1684,8 @@ def test_convert_manual_override_line_with_stale_snapshot(
     assert snap["total"] == "900.00"
     assert snap["commission"] == "210.00"
     assert snap["net_to_owner"] == "690.00"  # 900 - 210 - 0
+    # Re-stamped from the line, not inherited from the stale engine snapshot.
+    assert snap["operator_discount"] == "0.00"
 
 
 @pytest.mark.django_db

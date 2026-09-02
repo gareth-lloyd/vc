@@ -209,15 +209,18 @@ class BookingService:
         `rate_subtotal` (accommodation subtotal, not the guest total).
 
         A manual-override line PATCHed after pricing keeps its stale engine
-        snapshot; the same netting applies, using the stale commission/tax.
-        Whether commission should be charged on an operator-invented price
-        is an open product question. An empty snapshot (manual line never
-        priced) is left empty.
+        snapshot; the same netting applies, using the stale commission/tax,
+        and `operator_discount` is re-stamped from the line so the booking
+        never shows a discount the operator has since zeroed. Whether
+        commission should be charged on an operator-invented price is an
+        open product question. An empty snapshot (manual line never priced)
+        is left empty.
         """
         if not snapshot:
             return
         money = owner_money_from_snapshot({**snapshot, "total": f"{total:.2f}"})
         snapshot["total"] = f"{total:.2f}"
+        snapshot["operator_discount"] = f"{quotation_line.discount:.2f}"
         if money is None:
             snapshot.pop("net_to_owner", None)
             logger.warning(

@@ -56,6 +56,16 @@ Register `Organisation` as its own kind, mirroring the `contact` pattern:
   the endpoint, so this is a coordinated landing, not a solo one.
 - Extend `zoho_backfill` ordering: organisation **before** contact and villa,
   so the Account exists before anything looks it up.
+- **Villa before booking**, for the same reason (added 2026-09-02, off the
+  booking-flow review). `limitless_insert_booking` COQLs `Products` by
+  `RES_ID` and, on a miss, creates a *stub* villa from the thin `region`
+  object the booking payload carries — no location, no capacity, no rooms,
+  no features, and a free-text `Region`/`Country`. That stub is a
+  second-class Product the villa upsert then has to reconcile, and its
+  duplicate-name branch is where CHECK-004 item 6 (booking attached to the
+  wrong villa) becomes reachable. The stub path is a legitimate safety net,
+  but it should be rare: emitting villas ahead of bookings makes it so. Full
+  ordering: organisation → contact → villa → enquiry → booking.
 - Once it exists, the villa flow's inline Account create/update becomes a
   lookup, and the contact flow can set a real Account lookup instead of the
   `Contact_Type` text. Both are Limitless-side follow-ups — record them on
@@ -69,7 +79,8 @@ GAP-095 question does not extend here.
 
 - Saving an `Organisation` enqueues an `organisation` push. (test)
 - The payload carries every CRM-relevant column, JSON-safe. (test)
-- `zoho_backfill` emits organisations before contacts and villas. (test)
+- `zoho_backfill` emits organisation → contact → villa → enquiry → booking,
+  in that order. (test)
 - Renaming an organisation results in exactly ONE push, not one per villa it
   manages. (test — this is the whole point)
 - A villa's management-company Account is found by lookup, not created by the

@@ -689,6 +689,7 @@
       "nightly_rate": "Τιμή ανά βράδυ",
       "extras_total": "Έξτρα",
       "discount": "Έκπτωση",
+      "operator_discount": "Έκπτωση χειριστή",
       "commission": "Προμήθεια",
       "tax": "Φόρος",
       "fees": "Χρεώσεις",
@@ -836,6 +837,7 @@
         "rate_subtotal": "Υποσύνολο τιμής",
         "extras_total": "Έξτρα",
         "discount": "Έκπτωση",
+        "operator_discount": "Έκπτωση χειριστή",
         "commission": "Προμήθεια",
         "tax": "Φόρος",
         "total": "Γενικό σύνολο"

@@ -68,6 +68,11 @@ export const pricingSnapshotSchema = z
     fees: z.union([z.number(), z.string()]).optional().nullable(),
     adjustments: z.union([z.number(), z.string()]).optional().nullable(),
     discount: z.union([z.number(), z.string()]).optional().nullable(),
+    // BUG-020: `discount` is the engine's rule discount (already inside
+    // `total`); the operator's line discount rides beside it, with `gross` =
+    // the engine figure before that operator discount.
+    operator_discount: z.union([z.number(), z.string()]).optional().nullable(),
+    gross: z.union([z.number(), z.string()]).optional().nullable(),
     commission: z.union([z.number(), z.string()]).optional().nullable(),
     tax: z.union([z.number(), z.string()]).optional().nullable(),
     taxes: z.union([z.number(), z.string()]).optional().nullable(),

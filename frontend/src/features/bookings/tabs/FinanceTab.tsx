@@ -42,13 +42,21 @@ function parseSnapshot(value: unknown): PricingSnapshot | null {
 // Money rows SnapshotSection renders, in display order. snapshotHasContent
 // derives its key set from this same list so the two can never drift (a key
 // rendered but not counted would hide real data behind the empty state).
-const SNAPSHOT_MONEY_ROWS: Array<{ labelKey: string; keys: (keyof PricingSnapshot)[] }> = [
+// `hideZero` rows are subtractive extras (the engine's rule discount and the
+// operator's line discount, BUG-020) — the engine always emits them, so a
+// £0.00 row would only say "no discount" and bury the ones that matter.
+const SNAPSHOT_MONEY_ROWS: Array<{
+  labelKey: string;
+  keys: (keyof PricingSnapshot)[];
+  hideZero?: boolean;
+}> = [
   { labelKey: "finance.fields.nightly_rate", keys: ["nightly_rate"] },
   { labelKey: "finance.fields.rate_subtotal", keys: ["rate_subtotal"] },
   { labelKey: "finance.fields.extras_total", keys: ["extras_total"] },
   { labelKey: "finance.fields.fees", keys: ["fees"] },
   { labelKey: "finance.fields.adjustments", keys: ["adjustments"] },
-  { labelKey: "finance.fields.discount", keys: ["discount"] },
+  { labelKey: "finance.fields.discount", keys: ["discount"], hideZero: true },
+  { labelKey: "finance.fields.operator_discount", keys: ["operator_discount"], hideZero: true },
   { labelKey: "finance.fields.commission", keys: ["commission"] },
   { labelKey: "finance.fields.tax", keys: ["tax", "taxes"] },
   { labelKey: "finance.fields.deposit", keys: ["deposit"] },
@@ -77,6 +85,10 @@ function pickMoney(snapshot: PricingSnapshot, keys: (keyof PricingSnapshot)[]): 
     if (v != null && v !== "") return v;
   }
   return null;
+}
+
+function isZeroMoney(value: unknown): boolean {
+  return (typeof value === "number" || typeof value === "string") && Number(value) === 0;
 }
 
 function moneyOrNull(value: unknown, currency: string | null | undefined) {
@@ -114,7 +126,9 @@ function SnapshotSection({
   }
 
   for (const row of SNAPSHOT_MONEY_ROWS) {
-    push(t(row.labelKey), pickMoney(snapshot, row.keys));
+    const raw = pickMoney(snapshot, row.keys);
+    if (row.hideZero && isZeroMoney(raw)) continue;
+    push(t(row.labelKey), raw);
   }
 
   const lines: PricingSnapshotLine[] = snapshot.lines ?? [];

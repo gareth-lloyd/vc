@@ -689,6 +689,7 @@
       "nightly_rate": "Nightly rate",
       "extras_total": "Extras",
       "discount": "Discount",
+      "operator_discount": "Operator discount",
       "commission": "Commission",
       "tax": "Tax",
       "fees": "Fees",
@@ -836,6 +837,7 @@
         "rate_subtotal": "Rate subtotal",
         "extras_total": "Extras",
         "discount": "Discount",
+        "operator_discount": "Operator discount",
         "commission": "Commission",
         "tax": "Tax",
         "total": "Grand total"

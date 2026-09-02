@@ -184,6 +184,53 @@ describe("FinanceTab — pricing snapshot", () => {
     expect(screen.getByText(/£1,850\.00/)).toBeInTheDocument();
   });
 
+  it("renders the operator discount beside the engine promo discount (BUG-020)", async () => {
+    const snapshot = {
+      currency_code: "GBP",
+      rate_subtotal: "1400.00",
+      discount: "0.00",
+      operator_discount: "150.00",
+      commission: "210.00",
+      tax: "0.00",
+      total: "1250.00",
+    };
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () => HttpResponse.json(bookingFixture(snapshot))),
+    );
+    useCharges([]);
+    setup();
+
+    expect(await screen.findByRole("heading", { name: "Finance" })).toBeInTheDocument();
+    await expandBreakdown();
+    expect(screen.getByText("Operator discount")).toBeInTheDocument();
+    expect(screen.getByText(/£150\.00/)).toBeInTheDocument();
+    expect(screen.getAllByText(/£1,250\.00/).length).toBeGreaterThan(0);
+    // The engine's rule discount is "0.00" on every undiscounted quote —
+    // a zero row is noise, so it is hidden.
+    expect(screen.queryByText("Discount")).not.toBeInTheDocument();
+  });
+
+  it("shows the engine rule discount when non-zero and hides a zero operator discount", async () => {
+    const snapshot = {
+      currency_code: "GBP",
+      rate_subtotal: "1400.00",
+      discount: "140.00",
+      operator_discount: "0.00",
+      total: "1260.00",
+    };
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () => HttpResponse.json(bookingFixture(snapshot))),
+    );
+    useCharges([]);
+    setup();
+
+    expect(await screen.findByRole("heading", { name: "Finance" })).toBeInTheDocument();
+    await expandBreakdown();
+    expect(screen.getByText("Discount")).toBeInTheDocument();
+    expect(screen.getByText(/£140\.00/)).toBeInTheDocument();
+    expect(screen.queryByText("Operator discount")).not.toBeInTheDocument();
+  });
+
   it("renders the lines table when pricing_snapshot has lines", async () => {
     const snapshot = {
       currency_code: "GBP",

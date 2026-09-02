@@ -250,6 +250,33 @@ describe("OwnerTab", () => {
     expect(screen.getByText(/£1,690\.00/)).toBeInTheDocument();
   });
 
+  it("renders the operator discount in the payout breakdown (BUG-020)", async () => {
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () =>
+        HttpResponse.json(
+          bookingFixture({
+            owner: SAMPLE_OWNER,
+            commission: { calculation_type: "percent", amount: "15.00", note: "" },
+            pricing_snapshot: {
+              currency_code: "GBP",
+              rate_subtotal: "1400.00",
+              discount: "0.00",
+              operator_discount: "150.00",
+              commission: "210.00",
+              total: "1250.00",
+            },
+          }),
+        ),
+      ),
+    );
+    setup();
+    expect(await screen.findByText(/Pricing breakdown/i)).toBeInTheDocument();
+    expect(screen.getByText("Operator discount")).toBeInTheDocument();
+    expect(screen.getByText(/£150\.00/)).toBeInTheDocument();
+    // Zero engine rule discount is hidden rather than shown as £0.00.
+    expect(screen.queryByText("Discount")).not.toBeInTheDocument();
+  });
+
   it("renders pricing-snapshot components without a currency by falling back to a plain decimal", async () => {
     server.use(
       http.get(`/api/v1/bookings/${BOOKING_ID}`, () =>

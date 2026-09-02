@@ -1514,6 +1514,24 @@ def test_convert_manual_override_with_stale_snapshot_drops_old_operator_discount
     assert snap["operator_discount"] == "0.00"
 
 
+_GAP_099_STATE_KEYS = frozenset(
+    {"deposit_status", "deposit_due_at", "balance_status", "balance_due_at"}
+)
+
+
+def _financials_money(booking: Booking) -> dict[str, str]:
+    """GAP-085's eight money figures, exact-dict pinnable (GAP-099's four
+    payment-state keys are asserted present, then dropped — their values
+    are the scheduler's, not this fix's)."""
+    from reservations.services.zoho_payload import build_booking_payload
+
+    financials = dict(build_booking_payload(booking)["financials"])
+    assert _GAP_099_STATE_KEYS <= financials.keys()
+    for key in _GAP_099_STATE_KEYS:
+        financials.pop(key)
+    return financials
+
+
 @pytest.mark.django_db
 def test_convert_discounted_line_books_at_quoted_total(
     api_client: APIClient,
@@ -1591,10 +1609,8 @@ def test_convert_discounted_line_zoho_financials(
 ) -> None:
     """GAP-085's 8-figure block flows from the netted snapshot (full dict so no
     stray figure inherits the engine's £1400)."""
-    from reservations.services.zoho_payload import build_booking_payload
-
     _, booking = _convert_priced_line(api_client, staff, quotation, property_, discount="150.00")
-    assert build_booking_payload(booking)["financials"] == {
+    assert _financials_money(booking) == {
         "total_gross": "1250.00",
         "total_net": "1040.00",
         "gross_deposit": "375.00",
@@ -1727,7 +1743,6 @@ def test_convert_partially_floored_line_keeps_money_identity(
     guest pays £150, so commission is clipped to £150 and the owner nets £0.
     Component splits and the Zoho block must stay non-negative and sum."""
     from reservations.services.owner_finance import payment_component_splits
-    from reservations.services.zoho_payload import build_booking_payload
 
     _, booking = _convert_priced_line(api_client, staff, quotation, property_, discount="1250.00")
     snap = booking.pricing_snapshot
@@ -1743,7 +1758,7 @@ def test_convert_partially_floored_line_keeps_money_identity(
         (Decimal("45.00"), Decimal("45.00"), Decimal("0.00")),
         (Decimal("105.00"), Decimal("105.00"), Decimal("0.00")),
     ]
-    assert build_booking_payload(booking)["financials"] == {
+    assert _financials_money(booking) == {
         "total_gross": "150.00",
         "total_net": "0.00",
         "gross_deposit": "45.00",

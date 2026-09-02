@@ -771,6 +771,25 @@ def test_patch_contact_sets_tags(api_client: APIClient, staff: User, contact: Pe
 
 
 @pytest.mark.django_db
+def test_patch_contact_accepts_gap089_sheet_tags(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    """GAP-089: the spreadsheet vocabulary (HNW / Owner) is part of the enum."""
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"tags": ["hnw", "owner"]},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    contact.refresh_from_db()
+    assert contact.tags == ["hnw", "owner"]
+    assert response.json()["tags"] == ["hnw", "owner"]
+
+
+@pytest.mark.django_db
 def test_patch_contact_rejects_unknown_tag(
     api_client: APIClient, staff: User, contact: Person
 ) -> None:

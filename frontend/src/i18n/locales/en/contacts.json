@@ -77,7 +77,9 @@
     "approach_with_care": "Approach with care",
     "past_issues": "Past issues",
     "specific_preferences": "Specific preferences",
-    "time_waster": "Time waster"
+    "time_waster": "Time waster",
+    "hnw": "High net worth",
+    "owner": "Villa owner"
   },
   "types": {
     "none": "No roles recorded",

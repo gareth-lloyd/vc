@@ -26,4 +26,6 @@ export const PERSON_TAGS: readonly PersonTag[] = [
   { value: "past_issues", labelKey: "tags.past_issues" },
   { value: "specific_preferences", labelKey: "tags.specific_preferences" },
   { value: "time_waster", labelKey: "tags.time_waster" },
+  { value: "hnw", labelKey: "tags.hnw" },
+  { value: "owner", labelKey: "tags.owner" },
 ] as const;

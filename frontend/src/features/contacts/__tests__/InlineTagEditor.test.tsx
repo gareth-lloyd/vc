@@ -98,6 +98,15 @@ describe("InlineTagEditor", () => {
     await waitFor(() => expect(body).toEqual({ tags: ["trade"] }));
   });
 
+  it("offers the GAP-089 sheet tags (HNW, Villa owner)", async () => {
+    renderWithProviders(<InlineTagEditor contactId={7} tags={[]} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /edit tags/i }));
+
+    expect(await screen.findByRole("checkbox", { name: "High net worth" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Villa owner" })).toBeInTheDocument();
+  });
+
   it("is read-only without the reservations role (button disabled, never gone)", () => {
     clearRole();
     renderWithProviders(<InlineTagEditor contactId={7} tags={["vip"]} />);

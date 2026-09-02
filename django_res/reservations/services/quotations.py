@@ -78,11 +78,15 @@ class QuotationService:
         line.currency = Currency.objects.get(code=quote.currency_code)
         gross = quantise_money(quote.total, line.currency)
         # Annotate the snapshot so the gross (pre-discount engine figure) and
-        # the applied discount survive alongside the engine breakdown — the
-        # stored `total` is the net the guest pays.
+        # the operator's discount survive alongside the engine breakdown. The
+        # engine owns `discount` (promo/rule reductions, Q-018) — never clobber
+        # it (BUG-020 / FG-018). `snapshot["total"]` stays the engine figure
+        # here; `BookingService.create_from_quotation_line` nets the operator
+        # discount into the *booking* snapshot at conversion. `line.total` is
+        # the net the guest pays.
         snapshot = dict(quote.breakdown)
         snapshot["gross"] = f"{gross:.2f}"
-        snapshot["discount"] = f"{line.discount:.2f}"
+        snapshot["operator_discount"] = f"{line.discount:.2f}"
         line.pricing_snapshot = snapshot
         # Net the operator discount; never let a large discount drive the
         # quoted price negative (mirrors Booking's non-negative money intent).

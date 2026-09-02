@@ -1787,6 +1787,62 @@ def test_create_line_with_discount_reduces_total(
     assert create.data["total"] == "1250.00"
     assert create.data["discount"] == "150.00"
     assert create.data["inclusions"] == "Welcome hamper"
+    # BUG-020 / FG-018: the operator discount lives under its own snapshot
+    # key; `discount` stays the engine's (0 here — no promo rules) and the
+    # snapshot `total` stays the engine figure on the *line* (netted at
+    # conversion by `BookingService`).
+    snap = line_obj.pricing_snapshot
+    assert snap["operator_discount"] == "150.00"
+    assert snap["discount"] == "0.00"
+    assert snap["gross"] == "1400.00"
+    assert snap["total"] == "1400.00"
+
+
+@pytest.mark.django_db
+def test_priced_line_keeps_engine_promo_discount_beside_operator_discount(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """A non-zero engine promo discount (Q-018) must survive an operator
+    discount on the same line — the bug was `price_line` overwriting it."""
+    from pricing.enums import DiscountKind, RuleKind
+    from pricing.models import Discount
+
+    Discount.objects.create(
+        property=property_,
+        name="Ten off",
+        rule_kind=RuleKind.EARLY_BIRD,
+        kind=DiscountKind.PERCENT,
+        amount=Decimal("10.00"),
+        valid_from=date(2026, 1, 1),
+        valid_to=date(2026, 12, 31),
+    )
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "discount": "150.00",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+
+    line_obj = QuotationLine.objects.get()
+    snap = line_obj.pricing_snapshot
+    # Engine: 1400 - 10% = 1260 (its `total`); operator takes a further 150.
+    assert snap["discount"] == "140.00"
+    assert snap["operator_discount"] == "150.00"
+    assert snap["gross"] == "1260.00"
+    assert snap["total"] == "1260.00"
+    assert line_obj.total == Decimal("1110.00")
 
 
 @pytest.mark.django_db

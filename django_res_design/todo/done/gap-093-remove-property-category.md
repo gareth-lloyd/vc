@@ -1,5 +1,30 @@
 # GAP-093 — Remove `Property.category`: country + region is enough
 
+> **✅ RESOLVED (2026-09-02, local `main` unpushed)** — shipped on `feat/gap-093`
+> in 3 units (backend removal, frontend removal, docs). **Problem:** the
+> Create-a-villa dialog demanded a Category before it would create a villa;
+> Nick (2026-07-20 recording): country + region is enough. `Property.category`
+> was a non-nullable PROTECT FK carrying a full `/property-categories`
+> ModelViewSet, an admin registration, a legacy loader + reconcile check, a
+> factory SubFactory, and an embedded object in the Zoho villa push — nothing
+> read it for behaviour. **Fix:** migration `properties/0006` (`RemoveField` +
+> `DeleteModel`, one-way in practice — restore from backup to reverse); the
+> model, three staff serializers + the owner-portal serializer, the
+> `?category=` filter, both `select_related("category")` sites, the audit
+> field, the endpoint/views/serializers/admin, the `PropertyCategoryLoader` +
+> `VillaPropertyCategory` reconcile check, and the factory all deleted
+> (31 backend test modules swept). Frontend: category dropped from
+> `CreatePropertyDialog`, schemas (create form is now four fields), hooks,
+> query keys, both locales, and the owner-portal schema (the GAP-070 M3 trap —
+> it was a required `z.number().nullable()`). Docs: `COVERAGE.md` Dropped table
+> (+ stale `VillaGroup` rows fixed), `CUTOVER.md`, design backend/product docs.
+> **Zoho contract:** the villa payload's `category` key is dropped outright
+> (amendment recorded in `done/gap-082-zoho-villa-push.md`); ⚠️ **Limitless
+> must be told** at the next touchpoint. **Deploy note:** Render migrates
+> pre-deploy, so old code 500s on `select_related("category")` for the swap
+> window — expected blip. **Unblocks BUG-019** (`PropertyFilter.category` name
+> is free for feature-category filtering).
+
 - **Severity:** 🟢 Gap (dead concept — required field with no purpose).
   Backend + frontend. Unblocks a BUG-019 name collision.
 - **Source:** 2026-07-20 Nick screen-recording (`Recording-20260720_134424`,

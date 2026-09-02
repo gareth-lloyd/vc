@@ -15,7 +15,7 @@ properties/
 ├── models/
 │   ├── __init__.py
 │   ├── geo.py          # Country, Region, NearbyPlace, NearbyPlaceType
-│   ├── property.py     # Property, PropertyCategory
+│   ├── property.py     # Property
 │   ├── location.py     # PropertyLocation
 │   ├── capacity.py     # PropertyCapacity
 │   ├── settings.py     # PropertySettings
@@ -60,12 +60,6 @@ properties/
 
 ## Property core
 
-### `PropertyCategory(TimestampedModel)`
-Editable lookup (villa, apartment, chalet, lodge…).
-- `name` — CharField, unique
-- `slug` — SlugField
-- `sort_order` — int
-
 ### `Property(AuditedModel)`
 Thin aggregate root. Lifecycle is the explicit `status` enum below — no soft delete. Retiring a property uses `status=ARCHIVED`; reviewing the catalogue uses `?status=` filtering, never a hidden manager.
 - `name` — CharField
@@ -74,7 +68,6 @@ Thin aggregate root. Lifecycle is the explicit `status` enum below — no soft d
 - `licence_number` — CharField(blank=True)
 - `status` — `TextChoices` (`DRAFT`, `ACTIVE`, `ARCHIVED`) — three values only. `DRAFT` = work-in-progress, hidden from publish targets and search. `ACTIVE` = published, bookable, fanned out to integrations. `ARCHIVED` = retired (decommissioned, end-of-contract, sold). The legacy `live_offline` row collapses into `ARCHIVED`; operators reach the legacy "temporarily not bookable" effect by setting `PropertySettings.availability_default = UNAVAILABLE`, which is a separate axis. See reconciliation issue #23.
 - `channel` — `TextChoices` (`DIRECT`, `AGENT`, `WHITE_LABEL`, `INTERNAL`)
-- `category` — FK PropertyCategory PROTECT
 - `region` — FK Region PROTECT
 - `features` — M2M to `Feature` (no through; plain)
 - `collections` — M2M to `Collection` through `CollectionMembership`

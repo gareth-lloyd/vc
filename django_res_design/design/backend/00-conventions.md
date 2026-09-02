@@ -30,7 +30,7 @@ TimestampedModel       (auto timestamps)
 
 | Model kind                                                                                                                                         | Base                                    |
 | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| Lookup tables staff curate (`Country`, `Region`, `Currency`, `Feature`, `Collection`, `PropertyCategory`)                                          | `TimestampedModel` + `is_active` bool   |
+| Lookup tables staff curate (`Country`, `Region`, `Currency`, `Feature`, `Collection`)                                                              | `TimestampedModel` + `is_active` bool   |
 | All user-editable domain models                                                                                                                    | `AuditedModel`                          |
 | Append-only audit / event tables (`BookingEvent`, `PaymentEvent`, `EnquiryEvent`, `WebhookDelivery`, `FxRate`, `EmailLog`, `SyncRun`, `SyncIssue`) | `TimestampedModel` only (never deleted) |
 | Pure-data junctions with no user lifecycle (`CollectionMembership`)                                                                                | `TimestampedModel`                      |

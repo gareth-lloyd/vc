@@ -60,6 +60,10 @@ uv run python manage.py loadlegacy --all
 > schema is byte-identical. Only the historical **in-place-upgrade** paths that
 > referenced specific old migration numbers (`reservations/0035`,
 > `accounts/0012`) are gone; those were never needed for a fresh cutover.
+>
+> **`VillaPropertyCategory` is no longer loaded (GAP-093, 2026-09-01).**
+> `Property.category` and the `PropertyCategory` lookup were removed; the
+> table is classified as dropped in `COVERAGE.md`.
 
 Expect this to finish in ~2 minutes on the live snapshot. Watch for any
 non-zero `errors` column in the per-loader summary; investigate before

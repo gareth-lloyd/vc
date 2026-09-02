@@ -73,7 +73,11 @@ from integrations.services.zoho_flow import (
 from integrations.tasks import push_sync_record
 
 if TYPE_CHECKING:
+    from accounts.models import Person
+    from pricing.models import Currency
     from properties.models.property import Property
+    from reservations.models import Booking, Enquiry, Quotation, QuotationLine
+    from reservations.models.terms import TermsVersion
 
 # Sample-webhook env var per kind (see module docstring / .env). Deliberately
 # distinct names from `ZOHO_FLOW_WEBHOOK_*` so dev/staging settings never pick
@@ -239,7 +243,12 @@ class Command(BaseCommand):
         for obj in objects:
             spec = get_zoho_spec(obj._meta.model)
             assert spec is not None  # every pushed model is registered
-            payload = spec.build_payload(obj)
+            # Re-read exactly as `push_sync_record` does (it builds from
+            # `record.target`, a fresh fetch). Building from the in-memory
+            # instance would print a DIFFERENT payload wherever a scenario
+            # mutated the row through a related object or a service call —
+            # `--dry-run` has to show what the real push would send.
+            payload = spec.build_payload(type(obj)._base_manager.get(pk=obj.pk))
             self.stdout.write(f"[{scenario}/{kind}] pk={obj.pk} payload:")
             self.stdout.write(json.dumps(payload, indent=2, default=str))
 
@@ -253,6 +262,170 @@ def _capture_media(ctx: SampleContext, villa: Property) -> None:
     for img in villa.images.all():
         if img.image.name:
             ctx.media_paths.append(img.image.name)
+
+
+# ── shared scenario helpers ──────────────────────────────────────────────
+# Used by the shape scenarios only. `baseline` deliberately builds its own,
+# richer graph inline: it carries the enum axis and is pinned as a verbatim
+# move of the original `_build_graph`, so it consumes none of these.
+
+# `CurrencyFactory` and `CountryFactory` draw from process-global
+# `factory.Iterator`s (`pricing/factories.py:44`, `properties/factories.py:165`)
+# and ADVANCE them on every build, so with N scenarios in one run nobody can
+# predict what a bare call returns — and the scenario that runs first silently
+# re-denominates the ones after it. Every call site pins its values instead;
+# `django_get_or_create` on `code` / `iso2` keeps that idempotent.
+_CURRENCY_SPECS = {
+    "GBP": ("Pound sterling", "£"),
+    "EUR": ("Euro", "€"),
+    "USD": ("US dollar", "$"),
+}
+_COUNTRY_SPECS = {
+    "GB": ("GBR", "United Kingdom"),
+    "FR": ("FRA", "France"),
+    "ES": ("ESP", "Spain"),
+}
+
+
+def _scenario_tag(scenario: str) -> str:
+    """Record prefix for one scenario, e.g. `"Synthetic Sample repush"`.
+
+    Namespacing keeps ten scenarios' records apart in the CRM. `baseline` keeps
+    the bare `_TAG`, so nothing Limitless has already mapped moves.
+    """
+    return f"{_TAG} {scenario}"
+
+
+def _currency(code: str) -> Currency:
+    from pricing.factories import CurrencyFactory
+
+    name, symbol = _CURRENCY_SPECS[code]
+    return cast("Currency", CurrencyFactory(code=code, name=name, symbol=symbol))
+
+
+def _country(iso2: str) -> Any:
+    """Pin a country by ISO2, for the same reason as `_currency`."""
+    from properties.factories import CountryFactory
+
+    iso3, name = _COUNTRY_SPECS[iso2]
+    return CountryFactory(iso2=iso2, iso3=iso3, name=name)
+
+
+def _priceable_villa(ctx: SampleContext, tag: str, *, currency: Currency) -> Property:
+    """Villa + one rate plan/period/band — the least the pricing engine needs
+    to quote a stay. Baseline's villa also carries rooms, features, contacts and
+    extras, none of which a *shape* scenario has any use for."""
+    from pricing.factories import RateBandFactory, RatePeriodFactory, RatePlanFactory
+    from properties.enums import PropertyChannel, PropertyStatus
+    from properties.factories import CountryFactory, PropertyFactory
+
+    villa = cast(
+        "Property",
+        PropertyFactory(
+            name=f"{tag} Villa",
+            display_name=f"{tag} Villa",
+            status=PropertyStatus.ACTIVE,
+            channel=PropertyChannel.AGENT,
+            region__country=CountryFactory(),
+        ),
+    )
+    # Capture the PropertyImage path at the point the file is written.
+    _capture_media(ctx, villa)
+    plan = RatePlanFactory(property=villa, currency=currency, name=f"{tag} rates")
+    period = RatePeriodFactory(plan=plan, name=f"{tag} period")
+    RateBandFactory(period=period, min_party=1, max_party=30)
+    return villa
+
+
+def _person(tag: str, last_name: str) -> Person:
+    from accounts.factories import CustomerPersonFactory
+
+    return cast(
+        "Person",
+        CustomerPersonFactory(
+            first_name=tag,
+            last_name=last_name,
+            notes=f"{tag} contact.",
+        ),
+    )
+
+
+def _terms() -> TermsVersion:
+    from reservations.factories import TermsVersionFactory
+
+    return cast("TermsVersion", TermsVersionFactory())
+
+
+def _enquiry(tag: str, person: Person, villa: Property, **overrides: Any) -> Enquiry:
+    from reservations.factories import EnquiryFactory
+
+    return cast(
+        "Enquiry",
+        EnquiryFactory(
+            person=person,
+            property=villa,
+            inbound_message=f"{tag} enquiry.",
+            **overrides,
+        ),
+    )
+
+
+def _stay_option(enquiry: Enquiry, villa: Property, **overrides: Any) -> dict[str, Any]:
+    """One quotation-line spec matching the enquiry's dates."""
+    option: dict[str, Any] = {
+        "property": villa,
+        "date_from": enquiry.date_from,
+        "date_to": enquiry.date_to,
+        "adults": 2,
+        "children": 1,
+    }
+    option.update(overrides)
+    return option
+
+
+def _sent_quote(
+    enquiry: Enquiry,
+    terms: TermsVersion,
+    options: list[dict[str, Any]],
+) -> Quotation:
+    """DRAFT -> SENT quote off `enquiry`. SENT because that is the only status
+    live traffic ever pushes from (`reservations/apps.py:268` registers the
+    quote kind `auto_push=False`; `record_quote_sent` is the sole enqueue)."""
+    from reservations.services.quotations import QuotationService
+
+    quotation = QuotationService.create_from_enquiry(
+        enquiry,
+        options,
+        terms_version=terms,
+        expires_at=timezone.now() + timedelta(days=14),
+    )
+    quotation.send()
+    return quotation
+
+
+def _first_line(quotation: Quotation) -> QuotationLine:
+    line = quotation.lines.first()
+    if line is None:
+        raise CommandError("QuotationService produced no lines")
+    return line
+
+
+def _accepted_booking(
+    quotation: Quotation,
+    line: QuotationLine,
+    terms: TermsVersion,
+) -> Booking:
+    """Accept `line` (quote -> ACCEPTED, enquiry -> CONVERTED) and open the
+    booking it commits to."""
+    from reservations.enums import PaymentMethod
+    from reservations.services.bookings import BookingService
+
+    quotation.accept(line)
+    return BookingService.create_from_quotation_line(
+        line,
+        terms_version=terms,
+        payment_method=PaymentMethod.BANK_TRANSFER.value,
+    )
 
 
 def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
@@ -283,13 +456,11 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
     from accounts.models import Person
     from pricing.enums import ExtraKind
     from pricing.factories import (
-        CurrencyFactory,
         ExtraFactory,
         RateBandFactory,
         RatePeriodFactory,
         RatePlanFactory,
     )
-    from pricing.models import Currency
     from properties.enums import (
         BedSize,
         EnsuiteType,
@@ -301,7 +472,6 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
         RoomPlacement,
     )
     from properties.factories import (
-        CountryFactory,
         FeatureFactory,
         PropertyContactAssignmentFactory,
         PropertyFactory,
@@ -331,8 +501,12 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
     from reservations.services.charges import ChargeItemService
     from reservations.services.quotations import QuotationService
 
-    currency = cast(Currency, CurrencyFactory())  # GBP (first iterator)
-    country = CountryFactory()  # GB (first iterator)
+    # Pinned, not iterator-drawn: `CurrencyFactory`/`CountryFactory` advance a
+    # process-global `factory.Iterator`, so a shape scenario running first (the
+    # `--scenarios` order is the operator's) would otherwise re-denominate and
+    # re-locate baseline's records — exactly what must never move.
+    currency = _currency("GBP")
+    country = _country("GB")
 
     # ── organisations (nested inside contact/villa payloads) ───────────
     agency = OrganisationFactory(
@@ -603,10 +777,106 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
     yield ("booking", [booking])
 
 
+def _scenario_repush(ctx: SampleContext) -> Iterator[PushStep]:
+    """Push the same villa and booking TWICE, mutated in between.
+
+    Every other scenario — and every record the sample flows have ever been
+    sent — is an insert. This is the only place an *update* is observable, and
+    so the only way to tell an upsert from a duplicate: if the Flow inserts
+    rather than upserts, the run leaves two villas and two bookings in the CRM
+    instead of one of each, renamed. CHECK-004 item 1 / CHECK-005 item 3.
+    """
+    from reservations.enums import EnquirySource
+
+    tag = _scenario_tag("repush")
+    terms = _terms()
+    villa = _priceable_villa(ctx, tag, currency=_currency("GBP"))
+    person = _person(tag, "Repush")
+    enquiry = _enquiry(tag, person, villa)
+    quotation = _sent_quote(enquiry, terms, [_stay_option(enquiry, villa)])
+    booking = _accepted_booking(quotation, _first_line(quotation), terms)
+
+    # Full dependency chain first: the booking payload nests `enquiry.RES_ID`
+    # and `quote.RES_ID`, and a Flow told to join records it has never seen
+    # manufactures the dangling-reference noise `out_of_order` exists to
+    # isolate — which would muddy the verdict this scenario is here to give.
+    yield ("contact", [person])
+    yield ("villa", [villa])
+    yield ("enquiry", [enquiry])
+    yield ("quote", [quotation])
+    yield ("booking", [booking])
+
+    # The same two records, changed. An unmutated re-push would prove nothing:
+    # the CRM record would look identical either way. `name` moves as well as
+    # `display_name` because the Flow maps `Name<-name` — a villa surfaced by
+    # `Name` would otherwise look unchanged across both passes.
+    villa.name = f"{tag} Villa (renamed)"
+    villa.display_name = f"{tag} Villa (renamed)"
+    villa.save(update_fields=["name", "display_name", "updated_at"])
+    booking.site_source = EnquirySource.PHONE.value
+    booking.save(update_fields=["site_source", "updated_at"])
+
+    yield ("villa", [villa])
+    yield ("booking", [booking])
+
+
+def _scenario_status_transitions(ctx: SampleContext) -> Iterator[PushStep]:
+    """Push the same quote and booking at each stage of their lifecycle.
+
+    Both Flows currently hardcode the stage they write — `Quote_Stage:
+    "Quoted"`, booking `Status: "Pending Booking"` — regardless of what the
+    payload carries, so a record that visibly moves SENT -> ACCEPTED, or opens
+    and then cancels, is the shape that makes the omission legible.
+    CHECK-004 item 2 / CHECK-005 item 4.
+
+    Two enquiries, not one: `create_from_enquiry` refuses a DEAD or CONVERTED
+    enquiry (`quotations.py:299`) and `accept()` converts the parent
+    (`models/quotation.py:194`), so the accepted quote and the cancelled quote
+    cannot share a source enquiry.
+    """
+    # Tag == registry key, deliberately: the scenario name is the shared
+    # verification vocabulary with Limitless ("run `--scenarios
+    # status_transitions` and read those records"), so the name you type and
+    # the prefix in the CRM must be the same string.
+    tag = _scenario_tag("status_transitions")
+    terms = _terms()
+    villa = _priceable_villa(ctx, tag, currency=_currency("GBP"))
+    person = _person(tag, "Transitions")
+
+    yield ("contact", [person])
+    yield ("villa", [villa])
+
+    # Q1: SENT -> ACCEPTED, then the booking it opens -> CANCELLED.
+    e1 = _enquiry(tag, person, villa)
+    yield ("enquiry", [e1])  # NEW
+    q1 = _sent_quote(e1, terms, [_stay_option(e1, villa)])
+    yield ("enquiry", [e1])  # QUOTE_SENT — the stage the Flow hardcodes past
+    yield ("quote", [q1])  # SENT
+    booking = _accepted_booking(q1, _first_line(q1), terms)
+    yield ("quote", [q1])  # ACCEPTED
+    # `accept()` converts the enquiry through its OWN instance (`refresh_locked`
+    # drops the cached FK), so `e1` is stale here — refresh or this yields NEW.
+    e1.refresh_from_db()
+    yield ("enquiry", [e1])  # CONVERTED
+    yield ("booking", [booking])
+    booking.cancel(f"{tag} cancelled after confirmation")
+    yield ("booking", [booking])
+
+    # Q2: SENT -> CANCELLED — the quote that never converts.
+    e2 = _enquiry(tag, person, villa)
+    yield ("enquiry", [e2])
+    q2 = _sent_quote(e2, terms, [_stay_option(e2, villa)])
+    yield ("quote", [q2])
+    q2.cancel(f"{tag} withdrawn")
+    yield ("quote", [q2])
+
+
 # Ordered registry: the `--scenarios` vocabulary, and the order `all` runs in.
 # `baseline` first, so its records keep landing in the CRM exactly as Limitless
 # already mapped them.
 _SCENARIOS: dict[str, Callable[[SampleContext], Iterator[PushStep]]] = {
     "baseline": _scenario_baseline,
+    "repush": _scenario_repush,
+    "status_transitions": _scenario_status_transitions,
 }
 _DEFAULT_SCENARIOS = ("baseline",)

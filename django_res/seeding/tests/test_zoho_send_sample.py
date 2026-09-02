@@ -296,6 +296,86 @@ def test_separator_only_scenarios_falls_back_to_the_default(
     assert payloads["villa"]
 
 
+# ── shape scenarios ──────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_repush_scenario_sends_each_record_twice_mutated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The only scenario in which an *update* is observable at all."""
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "repush")
+
+    villas = payloads["villa"]
+    assert len(villas) == 2, "the villa must be pushed twice — that is the scenario"
+    assert villas[0]["RES_ID"] == villas[1]["RES_ID"], "same record, not two"
+    assert villas[0]["display_name"] != villas[1]["display_name"], (
+        "an unmutated re-push proves nothing about upsert vs insert"
+    )
+
+    bookings = payloads["booking"]
+    assert len(bookings) == 2
+    assert bookings[0]["RES_ID"] == bookings[1]["RES_ID"]
+    assert bookings[0]["site_source"] != bookings[1]["site_source"]
+
+
+@pytest.mark.django_db
+def test_status_transitions_scenario_sends_each_lifecycle_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "status_transitions")
+
+    quote_statuses = {q["status"] for q in payloads["quote"]}
+    assert {"sent", "accepted", "cancelled"} <= quote_statuses, quote_statuses
+
+    # The enquiry moves too — and `accept()` converts it through its own
+    # instance, so a stale in-memory copy would silently push NEW twice.
+    enquiry_statuses = {e["status"] for e in payloads["enquiry"]}
+    assert {"new", "quote_sent", "converted"} <= enquiry_statuses, enquiry_statuses
+
+    booking_statuses = [b["status"] for b in payloads["booking"]]
+    assert "cancelled" in booking_statuses, booking_statuses
+    assert len(set(booking_statuses)) >= 2, (
+        f"a booking pushed only at one status shows no transition: {booking_statuses}"
+    )
+
+
+@pytest.mark.django_db
+def test_a_shape_scenario_running_first_does_not_move_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Baseline's records must be identical whatever else runs, and in whatever
+    order — they are what Limitless has already mapped.
+
+    Pinned to two scenarios on purpose: `--scenarios all` would drag every
+    future scenario into a test that asserts nothing about them, and report
+    their failures as baseline failures.
+    """
+    _set_sample_env(monkeypatch)
+
+    # repush FIRST — the ordering that exposes shared-factory iterator drift.
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "repush,baseline")
+
+    baseline_villas = [
+        v for v in payloads["villa"] if v["display_name"] == "Synthetic Sample Villa"
+    ]
+    assert len(baseline_villas) == 1, [v["display_name"] for v in payloads["villa"]]
+    assert baseline_villas[0]["region"]["country"]["iso2"] == "GB"
+
+    baseline_lines = [
+        line
+        for quote in payloads["quote"]
+        for line in quote["lines"]
+        if line["property"]["display_name"] == "Synthetic Sample Villa"
+    ]
+    assert baseline_lines, "no baseline quote line captured"
+    assert baseline_lines[0]["currency"] == "GBP"
+
+
 # ── guard ────────────────────────────────────────────────────────────────
 
 

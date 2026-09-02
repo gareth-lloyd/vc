@@ -43,6 +43,7 @@ dependencies = [
     # factory-boy builders.
     "factory-boy>=3.3",
     "django-extensions>=4.1",
+    "openpyxl>=3.1.5",
 ]
 
 [dependency-groups]
@@ -58,6 +59,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "respx>=0.22",
     "time-machine>=3.2.0",
+    "types-openpyxl>=3.1.5.20260827",
 ]
 
 [tool.ruff]

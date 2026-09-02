@@ -102,7 +102,10 @@ systems (dropdown + free-text fallback — the taxonomy itself is GAP-088).
   not subtract a discount field from it again.
 - **Which discount figure feeds their field:** operator `line.discount` vs
   the engine promo discount inside `pricing_snapshot["discount"]` vs the
-  sum — they are different numbers living in different places.
+  sum — they are different numbers living in different places. *(Update
+  2026-09-02, BUG-020: the operator figure now also rides inside the
+  snapshot as `pricing_snapshot["operator_discount"]`, so both are
+  addressable by key; `discount` is engine-only again.)*
 - **Security deposit:** absent from the Zoho layout read out on the call.
   Res has a first-class track (`payments/models/security_deposit.py` +
   `PropertyFinance.security_deposit_*` policy) — does it get a Zoho field?

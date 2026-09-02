@@ -23,7 +23,7 @@
 > will be reseeded, not migrated. Manual-override lines PATCHed after
 > pricing keep their stale engine snapshot and get the same netting;
 > whether commission applies to an operator-invented price is a Nick-call
-> item. Reprice paths still drop the discount → **BUG-024**.
+> item. Reprice paths still drop the discount → **BUG-025**.
 > **Residuals from the unit reviews (not fixed here):** `Booking.rental_price`
 > stays the engine `rate_subtotal` (accommodation subtotal, not the guest
 > total — the owner-dashboard YTD sum reads it); the line serializer accepts

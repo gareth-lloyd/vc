@@ -1,4 +1,4 @@
-# BUG-024 — Repricing a booking silently restores the undiscounted price
+# BUG-025 — Repricing a booking silently restores the undiscounted price
 
 - **Severity:** 🔴 Bug (money — a date or party change on a discounted
   booking quietly puts the operator discount back on the guest's bill).

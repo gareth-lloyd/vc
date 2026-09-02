@@ -1,3 +1,41 @@
+> **✅ RESOLVED (2026-09-02)** — the shape axis is built. `zoho_send_sample`
+> now drives a registry of ten named scenarios selected with `--scenarios`;
+> `_build_graph` became `baseline` and a bare run is unchanged. All eleven
+> shapes tabulated below are reachable: `repush`, `status_transitions`,
+> `multi_option_quote`, `discounted`, `mixed_currency`, `sparse_financials`,
+> `anonymised_person`, `agency_only_contact`, `villa_churn`, `out_of_order`.
+> The scenario names replaced the prose test batches in CHECK-001/003/004/005.
+>
+> **Three deviations from this ticket, all deliberate:**
+>
+> 1. **Default is `baseline`, not all** (the ticket sketched "default all,
+>    mirroring `--kinds`"). A bare run must not fire ~60 POSTs at Limitless'
+>    live sample flows and flood the sandbox with records nobody asked to read.
+>    `--scenarios all` is one flag away.
+> 2. **"Baseline byte-identical for a fixed seed" was dropped** as an
+>    acceptance criterion — it was never achievable: `core/factories.py` draws
+>    a `uuid4` run token and `properties/factories.py` uses an unseeded
+>    `Faker("en_GB")`, so names, slugs and addresses differ every run whatever
+>    the seed. Replaced with a guarantee that holds: the existing
+>    enum-coverage test passes unchanged against `baseline`. What the ticket
+>    actually wanted — that nothing Limitless mapped *moves* — is enforced
+>    instead by pinning every factory-iterator draw (`CurrencyFactory`,
+>    `CountryFactory`) at every call site, and tested by running a shape
+>    scenario BEFORE baseline and asserting baseline's villa is still GB/GBP.
+> 3. **`discounted` shipped without waiting for BUG-020.** The scenario
+>    *demonstrates* the bug — the quote carries the discounted figure and the
+>    converted booking the gross one, side by side in the CRM — so its test is
+>    pinned to the quote side and survives BUG-020's landing.
+>
+> **Spun off:** **BUG-024** — `Person.anonymize()` blanks every phone to `""`,
+> so a person holding two numbers violates `unique_contact_phone` and cannot be
+> erased at all. Found by building `anonymised_person`; the scenario keeps one
+> phone to stay on the working path.
+>
+> **Still open, and unchanged by this:** **GAP-097**. The awkward inputs are now
+> reachable; the outcomes are still invisible while any 2xx stamps `IN_SYNC`.
+> "The sample passed" does not mean anything until both halves are in.
+
 # GAP-101 — `zoho_send_sample` covers enum *values* but not payload *shapes*
 
 - **Severity:** 🟠 Gap (the integration partner builds against this sample, so

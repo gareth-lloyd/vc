@@ -162,6 +162,24 @@ does not change. **Decide before closing this ticket.**
   item-1 fix should make the write idempotent on `RES_ID` rather than
   guarded by a prior read.
 
+## How to originate these shapes (GAP-101)
+
+Every booking shape below used to require finding — or hand-building — a
+suitable row. Since GAP-101 each is a named `zoho_send_sample` scenario,
+constructed synthetically, pushed through the production pipeline and rolled
+back. Add `--dry-run` to read the payloads without POSTing.
+
+| Item | Command |
+| --- | --- |
+| 1 — insert-only, updates discarded | `--scenarios repush` (same booking twice, `site_source` changed) |
+| 2 — `Status` hardcoded "Pending Booking" | `--scenarios status_transitions` (AWAITING_DEPOSIT then CANCELLED) |
+| 5 — sparse financials land at zero | `--scenarios sparse_financials` (all eight figures null) |
+| 6 — stub villa attaches the wrong booking | `--scenarios out_of_order` (booking before its villa) |
+| 7 — "Unknown" contact orphans | `--scenarios anonymised_person` (and note the second push sends nothing) |
+
+Caveat unchanged: per **GAP-097** the run's own `IN_SYNC` means only that the
+Flow answered 2xx. "Verified" still means a human opened the CRM record.
+
 ## Related
 
 - **GAP-095** erasure propagation · **GAP-096** Organisation push kind (+

@@ -20,7 +20,6 @@ function makeProperty(overrides: Record<string, unknown> = {}) {
     licence_number: "ETV-9999",
     status: "active",
     channel: "direct",
-    category: null,
     region: null,
     feature_ids: [],
     legacy_id: null,

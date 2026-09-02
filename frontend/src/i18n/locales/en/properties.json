@@ -21,8 +21,6 @@
       "display_name": "Display name",
       "slug": "Slug",
       "slug_help": "Used in the villa's URL. Auto-filled from the name — you can change it.",
-      "category": "Category",
-      "category_placeholder": "Select a category",
       "country": "Country",
       "country_placeholder": "Select a country",
       "region": "Region",
@@ -36,7 +34,6 @@
       "display_name_required": "Display name is required",
       "slug_required": "Slug is required",
       "slug_invalid": "Use only lowercase letters, numbers and dashes",
-      "category_required": "Pick a category",
       "region_required": "Pick a region"
     }
   },

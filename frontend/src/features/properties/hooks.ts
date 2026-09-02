@@ -36,7 +36,6 @@ import {
   fetchPropertyAvailabilityCells,
   fetchPropertyBookingsForRange,
   fetchPropertyCapacity,
-  fetchPropertyCategories,
   fetchPropertyContacts,
   fetchPropertyDescriptions,
   fetchPropertyDiscounts,
@@ -105,13 +104,6 @@ export function useProperties(filters: PropertyFilters) {
 
 export function useProperty(idOrSlug: PropertyId | undefined) {
   return useQuery(enabledQuery(idOrSlug, queryKeys.properties.detail, fetchProperty));
-}
-
-export function usePropertyCategories() {
-  return useQuery({
-    queryKey: queryKeys.propertyCategories.list(),
-    queryFn: fetchPropertyCategories,
-  });
 }
 
 // Region/collection hooks now live in lib/geo (GAP-072); re-exported here for

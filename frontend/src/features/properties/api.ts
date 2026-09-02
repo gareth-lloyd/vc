@@ -7,7 +7,6 @@ import {
   availabilityHoldSchema,
   changeOverRuleSchema,
   changeOverRulesResponseSchema,
-  propertyCategoriesResponseSchema,
   discountsResponseSchema,
   extrasResponseSchema,
   propertyBookingsResponseSchema,
@@ -51,7 +50,6 @@ import {
   type PropertyContactAssignment,
   propertyContactAssignmentSchema,
   type PropertyContactAssignmentWriteInput,
-  type PropertyCategory,
   type PropertyCreateInput,
   type PropertyDescription,
   type PropertyDetail,
@@ -377,15 +375,6 @@ export async function fetchPropertyContacts(
 // is imported at the top (fetchRoomAttributes pages with it) and re-exported.
 export { TAXONOMY_PAGE_SIZE, fetchRegions, fetchCollections };
 export type { RegionListFilters } from "@/lib/geo/schemas";
-
-export async function fetchPropertyCategories(): Promise<Paginated<PropertyCategory>> {
-  // Model `Meta.ordering` already sorts by (sort_order, name); fetch the whole
-  // catalogue for the create-form picker (`page_size` guards against growth).
-  const data = await apiGet<unknown>("/property-categories", {
-    query: { page_size: TAXONOMY_PAGE_SIZE },
-  });
-  return propertyCategoriesResponseSchema.parse(data);
-}
 
 export async function fetchPropertyHolds(
   propertyId: number,

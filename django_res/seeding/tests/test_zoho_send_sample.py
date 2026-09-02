@@ -479,6 +479,46 @@ def test_agency_only_contact_scenario_sends_a_contact_with_no_personal_name(
     assert nameless, [(c["last_name"], c["agency"]) for c in payloads["contact"]]
 
 
+@pytest.mark.django_db
+def test_villa_churn_scenario_sends_a_villa_that_lost_a_room_and_changed_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "villa_churn")
+
+    before, after = payloads["villa"]
+    assert len(after["rooms"]) == len(before["rooms"]) - 1, (
+        f"{len(before['rooms'])} -> {len(after['rooms'])} rooms"
+    )
+
+    def _managers(villa: dict[str, Any]) -> set[str]:
+        return {
+            c["organisation"]["name"]
+            for c in villa["contacts"]
+            if c["role"] == "management_company" and c["organisation"] and c["end_date"] is None
+        }
+
+    assert _managers(before) and _managers(after)
+    assert _managers(before) != _managers(after), _managers(after)
+    # The superseded assignment is still on the wire, end-dated — the shape
+    # that lets an ended row beat the current one if the Flow ignores dates.
+    ended = [c for c in after["contacts"] if c["end_date"] is not None]
+    assert ended, after["contacts"]
+
+
+@pytest.mark.django_db
+def test_out_of_order_scenario_sends_the_booking_before_its_villa(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_sample_env(monkeypatch)
+
+    post, _payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "out_of_order")
+
+    order = [_URL_TO_KIND[call.args[0]] for call in post.call_args_list]
+    assert order.index("booking") < order.index("villa"), order
+
+
 # ── guard ────────────────────────────────────────────────────────────────
 
 

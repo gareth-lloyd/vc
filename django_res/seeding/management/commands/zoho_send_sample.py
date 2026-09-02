@@ -75,7 +75,9 @@ from integrations.tasks import push_sync_record
 if TYPE_CHECKING:
     from accounts.models import Person
     from pricing.models import Currency
+    from properties.models.contacts import PropertyContactAssignment
     from properties.models.property import Property
+    from properties.models.rooms import Room
     from reservations.models import Booking, Enquiry, Quotation, QuotationLine
     from reservations.models.terms import TermsVersion
 
@@ -1076,6 +1078,98 @@ def _scenario_agency_only_contact(ctx: SampleContext) -> Iterator[PushStep]:
     yield ("contact", [person])
 
 
+def _scenario_villa_churn(ctx: SampleContext) -> Iterator[PushStep]:
+    """A villa that SHRINKS between pushes: a room deleted, the management
+    company replaced.
+
+    Every villa the sample flows have seen only ever grew. Two failures hide in
+    that: a Flow that upserts subform rows without reconciling deletions leaves
+    a phantom bedroom in the CRM forever (CHECK-003 item 3), and one that reads
+    `contacts[role=management_company]` without honouring `end_date` can pick
+    the superseded assignment (CHECK-003 item 2) — which is why the ended row is
+    deliberately left on the wire rather than deleted.
+
+    The replacement organisation is a *different* one, so
+    `unique_active_role_org_assignment` (property, organisation, role) never
+    collides; the outgoing row is end-dated and demoted first so
+    `one_primary_per_role` stays satisfiable.
+    """
+    from accounts.enums import ContactRole, OrgStatus, OrgType
+    from accounts.factories import OrganisationFactory
+    from properties.factories import PropertyContactAssignmentFactory, RoomFactory
+
+    tag = _scenario_tag("villa_churn")
+    villa = _priceable_villa(ctx, tag, currency=_currency("GBP"))
+    RoomFactory(property=villa, name=f"{tag} Main Suite")
+    doomed_room = cast("Room", RoomFactory(property=villa, name=f"{tag} Annexe"))
+    outgoing = OrganisationFactory(
+        name=f"{tag} Management Co (outgoing)",
+        org_type=OrgType.MANAGEMENT_COMPANY,
+        status=OrgStatus.ACTIVE,
+    )
+    outgoing_assignment = cast(
+        "PropertyContactAssignment",
+        PropertyContactAssignmentFactory(
+            property=villa,
+            organisation=outgoing,
+            role=ContactRole.MANAGEMENT_COMPANY,
+            is_primary=True,
+        ),
+    )
+
+    yield ("villa", [villa])
+
+    # `RoomBeds` and `RoomAttributeAssignment` CASCADE off Room, so this is a
+    # clean delete — the villa simply has one fewer bedroom than last push.
+    doomed_room.delete()
+
+    incoming = OrganisationFactory(
+        name=f"{tag} Management Co (incoming)",
+        org_type=OrgType.MANAGEMENT_COMPANY,
+        status=OrgStatus.ACTIVE,
+    )
+    outgoing_assignment.end_date = timezone.now().date()
+    outgoing_assignment.is_primary = False
+    outgoing_assignment.save(update_fields=["end_date", "is_primary", "updated_at"])
+    PropertyContactAssignmentFactory(
+        property=villa,
+        organisation=incoming,
+        role=ContactRole.MANAGEMENT_COMPANY,
+        is_primary=True,
+    )
+
+    yield ("villa", [villa])
+
+
+def _scenario_out_of_order(ctx: SampleContext) -> Iterator[PushStep]:
+    """A booking that arrives BEFORE the villa it books.
+
+    `limitless_insert_booking` COQLs Products by RES_ID and, on a miss, creates
+    a stub villa from the thin `region` object the booking payload carries — no
+    location, no capacity, no rooms, no features. That stub is a second-class
+    Product the villa upsert then has to reconcile, and its duplicate-name
+    branch is where a booking attached to the WRONG villa becomes reachable
+    (CHECK-004 item 6). The stub path is a legitimate safety net; this scenario
+    exists to show what it actually produces, and to give GAP-096's
+    villa-before-booking ordering fix something concrete to be measured against.
+    """
+    tag = _scenario_tag("out_of_order")
+    terms = _terms()
+    villa = _priceable_villa(ctx, tag, currency=_currency("GBP"))
+    person = _person(tag, "OutOfOrder")
+    enquiry = _enquiry(tag, person, villa)
+    quotation = _sent_quote(enquiry, terms, [_stay_option(enquiry, villa)])
+    booking = _accepted_booking(quotation, _first_line(quotation), terms)
+
+    # Deliberately inverted. Everything else in this command is dependency
+    # ordered; this is the one place that isn't, and that is the whole point.
+    yield ("booking", [booking])
+    yield ("contact", [person])
+    yield ("enquiry", [enquiry])
+    yield ("quote", [quotation])
+    yield ("villa", [villa])
+
+
 # Ordered registry: the `--scenarios` vocabulary, and the order `all` runs in.
 # `baseline` first, so its records keep landing in the CRM exactly as Limitless
 # already mapped them.
@@ -1089,5 +1183,7 @@ _SCENARIOS: dict[str, Callable[[SampleContext], Iterator[PushStep]]] = {
     "sparse_financials": _scenario_sparse_financials,
     "anonymised_person": _scenario_anonymised_person,
     "agency_only_contact": _scenario_agency_only_contact,
+    "villa_churn": _scenario_villa_churn,
+    "out_of_order": _scenario_out_of_order,
 }
 _DEFAULT_SCENARIOS = ("baseline",)

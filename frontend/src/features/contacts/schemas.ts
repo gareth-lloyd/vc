@@ -154,6 +154,9 @@ export const contactSchema = z.object({
   // inferred `Contact` stays assignable from existing fixtures; consumers read
   // `?? 0` / `?? false`.
   booking_count: z.number().optional(),
+  // GAP-089: historic stays imported from Nick's spreadsheets (no dates or
+  // money, so not Bookings). Counted into `is_repeat_customer` server-side.
+  past_stay_count: z.number().optional(),
   is_repeat_customer: z.boolean().optional(),
   // GAP-052: derived type(s) the person holds (customer / agent / property
   // roles). Left `.optional()` like `tags`/`booking_count` so existing fixtures
@@ -275,6 +278,24 @@ export const contactBookingHistorySchema = z.object({
 export type ContactBookingHistoryItem = z.infer<typeof contactBookingHistorySchema>;
 
 export const contactBookingHistoryResponseSchema = paginated(contactBookingHistorySchema);
+
+// GAP-089: `/contacts/{id}/past-stays` — historic stays from the spreadsheet
+// import (mirrors ContactPastStaySerializer). `property` (pk) + `property_name`
+// are set when the importer matched the villa name, else null and the row
+// falls back to the sheet's `villa_name` text.
+export const contactPastStaySchema = z.object({
+  id: z.number(),
+  booking_number: z.string(),
+  villa_name: z.string(),
+  property: z.number().nullable(),
+  property_name: z.string().nullable(),
+  destination: z.string(),
+  year: z.number().nullable(),
+  notes: z.string(),
+});
+export type ContactPastStay = z.infer<typeof contactPastStaySchema>;
+
+export const contactPastStaysResponseSchema = paginated(contactPastStaySchema);
 
 // GAP-041 F2: `/contacts/{id}/relationships`. A row is a single directed link
 // (from_person → to_person) seen from this contact's side: `direction` is

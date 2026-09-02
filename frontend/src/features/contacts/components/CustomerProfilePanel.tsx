@@ -10,6 +10,7 @@ import { ContactAddressSection } from "./ContactAddressSection";
 import { LinkedContactsAccordion } from "./LinkedContactsAccordion";
 import { ContactEnquiryHistory } from "./ContactEnquiryHistory";
 import { ContactBookingHistory } from "./ContactBookingHistory";
+import { ContactPastStayHistory } from "./ContactPastStayHistory";
 
 interface CustomerProfilePanelProps {
   /** The Person whose 360 profile to show; null when no customer is linked yet. */
@@ -49,6 +50,7 @@ export function CustomerProfilePanel({ personId }: CustomerProfilePanelProps) {
       <ContactTypeBadges types={contact.contact_types ?? []} />
       <RepeatBadge
         bookingCount={contact.booking_count ?? 0}
+        pastStayCount={contact.past_stay_count ?? 0}
         isRepeat={contact.is_repeat_customer ?? false}
       />
       {isClientContact(contact) ? (
@@ -60,6 +62,7 @@ export function CustomerProfilePanel({ personId }: CustomerProfilePanelProps) {
       <LinkedContactsAccordion contactId={contact.id} />
       <ContactEnquiryHistory contactId={contact.id} />
       <ContactBookingHistory contactId={contact.id} />
+      <ContactPastStayHistory contactId={contact.id} />
     </div>
   );
 }

@@ -129,6 +129,7 @@ function RailSummary({ contact }: { contact: Contact }) {
       {contact.status ? <StatusBadge status={contact.status} /> : null}
       <RepeatBadge
         bookingCount={contact.booking_count ?? 0}
+        pastStayCount={contact.past_stay_count ?? 0}
         isRepeat={contact.is_repeat_customer ?? false}
       />
       {(contact.tags ?? []).length > 0 ? <TagChips tags={contact.tags ?? []} /> : null}

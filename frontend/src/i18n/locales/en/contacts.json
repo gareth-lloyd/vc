@@ -240,6 +240,16 @@
     "bookings_error": "Couldn't load this contact's bookings.",
     "bookings_more_one": "+{{count}} more booking not shown",
     "bookings_more_other": "+{{count}} more bookings not shown",
+    "stay_count_one": "{{count}} past stay",
+    "stay_count_other": "{{count}} past stays",
+    "stays_title": "Past stays",
+    "stays_toggle_aria": "Toggle past stays",
+    "stays_empty": "No past stays on record.",
+    "stays_loading": "Loading past stays…",
+    "stays_error": "Couldn't load this contact's past stays.",
+    "stays_more_one": "+{{count}} more past stay not shown",
+    "stays_more_other": "+{{count}} more past stays not shown",
+    "stays_year_unknown": "Year unknown",
     "empty": "No customer linked."
   }
 }

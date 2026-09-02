@@ -24,6 +24,7 @@ function mockNestedReads(id: number) {
     http.get(`/api/v1/contacts/${id}/relationships`, () => HttpResponse.json(emptyPage)),
     http.get(`/api/v1/contacts/${id}/enquiries`, () => HttpResponse.json(emptyPage)),
     http.get(`/api/v1/contacts/${id}/bookings`, () => HttpResponse.json(emptyPage)),
+    http.get(`/api/v1/contacts/${id}/past-stays`, () => HttpResponse.json(emptyPage)),
   );
 }
 

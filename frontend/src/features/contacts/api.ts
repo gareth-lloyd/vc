@@ -7,6 +7,7 @@ import {
   contactBookingHistoryResponseSchema,
   contactEmailSchema,
   contactEnquiryHistoryResponseSchema,
+  contactPastStaysResponseSchema,
   contactPhoneSchema,
   contactPropertyAssignmentSchema,
   contactSchema,
@@ -21,6 +22,7 @@ import {
   type ContactEnquiryHistoryItem,
   type ContactFilters,
   type ContactListItem,
+  type ContactPastStay,
   type ContactPhone,
   type ContactPhoneWriteInput,
   type ContactPropertyAssignment,
@@ -73,6 +75,13 @@ export async function fetchContactBookings(
 ): Promise<Paginated<ContactBookingHistoryItem>> {
   const data = await apiGet<unknown>(`/contacts/${contactId}/bookings`);
   return contactBookingHistoryResponseSchema.parse(data);
+}
+
+export async function fetchContactPastStays(
+  contactId: ContactId,
+): Promise<Paginated<ContactPastStay>> {
+  const data = await apiGet<unknown>(`/contacts/${contactId}/past-stays`);
+  return contactPastStaysResponseSchema.parse(data);
 }
 
 export async function fetchContactRelationships(

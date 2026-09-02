@@ -83,9 +83,14 @@ GAP-097).
 
 - Each item above confirmed fixed against the sandbox, by push-and-read
   rather than by assurance.
-- The test batch we asked for has been run: no personal name; work/fax/other
-  numbers; two emails with no primary; agency unlinked since last push; a tag
-  removed since last push; apostrophe/accented names.
+- The test batch we asked for has been run. GAP-101 covers two of its shapes as
+  named scenarios — `--scenarios agency_only_contact` (item 2: no personal
+  name, agency only) and `--scenarios anonymised_person` (item 7's mechanism
+  seen from the erasure side: the second push sends nothing, so the CRM keeps
+  the pre-erasure record). The rest — work/fax/other numbers, two emails with
+  no primary, agency unlinked since last push, a tag removed since last push,
+  apostrophe/accented names — are still hand-built; promote any of them to a
+  scenario if it needs re-running more than once.
 - Anything Limitless declines to change is recorded here as an accepted
   divergence with its reason, not left silent.
 

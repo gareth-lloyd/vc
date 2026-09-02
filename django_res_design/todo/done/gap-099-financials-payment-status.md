@@ -1,5 +1,20 @@
 # GAP-099 — The Zoho financials block carries amounts but no payment status
 
+> **✅ RESOLVED (2026-09-02, local `main` unpushed)** — shipped on `feat/gap-099`
+> in 2 units (63f8540e code + tests, 356fe29d docs). `financials` now carries
+> `deposit_status`, `deposit_due_at`, `balance_status`, `balance_due_at`
+> alongside the eight amounts, read verbatim from `payment_component_splits`:
+> status = raw `PaymentStatus` of the latest schedule row for that purpose
+> (FAILED superseded by PENDING → `pending`; cancelled with schedule unpaid →
+> `cancelled`, the CHECK-004 item-3 case), due_at = earliest `due_at` over
+> non-terminal rows, ISO-8601. Keys always present, null-degrading. Decisions:
+> raw enum over a derived `deposit_received` bool (Q2 — revisit only on
+> pushback); `due_at` included (Q1 — resolves the GAP-085 `balance_due_at`
+> open point). Built ahead of a Limitless ask on Gareth's go-ahead; the
+> GAP-085 close-out records the contract extension. ⚠️ Tell Limitless the
+> four keys exist and to switch their deposit-received test to
+> `deposit_status == "succeeded"` (membership, not `!=`).
+
 - **Severity:** 🟠 Gap (the CRM has to infer "has the deposit been paid?"
   from `status`, and gets it wrong).
 - **Source:** 2026-09-02 review of the Limitless booking Flow

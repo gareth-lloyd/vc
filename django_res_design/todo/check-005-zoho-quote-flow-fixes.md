@@ -148,6 +148,28 @@ depending on which record you are looking at.
   but performs a plain POST. Worth flagging so the comment doesn't outlive
   the fix in item 3.
 
+## How to originate these shapes (GAP-101)
+
+Each quote shape below is now a named `zoho_send_sample` scenario — built
+synthetically, pushed through the production pipeline, rolled back. Add
+`--dry-run` to read the payloads without POSTing.
+
+| Item | Command |
+| --- | --- |
+| 1 — multi-option lines summed as a basket | `--scenarios multi_option_quote` (three lines across two villas, one selected) |
+| 2 — discounted quotes overstated | `--scenarios discounted` (a real `discount > 0`, netted off the line total) |
+| 3 — insert-only, updates discarded | `--scenarios repush` |
+| 4 — `Quote_Stage` hardcoded "Quoted" | `--scenarios status_transitions` (SENT → ACCEPTED, and a second quote SENT → CANCELLED) |
+| 5 — header currency taken from line 1 | `--scenarios mixed_currency` (GBP and EUR lines in one quote) |
+
+`discounted` also pushes the booking converted from that line. Until
+**BUG-020** lands, the two records disagree in the CRM by design — the quote
+carries the discounted figure and the booking the gross one. That divergence is
+the demonstration; do not treat the booking figure as the contract.
+
+Caveat unchanged: per **GAP-097** the run's own `IN_SYNC` means only that the
+Flow answered 2xx. "Verified" still means a human opened the CRM record.
+
 ## Related
 
 - **BUG-020** · **FG-018** · **GAP-100** — the ours-side split from this

@@ -1,32 +1,63 @@
-"""`zoho_send_sample` — build synthetic data covering every enum-transmitting
-Zoho Flow payload attribute, push it to the sample webhooks, then roll back.
+"""`zoho_send_sample` — construct awkward synthetic records, push them to the
+Zoho Flow sample webhooks through the production pipeline, then roll back.
 
 Ops utility for exercising the GAP-081/082/085/088 payload contracts against
-dedicated Zoho Flow sample endpoints so Ben can wire the Zoho-side field
-mapping. Unlike a DB scan (which can only demonstrate whatever the local rows
-happen to contain), this command *constructs* one synthetic graph inside a
-single `transaction.atomic()` block, deterministically populating at least one
-example of every attribute that transmits a closed enum (the *enum* axis) —
-contact
+dedicated sample endpoints so Ben can wire the Zoho-side field mapping. Unlike
+a DB scan — which can only demonstrate whatever the local rows happen to
+contain — this command *constructs* what it needs, inside one
+`transaction.atomic()` block that is rolled back at the end. The HTTP POSTs to
+Zoho are the only surviving side effect.
+
+The fixtures span two axes, and they are different questions.
+
+**The enum axis — "is every value mapped?"** `baseline` populates at least one
+example of every attribute that transmits a closed enum: contact
 preferred_method/status/kind/tags/agency + email/phone labels + both
 relationship directions; villa status/channel + contact roles + org type +
 room placement/floor/ensuite_type/access + bed size + feature service types;
 enquiry contact_method/request_type/site_source/status/lead_status/lost_reason
 + note kinds; quote status; booking status/site_source/payment_method +
 extras[].category (snapshot ExtraKind AND charge-only damage/credit) +
-financials. It pushes each record through the SAME production pipeline as live
-traffic (`ensure_pending_record` + a synchronous `push_sync_record`), reads the
-resulting `SyncRecord` outcomes, then rolls the whole transaction back so the
-dev DB stays clean. The HTTP POSTs to Zoho are the only surviving side effect.
+financials. `test_every_enum_transmitting_attribute_is_covered` pins this, and
+it runs against `baseline` alone — keep it that way.
 
-Alongside that sits the *shape* axis (GAP-101): `--scenarios` selects named
-generators from `_SCENARIOS`, each originating one awkward payload shape a
-single graph cannot reach (a record pushed twice, a cancelled booking, a
-discounted line, …). A scenario yields `(kind, objects)` steps and may mutate a
-record between two yields — the yield is the push point. `baseline` (the
-original single graph, and the only enum-axis carrier) is what a bare run
-pushes; every other scenario is opt-in, so a bare run never floods the live
-sample flows.
+**The shape axis — "does the awkward case survive?" (GAP-101).** Enum coverage
+says nothing about *structure*, and a single graph is structurally the simplest
+instance of everything: one line, no discount, one currency, every record
+pushed exactly once. Eleven of the highest-severity CHECK-001/003/004/005
+findings were unreachable from it — insert-only semantics are not even
+observable when nothing is ever pushed twice. So `--scenarios` selects named
+generators from `_SCENARIOS`, each originating one shape:
+
+    baseline             the enum-axis graph above (what a bare run pushes)
+    repush               a villa + booking pushed twice, mutated in between
+    status_transitions   enquiry/quote/booking pushed at each lifecycle stage
+    multi_option_quote   three alternative lines, one selected
+    discounted           a line with a real discount netted off its total
+    mixed_currency       two lines in one quote, GBP and EUR
+    sparse_financials    a manual line, so all eight owner figures are null
+    anonymised_person    push, erase, push again — the second push sends nothing
+    agency_only_contact  an agency contact with no personal name
+    villa_churn          a villa that lost a room and changed manager
+    out_of_order         a booking that arrives before its villa
+
+A scenario is a generator, not a data structure: it yields `(kind, objects)`
+steps, and the yield IS the push point, so it may mutate a record between two
+yields. That is what makes push -> mutate -> push expressible at all. Whole
+scenarios run inside `suppress_zoho_push()`; the explicit pushes still land
+because `ensure_pending_record` / `push_sync_record` ignore suppression by
+design.
+
+Two rules when adding one. Every record must be prefixed `f"{_TAG} {name}"` so
+the CRM stays legible and the scenario name is the shared vocabulary with
+Limitless ("run `--scenarios repush,discounted` and read those records"). And
+nothing may be drawn from a factory's process-global `factory.Iterator` —
+currency, country and nightly rate are all pinned at every call site, because
+an unpinned draw makes the records depend on how many scenarios ran first, and
+silently moves `baseline`, which Limitless has already mapped.
+
+Default is `baseline` only. `--scenarios all` is one flag away, but a bare run
+must not fire ~60 POSTs at the live sample flows.
 
 Sample webhook URLs are read from the environment (`ZOHO_SAMPLE_WEBHOOK_*`,
 distinct from the `ZOHO_FLOW_WEBHOOK_*` dev settings so auto-push stays off
@@ -35,16 +66,23 @@ locally) and `override_settings`'d over `ZOHO_FLOW_WEBHOOKS` for the run, so
 production dispatch code. A kind whose sample URL is unset is reported and
 skipped, not failed.
 
+Note what a run does NOT tell you: `push_sync_record` stamps `IN_SYNC` on any
+2xx, and the Flow answers 2xx even when the CRM write it attempted failed
+(GAP-097). This command makes the awkward inputs reachable; reading the outcome
+is still a human opening the Zoho record.
+
 This command lives in `seeding` (not `integrations`): the import-linter layers
 contract forbids `integrations` importing reservations/properties/pricing, and
 building the synthetic graph needs all three via their factories. `seeding` is
 a root package outside the layers list, so it may import anything.
 
-Known accepted side effects (all cleaned up / harmless): `PropertyFactory`
-writes one `PropertyImage` media file that survives the DB rollback — the
-command captures its storage path and deletes it in a `finally`. Sending the
-synthetic quote fires the comms email signal (dev console backend — harmless
-noise; the Communication rows roll back with everything else).
+Known side effects: `PropertyFactory` writes a `PropertyImage` media file per
+villa that survives the DB rollback — each is captured at the moment it is
+written and deleted in a `finally`. Nothing else escapes: sending the synthetic
+quote does fire the comms email signal, but `EmailService.send` dispatches via
+`transaction.on_commit` (`comms/services.py:238-246`) and the rollback discards
+those hooks, so no email is ever sent and the Communication rows roll back with
+everything else.
 """
 
 from __future__ import annotations
@@ -68,6 +106,7 @@ from integrations.services.zoho_flow import (
     ZOHO_FLOW_KINDS,
     ensure_pending_record,
     get_zoho_spec,
+    is_anonymized_person,
     suppress_zoho_push,
 )
 from integrations.tasks import push_sync_record
@@ -245,6 +284,13 @@ class Command(BaseCommand):
         for obj in objects:
             spec = get_zoho_spec(obj._meta.model)
             assert spec is not None  # every pushed model is registered
+            if is_anonymized_person(obj):
+                # `push_sync_record` would park this DISABLED and send nothing
+                # (`tasks.py:77-82`). Printing the payload anyway would show the
+                # exact opposite of what `anonymised_person` demonstrates — and
+                # would put erased PII sentinels on screen.
+                self.stdout.write(f"[{scenario}/{kind}] pk={obj.pk} -> DISABLED (not sent)")
+                continue
             # Re-read exactly as `push_sync_record` does (it builds from
             # `record.target`, a fresh fetch). Building from the in-memory
             # instance would print a DIFFERENT payload wherever a scenario
@@ -287,6 +333,10 @@ _COUNTRY_SPECS = {
     "FR": ("FRA", "France"),
     "ES": ("ESP", "Spain"),
 }
+# `RateBandFactory.nightly` is iterator-drawn too, and it propagates into every
+# money figure downstream — the quote line total, the booking total, all eight
+# GAP-085 financials. Pinned so those figures depend only on the scenario.
+_NIGHTLY_RATE = Decimal("400.00")
 
 
 def _scenario_tag(scenario: str) -> str:
@@ -319,7 +369,7 @@ def _priceable_villa(ctx: SampleContext, tag: str, *, currency: Currency) -> Pro
     extras, none of which a *shape* scenario has any use for."""
     from pricing.factories import RateBandFactory, RatePeriodFactory, RatePlanFactory
     from properties.enums import PropertyChannel, PropertyStatus
-    from properties.factories import CountryFactory, PropertyFactory
+    from properties.factories import PropertyFactory
 
     villa = cast(
         "Property",
@@ -328,14 +378,17 @@ def _priceable_villa(ctx: SampleContext, tag: str, *, currency: Currency) -> Pro
             display_name=f"{tag} Villa",
             status=PropertyStatus.ACTIVE,
             channel=PropertyChannel.AGENT,
-            region__country=CountryFactory(),
+            region__country=_country("GB"),
         ),
     )
     # Capture the PropertyImage path at the point the file is written.
     _capture_media(ctx, villa)
     plan = RatePlanFactory(property=villa, currency=currency, name=f"{tag} rates")
     period = RatePeriodFactory(plan=plan, name=f"{tag} period")
-    RateBandFactory(period=period, min_party=1, max_party=30)
+    # `nightly` is another process-global iterator draw; pin it or every quote,
+    # booking total and financials figure in the run depends on how many villas
+    # were built before it.
+    RateBandFactory(period=period, min_party=1, max_party=30, nightly=_NIGHTLY_RATE)
     return villa
 
 
@@ -662,7 +715,7 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
     # ── pricing (so the quote/booking price + snapshot extras) ─────────
     plan = RatePlanFactory(property=villa, currency=currency, name=f"{_TAG} rates")
     period = RatePeriodFactory(plan=plan, name=f"{_TAG} period")
-    RateBandFactory(period=period, min_party=1, max_party=30)
+    RateBandFactory(period=period, min_party=1, max_party=30, nightly=_NIGHTLY_RATE)
     # Two mandatory extras with distinct ExtraKinds — the engine snapshots
     # them into pricing_snapshot["extras"], so booking extras[].category
     # covers snapshot-sourced kinds. Currency MUST equal the plan currency
@@ -1030,10 +1083,10 @@ def _scenario_anonymised_person(ctx: SampleContext) -> Iterator[PushStep]:
     passes are silent and the scenario shows nothing.
     """
     tag = _scenario_tag("anonymised_person")
-    # Exactly one email and one phone (the factory's own): `anonymize()` blanks
-    # every channel in lockstep, and a second row of either kind collides on
-    # `unique_contact_phone` / `unique_contact_email` the moment both are "".
-    # Worth a ticket of its own — see the GAP-101 close-out.
+    # Exactly one phone (the factory's own). `anonymize()` gives each email a
+    # per-row sentinel but blanks EVERY phone to "", so a person holding two
+    # numbers violates `unique_contact_phone` and cannot be erased at all —
+    # BUG-021. Add a second phone here once that lands.
     person = _person(tag, "Erasure")
 
     yield ("contact", [person])  # delivered: full PII reaches the CRM
@@ -1041,7 +1094,7 @@ def _scenario_anonymised_person(ctx: SampleContext) -> Iterator[PushStep]:
     person.anonymize()
 
     # Yielded exactly as before. The pipeline — not this command — is what
-    # refuses; the push is reported `-> disabled` and no HTTP call is made.
+    # refuses; the push is reported `-> DISABLED` and no HTTP call is made.
     yield ("contact", [person])
 
 

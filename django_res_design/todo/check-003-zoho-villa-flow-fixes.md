@@ -108,10 +108,21 @@ Limitless when GAP-093 lands.
 - Each numbered item confirmed against the sandbox by push-and-read.
 - The owner-contact scope question answered, with the earlier decision
   produced or the scope reopened.
-- The test batch we asked for has been run: a villa with features; one whose
-  management company has been replaced; one with a lower-ground room and a
-  super-king bed; one where a room has since been deleted; and the same villa
-  pushed twice to settle the subform behaviour.
+- The test batch we asked for has been run. Since GAP-101 it is two commands,
+  not a prose description — every shape below is originated on demand and
+  rolled back, and the scenario name is the shared vocabulary:
+
+  ```
+  ./manage.py zoho_send_sample                        # baseline: features,
+                                                      # lower-ground room,
+                                                      # super-king bed
+  ./manage.py zoho_send_sample --scenarios repush,villa_churn
+  ```
+
+  `repush` sends the same villa twice, renamed, and settles the subform
+  behaviour (item 3) plus insert-vs-upsert. `villa_churn` sends a villa that
+  lost a room and had its management company replaced, with the superseded
+  assignment still on the wire and end-dated (items 2 and 3).
 
 ## Dependencies
 

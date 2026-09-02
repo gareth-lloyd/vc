@@ -375,6 +375,21 @@ def test_a_shape_scenario_running_first_does_not_move_baseline(
     ]
     assert baseline_lines, "no baseline quote line captured"
     assert baseline_lines[0]["currency"] == "GBP"
+    # Money too: `RateBandFactory.nightly` is iterator-drawn, so an unpinned
+    # rate would move baseline's line total — and every booking financials
+    # figure with it — according to how many villas were built first.
+    bare_post, bare_payloads, _bare_out = _run_capturing_posts(monkeypatch)
+    bare_lines = [
+        line
+        for quote in bare_payloads["quote"]
+        for line in quote["lines"]
+        if line["property"]["display_name"] == "Synthetic Sample Villa"
+    ]
+    assert baseline_lines[0]["total"] == bare_lines[0]["total"], (
+        f"baseline's money moved: {bare_lines[0]['total']} bare vs "
+        f"{baseline_lines[0]['total']} after another scenario"
+    )
+    assert bare_post.call_count  # the bare run really executed
 
 
 @pytest.mark.django_db
@@ -517,6 +532,25 @@ def test_out_of_order_scenario_sends_the_booking_before_its_villa(
 
     order = [_URL_TO_KIND[call.args[0]] for call in post.call_args_list]
     assert order.index("booking") < order.index("villa"), order
+
+
+@pytest.mark.django_db
+def test_every_scenario_runs_together(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--scenarios all` is what an operator fires at the live sample flows.
+
+    The per-scenario tests each run one scenario in isolation, so nothing else
+    catches the cross-scenario failure class: a shared unique slug, an
+    overlapping booking on a reused property, a factory minting an unreaped
+    image. This is the cheap smoke test for that.
+    """
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, out = _run_capturing_posts(monkeypatch, "--scenarios", "all")
+
+    for kind in _URLS:
+        assert payloads[kind], f"no {kind} payload under --scenarios all"
+    assert "done — synthetic data rolled back" in out
+    assert SyncRecord.objects.count() == 0, "synthetic sync records survived the rollback"
 
 
 # ── guard ────────────────────────────────────────────────────────────────

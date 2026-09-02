@@ -24,7 +24,7 @@ from accounts.models import Person
 from core.api import IsStaff
 from reservations.enums import QUOTED_STATUSES, UNREALISED_BOOKING_STATUSES
 from reservations.filters import ClientFilterSet, client_agent_capacity_expression
-from reservations.models import Booking, QuotationLine
+from reservations.models import Booking, PastStay, QuotationLine
 from reservations.serializers import ClientListSerializer
 
 
@@ -101,7 +101,9 @@ class ClientListView(generics.ListAPIView[Person]):
                 # a different axis from booked_region_slugs, which counts only
                 # *realised* stays — a cancelled-only client is repeat=true here
                 # with empty booked regions, by design.
-                is_repeat_customer=Exists(Booking.objects.filter(person=OuterRef("pk"))),
+                # GAP-089: a sheet-imported PastStay counts the same as a booking.
+                is_repeat_customer=Exists(Booking.objects.filter(person=OuterRef("pk")))
+                | Exists(PastStay.objects.filter(person=OuterRef("pk"))),
                 quoted_region_slugs=quoted,
                 booked_region_slugs=booked,
             )

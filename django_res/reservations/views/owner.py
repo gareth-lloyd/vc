@@ -34,7 +34,7 @@ from owners.scoping import (
 )
 from properties.models import Property
 from reservations.enums import BookingStatus
-from reservations.models import Booking, OwnerBlock
+from reservations.models import Booking, OwnerBlock, PastStay
 from reservations.serializers._contact_reads import contact_name
 from reservations.serializers.owner import (
     OwnerBlockSerializer,
@@ -180,10 +180,14 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
         # GAP-045 3d-C: keyed on `person_id` (NOT NULL since 3d-A) now that the
         # production writers no longer persist the nullable `guest` leg — a
         # `guest_id=OuterRef("guest_id")` join would be NULL=NULL → never a match.
+        # GAP-089: a sheet-imported historic stay at one of the caller's villas
+        # counts too (only when the importer resolved the villa to a Property).
         repeat = Exists(
             Booking.objects.filter(
                 person_id=OuterRef("person_id"), property_id__in=property_ids
             ).exclude(pk=OuterRef("pk"))
+        ) | Exists(
+            PastStay.objects.filter(person_id=OuterRef("person_id"), property_id__in=property_ids)
         )
         qs: QuerySet[Booking] = (
             Booking.objects.filter(property_id__in=property_ids, is_archived=False)

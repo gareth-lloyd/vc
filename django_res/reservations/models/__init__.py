@@ -16,6 +16,7 @@ from reservations.models.enquiry import Enquiry, EnquiryEvent, EnquiryNote
 from reservations.models.owner_block import OwnerBlock
 from reservations.models.owner_block_update import OwnerBlockUpdate
 from reservations.models.owner_block_update_seen import OwnerBlockUpdateSeen
+from reservations.models.past_stay import PastStay
 from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.models.service_coverage import BookingServiceCoverage
@@ -40,6 +41,7 @@ __all__ = [
     "OwnerBlock",
     "OwnerBlockUpdate",
     "OwnerBlockUpdateSeen",
+    "PastStay",
     "Quotation",
     "QuotationLine",
     "TermsVersion",

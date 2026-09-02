@@ -7,6 +7,7 @@ from typing import Any
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db import models, transaction
 from django.db.models import Exists, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import (
     CharFilter,
@@ -32,6 +33,25 @@ from accounts.serializers import (
 from core.api import IsStaff, IsStaffRoleAdmin, not_implemented_response
 
 _LAST_CHANNEL_MESSAGE = "Cannot remove the last contact channel of an active contact."
+
+
+def _past_stay_count_subquery() -> Coalesce:
+    """COUNT of `reservations.PastStay` rows per person (GAP-089), coalesced to
+    a real 0. The model is reached through Person's own reverse relation
+    (exactly what `Count("past_stays")` would resolve) rather than an import:
+    `accounts` sits below `reservations` on the import spine, and a correlated
+    subquery is used instead of a second `Count(distinct)` so the two
+    multi-valued relations never cross-join."""
+    past_stay = Person._meta.get_field("past_stays").related_model
+    assert past_stay is not None and not isinstance(past_stay, str)
+    count = (
+        past_stay._default_manager.filter(person=models.OuterRef("pk"))
+        .order_by()
+        .values("person")
+        .annotate(n=models.Count("pk"))
+        .values("n")
+    )
+    return Coalesce(Subquery(count, output_field=models.IntegerField()), 0)
 
 
 def _active_roles_subquery() -> Subquery:
@@ -169,6 +189,10 @@ class ContactViewSet(viewsets.ModelViewSet[Person]):
         if self.action in ("list", "retrieve"):
             qs = qs.annotate(
                 booking_count=models.Count("bookings_as_customer", distinct=True),
+                # GAP-089: sheet-imported past stays feed the same badge. A
+                # correlated scalar subquery, not a second Count(distinct) —
+                # two joined multi-valued relations would cross-join.
+                past_stay_count=_past_stay_count_subquery(),
                 # GAP-052: active property-assignment roles feed `contact_types`.
                 active_roles=_active_roles_subquery(),
                 # Gate for the FE Properties tab (active OR historical link).

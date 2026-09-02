@@ -217,6 +217,10 @@ class Person(AuditedModel):
         self.tags = []
         self.status = PersonStatus.ANONYMIZED
         self.anonymized_at = timezone.now()
+        # GAP-089: sheet-imported past stays keep their villa/year (no PII) but
+        # their free-text notes came off the same spreadsheet row — blank them
+        # in lockstep so `/contacts/{id}/past-stays` never re-serves the text.
+        self.past_stays.update(notes="")
         self.save(
             update_fields=[
                 "first_name",

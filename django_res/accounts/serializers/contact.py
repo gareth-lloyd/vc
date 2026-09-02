@@ -75,6 +75,9 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
     # GROUP BY, no N+1); falls back to a count query for callers that render the
     # serializer off an un-annotated instance (merge/anonymize responses).
     booking_count = serializers.SerializerMethodField()
+    # GAP-089: sheet-imported historic stays (no Booking row); counted into the
+    # "Repeat" badge alongside real bookings.
+    past_stay_count = serializers.SerializerMethodField()
     is_repeat_customer = serializers.SerializerMethodField()
     # GAP-052: every capacity this person holds, surfaced as type badges on the
     # detail (a person can be customer + owner + agent at once — show all hats).
@@ -109,6 +112,7 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "kind",
             "tags",
             "booking_count",
+            "past_stay_count",
             "is_repeat_customer",
             "contact_types",
             "has_property_assignments",
@@ -137,10 +141,17 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             count = obj.bookings_as_customer.count()
         return count
 
+    def get_past_stay_count(self, obj: Person) -> int:
+        count = getattr(obj, "past_stay_count", None)
+        if count is None:
+            count = obj.past_stays.count()
+        return count
+
     def get_is_repeat_customer(self, obj: Person) -> bool:
         # GAP-042 (confirmed): a returning client is one with >= 1 booking,
         # property-agnostic. Distinct from the owner API's property-scoped flag.
-        return self.get_booking_count(obj) >= 1
+        # GAP-089: a sheet-imported past stay counts the same as a booking.
+        return self.get_booking_count(obj) + self.get_past_stay_count(obj) >= 1
 
     def get_has_property_assignments(self, obj: Person) -> bool:
         annotated = getattr(obj, "has_property_assignments", None)
@@ -151,7 +162,8 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
     def get_contact_types(self, obj: Person) -> list[str]:
         # GAP-052: union of every capacity, sorted for a stable response. Values
         # come from `ContactType`; the set dedups any overlap.
-        # - CUSTOMER: classified as one, or has booked.
+        # - CUSTOMER: classified as one, or has booked (a GAP-089 sheet-imported
+        #   past stay counts as having booked, same as `is_repeat_customer`).
         # - AGENT: belongs to an agency (GAP-046) AND/OR holds an `agent`
         #   property role — both collapse to the single AGENT badge, which is why
         #   ContactType.AGENT shares ContactRole.AGENT's value. A pure
@@ -162,7 +174,7 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         #   (ACTIVE assignments only, raw ContactRole values — every one is a
         #   valid ContactType member), coalesced to [] for un-annotated callers.
         types: set[str] = set()
-        if obj.kind == PersonKind.CUSTOMER.value or self.get_booking_count(obj) > 0:
+        if obj.kind == PersonKind.CUSTOMER.value or self.get_is_repeat_customer(obj):
             types.add(ContactType.CUSTOMER.value)
         if obj.agency_id is not None:
             types.add(ContactType.AGENT.value)

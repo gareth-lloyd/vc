@@ -148,10 +148,10 @@ legacy output matters (e.g. exact booking-count tests).
   with the sequence, so additive runs never collide on a unique constraint
   (slug, email, phone).
 - **Respect seeded/canonical rows.** Factories for migration-seeded or
-  canonical models (`CountryFactory`, `CurrencyFactory`,
-  `PropertyCategoryFactory`, `TermsVersionFactory`) use `django_get_or_create`
-  so they reuse the seeded row instead of fighting its unique constraint — the
-  analogue of the `get_or_create` fixture rule in `django_res/CLAUDE.md`.
+  canonical models (`CountryFactory`, `CurrencyFactory`, `TermsVersionFactory`)
+  use `django_get_or_create` so they reuse the seeded row instead of fighting
+  its unique constraint — the analogue of the `get_or_create` fixture rule in
+  `django_res/CLAUDE.md`.
 
 ## Villa image pool — manifest-driven seed imagery
 

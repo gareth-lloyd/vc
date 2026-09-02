@@ -14,16 +14,10 @@ from properties.enums import (
 )
 from properties.models import (
     Property,
-    PropertyCategory,
     PropertyFinance,
     Region,
 )
 from properties.models.geo import Country
-
-
-@pytest.fixture
-def category(db: None) -> PropertyCategory:
-    return PropertyCategory.objects.create(name="Villa", slug="villa")
 
 
 @pytest.fixture
@@ -42,14 +36,12 @@ def region(country: Country) -> Region:
 
 @pytest.fixture
 def prop(
-    category: PropertyCategory,
     region: Region,
 ) -> Property:
     return Property.objects.create(
         name="Sea View",
         display_name="Sea View",
         slug="sea-view-finance",
-        category=category,
         region=region,
     )
 

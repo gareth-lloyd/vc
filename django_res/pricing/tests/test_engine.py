@@ -449,7 +449,6 @@ def test_all_fallback_stay_ignores_other_propertys_discount(
         name="Other Villa",
         display_name="Other Villa",
         slug="other-villa",
-        category=property_.category,
         region=property_.region,
     )
     Discount.objects.create(

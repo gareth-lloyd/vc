@@ -11,19 +11,17 @@ from pricing.models.currency import Currency
 from pricing.models.rate import RateBand, RatePeriod, RatePlan
 from properties.models.capacity import PropertyCapacity
 from properties.models.geo import Country, Region
-from properties.models.property import Property, PropertyCategory
+from properties.models.property import Property
 
 
 @pytest.fixture
 def loaded_property(db: None) -> Property:
     country = Country.objects.get(iso2="GB")
     region = Region.objects.create(country=country, name="Cornwall", slug="cornwall")
-    cat = PropertyCategory.objects.create(name="Villa", slug="villa")
     prop = Property.objects.create(
         name="P",
         display_name="P",
         slug="p",
-        category=cat,
         region=region,
     )
     PropertyCapacity.objects.create(property=prop, guests=8)

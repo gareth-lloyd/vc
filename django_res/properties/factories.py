@@ -5,9 +5,8 @@ the `seed_dev` management command composes. Faker drives realistic values;
 unique fields combine a per-run `RUN_TOKEN` with a `factory.Sequence` so
 additive seed runs never collide on a unique constraint (slug, name).
 
-`CountryFactory` / `PropertyCategoryFactory` use `django_get_or_create` so
-they reuse the rows pre-seeded by migrations instead of fighting unique
-constraints.
+`CountryFactory` uses `django_get_or_create` so it reuses the rows pre-seeded
+by migrations instead of fighting unique constraints.
 """
 
 from __future__ import annotations
@@ -53,13 +52,6 @@ _VILLA_COUNTRIES = [
     ("IT", "ITA", "Italy"),
     ("GR", "GRC", "Greece"),
     ("PT", "PRT", "Portugal"),
-]
-
-_CATEGORIES = [
-    ("Villa", "villa"),
-    ("Apartment", "apartment"),
-    ("Chalet", "chalet"),
-    ("Townhouse", "townhouse"),
 ]
 
 _faker = Faker("en_GB")
@@ -192,18 +184,6 @@ class RegionFactory(DjangoModelFactory):
     slug = factory.LazyAttribute(lambda o: slugify(o.name))
 
 
-class PropertyCategoryFactory(DjangoModelFactory):
-    class Meta:
-        model = models.PropertyCategory
-        django_get_or_create = ("slug",)
-
-    class Params:
-        spec = factory.Iterator(_CATEGORIES)
-
-    name = factory.LazyAttribute(lambda o: o.spec[0])
-    slug = factory.LazyAttribute(lambda o: o.spec[1])
-
-
 class FeatureCategoryFactory(DjangoModelFactory):
     class Meta:
         model = models.FeatureCategory
@@ -233,7 +213,6 @@ class PropertyFactory(DjangoModelFactory):
     slug = factory.Sequence(lambda n: f"villa-{RUN_TOKEN}-{n}")
     status = PropertyStatus.ACTIVE
     channel = PropertyChannel.DIRECT
-    category = factory.SubFactory(PropertyCategoryFactory)
     region = factory.SubFactory(RegionFactory)
 
     @factory.post_generation

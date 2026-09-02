@@ -275,18 +275,16 @@ def _geo_property(name: str, *, iso2: str, region_name: str) -> Property:
     """A property in a specific (seeded) country + region, for GAP-078 grouping."""
     from django.utils.text import slugify
 
-    from properties.models import Country, PropertyCategory, Region
+    from properties.models import Country, Region
 
     country, _ = Country.objects.get_or_create(iso2=iso2, defaults={"name": iso2, "iso3": iso2})
     region, _ = Region.objects.get_or_create(
         country=country, slug=slugify(region_name), defaults={"name": region_name}
     )
-    category, _ = PropertyCategory.objects.get_or_create(slug="villa", defaults={"name": "Villa"})
     return Property.objects.create(
         name=name,
         display_name=name,
         slug=slugify(name),
-        category=category,
         region=region,
     )
 

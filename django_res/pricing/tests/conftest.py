@@ -1,7 +1,7 @@
 """Pricing test fixtures.
 
-Builds a minimal property graph (category + region + country +
-property) so tests don't need to know the full `properties` schema.
+Builds a minimal property graph (region + country + property) so tests
+don't need to know the full `properties` schema.
 """
 
 from __future__ import annotations
@@ -48,7 +48,6 @@ def property_(db: None) -> Property:
     from properties.models import (
         Country,
         Property,
-        PropertyCategory,
         Region,
     )
 
@@ -57,12 +56,10 @@ def property_(db: None) -> Property:
         defaults={"name": "United Kingdom", "iso3": "GBR"},
     )
     region = Region.objects.create(country=country, name="South West", slug="south-west")
-    category = PropertyCategory.objects.create(name="Villa", slug="villa")
     return Property.objects.create(
         name="Test Villa",
         display_name="Test Villa",
         slug="test-villa",
-        category=category,
         region=region,
     )
 

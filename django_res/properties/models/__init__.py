@@ -22,7 +22,7 @@ from properties.models.geo import (
 )
 from properties.models.images import PropertyImage
 from properties.models.location import PropertyLocation
-from properties.models.property import Property, PropertyCategory
+from properties.models.property import Property
 from properties.models.rooms import (
     Room,
     RoomAttribute,
@@ -43,7 +43,6 @@ __all__ = [
     "Property",
     "PropertyCalendarFeed",
     "PropertyCapacity",
-    "PropertyCategory",
     "PropertyContactAssignment",
     "PropertyDefaults",
     "PropertyDescription",

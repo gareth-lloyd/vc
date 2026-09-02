@@ -35,7 +35,6 @@ from properties.serializers.image import (
     PropertyImageWriteSerializer,
 )
 from properties.serializers.location import PropertyLocationSerializer
-from properties.serializers.metadata import PropertyCategorySerializer
 from properties.serializers.price_display import PropertyPriceDisplaySerializer
 from properties.serializers.property import (
     PropertyDetailSerializer,
@@ -56,7 +55,6 @@ __all__ = [
     "FeatureSerializer",
     "NearbyPlaceTypeSerializer",
     "PropertyCapacitySerializer",
-    "PropertyCategorySerializer",
     "PropertyContactAssignmentSerializer",
     "PropertyDefaultsSerializer",
     "PropertyDescriptionSerializer",

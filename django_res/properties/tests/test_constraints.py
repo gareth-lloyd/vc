@@ -14,17 +14,11 @@ from properties.models import (
     Collection,
     CollectionMembership,
     Property,
-    PropertyCategory,
     PropertyContactAssignment,
     PropertyImage,
     Region,
 )
 from properties.models.geo import Country
-
-
-@pytest.fixture
-def category(db: None) -> PropertyCategory:
-    return PropertyCategory.objects.create(name="Villa", slug="villa")
 
 
 @pytest.fixture
@@ -43,14 +37,12 @@ def region(country: Country) -> Region:
 
 @pytest.fixture
 def prop(
-    category: PropertyCategory,
     region: Region,
 ) -> Property:
     return Property.objects.create(
         name="Sea View",
         display_name="Sea View",
         slug="sea-view",
-        category=category,
         region=region,
     )
 
@@ -67,14 +59,12 @@ def organisation(db: None) -> Organisation:
 
 @pytest.fixture
 def prop2(
-    category: PropertyCategory,
     region: Region,
 ) -> Property:
     return Property.objects.create(
         name="Hill View",
         display_name="Hill View",
         slug="hill-view",
-        category=category,
         region=region,
     )
 

@@ -26,7 +26,6 @@ from data_migration.loaders.lookups import (
     FeatureCategoryLoader,
     FeatureLoader,
     NearbyPlaceTypeLoader,
-    PropertyCategoryLoader,
     RegionLoader,
 )
 from data_migration.loaders.people import (
@@ -61,7 +60,6 @@ LOADERS: dict[str, type[Loader]] = {
     CountryLoader.name: CountryLoader,
     RegionLoader.name: RegionLoader,
     CurrencyLoader.name: CurrencyLoader,
-    PropertyCategoryLoader.name: PropertyCategoryLoader,
     NearbyPlaceTypeLoader.name: NearbyPlaceTypeLoader,
     FeatureCategoryLoader.name: FeatureCategoryLoader,
     FeatureLoader.name: FeatureLoader,

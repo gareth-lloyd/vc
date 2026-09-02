@@ -32,7 +32,7 @@ from properties.models.descriptions import PropertyDescription
 from properties.models.features import Collection, CollectionMembership
 from properties.models.geo import Region
 from properties.models.location import PropertyLocation
-from properties.models.property import Property, PropertyCategory
+from properties.models.property import Property
 from properties.models.settings import PropertySettings
 from properties.services.location import location_defaults
 
@@ -91,7 +91,7 @@ class PropertyLoader(BaseLoader):
         "m.FeatureDescription, m.RoomDescription, m.Notes, "
         "m.LocalityRegion, m.LocalityTown, m.AddressLine1, m.AddressLine2, m.AddressLine3, "
         "m.PostCode, m.LicenceNumber, m.Latitude, m.Longitude, "
-        "m.Category, m.Channel, m.Guests, m.AdditionalGuests, m.Bedrooms, m.Ensuites, "
+        "m.Channel, m.Guests, m.AdditionalGuests, m.Bedrooms, m.Ensuites, "
         "m.Bathrooms, m.Size, "
         "m.RegionId, m.ViilaStatus, "
         "m.SettingAvailabilityStatusId, m.SettingIsBookingsRequirePreApproval, "
@@ -112,21 +112,8 @@ class PropertyLoader(BaseLoader):
             return None
 
         region = Region.objects.filter(legacy_id=str(row.get("RegionId") or "")).first()
-        category = (
-            PropertyCategory.objects.filter(legacy_id=str(row["Category"])).first()
-            if row.get("Category")
-            else None
-        )
         if region is None:
             region = self._sentinel_region()
-        if category is None:
-            # Fall back to first available; create a sentinel if none exist.
-            category = PropertyCategory.objects.first()
-            if category is None:
-                category, _ = PropertyCategory.objects.get_or_create(
-                    name="Uncategorised",
-                    defaults={"slug": "uncategorised", "is_active": True},
-                )
 
         # Slug: legacy may be missing/duplicate; suffix with legacy_id.
         legacy_slug = (row.get("Slug") or "").strip() or slugify(name)
@@ -143,7 +130,6 @@ class PropertyLoader(BaseLoader):
                 PropertyStatus.DRAFT,
             ),
             "channel": PropertyChannel.DIRECT,
-            "category": category,
             "region": region,
         }
 

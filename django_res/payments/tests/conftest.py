@@ -31,7 +31,6 @@ def property_(db: None) -> Property:
     from properties.models import (
         Country,
         Property,
-        PropertyCategory,
         Region,
     )
 
@@ -40,12 +39,10 @@ def property_(db: None) -> Property:
         defaults={"name": "United Kingdom", "iso3": "GBR"},
     )
     region = Region.objects.create(country=country, name="South West", slug="south-west")
-    category = PropertyCategory.objects.create(name="Villa", slug="villa")
     return Property.objects.create(
         name="Test Villa",
         display_name="Test Villa",
         slug="test-villa",
-        category=category,
         region=region,
     )
 

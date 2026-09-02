@@ -306,7 +306,6 @@ def test_query_count_is_constant(
             name=f"Villa {n}",
             display_name=f"Villa {n}",
             slug=f"villa-{n}",
-            category=property_.category,
             region=property_.region,
         )
         for n in range(2)

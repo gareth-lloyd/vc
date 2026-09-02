@@ -27,7 +27,6 @@ from properties.enums import PrefilledChangeOverDay
 from properties.models import (
     Country,
     Property,
-    PropertyCategory,
     PropertySettings,
     Region,
 )
@@ -48,11 +47,6 @@ from reservations.models import (
 
 
 @pytest.fixture
-def category(db: None) -> PropertyCategory:
-    return PropertyCategory.objects.create(name="Villa", slug="villa-search")
-
-
-@pytest.fixture
 def country(db: None) -> Country:
     country, _ = Country.objects.get_or_create(
         iso2="GB",
@@ -69,7 +63,6 @@ def region(country: Country) -> Region:
 def _make_property(
     *,
     slug: str,
-    category: PropertyCategory,
     region: Region,
     changeover_day: str | None,
 ) -> Property:
@@ -82,7 +75,6 @@ def _make_property(
         name=slug,
         display_name=slug,
         slug=slug,
-        category=category,
         region=region,
     )
     PropertySettings.objects.create(property=prop, changeover_day=changeover_day)
@@ -193,26 +185,22 @@ def _make_live_hold(
 def test_search_includes_any_changeover_on_weekday(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """A property whose effective `changeover_day=ANY` must appear in a
     weekday-filtered search."""
     any_prop = _make_property(
         slug="any-villa",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
     sat_prop = _make_property(
         slug="sat-villa",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
     mon_prop = _make_property(
         slug="mon-villa",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.MON.value,
     )
@@ -234,14 +222,12 @@ def test_search_includes_any_changeover_on_weekday(
 def test_search_specific_changeover_still_matches(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """A property with `changeover_day=SAT` only matches a Saturday-filtered
     search — not, e.g., a Monday-filtered one."""
     sat_prop = _make_property(
         slug="sat-only",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.SAT.value,
     )
@@ -264,14 +250,12 @@ def test_search_specific_changeover_still_matches(
 def test_search_changeover_null_matches_every_weekday(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """When `PropertySettings.changeover_day` is null, the effective value is
     `ANY` — the property must not vanish from weekday-filtered search."""
     inherited = _make_property(
         slug="null-changeover",
-        category=category,
         region=region,
         changeover_day=None,
     )
@@ -296,7 +280,6 @@ def test_search_changeover_null_matches_every_weekday(
 def test_search_default_excludes_booked_properties(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
     customer: Person,
     gbp: Currency,
@@ -304,13 +287,11 @@ def test_search_default_excludes_booked_properties(
 ) -> None:
     booked = _make_property(
         slug="booked-villa",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
     free = _make_property(
         slug="free-villa",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
@@ -339,18 +320,15 @@ def test_search_default_excludes_booked_properties(
 def test_search_default_excludes_held_properties(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     held = _make_property(
         slug="held-villa",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
     free = _make_property(
         slug="not-held-villa",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
@@ -376,7 +354,6 @@ def test_search_default_excludes_held_properties(
 def test_search_include_unavailable_returns_all(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
     customer: Person,
     gbp: Currency,
@@ -384,19 +361,16 @@ def test_search_include_unavailable_returns_all(
 ) -> None:
     booked = _make_property(
         slug="booked-villa-iu",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
     held = _make_property(
         slug="held-villa-iu",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
     free = _make_property(
         slug="free-villa-iu",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
@@ -435,7 +409,6 @@ def test_search_include_unavailable_returns_all(
 def test_include_unavailable_rows_carry_per_row_availability_flag(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """With a date range + `include_unavailable=true`, every row reports
@@ -443,13 +416,11 @@ def test_include_unavailable_rows_carry_per_row_availability_flag(
     villas instead of silently offering them."""
     held = _make_property(
         slug="held-villa-flag",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
     free = _make_property(
         slug="free-villa-flag",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
@@ -479,14 +450,12 @@ def test_include_unavailable_rows_carry_per_row_availability_flag(
 def test_no_date_range_availability_flag_is_null(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """Without a date range "available" is undefined — the flag is null, not a
     misleading true."""
     prop = _make_property(
         slug="flagless-villa",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
@@ -503,7 +472,6 @@ def test_no_date_range_availability_flag_is_null(
 def test_search_no_date_range_no_availability_filter(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
     customer: Person,
     gbp: Currency,
@@ -513,7 +481,6 @@ def test_search_no_date_range_no_availability_filter(
     not silently filter the response."""
     booked = _make_property(
         slug="booked-villa-nodates",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
@@ -539,7 +506,6 @@ def test_search_no_date_range_no_availability_filter(
 def test_dated_search_runs_conflict_queries_once(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
     include_unavailable: str | None,
 ) -> None:
@@ -551,7 +517,6 @@ def test_dated_search_runs_conflict_queries_once(
 
     held = _make_property(
         slug=f"once-villa-{include_unavailable or 'default'}",
-        category=category,
         region=region,
         changeover_day=PrefilledChangeOverDay.ANY.value,
     )
@@ -578,7 +543,6 @@ def test_dated_search_runs_conflict_queries_once(
 def test_search_availability_is_single_bulk_query(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
     customer: Person,
     gbp: Currency,
@@ -597,7 +561,6 @@ def test_search_availability_is_single_bulk_query(
         for idx in range(n_start, n_start + n):
             prop = _make_property(
                 slug=f"scale-prop-{idx}",
-                category=category,
                 region=region,
                 changeover_day=PrefilledChangeOverDay.ANY.value,
             )

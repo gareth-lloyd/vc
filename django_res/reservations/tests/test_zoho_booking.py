@@ -530,6 +530,31 @@ def test_payload_financials_status_is_latest_row_not_failed_predecessor(
     assert financials["gross_deposit"] == "2500.00"
 
 
+def test_payload_financials_deposit_cancelled_on_live_booking(booking: Booking) -> None:
+    """BUG-022: a zero deposit override cancels the PENDING deposit row on a
+    booking that stays live — Zoho then reads `deposit_status: "cancelled"`
+    with a null due date and 0.00 deposit figures while the booking itself is
+    still `awaiting_deposit`. Pins the documented meaning of `cancelled`."""
+    from payments.services import PaymentScheduler
+    from properties.models.finance import PropertyFinance
+
+    PropertyFinance.objects.get_or_create(property=booking.property)
+    _funded_booking(booking)
+    Booking.objects.filter(pk=booking.pk).update(
+        status=BookingStatus.AWAITING_DEPOSIT.value, deposit_override_amount=Decimal("0")
+    )
+    fresh = Booking.objects.get(pk=booking.pk)
+    PaymentScheduler.resync_for_booking(fresh)
+
+    financials = build_booking_payload(fresh)["financials"]
+
+    assert fresh.status == BookingStatus.AWAITING_DEPOSIT.value
+    assert financials["deposit_status"] == "cancelled"
+    assert financials["deposit_due_at"] is None
+    assert financials["gross_deposit"] == "0.00"
+    assert financials["balance_status"] == "pending"
+
+
 def test_payload_financials_component_due_at_is_iso_or_null(booking: Booking) -> None:
     """`due_at` is ISO-8601 when scheduled, null when not — and the whole
     payload still JSON-serialises (the round-trip test's fixture sets no

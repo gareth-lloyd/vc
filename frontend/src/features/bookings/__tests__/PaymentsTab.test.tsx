@@ -228,6 +228,32 @@ describe("PaymentsTab", () => {
     expect(within(balanceSection).getByRole("button", { name: /send reminder/i })).toBeEnabled();
   });
 
+  it("disables Mark received and Waive on a cancelled deposit track (BUG-022)", async () => {
+    // A zero deposit override cancels the PENDING deposit row while the
+    // booking stays live; there is no row for either action to land on.
+    grantWriterRole();
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}/deposit`, () =>
+        HttpResponse.json(
+          track({
+            purpose: "deposit",
+            scheduled_amount: "0.00",
+            paid_amount: "0.00",
+            status: "cancelled",
+            due_at: null,
+          }),
+        ),
+      ),
+    );
+    setup();
+    await screen.findByText("Deposit");
+    const depositSection = screen.getByText("Deposit").closest("section")!;
+    expect(within(depositSection).getByRole("button", { name: /mark received/i })).toBeDisabled();
+    expect(within(depositSection).getByRole("button", { name: /waive/i })).toBeDisabled();
+    const balanceSection = screen.getByText("Balance").closest("section")!;
+    expect(within(balanceSection).getByRole("button", { name: /mark received/i })).toBeEnabled();
+  });
+
   it("opens the mark-paid dialog when Mark received is clicked", async () => {
     grantWriterRole();
     setup();

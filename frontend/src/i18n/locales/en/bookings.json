@@ -725,7 +725,7 @@
       "edit": "Edit override",
       "clear": "Clear override",
       "dialog_title": "Set deposit override",
-      "dialog_description": "Pin this booking's deposit to a specific figure — for example, net of a cancellation carry-over credit. Clearing it reverts to the property's payment-schedule policy.",
+      "dialog_description": "Pin this booking's deposit to a specific figure — for example, net of a cancellation carry-over credit. Enter 0 for no deposit on this booking. Clearing it reverts to the property's payment-schedule policy.",
       "fields": {
         "amount": "Deposit amount",
         "reason": "Reason (optional)"

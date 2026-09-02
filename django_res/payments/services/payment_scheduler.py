@@ -19,10 +19,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.logging.operations import log_operation
-from payments.enums import ACTIVE_PAYMENT_STATUSES, PaymentPurpose, PaymentStatus
+from payments.enums import ACTIVE_PAYMENT_STATUSES, EventSource, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from pricing.services.currency import quantise_money
 from properties.enums import DepositCalcType
+from reservations.enums import BookingStatus
 from reservations.services.charges import booking_total
 
 logger = structlog.get_logger(__name__)
@@ -173,8 +174,20 @@ class PaymentScheduler:
         their current amount. Reached via the `booking_total_changed`
         receiver in `payments.signals`.
 
+        The deposit target is a single figure: the per-booking override if
+        set, else the property policy. A zero target (override 0, policy
+        `deposit_required` off, or nothing left to collect) *cancels* the
+        PENDING deposit row rather than resizing it to an unpayable 0.00
+        (BUG-022/023); the row keeps its last amount for audit (event kind
+        `DEPOSIT_NOT_REQUIRED`, or `DEPOSIT_COVERED` when committed money
+        already covers the total) and frees the unique-active slot. A positive
+        target with no active deposit row mints one, but only while the
+        booking is still AWAITING_DEPOSIT (read from the DB, not the caller's
+        instance) — a WAIVED/REFUNDED/FAILED deposit on a booking that has
+        already advanced must not grow a fresh one.
+
         When the new total can't be absorbed (everything settled, or a
-        credit dropped the total below committed money), PENDING rows clamp
+        credit dropped the total below committed money), the BALANCE clamps
         at 0 and the residual is logged *and* written to a BookingEvent so
         operators see it on the Timeline; collecting or refunding it stays
         an explicit operator action.
@@ -213,49 +226,67 @@ class PaymentScheduler:
             # deposit durable across charge-item edits.
             override = getattr(booking, "deposit_override_amount", None)
             deposit = next((r for r in pending if r.purpose == PaymentPurpose.DEPOSIT.value), None)
+            has_active_deposit = any(
+                r.purpose == PaymentPurpose.DEPOSIT.value and r.status in ACTIVE_PAYMENT_STATUSES
+                for r in rows
+            )
 
-            def _deposit_target() -> Decimal:
+            def _deposit_wanted() -> Decimal:
+                """The deposit the override/policy asks for, before clamping
+                to what is collectable; 0 when no deposit is wanted at all."""
                 if override is not None:
-                    return min(remaining, override)
+                    return override
                 finance = getattr(booking.property, "finance", None)
                 schedule = finance.effective_payment_schedule() if finance else {}
-                return min(
-                    remaining,
-                    cls._calc_amount(
-                        calculation_type=schedule.get("deposit_calculation_type"),
-                        amount=schedule.get("deposit_amount"),
-                        base=total,
-                    ),
+                if not schedule.get("deposit_required"):
+                    # BUG-023: mirrors `create_for_booking` — a property that
+                    # takes no deposit gets none from resync either.
+                    return Decimal("0")
+                return cls._calc_amount(
+                    calculation_type=schedule.get("deposit_calculation_type"),
+                    amount=schedule.get("deposit_amount"),
+                    base=total,
                 )
 
             if deposit is not None:
-                deposit.amount = quantise_money(_deposit_target(), booking.currency)
-                deposit.save(update_fields=["amount", "updated_at"])
-                remaining -= deposit.amount
-            elif override is not None and not any(
-                r.purpose == PaymentPurpose.DEPOSIT.value and r.status in ACTIVE_PAYMENT_STATUSES
-                for r in rows
-            ):
-                # An override wants a deposit but policy created none (and none
-                # is settled) — mint the PENDING deposit row now. This is the
-                # only path that materialises a deposit for a
-                # `deposit_required=False` booking, since overrides are set
-                # post-creation and `create_for_booking` runs once, at booking
-                # confirmation.
-                minted = quantise_money(min(remaining, override), booking.currency)
-                if minted > 0:
+                wanted = _deposit_wanted()
+                target = quantise_money(min(remaining, wanted), booking.currency)
+                if target > 0:
+                    deposit.amount = target
+                    deposit.save(update_fields=["amount", "updated_at"])
+                    remaining -= target
+                else:
+                    # No deposit wanted, or nothing left to collect: retire
+                    # the row the same way a closed booking does. Nothing is
+                    # assigned on the instance first — `transition_to`
+                    # re-reads the row under lock and would discard it.
+                    deposit.transition_to(
+                        PaymentStatus.CANCELLED.value,
+                        source=EventSource.SYSTEM.value,
+                        kind="DEPOSIT_NOT_REQUIRED" if wanted <= 0 else "DEPOSIT_COVERED",
+                    )
+                    pending.remove(deposit)
+            elif not has_active_deposit and cls._is_awaiting_deposit(booking):
+                target = quantise_money(min(remaining, _deposit_wanted()), booking.currency)
+                if target > 0:
+                    # A deposit is wanted but none is live — mint the PENDING
+                    # row. Reached by an override on a `deposit_required=False`
+                    # booking (GAP-087), by clearing a zero override, and by a
+                    # FAILED deposit on a booking still awaiting one (its only
+                    # retry path). `due_at=now` restarts the deposit-expiry
+                    # window.
                     minted_row = Payment.objects.create(
                         booking=booking,
                         purpose=PaymentPurpose.DEPOSIT.value,
                         status=PaymentStatus.PENDING.value,
-                        amount=minted,
+                        amount=target,
                         currency=booking.currency,
                         due_at=timezone.now(),
                     )
                     # Fold into `pending` so the residual reconciliation below
                     # accounts for the newly minted deposit.
                     pending.append(minted_row)
-                    remaining -= minted
+                    remaining -= target
 
             balance = next((r for r in pending if r.purpose == PaymentPurpose.BALANCE.value), None)
             if balance is not None:
@@ -280,6 +311,23 @@ class PaymentScheduler:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _is_awaiting_deposit(booking: Any) -> bool:
+        """Read the booking's status from the DB, not the caller's instance.
+
+        Resync receives whatever `Booking` instance the signal sender held —
+        the charge-item path passes the FK-cached one — and a stale
+        AWAITING_DEPOSIT on a booking that has since advanced would let the
+        mint arm grow a fresh deposit onto a paid booking.
+        """
+        status = (
+            type(booking)
+            ._default_manager.filter(pk=booking.pk)
+            .values_list("status", flat=True)
+            .first()
+        )
+        return status == BookingStatus.AWAITING_DEPOSIT.value
+
     @staticmethod
     def _calc_amount(
         *,

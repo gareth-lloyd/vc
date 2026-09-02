@@ -8,12 +8,14 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from django.utils import timezone
 
 from payments.enums import PaymentPurpose, PaymentStatus
-from payments.models import Payment
+from payments.models import Payment, PaymentEvent
 from payments.services import PaymentScheduler
 from properties.models import Property
 from properties.models.finance import PropertyFinance
+from reservations.enums import BookingStatus
 from reservations.models import Booking, BookingChargeItem, BookingEvent
 
 
@@ -290,3 +292,202 @@ def test_resync_mints_deposit_when_only_a_failed_deposit_exists(
     assert active.count() == 1
     assert active.get().amount == Decimal("500.00")
     assert _row(fresh, PaymentPurpose.BALANCE).amount == Decimal("900.00")
+
+
+# ---------------------------------------------------------------------------
+# BUG-022/023: a zero deposit target cancels the PENDING deposit row (never a
+# 0.00 PENDING row), and the mint arm is gated on the booking still awaiting
+# its deposit.
+# ---------------------------------------------------------------------------
+
+
+def _pending_row(booking: Booking, purpose: PaymentPurpose) -> Payment:
+    return Payment.objects.get(
+        booking=booking, purpose=purpose.value, status=PaymentStatus.PENDING.value
+    )
+
+
+def _deposit_rows(booking: Booking, status: PaymentStatus | None = None) -> Any:
+    qs = Payment.objects.filter(booking=booking, purpose=PaymentPurpose.DEPOSIT.value)
+    return qs.filter(status=status.value) if status else qs
+
+
+@pytest.mark.django_db
+def test_resync_zero_override_cancels_pending_deposit(scheduled_booking: Booking) -> None:
+    """BUG-022: override 0 means "no deposit" — the PENDING deposit row is
+    cancelled (not resized to 0.00, which is unpayable and blocks the booking
+    in AWAITING_DEPOSIT) and the balance absorbs the whole total."""
+    deposit = _row(scheduled_booking, PaymentPurpose.DEPOSIT)
+    fresh = _set_override(scheduled_booking, Decimal("0"))
+
+    PaymentScheduler.resync_for_booking(fresh)
+
+    assert not _deposit_rows(fresh, PaymentStatus.PENDING).exists()
+    deposit.refresh_from_db()
+    assert deposit.status == PaymentStatus.CANCELLED.value
+    assert deposit.amount == Decimal("420.00")  # last amount kept for audit
+    assert _pending_row(fresh, PaymentPurpose.BALANCE).amount == Decimal("1400.00")
+    event = PaymentEvent.objects.get(payment=deposit, kind="DEPOSIT_NOT_REQUIRED")
+    assert (event.from_status, event.to_status) == (
+        PaymentStatus.PENDING.value,
+        PaymentStatus.CANCELLED.value,
+    )
+    assert not BookingEvent.objects.filter(
+        booking=fresh, reason="payment_schedule_residual"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_resync_zero_override_is_idempotent(scheduled_booking: Booking) -> None:
+    fresh = _set_override(scheduled_booking, Decimal("0"))
+
+    PaymentScheduler.resync_for_booking(fresh)
+    PaymentScheduler.resync_for_booking(fresh)
+
+    assert _deposit_rows(fresh).count() == 1
+    assert _deposit_rows(fresh, PaymentStatus.CANCELLED).count() == 1
+    assert PaymentEvent.objects.filter(kind="DEPOSIT_NOT_REQUIRED").count() == 1
+    assert _pending_row(fresh, PaymentPurpose.BALANCE).amount == Decimal("1400.00")
+
+
+@pytest.mark.django_db
+def test_zero_override_then_positive_override_mints_fresh_deposit(
+    scheduled_booking: Booking,
+) -> None:
+    """The cancelled row frees the unique-active slot; a later override mints
+    a fresh PENDING deposit rather than resurrecting the old one."""
+    old = _row(scheduled_booking, PaymentPurpose.DEPOSIT)
+    PaymentScheduler.resync_for_booking(_set_override(scheduled_booking, Decimal("0")))
+
+    fresh = _set_override(scheduled_booking, Decimal("500.00"))
+    PaymentScheduler.resync_for_booking(fresh)
+
+    minted = _pending_row(fresh, PaymentPurpose.DEPOSIT)
+    assert minted.pk != old.pk
+    assert minted.amount == Decimal("500.00")
+    assert _pending_row(fresh, PaymentPurpose.BALANCE).amount == Decimal("900.00")
+
+
+@pytest.mark.django_db
+def test_zero_override_then_clear_remints_policy_deposit(scheduled_booking: Booking) -> None:
+    """Clearing a zero override on a deposit-required property brings the
+    policy deposit back (the mint arm no longer needs an override)."""
+    old = _row(scheduled_booking, PaymentPurpose.DEPOSIT)
+    PaymentScheduler.resync_for_booking(_set_override(scheduled_booking, Decimal("0")))
+
+    fresh = _set_override(scheduled_booking, None)
+    PaymentScheduler.resync_for_booking(fresh)
+
+    minted = _pending_row(fresh, PaymentPurpose.DEPOSIT)
+    assert minted.pk != old.pk
+    assert minted.amount == Decimal("420.00")
+    assert _pending_row(fresh, PaymentPurpose.BALANCE).amount == Decimal("980.00")
+
+
+@pytest.mark.django_db
+def test_overcollection_cancels_pending_deposit(scheduled_booking: Booking) -> None:
+    """Nothing left to collect: the PENDING deposit is cancelled rather than
+    clamped to 0.00; the negative residual is still recorded for ops."""
+    deposit = _row(scheduled_booking, PaymentPurpose.DEPOSIT)
+    balance = _row(scheduled_booking, PaymentPurpose.BALANCE)
+    Payment.objects.filter(pk=balance.pk).update(
+        status=PaymentStatus.SUCCEEDED.value, amount=Decimal("1500.00")
+    )
+
+    PaymentScheduler.resync_for_booking(scheduled_booking)
+
+    deposit.refresh_from_db()
+    assert deposit.status == PaymentStatus.CANCELLED.value
+    assert not _deposit_rows(scheduled_booking, PaymentStatus.PENDING).exists()
+    # Audit says "covered", not "not required" — the policy still wants one.
+    assert PaymentEvent.objects.filter(payment=deposit, kind="DEPOSIT_COVERED").count() == 1
+    event = BookingEvent.objects.filter(
+        booking=scheduled_booking, reason="payment_schedule_residual"
+    ).latest("created_at")
+    assert event.meta["residual"] == "-100.00"
+
+
+@pytest.mark.django_db
+def test_resync_remints_failed_policy_deposit_without_override(
+    scheduled_booking: Booking,
+) -> None:
+    """A FAILED deposit on a still-awaiting booking is re-minted from policy on
+    the next resync — the only retry path — with a fresh `due_at` so the
+    expiry window restarts."""
+    deposit = _row(scheduled_booking, PaymentPurpose.DEPOSIT)
+    Payment.objects.filter(pk=deposit.pk).update(status=PaymentStatus.FAILED.value)
+
+    _add_charge(scheduled_booking, "200.00")  # resync via signal, no override
+
+    minted = _pending_row(scheduled_booking, PaymentPurpose.DEPOSIT)
+    assert minted.pk != deposit.pk
+    assert minted.amount == Decimal("480.00")
+    assert minted.due_at is not None
+    assert abs((timezone.now() - minted.due_at).total_seconds()) < 5
+    assert _pending_row(scheduled_booking, PaymentPurpose.BALANCE).amount == Decimal("1120.00")
+
+
+@pytest.mark.django_db
+def test_resync_does_not_mint_deposit_after_waive(scheduled_booking: Booking) -> None:
+    """WAIVED is non-active but the booking has advanced to DEPOSIT_PAID —
+    a later charge edit must not mint a fresh deposit onto a paid booking."""
+    _row(scheduled_booking, PaymentPurpose.DEPOSIT).waive("goodwill")
+    fresh = Booking.objects.get(pk=scheduled_booking.pk)
+    assert fresh.status == BookingStatus.DEPOSIT_PAID.value
+
+    _add_charge(fresh, "200.00")
+
+    assert _deposit_rows(fresh).count() == 1
+    assert _deposit_rows(fresh, PaymentStatus.WAIVED).count() == 1
+    assert _pending_row(fresh, PaymentPurpose.BALANCE).amount == Decimal("1600.00")
+
+
+@pytest.mark.django_db
+def test_resync_does_not_mint_deposit_once_booking_advanced(
+    scheduled_booking: Booking,
+) -> None:
+    """A FAILED deposit on a booking already past AWAITING_DEPOSIT (ops moved
+    it on by hand) is not re-minted."""
+    deposit = _row(scheduled_booking, PaymentPurpose.DEPOSIT)
+    Payment.objects.filter(pk=deposit.pk).update(status=PaymentStatus.FAILED.value)
+    Booking.objects.filter(pk=scheduled_booking.pk).update(status=BookingStatus.DEPOSIT_PAID.value)
+    fresh = Booking.objects.get(pk=scheduled_booking.pk)
+
+    _add_charge(fresh, "200.00")
+
+    assert _deposit_rows(fresh).count() == 1
+    assert _pending_row(fresh, PaymentPurpose.BALANCE).amount == Decimal("1600.00")
+
+
+@pytest.mark.django_db
+def test_resync_on_closed_booking_does_not_mint(scheduled_booking: Booking) -> None:
+    """A cancelled booking's schedule rows are all terminal; a stray resync
+    must not mint a new deposit onto it."""
+    scheduled_booking.cancel("guest changed plans")
+    fresh = Booking.objects.get(pk=scheduled_booking.pk)
+    assert not Payment.objects.filter(booking=fresh, status=PaymentStatus.PENDING.value).exists()
+
+    PaymentScheduler.resync_for_booking(fresh)
+
+    assert Payment.objects.filter(booking=fresh).count() == 2
+    assert not Payment.objects.filter(booking=fresh, status=PaymentStatus.PENDING.value).exists()
+
+
+@pytest.mark.django_db
+def test_resync_on_deposit_optional_property_never_mints_without_override(
+    booking: Any, property_: Property
+) -> None:
+    """BUG-023 half of the mint gate: a `deposit_required=False` property
+    gets no deposit from resync unless an override asks for one — the
+    generalised mint arm must not grow a policy deposit on a charge edit."""
+    finance = PropertyFinance.objects.get_or_create(property=property_)[0]
+    finance.deposit_required = False
+    finance.save(update_fields=["deposit_required"])
+    fresh = Booking.objects.get(pk=booking.pk)
+    PaymentScheduler.create_for_booking(fresh)
+    assert not _deposit_rows(fresh).exists()
+
+    _add_charge(fresh, "200.00")
+
+    assert not _deposit_rows(fresh).exists()
+    assert _pending_row(fresh, PaymentPurpose.BALANCE).amount == Decimal("1600.00")

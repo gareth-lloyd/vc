@@ -547,6 +547,46 @@ describe("FinanceTab — payment schedule split", () => {
     const depositRow = screen.getByText("Deposit").closest("tr")!;
     expect(depositRow.textContent).not.toMatch(/waived/i);
   });
+
+  it("renders a cancelled deposit component on a live booking (BUG-022 zero override)", async () => {
+    // A zero deposit override cancels the PENDING deposit row on the backend;
+    // the split then carries status "cancelled", gross 0.00 and no due date
+    // while the booking itself is still awaiting its (now absent) deposit.
+    useBooking({
+      status: "awaiting_deposit",
+      payment_splits: [
+        {
+          ...depositSplit,
+          status: "cancelled",
+          due_at: null,
+          gross: "0.00",
+          commission: "0.00",
+          tax: "0.00",
+          net_to_owner: "0.00",
+        },
+        {
+          ...balanceSplit,
+          gross: "2500.00",
+          commission: "500.00",
+          tax: "325.00",
+          net_to_owner: "1675.00",
+        },
+      ],
+      net_to_owner: netToOwnerBlock,
+    });
+    useCharges([]);
+    setup();
+
+    await screen.findByText("Payment schedule split");
+    const depositRow = screen.getByText("Deposit").closest("tr")!;
+    expect(depositRow.textContent).toContain("£0.00");
+    expect(depositRow.textContent).not.toMatch(/due /i);
+    const balanceRow = screen.getByText("Balance").closest("tr")!;
+    expect(balanceRow.textContent).toContain("£2,500.00");
+    expect(
+      screen.queryByText(/schedule does not currently sum to the booking total/i),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("FinanceTab — manual charges", () => {

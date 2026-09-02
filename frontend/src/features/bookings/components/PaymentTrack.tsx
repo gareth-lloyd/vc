@@ -145,6 +145,12 @@ export function PaymentTrack({
     remaining != null && Number.isFinite(remaining) ? remaining.toFixed(2) : undefined;
 
   const tooltipMessage = t("payments.track.role_required_tooltip");
+  // Mark received / Waive act on the track's PENDING row. A settled track
+  // has none, and neither does one whose latest row was cancelled — on a
+  // live booking that is a deposit no longer wanted (BUG-022), and the
+  // backend would answer with NoPendingPayment.
+  const actionable =
+    data.status !== "succeeded" && data.status !== "waived" && data.status !== "cancelled";
 
   return (
     <section className="border-border bg-card space-y-3 rounded-lg border p-4">
@@ -203,7 +209,7 @@ export function PaymentTrack({
           tooltipMessage={tooltipMessage}
           size="sm"
           onClick={() => setMarkPaidOpen(true)}
-          disabled={data.status === "succeeded" || data.status === "waived"}
+          disabled={!actionable}
         >
           {t("payments.track.mark_received")}
         </GateButton>
@@ -213,7 +219,7 @@ export function PaymentTrack({
           variant="outline"
           size="sm"
           onClick={() => setWaiveOpen(true)}
-          disabled={data.status === "succeeded" || data.status === "waived"}
+          disabled={!actionable}
         >
           {t("payments.track.waive")}
         </GateButton>

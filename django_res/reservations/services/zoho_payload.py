@@ -275,7 +275,10 @@ def _financials_payload(booking: Booking) -> dict[str, Any]:
     Per component (GAP-099): `*_status` is the raw `PaymentStatus` of the
     latest schedule row for that purpose (so a FAILED row superseded by a
     fresh PENDING one reports `pending`, and a booking cancelled with its
-    schedule unpaid reports `cancelled`); `*_due_at` is the earliest `due_at`
+    schedule unpaid reports `cancelled` — as does a *live* booking whose
+    deposit was cancelled because none is wanted, BUG-022/023: read
+    `deposit_status == "succeeded"` for "paid?", never `"cancelled"` for
+    "booking dead?"); `*_due_at` is the earliest `due_at`
     among that purpose's non-terminal rows, ISO-8601, null when unscheduled.
     Both are the split authority's values verbatim — documented, not
     reinterpreted.

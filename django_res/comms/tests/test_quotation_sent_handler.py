@@ -55,7 +55,6 @@ def terms(db: None) -> TermsVersion:
 def property_(db: None) -> Property:
     from properties.models import (
         Country,
-        PropertyCategory,
         Region,
     )
 
@@ -64,12 +63,10 @@ def property_(db: None) -> Property:
         defaults={"name": "United Kingdom", "iso3": "GBR"},
     )
     region = Region.objects.create(country=country, name="South West", slug="south-west")
-    category = PropertyCategory.objects.create(name="Villa", slug="villa")
     return Property.objects.create(
         name="Test Villa",
         display_name="Test Villa",
         slug="test-villa",
-        category=category,
         region=region,
     )
 
@@ -139,16 +136,14 @@ def test_quotation_sent_email_groups_lines_by_geography(
     """GAP-078: a multi-country quotation email bunches lines under
     country · region section headers (the single-group no-header case is
     asserted in test_quotation_sent_email_contains_line_and_total)."""
-    from properties.models import Country, PropertyCategory, Region
+    from properties.models import Country, Region
 
     greece, _ = Country.objects.get_or_create(iso2="GR", defaults={"name": "Greece", "iso3": "GRC"})
     crete = Region.objects.create(country=greece, name="Crete", slug="crete")
-    category = PropertyCategory.objects.get(slug="villa")
     zeus = Property.objects.create(
         name="Villa Zeus",
         display_name="Villa Zeus",
         slug="villa-zeus",
-        category=category,
         region=crete,
     )
     QuotationLine.objects.create(

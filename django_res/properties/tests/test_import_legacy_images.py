@@ -25,7 +25,6 @@ from django.core.management.base import CommandError
 from properties.enums import ImageKind
 from properties.models import (
     Property,
-    PropertyCategory,
     PropertyImage,
     Region,
 )
@@ -42,14 +41,13 @@ def _filename() -> str:
 
 
 @pytest.fixture
-def make_property(category: PropertyCategory, region: Region) -> MakeProperty:
+def make_property(region: Region) -> MakeProperty:
     def make(legacy_id: str | None) -> Property:
         token = uuid.uuid4().hex[:8]
         return Property.objects.create(
             name=f"Villa {token}",
             display_name=f"Villa {token}",
             slug=f"villa-{token}",
-            category=category,
             region=region,
             legacy_id=legacy_id,
         )

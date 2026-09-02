@@ -14,7 +14,6 @@ from properties.models import (
     Property,
     PropertyCalendarFeed,
     PropertyCapacity,
-    PropertyCategory,
     PropertyContactAssignment,
     PropertyDefaults,
     PropertyDescription,
@@ -33,7 +32,6 @@ admin.site.register(Country)
 admin.site.register(Region)
 admin.site.register(NearbyPlaceType)
 admin.site.register(PropertyNearbyPlace)
-admin.site.register(PropertyCategory)
 admin.site.register(Property)
 admin.site.register(PropertyLocation)
 admin.site.register(PropertyCapacity)

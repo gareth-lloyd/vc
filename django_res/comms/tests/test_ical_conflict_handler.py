@@ -18,7 +18,6 @@ from comms.signals import ical_conflict_detected_handler
 from properties.models import (
     Country,
     Property,
-    PropertyCategory,
     Region,
 )
 
@@ -32,12 +31,10 @@ def _property() -> Property:
         slug="sw-ical-conflict",
         defaults={"country": country, "name": "South West"},
     )
-    category, _ = PropertyCategory.objects.get_or_create(slug="villa", defaults={"name": "Villa"})
     return Property.objects.create(
         name="Conflict Villa",
         display_name="Conflict Villa",
         slug="conflict-villa",
-        category=category,
         region=region,
     )
 

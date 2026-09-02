@@ -53,7 +53,6 @@ export const propertyListItemSchema = z.object({
   licence_number: z.string().nullable().optional(),
   status: z.string(),
   channel: z.string().nullable().optional(),
-  category: z.number().nullable().optional(),
   region: z.number().nullable().optional(),
   // GAP-078: geo display names for the quote builder's country → region
   // grouping (list serializer only — the detail endpoint may omit them).
@@ -400,22 +399,11 @@ export {
   type Collection,
 } from "@/lib/geo/schemas";
 
-// FK-picker rows for the create-property form (`GET /property-categories`).
-// Only `id` + `name` are needed to pick; Zod strips the other serializer
-// fields. Widen these when a consumer actually needs more.
-export const propertyCategorySchema = z.object({
-  id: z.number(),
-  name: z.string(),
-});
-export type PropertyCategory = z.infer<typeof propertyCategorySchema>;
-
-export const propertyCategoriesResponseSchema = paginated(propertyCategorySchema);
-
-// Write shape for creating a property (GAP-049). Only the five fields the
-// backend requires — `licence_number`/`channel`/`features`/`legacy_id` are
-// optional or server-defaulted and are filled in later on the edit tabs
-// (incremental-onboarding posture, GAP-024). FK fields default to the `0`
-// sentinel so an unselected dropdown trips `.min(1)` with a required message.
+// Write shape for creating a property (GAP-049). Only the fields the backend
+// requires — `licence_number`/`channel`/`features`/`legacy_id` are optional or
+// server-defaulted and are filled in later on the edit tabs
+// (incremental-onboarding posture, GAP-024). `.min(1)` on `region` rejects the
+// `0` unselected sentinel the dialog defaults to.
 export const propertyCreateInputSchema = z.object({
   name: z.string().trim().min(1, { message: "properties:create.errors.name_required" }).max(255),
   display_name: z
@@ -429,7 +417,6 @@ export const propertyCreateInputSchema = z.object({
     .min(1, { message: "properties:create.errors.slug_required" })
     .max(255)
     .regex(/^[a-z0-9-]+$/, { message: "properties:create.errors.slug_invalid" }),
-  category: z.number().int().min(1, { message: "properties:create.errors.category_required" }),
   region: z.number().int().min(1, { message: "properties:create.errors.region_required" }),
 });
 export type PropertyCreateInput = z.infer<typeof propertyCreateInputSchema>;

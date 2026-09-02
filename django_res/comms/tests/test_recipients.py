@@ -26,7 +26,6 @@ from comms.recipients import (
 from properties.models import (
     Country,
     Property,
-    PropertyCategory,
     PropertyContactAssignment,
     Region,
 )
@@ -42,15 +41,10 @@ def _build_property(slug_suffix: str) -> Property:
         slug=f"sw-{slug_suffix}",
         defaults={"country": country, "name": "South West"},
     )
-    category, _ = PropertyCategory.objects.get_or_create(
-        slug="villa",
-        defaults={"name": "Villa"},
-    )
     return Property.objects.create(
         name=f"Villa {slug_suffix}",
         display_name=f"Villa {slug_suffix}",
         slug=f"villa-{slug_suffix}",
-        category=category,
         region=region,
     )
 

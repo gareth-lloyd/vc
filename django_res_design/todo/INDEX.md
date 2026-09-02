@@ -14,9 +14,10 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
+- 🔎 check — external party's work; closed by verifying, not building
 
-Scoreboard (2026-07-29 recount from the files themselves — close-outs to 2026-07-27 incl. GAP-082, BUG-018 and GAP-072; BUG-017 deleted outright 2026-07-10; `done/gap-081-dev-exercise.md` is a runbook companion, not a ticket): **141 done** (134 resolved + 7 dropped), **38 open**
-(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080; +1 from the 2026-07-15 Limitless call, GAP-081; +1 descoped from GAP-081, GAP-082; +5 from the 2026-07-29 Limitless call, GAP-085–089; +3 filed 2026-07-29 from earlier captures, BUG-019 + GAP-083/084; +6 from the 2026-07-20 Nick recording filed 2026-08-11, GAP-090–094 + Q-025). Recently-resolved tickets stay
+Scoreboard (2026-07-29 recount from the files themselves — close-outs to 2026-07-27 incl. GAP-082, BUG-018 and GAP-072; BUG-017 deleted outright 2026-07-10; `done/gap-081-dev-exercise.md` is a runbook companion, not a ticket): **142 done** (135 resolved + 7 dropped), **51 open**
+(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080; +1 from the 2026-07-15 Limitless call, GAP-081; +1 descoped from GAP-081, GAP-082; +5 from the 2026-07-29 Limitless call, GAP-085–089; +3 filed 2026-07-29 from earlier captures, BUG-019 + GAP-083/084; +6 from the 2026-07-20 Nick recording filed 2026-08-11, GAP-090–094 + Q-025; +6 from the 2026-09-01 Limitless parse-function review, GAP-095–098 + the first CHECK tickets, CHECK-001–003; +2 from the 2026-09-02 booking-flow review, CHECK-004 + GAP-099; +4 from the 2026-09-02 quote-flow review, CHECK-005 + BUG-020 + FG-018 + GAP-100; +1 from the retrospective across all five Flow reviews, GAP-101). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-090–094 property-onboarding
 parity (2026-07-20 Nick recording); GAP-064–068 room-model
@@ -108,6 +109,69 @@ confirmed keep, but the recording ends mid-sentence at 6:15 (*"at the moment
 there's no nearby on our existing website…"*) — rationale unknown, no ticket
 filed; ask if a second recording exists._
 
+_2026-09-01: all three Limitless Zoho Flow functions reviewed against the payloads we
+actually send (`limitless_parse_res_contact`, `limitless_parse_enquiry`,
+`limitless_upsert_villa`). Findings were split by owner. **Theirs** became the first
+**CHECK-** tickets — a new type for work owned by an external party, closed by
+*verifying* rather than building (see `README.md` §Conventions): **CHECK-001**
+(contact flow), **CHECK-002** (enquiry flow), **CHECK-003** (villa flow); each was
+sent to the dev by email the same day. **Ours** became **GAP-095** (erasure does not
+propagate to the CRM — an open design question, not a Flow bug), **GAP-096**
+(`Organisation` has no push kind, so CRM Accounts are a villa side effect and
+renames never propagate), **GAP-097** (a push is `IN_SYNC` on any HTTP 2xx, so
+CRM-side rejections are invisible — this is why every CHECK specifies push-and-read
+verification), and **GAP-098** (the legacy `ZohoId` we already load is never sent and
+the Zoho record id is never stored back). GAP-097 and GAP-098 share one
+response-contract conversation with Limitless; settle them together._
+
+_2026-09-02: the fourth Flow function, `limitless_insert_booking`, reviewed the same
+way. **Theirs** → **CHECK-004**, dominated by one finding that reframes the rest: the
+function is **insert-only** (it COQLs `Sales_Orders` by `RES_ID` and returns early on
+a hit) while `Booking` is registered with the default `auto_push=True`, so every
+status change, cancellation, date/guest modification and money movement we push is
+silently discarded — the CRM holds each booking at its earliest state. Second on the
+list, the subform recomputes owner net from the *quote line*'s snapshot and drops
+tax, which is precisely the derivation the GAP-085 financials block exists to
+prevent. **Ours** → **GAP-099** (the financials block sends amounts but no payment
+status, so consumers reverse-engineer "deposit paid?" from `BookingStatus` — offered
+to Limitless, do not build until they want it), plus a villa-before-booking clause
+added to **GAP-096**'s backfill ordering (their stub-villa fallback should be rare,
+and it is where the wrong-villa attachment in CHECK-004 becomes reachable). Erasure
+and the payload-snapshot PII stay with **GAP-095**; item 1 is the sharpest
+illustration yet of **GAP-097**._
+
+_2026-09-02 (second pass): the quote Flow, `limitless_insert_quote`, reviewed the
+same way — and this one found a bug in **our** code. **Theirs** → **CHECK-005**,
+headed by a modelling mismatch rather than a mapping slip: quotation lines are
+mutually exclusive *options* (`one_selected_line_per_quotation`; `accept()` picks
+one), and the Flow sums every line's rows into a single `Quoted_Items` subform, so
+a three-option quote at £2,050 an option reads as a £6,150 Quote. That needs a call,
+not a patch. **Ours** → **BUG-020**: the Flow prefers `pricing_snapshot["total"]`
+(the engine figure, *before* the operator discount) over `line.total` (what the
+guest is quoted) — and `BookingService` does exactly the same, so a discounted quote
+converts to a booking at the undiscounted price. Confirmed by probe, not inferred:
+quoted £1,250, booked £1,400. **FG-018** files the contract that caused both (two
+keys named `total`, one nested in the other, opposite sides of the discount; two
+independent readers picked the wrong one). **GAP-100**: we push a quote only at
+send, so `accepted`/`expired`/`cancelled` reach the CRM by no route, and
+`is_selected` — the field that would identify the winning option — is always `false`
+on the wire._
+
+_2026-09-02 (retrospective): stepping back from the five reviews, the striking
+thing is that our own tooling surfaced none of ~45 findings — every one was found
+by reading Deluge by hand. Two causes. **GAP-097** (already filed) is why bad
+outcomes are invisible: we stamp `IN_SYNC` on any 2xx. **GAP-101** is why the bad
+inputs never arise: `zoho_send_sample` covers every enum *value* and no awkward
+*shape* — one quote, one line, zero discount, one currency, every record pushed
+exactly once in dependency order — so insert-only semantics, multi-option quotes,
+discounts, mixed currencies, anonymised people and re-pushed villas are all
+unreachable. Limitless built against that sample, which is how its blind spots
+became their bugs. Pair the two: GAP-101 makes the awkward cases reachable,
+GAP-097 makes the results readable. On the wider "was Zoho Flow the right call"
+question: the split of labour was sound (their Deluge shows real Zoho-specific
+knowledge — the 204-body guard, COQL over `searchRecords`, `DUPLICATE_DATA`
+adoption), but the contract is too thin — a one-way pipe whose silence we trusted._
+
 _2026-07-16: the Zoho external spec landed on the 2026-07-15 Limitless call —
 **GAP-081** (outbound push res → Zoho Flow webhooks, upsert-only, res PKs as
 dedupe keys) now tracks it. The agreed shape supersedes the OAuth
@@ -131,12 +195,14 @@ settled Res-primary)._
 | [BUG-015](bug-015-scattered-state-machines-false-409.md) | State machines hand-rolled 4 ways; SD's bare `ValueError` → false 409s; `BookingHold`/`DamageClaim` lifecycles unguarded | ⬜ from 2026-07-02 complexity audit; shape depends on Q-024 |
 | [BUG-016](done/bug-016-rate-grid-disjointness-reimplemented.md) | Rate-grid disjointness/precedence reimplemented by 4 producers — projected quote can price ≠ its materialised twin | ✅ resolved (2026-07-05) — ONE canonical flattener (`pricing/services/flattening.py` + shared `intervals.py`) consumed by projection (now eager, parity by construction via `map_anchor_sources`), carryover, the legacy loader (split-not-clip; deltas disclosed in CUTOVER.md) and the 0013 backfill; cross-producer equivalence suite pins 9 grids pointwise + byte-identical. Party-widening money bug fixed |
 | [BUG-019](bug-019-property-feature-filtering-missing.md) | Property feature filtering does not work — no `features` filter exists on `/properties` (BE or FE), and `/features` silently ignores `?category=` + truncates at 50 rows (Tags admin filter is a no-op; features 51+ invisible) | ⬜ from 2026-07-08 GTD capture, filed 2026-07-29; traps documented: `category` name collision, `.distinct()`, GAP-067 derived-features backfill dependency |
+| [BUG-020](bug-020-quotation-line-discount-lost-on-conversion.md) | **A quotation line's discount is dropped when the quote converts to a booking** — the guest is quoted one figure and booked at a higher one | 🔴 found 2026-09-02 during the Limitless quote-flow review, **confirmed by probe not inference** (quoted £1,250, booked £1,400); `BookingService` reads `snapshot["total"]` (engine figure, pre-operator-discount) in preference to `line.total`, and nothing re-applies the discount after — so `balance_due`, the booking's own snapshot, `owner_money_*`, the payment schedule and the GAP-085 `financials` block all inherit it; **run the blast-radius query before fixing**; caused by FG-018, same error as CHECK-005 item 2 |
 
 ## 🟠 Footguns
 
 | Id | Title | Status |
 |---|---|---|
 | [FG-005](done/fg-005-idempotency-user-required.md) | `IdempotencyRecord.user` required; system actors blocked | ✅ resolved (2026-07-02, local main unpushed) — dead table dropped (`core.0006`; zero runtime writers ever); design docs annotated, issue #39 reversed; live idempotency stays the `core/idempotency.py` meta-key path |
+| [FG-018](fg-018-two-keys-named-total.md) | `total` means two different things in the quotation payload — `pricing_snapshot["total"]` is pre-operator-discount, `line.total` is what the guest pays, and the nested one looks more authoritative | ⬜ found 2026-09-02; **two independent readers picked the wrong key** — ours (BUG-020) and Limitless' (CHECK-005 item 2) — which makes it a contract problem, not a competence one; `quotations.py:85` also clobbers the engine's own `discount` key with the operator discount; recommend stop-overwriting + net-at-conversion now, rename `engine_total` when the snapshot shape is next touched |
 
 ## 🟡 Smells
 
@@ -255,8 +321,20 @@ settled Res-primary)._
 | [GAP-090](gap-090-description-block-set-parity.md) | Description sections rebuilt to the legacy block set (sub/para pairs: web des 1/2, interior, exterior, location) + own tab; `further_info` → property internal notes | 🟨 from 2026-07-20 Nick recording, filed 2026-08-11; **partly built 2026-08-12** — `internal_notes` shipped end-to-end (step 6's UI half; the `further_info` data remap remains) and the SPA no longer crashes on unknown section values, so the enum swap can land backend-first; **answers + supersedes Q-020**; our enum has no interior/exterior at all and the loader fuses each pair with `"\n\n"` (`loaders/properties.py:247–254`), so the fix is a loader re-run not a string split; `Property.video_url` already exists; ⚠️ the interior/exterior columns are **found** (`Interior1/2`, `Exterior1/2` on the same joined row) but `PropertyImageLoader` already reads all four as image captions — settle that double-read before mapping |
 | [GAP-091](gap-091-villa-info-other-information-tags.md) | Villa info → structured "Other information" tags + a free-text box (WP-searchable), on the Features surface | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; **⛔ blocked on the tag vocabulary** (never opened on screen); `FeatureCategory`/`Feature`/`PropertyFeature` spine already fits — but `FeatureServiceType` has no member for a non-service tag; splits the `FeatureDescription + RoomDescription` → `VILLA_INFO` concatenation with GAP-092 |
 | [GAP-092](gap-092-room-website-description-wrong-level.md) | Website room copy sits per-room; legacy has one blurb under all the bedrooms | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; legacy property-level `RoomDescription` (currently fused into `VILLA_INFO`) is very likely the box; ⚠️ **don't drop `Room.website_description` blind** — `backfill_room_attrs` mines it for GAP-064 facets, and legacy *does* carry a per-room column that contradicts the brief (verify, don't pick a side) |
-| [GAP-093](gap-093-remove-property-category.md) | Remove `Property.category` — country + region is enough | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; FK is non-nullable so it's a **required** create field + a fixture in ~10 test modules; **unblocks BUG-019**'s `PropertyFilter.category` name collision; wider than it looks — a full CRUD `/property-categories` ModelViewSet + admin + factory + reconcile check go with it; same shape as GAP-070 (groups) |
+| [GAP-093](done/gap-093-remove-property-category.md) | Remove `Property.category` — country + region is enough | ✅ resolved (2026-09-02, local main unpushed) — 3 units on `feat/gap-093` (b371a279 backend, 2d282f77 frontend, e18a69f6 docs): `Property.category` + `PropertyCategory` + `/property-categories` + loader/reconcile check + Zoho villa `category` key all removed (migration `properties/0006`, one-way); create form is four fields; ⚠️ Limitless to be told the Zoho key is gone; frees the `category` filter name for BUG-019 |
 | [GAP-094](gap-094-house-rules-into-booking-contract.md) | House rules must flow into the booking contract (never public; snapshot at confirmation) | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; **requirement capture only — no code change today**, no booking-contract surface exists; field itself confirmed correct |
+| [GAP-095](gap-095-erasure-propagation-to-zoho.md) | Erasure does not propagate to Zoho CRM — anonymized persons go silent, and the Flow reads our deliberate blanks as "skip" | ⬜ from the 2026-09-01 review of Limitless' parse functions; **open design question, not a Flow bug** — empty means "cleared" on erasure and "never captured" everywhere else, and the CRM cannot tell them apart; options (a) explicit erasure signal / (b) authoritative-empty field set / (c) scrub off the upsert path; compounded by add-only tags (GAP-040 special-category markers cannot be withdrawn) and the `RES_Json`/`Res_Source_Json` payload snapshots; blocked on a decision with Limitless |
+| [GAP-096](gap-096-organisation-zoho-push-kind.md) | `Organisation` has no Zoho push kind — CRM Accounts exist only as a villa side effect, agency orgs never become Accounts, renames never propagate | ⬜ from the 2026-09-01 Limitless review; register an `organisation` kind (payload = the existing `_agency_payload` shape) + backfill ordering org → contact → villa; a villa-child bump receiver is the WRONG fix (one org, N villas); **blocked on a webhook URL from Limitless**; unblocks the agency half of CHECK-001 |
+| [GAP-097](gap-097-zoho-push-delivery-confirmation.md) | A Zoho push is marked `IN_SYNC` on any HTTP 2xx — the Flows ignore their own `createRecord`/`updateRecord` responses, so CRM-side rejections are invisible | ⬜ from the 2026-09-01 Limitless review; every failure mode found in that pass lands in this blind spot (mandatory `Last_Name`, unrecognised picklist values, duplicate rules, subform rejects); two halves — they return a machine-readable error, we stop trusting the status line (an unparseable body must NOT stamp `IN_SYNC`); matters most for GAP-095, where a false `IN_SYNC` is a compliance claim we can't support |
+| [GAP-098](gap-098-legacy-zohoid-crm-matching.md) | Legacy `ZohoId` never sent and the Zoho record id never stored back — duplicates against the pre-existing CRM estate, no round-trip identity | ⬜ from the 2026-09-01 Limitless review; `SyncRecord.external_id` is already loaded and calibrated (incl. the `VillaMaster` 88/339 shared-ZohoId `expected_gap=1`) but no builder emits it and nothing writes it back; **establish the premise first** — do those ids still resolve in the target org? if not this shrinks to write-back only; the Flows' email-search fallback is a symptom of this gap and the source of the CHECK-001 merge hazard |
+| [GAP-099](gap-099-financials-payment-status.md) | The Zoho `financials` block carries amounts but no payment status — the CRM infers "deposit paid?" from `BookingStatus` and gets it wrong | ⬜ from the 2026-09-02 booking-flow review; `ComponentSplit` already has `status` + `due_at` and `_financials_payload` discards them one line before use; `gross_deposit` is the **scheduled** amount and reads like a settled one; recommend raw `PaymentStatus` values over a derived `deposit_received` bool (GAP-085's premise: we send facts, Zoho derives nothing); **offered to Limitless, not committed — do not build until they ask**, it widens a contract pinned on the 2026-07-29 call |
+| [GAP-100](gap-100-quote-push-on-status-change.md) | A quotation is pushed to Zoho once, at send, and never again — `accepted`, `expired` and `cancelled` reach the CRM by no route | ⬜ from the 2026-09-02 quote-flow review; `auto_push=False` is the right default (drafts are edited heavily) — the gap is that `send` is the only push-worthy event; push on `accept()` at minimum, which is also what makes `is_selected` non-`false` on the wire; **half of this is theirs** (CHECK-005 item 3, insert-only Flow) — coordinate, our half alone changes nothing observable |
+| [GAP-101](gap-101-sample-fixtures-shape-coverage.md) | `zoho_send_sample` covers every enum **value** and no awkward **shape** — so the fixture set Limitless built against cannot produce the cases that broke | ⬜ filed 2026-09-02 from the five-review retrospective; eleven of the highest-blast-radius CHECK findings are unreachable from the sample (insert-only needs a **second** push; multi-option, discounted, mixed-currency, sparse-financials, anonymised-person, agency-only-contact, re-pushed-villa, out-of-order-booking shapes simply aren't built); fix is a registry of small named scenario graphs inside the existing rollback envelope + a `--scenarios` flag, keeping today's graph as `baseline` byte-identical; the scenario names then replace the prose test batches in CHECK-003/004/005; **pair with GAP-097** (reachable inputs are worthless while outcomes are invisible) and land **BUG-020** before the `discounted` scenario or the sample teaches the wrong contract |
+| [CHECK-001](check-001-zoho-contact-flow-fixes.md) | Zoho **contact** flow — 9 mapping fixes raised with Limitless (email-dedupe merge hazard, agency-only contacts fail to create, 5 phone labels not 2, address line 2 ≠ state, `town` dropped, sticky agency, add-only tags, `RES_Status`/`RES_Json` written after the save, search indexing lag) | 🔎 raised by email 2026-09-01; **external party — nothing to build here**; verify with `zoho_send_sample` + read the sandbox Contacts, never by trusting `IN_SYNC` (GAP-097) |
+| [CHECK-002](check-002-zoho-enquiry-flow-fixes.md) | Zoho **enquiry** flow — 9 mapping fixes raised with Limitless (is the Deal even upserted?, second writer to Contacts, `Agency` points at the person + `agent` dropped, 3 stages → 1, `lead_status` unmapped, source hardcoded to Other, reopened deals keep `Lost_Reason`, `inbound_message`/`notes[]` dropped) + the Countries-of-Interest picklist decision | 🔎 raised by email 2026-09-01; **external party**; the region field is a Region not a country — decide picklist-vs-text before anything is seeded; erasure deliberately excluded (GAP-095) |
+| [CHECK-003](check-003-zoho-villa-flow-fixes.md) | Zoho **villa** flow — 10 mapping fixes raised with Limitless (`features[]` dropped entirely, ended management company wins, rooms subform re-creating rows, 3 functions read the create response 3 ways, underscored enum values raw, free-text region over the FK, status → boolean, unmapped coords/owner contact, PII in `RES_Source_JSON`, search 204 guard) | 🔎 raised by email 2026-09-01; **external party**; **do not build the `Property_Category` picklist** (GAP-093 removes the field); hero-image URL is ours (GAP-012), Accounts-as-side-effect is ours (GAP-096) |
+| [CHECK-004](check-004-zoho-booking-flow-fixes.md) | Zoho **booking** flow — 8 fixes + an extras-reporting decision raised with Limitless (**insert-only while we push every update**, `Status` hardcoded to "Pending Booking", inverted deposit-received test, subform recomputes net from the wrong snapshot and drops tax, sparse financials land at zero, stub villa attaches bookings to the wrong villa, third writer to Contacts creates "Unknown" orphans, agent/owner/enquiry dropped) | 🔎 raised by email 2026-09-02; **external party**; item 1 makes every other item unverifiable until fixed — verify with a **second** push after a status change, never with `IN_SYNC` (GAP-097); payment status is ours (GAP-099), push ordering is ours (GAP-096), erasure is ours (GAP-095) |
+| [CHECK-005](check-005-zoho-quote-flow-fixes.md) | Zoho **quote** flow — 10 fixes + the extras decision raised with Limitless (**multi-option lines summed as a basket**, discounted quotes overstated, insert-only, `Quote_Stage` hardcoded, header currency from line 1 on a deliberately mixed-currency payload, net recomputed when `net_to_owner` is right there, `expires_at` dropped, enquiry/agent/`is_unbranded` dropped, 4th contact-create copy, 2nd stub-villa copy) | 🔎 raised by email 2026-09-02; **external party**; item 1 is a **modelling question — settle on a call first**; verify with a **multi-line** and a **discounted** quote (the synthetic sample is single-line, zero-discount, which is why neither surfaced); ours = BUG-020, FG-018, GAP-100 |
 
 ## Open product questions
 

@@ -17,7 +17,6 @@ const PROPERTY = {
   display_name: "Villa Anemoi",
   slug: "villa-anemoi",
   status: "active",
-  category: 1,
   region: 1,
   guests: 8,
   bedrooms: 4,

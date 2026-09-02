@@ -121,7 +121,7 @@ class PropertiesConfig(AppConfig):
         # Property master record: lifecycle/identity columns only — the chatty
         # description/content fields live on child models and are deliberately
         # excluded (FG-017). Edits to a property's name, status, channel, or its
-        # category/region placement are the staff actions that leave no
+        # region placement are the staff actions that leave no
         # trail today.
         audit.track(
             Property,
@@ -132,7 +132,6 @@ class PropertiesConfig(AppConfig):
                 "licence_number",
                 "status",
                 "channel",
-                "category_id",
                 "region_id",
             ),
         )

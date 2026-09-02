@@ -44,7 +44,6 @@ ORG_NAME = "iCal Demo Org"
 # minimal property under the same slug.
 PROPERTY_SLUG = "ical-demo-villa"
 REGION_SLUG = "ical-demo-region"
-CATEGORY_SLUG = "ical-demo-category"
 GUEST_EMAIL = "ical-demo-guest@example.com"
 TERMS_VERSION = "ical-demo-terms"
 DEFAULT_OWNER_EMAIL = "demo.owner@example.com"
@@ -329,7 +328,6 @@ def _demo_property() -> Property:
     from properties.models import (
         Country,
         Property,
-        PropertyCategory,
         Region,
     )
 
@@ -341,16 +339,11 @@ def _demo_property() -> Property:
         slug=REGION_SLUG,
         defaults={"country": country, "name": "iCal Demo Region"},
     )
-    category, _ = PropertyCategory.objects.get_or_create(
-        slug=CATEGORY_SLUG,
-        defaults={"name": "iCal Demo Villa"},
-    )
     prop, _ = Property.objects.get_or_create(
         slug=PROPERTY_SLUG,
         defaults={
             "name": "iCal Demo Villa",
             "display_name": "iCal Demo Villa",
-            "category": category,
             "region": region,
         },
     )
@@ -480,7 +473,6 @@ def _delete_demo_data() -> int:
     from pricing.models import RatePlan
     from properties.models import (
         Property,
-        PropertyCategory,
         Region,
     )
     from reservations.models import (
@@ -615,5 +607,4 @@ def _delete_demo_data() -> int:
             total += User.objects.filter(pk__in=member_ids).delete()[0]
 
         Region.objects.filter(slug=REGION_SLUG).delete()
-        PropertyCategory.objects.filter(slug=CATEGORY_SLUG).delete()
     return total

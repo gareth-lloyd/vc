@@ -62,7 +62,7 @@ from properties.models.features import (
 from properties.models.finance import PropertyFinance
 from properties.models.geo import Country, NearbyPlaceType, PropertyNearbyPlace, Region
 from properties.models.images import PropertyImage
-from properties.models.property import Property, PropertyCategory
+from properties.models.property import Property
 from properties.models.rooms import Room
 from reservations.models.booking import Booking, BookingHold
 from reservations.models.charge_item import BookingChargeItem
@@ -104,7 +104,6 @@ _CHECKS: list[_Check] = [
         "Currency",
         expected_gap=4,  # junk rows (HTFG/RUPEE/RS) with zero FK references.
     ),
-    _Check("SELECT COUNT(*) FROM VillaPropertyCategory", PropertyCategory, "PropertyCategory"),
     _Check("SELECT COUNT(*) FROM VillaNearByLocationType", NearbyPlaceType, "NearbyPlaceType"),
     _Check("SELECT COUNT(*) FROM VillaFeaturesCategory", FeatureCategory, "FeatureCategory"),
     _Check(

@@ -15,7 +15,6 @@ from accounts.models import User
 from properties.models import (
     Property,
     PropertyCapacity,
-    PropertyCategory,
     Region,
 )
 
@@ -143,7 +142,6 @@ def test_list_serializer_capacity_null_when_missing(
 def test_min_guests_filter_excludes_zero_and_missing_capacity(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """Regression: `min_guests` keeps excluding properties whose capacity is
@@ -153,7 +151,6 @@ def test_min_guests_filter_excludes_zero_and_missing_capacity(
         name="Big Villa",
         display_name="Big Villa",
         slug="big-villa",
-        category=category,
         region=region,
     )
     PropertyCapacity.objects.create(property=quotable, guests=8)
@@ -161,7 +158,6 @@ def test_min_guests_filter_excludes_zero_and_missing_capacity(
         name="Zero Villa",
         display_name="Zero Villa",
         slug="zero-villa",
-        category=category,
         region=region,
     )
     PropertyCapacity.objects.create(property=zero, guests=0)
@@ -169,7 +165,6 @@ def test_min_guests_filter_excludes_zero_and_missing_capacity(
         name="No Capacity Villa",
         display_name="No Capacity Villa",
         slug="no-capacity-villa",
-        category=category,
         region=region,
     )
     api_client.force_login(staff)

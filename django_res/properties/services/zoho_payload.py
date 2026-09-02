@@ -20,7 +20,7 @@ Deliberately NO availability or pricing data — res stays the sole source of
 truth for both; the Zoho record is for segmentation/reporting only.
 
 Embedded copies of catalog/related rows (feature + room-attribute names,
-category, region/country, organisation details, person summaries) refresh
+region/country, organisation details, person summaries) refresh
 only when the villa itself next pushes — a catalog rename does NOT fan out
 re-pushes to every villa embedding it. Accepted trade-off for
 segmentation-only data; person/organisation records push their own `contact`
@@ -246,12 +246,6 @@ def build_property_payload(prop: Property) -> dict[str, Any]:
         "video_url": prop.video_url,
         "status": prop.status,
         "channel": prop.channel,
-        "category": {
-            "RES_ID": prop.category.pk,
-            "id": prop.category.pk,
-            "name": prop.category.name,
-            "slug": prop.category.slug,
-        },
         "region": _region_payload(prop.region),
         "location": _location_payload(getattr(prop, "location", None)),
         "capacity": _capacity_payload(getattr(prop, "capacity", None)),

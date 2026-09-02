@@ -19,7 +19,6 @@ from pricing.models import Currency
 from properties.enums import DepositCalcType, PriceBasis, SecurityDepositCalcType
 from properties.models import (
     Property,
-    PropertyCategory,
     PropertyDefaults,
     PropertyFinance,
     PropertySettings,
@@ -78,7 +77,6 @@ def test_snapshot_defaults_never_clobbers_existing_rows(property_: Property) -> 
 def test_api_create_snapshots_defaults(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     api_client.force_login(staff)
@@ -88,7 +86,6 @@ def test_api_create_snapshots_defaults(
             "name": "Snapshot Villa",
             "display_name": "Snapshot Villa",
             "slug": "snapshot-villa",
-            "category": category.pk,
             "region": region.pk,
         },
         format="json",

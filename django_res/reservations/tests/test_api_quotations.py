@@ -2008,7 +2008,6 @@ def _second_property(template: Property) -> Property:
         name="Second Villa",
         display_name="Second Villa",
         slug="second-villa",
-        category=template.category,
         region=template.region,
     )
 

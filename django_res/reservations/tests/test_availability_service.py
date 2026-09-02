@@ -654,7 +654,6 @@ def other_property(property_: Property) -> Property:
         name="Other Villa",
         display_name="Other Villa",
         slug="other-villa",
-        category=property_.category,
         region=property_.region,
     )
 

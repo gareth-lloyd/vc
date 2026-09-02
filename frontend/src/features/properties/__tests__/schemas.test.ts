@@ -90,11 +90,10 @@ describe("propertyCreateInputSchema", () => {
     name: "Villa Aurora",
     display_name: "Villa Aurora",
     slug: "villa-aurora",
-    category: 1,
     region: 3,
   };
 
-  it("accepts the five required fields", () => {
+  it("accepts the required fields", () => {
     expect(propertyCreateInputSchema.parse(valid)).toMatchObject(valid);
   });
 
@@ -103,11 +102,9 @@ describe("propertyCreateInputSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects an unselected FK (the 0 sentinel)", () => {
-    for (const field of ["category", "region"] as const) {
-      const result = propertyCreateInputSchema.safeParse({ ...valid, [field]: 0 });
-      expect(result.success, field).toBe(false);
-    }
+  it("rejects an unselected region (the 0 sentinel)", () => {
+    const result = propertyCreateInputSchema.safeParse({ ...valid, region: 0 });
+    expect(result.success).toBe(false);
   });
 
   it("rejects a slug with invalid characters", () => {

@@ -13,7 +13,6 @@ from properties.views import (
     FeatureViewSet,
     NearbyPlaceTypeViewSet,
     PropertyCapacityView,
-    PropertyCategoryViewSet,
     PropertyChangeOverRuleListCreateView,
     PropertyCollectionsView,
     PropertyContactAssignmentDetailView,
@@ -47,7 +46,6 @@ from properties.views.collection import (
 
 router = DefaultRouter(trailing_slash=False)
 router.register(r"properties", PropertyViewSet, basename="property")
-router.register(r"property-categories", PropertyCategoryViewSet, basename="property-category")
 router.register(r"collections", CollectionViewSet, basename="collection")
 router.register(r"features", FeatureViewSet, basename="feature")
 router.register(r"feature-categories", FeatureCategoryViewSet, basename="feature-category")

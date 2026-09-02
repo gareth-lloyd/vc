@@ -23,8 +23,8 @@ Disposition column legend:
 | `VillaMaster.IsDefaultSetting*` booleans | Nullable fields in `PropertySettings` + `GroupSettings` defaults + `effective()` resolver | Replaced | Clean inheritance; no boolean salad |
 | `VillaMaster.Latitude/Longitude` (nvarchar) | `PropertyLocation.latitude/longitude` (Decimal(9,6)) | Replaced | Numeric, indexable |
 | `VillaMaster.ZohoId`, `SyncId`, `OldVillaId` | `integrations.SyncRecord` + `legacy_id` on Property | Moved | Domain models stay focused |
-| `VillaPropertyCategory` | `properties.PropertyCategory` | Renamed | — |
-| `VillaGroup` | `properties.PropertyGroup` + `GroupSettings` + `GroupFinance` (single flat model per #36) | Renamed/Extended | Group now owns defaults; one finance row per group (no per-concern siblings) |
+| `VillaPropertyCategory` | — | Dropped (GAP-093, 2026-09-02) | Country + region is enough (owner call); `Property.category` and the lookup removed |
+| `VillaGroup` | — | Dropped (GAP-070, 2026-07-06) | Property groups left the product; global `PropertyDefaults` snapshotted at creation instead |
 | `VillaCountry` | `properties.Country` | Renamed | Canonical ISO-3166 rows are seeded via `django-countries` (migration `properties.0009`); legacy `VillaCountry` rows merge onto them by iso2 (with name-lookup fallback for rows missing ISO codes). Unrecognised rows collapse onto the `unknown_country()` sentinel so downstream FKs still resolve. |
 | `VillaRegion` | `properties.Region` | Renamed | — |
 | `VillaRoom` (+ bed counts) | `properties.Room` + `RoomBeds` (OneToOne) | Split | Beds split out; placement enum |
@@ -249,7 +249,7 @@ Other previously-soft-deletable models are reassigned as follows:
 
 - **`status` enum already in design (kept):** `Property` (DRAFT/ACTIVE/ARCHIVED), `Booking` (11 states), `Quotation` (DRAFT/SENT/ACCEPTED/EXPIRED/CANCELLED), `Enquiry` (NEW/CONTACTED/QUOTED/LOST/CONVERTED), `Refund` (PENDING/APPROVED/REJECTED/EXECUTING/SUCCEEDED/FAILED/CANCELLED), `Payment` (PENDING/PROCESSING/SUCCEEDED/FAILED/REFUNDED/CANCELLED/EXPIRED), `SecurityDeposit` (per-kind enum).
 - **`status` enum added:** `Person` (`PersonStatus`: `ACTIVE`/`INACTIVE`/`ANONYMIZED`).
-- **`is_active` boolean only:** `User` (Django standard), `Currency`, `Country`, `Region`, `FeatureCategory`, `Feature`, `Collection`, `NearbyPlaceType`, `PropertyCategory`, `PropertyGroup`, `RatePlan`, `RateCard`, `RateRule`, `Discount`, `Extra`, `ChangeOverRule`, `EmailTemplate`, `SmtpProfile`.
+- **`is_active` boolean only:** `User` (Django standard), `Currency`, `Country`, `Region`, `FeatureCategory`, `Feature`, `Collection`, `NearbyPlaceType`, `RatePlan`, `RateCard`, `RateRule`, `Discount`, `Extra`, `ChangeOverRule`, `EmailTemplate`, `SmtpProfile`.
 - **Hard delete (CASCADE from owner, PROTECT from references):** `PropertyLocation`, `PropertyCapacity`, `PropertySettings`, `Room`, `RoomBeds`, `PropertyImage`, `PropertyNearbyPlace`, `PersonEmail`, `PersonPhone`, `CollectionMembership`, `PropertyContactAssignment`, `Commission`, `TaxPolicy`, `BankAccount`, `PaymentSchedule`, `SecurityDepositPolicy`, the group-level finance siblings.
 - **Append-only event/audit (never deleted):** `BookingEvent`, `PaymentEvent`, `EnquiryEvent`, `WebhookDelivery`, `SyncRun`, `SyncIssue`, `EmailLog`, `FxRate`, `AuditLog`.
 - **Terminal-timestamp lifecycle (already in design):** `BookingHold.released_at` (expired/released holds stay visible; only the partial `EXCLUDE` index treats them as inactive). `Booking.archived_at` (orthogonal operator-facing tidy-out flag; the underlying terminal `status` still tells the truth).

@@ -1,9 +1,7 @@
 """Sentinel "unknown" rows used as fallbacks when a legacy FK can't be
 resolved.
 
-Pattern mirrors the in-line "Uncategorised" PropertyCategory fallback in
-`loaders/properties.py`. Stable `legacy_id='__unknown__'` keeps the rows
-idempotent across re-runs.
+Stable `legacy_id='__unknown__'` keeps the rows idempotent across re-runs.
 """
 
 from __future__ import annotations

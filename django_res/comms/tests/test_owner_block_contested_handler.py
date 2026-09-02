@@ -20,7 +20,6 @@ from comms.signals import owner_block_contested_handler
 from properties.models import (
     Country,
     Property,
-    PropertyCategory,
     PropertyContactAssignment,
     Region,
 )
@@ -36,12 +35,10 @@ def _property_with_owner(email: str) -> Property:
         slug="sw-contest",
         defaults={"country": country, "name": "South West"},
     )
-    category, _ = PropertyCategory.objects.get_or_create(slug="villa", defaults={"name": "Villa"})
     property_ = Property.objects.create(
         name="Contest Villa",
         display_name="Contest Villa",
         slug="contest-villa",
-        category=category,
         region=region,
     )
     contact = Person.objects.create(first_name="Olive", last_name="Owner")

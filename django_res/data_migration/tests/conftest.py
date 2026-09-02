@@ -19,19 +19,17 @@ def seeded(db: None) -> Property:
     from data_migration.base import LoadReport
     from data_migration.loaders.reservations import ClientLoader
     from pricing.models.currency import Currency
-    from properties.models import Country, PropertyCategory, Region
+    from properties.models import Country, Region
     from properties.models.property import Property
 
     country, _ = Country.objects.get_or_create(
         iso2="GB", defaults={"name": "United Kingdom", "iso3": "GBR"}
     )
     region = Region.objects.create(country=country, name="South West", slug="south-west")
-    category = PropertyCategory.objects.create(name="Villa", slug="villa")
     prop = Property.objects.create(
         name="Test Villa",
         display_name="Test Villa",
         slug="test-villa",
-        category=category,
         region=region,
         legacy_id="900",
     )

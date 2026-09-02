@@ -22,7 +22,6 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 | `VillaCountry` | 23 | country | `properties.Country` (onto ISO seed) |
 | `VillaRegion` | 64 | region | `properties.Region` |
 | `VillaCurrency` | 7 | currency | `pricing.Currency` |
-| `VillaPropertyCategory` | 4 | property_category | `properties.PropertyCategory` |
 | `VillaNearByLocationType` | 8 | nearby_place_type | `properties.NearbyPlaceType` |
 | `VillaFeaturesCategory` | 8 | feature_category | `properties.FeatureCategory` |
 | `VillaFeatures` | 307 | feature | `properties.Feature` |
@@ -30,7 +29,6 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 | `VillaContact` | 233 | contact | `accounts.Person` + agency `Organisation` |
 | `VillaContactEmail` | 222 | contact_email | `accounts.PersonEmail` |
 | `VillaContactTele` | 165 | contact_phone | `accounts.PersonPhone` |
-| `VillaGroup` | 45 | property_group | `properties.PropertyGroup` (+Settings, +Finance) |
 | `VillaMaster` | 441 | property | `properties.Property` + 4 satellites |
 | `VillaCollection` | 44 | collection | `properties.Collection` |
 | `VillaCollectionsMappings` | 922 | collection_membership | `properties.CollectionMembership` |
@@ -45,7 +43,7 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 | `VillaClientPrefMaster` | 13 | guest_preference_type | `reservations.GuestPreferenceType` |
 | `ClientPreferenceDetails` | 167 | guest_preference | `reservations.GuestPreference` |
 | `VillaEnquire` | 451 | enquiry | `reservations.Enquiry` |
-| `VillaFinance` | 1526 | property_finance (+group_finance derives) | `properties.PropertyFinance` / `GroupFinance` |
+| `VillaFinance` | 1526 | property_finance | `properties.PropertyFinance` |
 | `VillaQuotationMaster` | 19 | quotation | `reservations.Quotation` |
 | `VillaQuotationDetails` | 23 | quotation_line | `reservations.QuotationLine` |
 | `VillaBooking` | 3 | booking | `reservations.Booking` (+synth artifacts) |
@@ -70,6 +68,8 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 | Table | Rows | Justification |
 |---|---|---|
 | `VillaRoles` | 5 | Static 5-row lookup → `ContactRole` TextChoices; mapped 1:1 in `_ROLE_MAP` (GAP-048). |
+| `VillaPropertyCategory` | 4 | **DECISION 2026-09-01: DROP (owner call, GAP-093)** — country + region is enough; `Property.category` and the `PropertyCategory` lookup were removed, so there is no target. |
+| `VillaGroup` | 45 | **DECISION 2026-07-05: DROP (owner call, GAP-070)** — property groups left the product; the group-level settings/finance floors became the `PropertyDefaults` singleton. Loader + `PropertyGroup` removed. |
 | `VillaStatus` | 4 | Static lookup → `Property.status` TextChoices. |
 | `EnquireStatus` | 4 | Static lookup → `Enquiry` stage enum (int map in loader). |
 | `AvailabilityStatus` | 9 | Status-code lookup for `VillaAvailability` day grid → new model has no day grid (see BLOCKER below for the data itself). |

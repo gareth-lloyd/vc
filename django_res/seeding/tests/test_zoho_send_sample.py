@@ -221,7 +221,7 @@ def test_kind_with_unset_sample_url_is_skipped(monkeypatch: pytest.MonkeyPatch) 
 
     assert not payloads["booking"], "booking pushed despite unset URL"
     assert payloads["contact"], "other kinds should still push"
-    assert "[booking] sample webhook URL unset — skipped" in out
+    assert "[baseline/booking] sample webhook URL unset — skipped" in out
 
 
 # ── --kinds subset ───────────────────────────────────────────────────────
@@ -240,6 +240,60 @@ def test_kinds_option_restricts_pushes(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_kinds_option_rejects_unknown_kind() -> None:
     with pytest.raises(CommandError, match="Unknown kind"):
         call_command("zoho_send_sample", "--kinds", "contact,bogus")
+
+
+# ── --scenarios subset ───────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_push_output_is_scenario_prefixed(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_sample_env(monkeypatch)
+
+    _post, _payloads, out = _run_capturing_posts(monkeypatch)
+
+    assert "[baseline/villa] pk=" in out
+
+
+@pytest.mark.django_db
+def test_scenarios_baseline_is_what_a_bare_run_does(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "baseline")
+
+    assert {kind for kind, sent in payloads.items() if sent} == set(_URLS)
+
+
+@pytest.mark.django_db
+def test_scenarios_all_includes_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, out = _run_capturing_posts(monkeypatch, "--scenarios", "all")
+
+    assert payloads["villa"], "baseline must be part of --scenarios all"
+    assert "[baseline/villa] pk=" in out
+
+
+def test_scenarios_option_rejects_unknown_scenario() -> None:
+    with pytest.raises(CommandError, match="Unknown scenario"):
+        call_command("zoho_send_sample", "--scenarios", "baseline,bogus")
+
+
+def test_scenarios_option_rejects_a_typo_alongside_all() -> None:
+    # `all` must not short-circuit validation, or a misspelt name is swallowed.
+    with pytest.raises(CommandError, match="Unknown scenario"):
+        call_command("zoho_send_sample", "--scenarios", "all,bogus")
+
+
+@pytest.mark.django_db
+def test_separator_only_scenarios_falls_back_to_the_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Not a silent zero-record run reporting success.
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", ",")
+
+    assert payloads["villa"]
 
 
 # ── guard ────────────────────────────────────────────────────────────────

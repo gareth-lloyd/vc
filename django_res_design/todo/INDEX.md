@@ -14,9 +14,10 @@ Status icons:
 - 🟨 partial — code complete, follow-up work remains
 - ✏️ needs revision before implementing (premise partly answered / re-scope)
 - ⏸ superseded-pending — folded into another ticket, drop when it lands
+- 🔎 check — external party's work; closed by verifying, not building
 
-Scoreboard (2026-07-29 recount from the files themselves — close-outs to 2026-07-27 incl. GAP-082, BUG-018 and GAP-072; BUG-017 deleted outright 2026-07-10; `done/gap-081-dev-exercise.md` is a runbook companion, not a ticket): **141 done** (134 resolved + 7 dropped), **38 open**
-(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080; +1 from the 2026-07-15 Limitless call, GAP-081; +1 descoped from GAP-081, GAP-082; +5 from the 2026-07-29 Limitless call, GAP-085–089; +3 filed 2026-07-29 from earlier captures, BUG-019 + GAP-083/084; +6 from the 2026-07-20 Nick recording filed 2026-08-11, GAP-090–094 + Q-025). Recently-resolved tickets stay
+Scoreboard (2026-07-29 recount from the files themselves — close-outs to 2026-07-27 incl. GAP-082, BUG-018 and GAP-072; BUG-017 deleted outright 2026-07-10; `done/gap-081-dev-exercise.md` is a runbook companion, not a ticket): **141 done** (134 resolved + 7 dropped), **45 open**
+(incl. ✏️ revise, 🟨 partial, and ⏸ superseded-pending; +7 from the 2026-07-08 Nick call, GAP-074–080; +1 from the 2026-07-15 Limitless call, GAP-081; +1 descoped from GAP-081, GAP-082; +5 from the 2026-07-29 Limitless call, GAP-085–089; +3 filed 2026-07-29 from earlier captures, BUG-019 + GAP-083/084; +6 from the 2026-07-20 Nick recording filed 2026-08-11, GAP-090–094 + Q-025; +6 from the 2026-09-01 Limitless parse-function review, GAP-095–098 + the first CHECK tickets, CHECK-001–003). Recently-resolved tickets stay
 listed inline in their topic section marked ✅ (not moved to the bottom table); the
 scoreboard counts the genuinely-open (⬜/🟨/✏️/⏸/🔵) rows. Clusters: GAP-090–094 property-onboarding
 parity (2026-07-20 Nick recording); GAP-064–068 room-model
@@ -107,6 +108,21 @@ already shipped), room internal notes, and `Property.video_url`. **Nearby**:
 confirmed keep, but the recording ends mid-sentence at 6:15 (*"at the moment
 there's no nearby on our existing website…"*) — rationale unknown, no ticket
 filed; ask if a second recording exists._
+
+_2026-09-01: all three Limitless Zoho Flow functions reviewed against the payloads we
+actually send (`limitless_parse_res_contact`, `limitless_parse_enquiry`,
+`limitless_upsert_villa`). Findings were split by owner. **Theirs** became the first
+**CHECK-** tickets — a new type for work owned by an external party, closed by
+*verifying* rather than building (see `README.md` §Conventions): **CHECK-001**
+(contact flow), **CHECK-002** (enquiry flow), **CHECK-003** (villa flow); each was
+sent to the dev by email the same day. **Ours** became **GAP-095** (erasure does not
+propagate to the CRM — an open design question, not a Flow bug), **GAP-096**
+(`Organisation` has no push kind, so CRM Accounts are a villa side effect and
+renames never propagate), **GAP-097** (a push is `IN_SYNC` on any HTTP 2xx, so
+CRM-side rejections are invisible — this is why every CHECK specifies push-and-read
+verification), and **GAP-098** (the legacy `ZohoId` we already load is never sent and
+the Zoho record id is never stored back). GAP-097 and GAP-098 share one
+response-contract conversation with Limitless; settle them together._
 
 _2026-07-16: the Zoho external spec landed on the 2026-07-15 Limitless call —
 **GAP-081** (outbound push res → Zoho Flow webhooks, upsert-only, res PKs as
@@ -257,6 +273,13 @@ settled Res-primary)._
 | [GAP-092](gap-092-room-website-description-wrong-level.md) | Website room copy sits per-room; legacy has one blurb under all the bedrooms | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; legacy property-level `RoomDescription` (currently fused into `VILLA_INFO`) is very likely the box; ⚠️ **don't drop `Room.website_description` blind** — `backfill_room_attrs` mines it for GAP-064 facets, and legacy *does* carry a per-room column that contradicts the brief (verify, don't pick a side) |
 | [GAP-093](gap-093-remove-property-category.md) | Remove `Property.category` — country + region is enough | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; FK is non-nullable so it's a **required** create field + a fixture in ~10 test modules; **unblocks BUG-019**'s `PropertyFilter.category` name collision; wider than it looks — a full CRUD `/property-categories` ModelViewSet + admin + factory + reconcile check go with it; same shape as GAP-070 (groups) |
 | [GAP-094](gap-094-house-rules-into-booking-contract.md) | House rules must flow into the booking contract (never public; snapshot at confirmation) | ⬜ from 2026-07-20 Nick recording, filed 2026-08-11; **requirement capture only — no code change today**, no booking-contract surface exists; field itself confirmed correct |
+| [GAP-095](gap-095-erasure-propagation-to-zoho.md) | Erasure does not propagate to Zoho CRM — anonymized persons go silent, and the Flow reads our deliberate blanks as "skip" | ⬜ from the 2026-09-01 review of Limitless' parse functions; **open design question, not a Flow bug** — empty means "cleared" on erasure and "never captured" everywhere else, and the CRM cannot tell them apart; options (a) explicit erasure signal / (b) authoritative-empty field set / (c) scrub off the upsert path; compounded by add-only tags (GAP-040 special-category markers cannot be withdrawn) and the `RES_Json`/`Res_Source_Json` payload snapshots; blocked on a decision with Limitless |
+| [GAP-096](gap-096-organisation-zoho-push-kind.md) | `Organisation` has no Zoho push kind — CRM Accounts exist only as a villa side effect, agency orgs never become Accounts, renames never propagate | ⬜ from the 2026-09-01 Limitless review; register an `organisation` kind (payload = the existing `_agency_payload` shape) + backfill ordering org → contact → villa; a villa-child bump receiver is the WRONG fix (one org, N villas); **blocked on a webhook URL from Limitless**; unblocks the agency half of CHECK-001 |
+| [GAP-097](gap-097-zoho-push-delivery-confirmation.md) | A Zoho push is marked `IN_SYNC` on any HTTP 2xx — the Flows ignore their own `createRecord`/`updateRecord` responses, so CRM-side rejections are invisible | ⬜ from the 2026-09-01 Limitless review; every failure mode found in that pass lands in this blind spot (mandatory `Last_Name`, unrecognised picklist values, duplicate rules, subform rejects); two halves — they return a machine-readable error, we stop trusting the status line (an unparseable body must NOT stamp `IN_SYNC`); matters most for GAP-095, where a false `IN_SYNC` is a compliance claim we can't support |
+| [GAP-098](gap-098-legacy-zohoid-crm-matching.md) | Legacy `ZohoId` never sent and the Zoho record id never stored back — duplicates against the pre-existing CRM estate, no round-trip identity | ⬜ from the 2026-09-01 Limitless review; `SyncRecord.external_id` is already loaded and calibrated (incl. the `VillaMaster` 88/339 shared-ZohoId `expected_gap=1`) but no builder emits it and nothing writes it back; **establish the premise first** — do those ids still resolve in the target org? if not this shrinks to write-back only; the Flows' email-search fallback is a symptom of this gap and the source of the CHECK-001 merge hazard |
+| [CHECK-001](check-001-zoho-contact-flow-fixes.md) | Zoho **contact** flow — 9 mapping fixes raised with Limitless (email-dedupe merge hazard, agency-only contacts fail to create, 5 phone labels not 2, address line 2 ≠ state, `town` dropped, sticky agency, add-only tags, `RES_Status`/`RES_Json` written after the save, search indexing lag) | 🔎 raised by email 2026-09-01; **external party — nothing to build here**; verify with `zoho_send_sample` + read the sandbox Contacts, never by trusting `IN_SYNC` (GAP-097) |
+| [CHECK-002](check-002-zoho-enquiry-flow-fixes.md) | Zoho **enquiry** flow — 9 mapping fixes raised with Limitless (is the Deal even upserted?, second writer to Contacts, `Agency` points at the person + `agent` dropped, 3 stages → 1, `lead_status` unmapped, source hardcoded to Other, reopened deals keep `Lost_Reason`, `inbound_message`/`notes[]` dropped) + the Countries-of-Interest picklist decision | 🔎 raised by email 2026-09-01; **external party**; the region field is a Region not a country — decide picklist-vs-text before anything is seeded; erasure deliberately excluded (GAP-095) |
+| [CHECK-003](check-003-zoho-villa-flow-fixes.md) | Zoho **villa** flow — 10 mapping fixes raised with Limitless (`features[]` dropped entirely, ended management company wins, rooms subform re-creating rows, 3 functions read the create response 3 ways, underscored enum values raw, free-text region over the FK, status → boolean, unmapped coords/owner contact, PII in `RES_Source_JSON`, search 204 guard) | 🔎 raised by email 2026-09-01; **external party**; **do not build the `Property_Category` picklist** (GAP-093 removes the field); hero-image URL is ours (GAP-012), Accounts-as-side-effect is ours (GAP-096) |
 
 ## Open product questions
 

@@ -11,13 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +22,7 @@ import { applyApiErrorToForm } from "@/lib/api/forms";
 import { fieldErrorText } from "@/lib/forms/fieldError";
 import { slugify } from "@/lib/format/slug";
 import { propertyDetailsPath } from "@/lib/routes";
-import { useCreateProperty, usePropertyCategories } from "../hooks";
+import { useCreateProperty } from "../hooks";
 import { propertyCreateInputSchema, type PropertyCreateInput } from "../schemas";
 
 interface CreatePropertyDialogProps {
@@ -42,7 +35,6 @@ const CREATE_DEFAULTS: PropertyCreateInput = {
   display_name: "",
   slug: "",
   // `0` is the unselected sentinel — the schema's `.min(1)` rejects it.
-  category: 0,
   region: 0,
 };
 
@@ -54,7 +46,6 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
     resolver: zodResolver(propertyCreateInputSchema),
     defaultValues: CREATE_DEFAULTS,
   });
-  const categoryCtrl = useController({ control: form.control, name: "category" });
   const regionCtrl = useController({ control: form.control, name: "region" });
 
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
@@ -66,7 +57,6 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
   const [slugEdited, setSlugEdited] = useState(false);
   const [displayNameEdited, setDisplayNameEdited] = useState(false);
 
-  const categories = usePropertyCategories();
   const createMutation = useCreateProperty();
 
   useEffect(() => {
@@ -106,8 +96,6 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
       }
     }
   };
-
-  const categoryOptions = categories.data?.results ?? [];
 
   const handleCountryChange = (countryId: number) => {
     setCountry(countryId);
@@ -172,30 +160,6 @@ export function CreatePropertyDialog({ open, onOpenChange }: CreatePropertyDialo
             {form.formState.errors.slug ? (
               <p className="text-destructive text-sm" role="alert">
                 {fieldErrorText(t, form.formState.errors.slug.message)}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="create-category">{t("create.fields.category")}</Label>
-            <Select
-              value={categoryCtrl.field.value ? String(categoryCtrl.field.value) : ""}
-              onValueChange={(v) => categoryCtrl.field.onChange(Number(v))}
-            >
-              <SelectTrigger id="create-category" aria-label={t("create.fields.category")}>
-                <SelectValue placeholder={t("create.fields.category_placeholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {categoryOptions.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.formState.errors.category ? (
-              <p className="text-destructive text-sm" role="alert">
-                {fieldErrorText(t, form.formState.errors.category.message)}
               </p>
             ) : null}
           </div>

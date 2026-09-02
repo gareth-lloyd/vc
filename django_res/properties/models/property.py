@@ -5,28 +5,11 @@ from typing import TYPE_CHECKING
 
 from django.db import models
 
-from core.models.base import AuditedModel, TimestampedModel
+from core.models.base import AuditedModel
 from properties.enums import PropertyChannel, PropertyStatus
 
 if TYPE_CHECKING:
     from properties.models.images import PropertyImage
-
-
-class PropertyCategory(TimestampedModel):
-    """Editable lookup of property kinds (villa, apartment, chalet…)."""
-
-    name = models.CharField(max_length=128, unique=True)
-    slug = models.SlugField(max_length=128, unique=True)
-    sort_order = models.PositiveIntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
-
-    class Meta:
-        ordering = ["sort_order", "name"]
-        verbose_name_plural = "property categories"
-
-    def __str__(self) -> str:
-        return self.name
 
 
 class Property(AuditedModel):
@@ -46,11 +29,6 @@ class Property(AuditedModel):
         max_length=16,
         choices=PropertyChannel.choices,
         default=PropertyChannel.DIRECT,
-    )
-    category = models.ForeignKey(
-        PropertyCategory,
-        on_delete=models.PROTECT,
-        related_name="properties",
     )
     region = models.ForeignKey(
         "properties.Region",

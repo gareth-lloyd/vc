@@ -8,6 +8,7 @@ NEVER unregister it (xdist worker leak) — behaviour is toggled via
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
@@ -32,11 +33,13 @@ from properties.factories import (
     FeatureFactory,
     PropertyContactAssignmentFactory,
     PropertyFactory,
+    RegionFactory,
     RoomAttributeFactory,
     RoomFactory,
 )
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.features import Feature, PropertyFeature
+from properties.models.geo import Region
 from properties.models.location import PropertyLocation
 from properties.models.property import Property
 from properties.models.rooms import Room, RoomAttribute, RoomAttributeAssignment
@@ -63,13 +66,11 @@ def _feature(**kwargs: Any) -> Feature:
 
 def _bare_property() -> Property:
     """A Property WITHOUT the factory's child rows (location/capacity/image)."""
-    template = _property()  # supplies reusable category + region
     return Property.objects.create(
         name="Bare Villa",
         display_name="Bare Villa",
-        slug=f"bare-villa-{template.pk}",
-        category=template.category,
-        region=template.region,
+        slug=f"bare-villa-{uuid.uuid4().hex[:8]}",
+        region=cast(Region, RegionFactory()),
     )
 
 
@@ -138,12 +139,6 @@ def test_payload_identity_and_region() -> None:
     assert payload["video_url"] == ""
     assert payload["status"] == prop.status
     assert payload["channel"] == prop.channel
-    assert payload["category"] == {
-        "RES_ID": prop.category.pk,
-        "id": prop.category.pk,
-        "name": prop.category.name,
-        "slug": prop.category.slug,
-    }
     region = payload["region"]
     assert region["RES_ID"] == prop.region.pk
     assert region["name"] == prop.region.name
@@ -429,10 +424,14 @@ def test_payload_omits_villa_url_note_availability_and_pricing() -> None:
     RoomFactory(property=prop)
     PropertyFeature.objects.create(property=prop, feature=_feature())
 
-    keys = _all_keys(build_property_payload(prop))
+    payload = build_property_payload(prop)
+    keys = _all_keys(payload)
 
     assert "Villa_URL" not in keys
     assert "Note" not in keys
+    # GAP-093: Property.category is gone and the key was dropped outright.
+    # Top-level only — feature rows legitimately carry their own `category`.
+    assert "category" not in payload
     assert not [k for k in keys if "availability" in k.lower()]
     assert not [k for k in keys if "price" in k.lower() or "pricing" in k.lower()]
 

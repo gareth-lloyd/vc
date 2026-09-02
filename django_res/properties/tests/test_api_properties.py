@@ -19,7 +19,6 @@ from properties.models import (
     FeatureCategory,
     Property,
     PropertyCalendarFeed,
-    PropertyCategory,
     PropertyDescription,
     PropertyFeature,
     PropertyImage,
@@ -54,7 +53,6 @@ def test_list_properties_returns_results(
 def test_list_orders_collisions_deterministically(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """Equal names must fall back to ascending id so page boundaries are stable.
@@ -67,7 +65,6 @@ def test_list_orders_collisions_deterministically(
             name="Shared Name",
             display_name="Shared Name",
             slug=f"shared-{i}",
-            category=category,
             region=region,
         )
         for i in range(3)
@@ -94,9 +91,7 @@ def test_list_includes_region_and_country_names(
 
 
 @pytest.mark.django_db
-def test_list_orders_by_country_then_region_then_name(
-    api_client: APIClient, staff: User, category: PropertyCategory
-) -> None:
+def test_list_orders_by_country_then_region_then_name(api_client: APIClient, staff: User) -> None:
     """GAP-078: `ordering=region__country__name,region__name,name,id` bunches
     candidates country → region → name for the quote builder picker, with the
     trailing `id` keeping name collisions page-stable (OrderingFilter REPLACES
@@ -108,9 +103,7 @@ def test_list_orders_by_country_then_region_then_name(
     crete = cast(Region, factories.RegionFactory(country=greece, name="Crete"))
 
     def make(name: str, slug: str, reg: Region) -> Property:
-        return Property.objects.create(
-            name=name, display_name=name, slug=slug, category=category, region=reg
-        )
+        return Property.objects.create(name=name, display_name=name, slug=slug, region=reg)
 
     zeta = make("GeoSort Zeta", "geosort-zeta", crete)
     alpha = make("GeoSort Alpha", "geosort-alpha", ibiza)
@@ -134,7 +127,6 @@ def test_list_orders_by_country_then_region_then_name(
 def test_create_property_as_staff(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     api_client.force_login(staff)
@@ -144,7 +136,6 @@ def test_create_property_as_staff(
             "name": "Fresh Villa",
             "display_name": "Fresh Villa",
             "slug": "fresh-villa",
-            "category": category.pk,
             "region": region.pk,
         },
         format="json",
@@ -164,7 +155,6 @@ def test_create_property_as_staff(
 def test_create_property_rejected_for_viewer(
     api_client: APIClient,
     viewer: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     api_client.force_login(viewer)
@@ -174,7 +164,6 @@ def test_create_property_rejected_for_viewer(
             "name": "Fresh Villa",
             "display_name": "Fresh Villa",
             "slug": "fresh-villa",
-            "category": category.pk,
             "region": region.pk,
         },
         format="json",
@@ -361,7 +350,6 @@ def _named_feature(name: str, slug: str, category: FeatureCategory) -> Feature:
 def test_create_property_persists_feature_order(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """The order of `features` on create becomes the per-villa `sort_order`."""
@@ -377,7 +365,6 @@ def test_create_property_persists_feature_order(
             "name": "Ordered Villa",
             "display_name": "Ordered Villa",
             "slug": "ordered-villa",
-            "category": category.pk,
             "region": region.pk,
             "features": [c.pk, a.pk, b.pk],
         },
@@ -745,7 +732,6 @@ def test_property_with_both_feed_and_calendar_url(
 def test_create_response_includes_flag_via_fallback(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """`create` serializes a fresh, non-annotated instance — the SMF must fall
@@ -757,7 +743,6 @@ def test_create_response_includes_flag_via_fallback(
             "name": "Fresh Villa",
             "display_name": "Fresh Villa",
             "slug": "fresh-villa",
-            "category": category.pk,
             "region": region.pk,
         },
         format="json",
@@ -782,7 +767,6 @@ def test_duplicate_response_includes_flag_via_fallback(
 def test_list_query_count_constant_with_feeds_and_settings(
     api_client: APIClient,
     staff: User,
-    category: PropertyCategory,
     region: Region,
 ) -> None:
     """Surfacing the flags (scalar `Exists`/`Subquery`), `calendar_url`
@@ -796,7 +780,6 @@ def test_list_query_count_constant_with_feeds_and_settings(
                 name=f"QC Villa {idx}",
                 display_name=f"QC Villa {idx}",
                 slug=f"qc-villa-{idx}",
-                category=category,
                 region=region,
                 # Non-null actor FK so a forgotten select_related actually N+1s
                 # when availability_confirmed_by_name resolves the name (GAP-033).

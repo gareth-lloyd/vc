@@ -59,7 +59,7 @@ Numeric `BigAutoField` PKs for entities frequently referenced in URLs (`Booking.
 ### Property
 The rentable unit (a villa). Replaces `VillaMaster`.
 
-Key fields: `name`, `display_name`, `slug`, `status` (enum), `category` (FK), `property_group` (FK), `region` (FK), `country` (FK), `currency` (FK), `timezone`, `latitude`, `longitude`, `address_*` fields, `licence_number`, `bedrooms`, `bathrooms`, `ensuites`, `guests`, `additional_guests`, `max_occupancy` (derived), `size_sqm`, `slug`.
+Key fields: `name`, `display_name`, `slug`, `status` (enum), `region` (FK), `country` (FK), `currency` (FK), `timezone`, `latitude`, `longitude`, `address_*` fields, `licence_number`, `bedrooms`, `bathrooms`, `ensuites`, `guests`, `additional_guests`, `max_occupancy` (derived), `size_sqm`, `slug`.
 
 Sub-resources (own models):
 - `PropertyImage` — image with role tags (`hero`, `interior_1`, `exterior_1`, `gallery`), order, alt text, caption, signed-URL key. Original `VillaPropertyImage`.
@@ -74,12 +74,6 @@ Sub-resources (own models):
 
 **Finance** (split out): `PropertyFinance` 1:1, with `GroupFinance` 1:1 on `PropertyGroup` as the inheritance floor.
 - Single flat model carrying commission (`commission_calculation_type`, `commission_amount`, `commission_note`), tax (`tax_number`, `tax_is_exempt`, `tax_percentage`), bank account (`bank_account_*` block), payment schedule (`deposit_*` / `interim_*` / `days_*_before_arrival`), and security-deposit policy (`security_deposit_*` block). All nullable on `PropertyFinance`; `null` = inherit from `GroupFinance`. Group-level fields are non-nullable with defaults. Original `VillaFinance`. The earlier 5-OneToOne-children split was collapsed; see reconciliation issue #36.
-
-### PropertyCategory
-Original `VillaPropertyCategory`. Fields: `name`, `description`. Lookup.
-
-### PropertyGroup
-Portfolio / brand group; properties grouped by owner or agency. Fields: `name`, `description`. Original `VillaGroup`.
 
 ### Collection
 Curated marketing set (e.g., "Luxury Villas", "Pet-Friendly"). Fields: `name`, `slug`, `description`, `is_active`. Original `VillaCollection`.
@@ -458,8 +452,6 @@ Property (many)──(many) Person            (kind=CONTACT, via ContactProperty
 Property (many)──── (1) Region
 Property (many)──── (1) Country
 Property (many)──── (1) Currency
-Property (many)──── (1) PropertyGroup
-Property (many)──── (1) PropertyCategory
 
 Region (many)──── (1) Country
 

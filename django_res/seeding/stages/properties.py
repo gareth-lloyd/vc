@@ -20,6 +20,7 @@ from pricing.factories import (
     RatePeriodFactory,
     RatePlanFactory,
 )
+from pricing.models import RatePlan
 from properties.enums import PrefilledChangeOverDay
 from properties.factories import (
     ChangeOverRuleFactory,
@@ -170,8 +171,11 @@ def _run(ctx: SeedContext) -> int:
         by_occupancy = ctx.knobs.realistic_pricing and (
             ctx.rng.random() < ctx.knobs.pct_occupancy_bands
         )
-        plan = RatePlanFactory(
-            property=prop, currency=currency, prices_by_occupancy=by_occupancy, **plan_kwargs
+        plan = cast(
+            RatePlan,
+            RatePlanFactory(
+                property=prop, currency=currency, prices_by_occupancy=by_occupancy, **plan_kwargs
+            ),
         )
         seed_included_services(prop, i)
         if ctx.knobs.realistic_pricing:

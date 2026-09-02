@@ -19,8 +19,6 @@ const propertyFixture = {
   licence_number: "ETV-1234",
   status: "active",
   channel: "direct",
-  category: null,
-  group: null,
   region: null,
   feature_ids: [3, 4],
   legacy_id: null,

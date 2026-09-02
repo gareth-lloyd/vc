@@ -24,7 +24,7 @@ from properties.enums import CommissionCalcType
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.finance import PropertyFinance
 from properties.models.geo import Country, Region
-from properties.models.property import Property, PropertyCategory
+from properties.models.property import Property
 
 pytestmark = pytest.mark.django_db
 
@@ -89,12 +89,10 @@ def villa_with_owner(db: None) -> tuple[Property, Person]:
         iso2="GR", defaults={"name": "Greece", "iso3": "GRC"}
     )
     region = Region.objects.create(country=country, name="Crete", slug="crete")
-    cat = PropertyCategory.objects.create(name="Villa", slug="villa")
     prop = Property.objects.create(
         name="P",
         display_name="P",
         slug="p",
-        category=cat,
         region=region,
         legacy_id="900",
     )
@@ -262,7 +260,6 @@ def test_fallback_ignores_properties_without_legacy_id(
         name="New",
         display_name="New",
         slug="new",
-        category=prop.category,
         region=prop.region,
     )
     loader = _loader_with_templates({"55": TEMPLATE})

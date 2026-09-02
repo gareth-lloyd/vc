@@ -115,7 +115,7 @@ Core CRUD plus heavy sub-resource surface. Property is the most-edited entity in
 #### Core
 | Method | Path | Purpose | Notes |
 |---|---|---|---|
-| GET | `/properties` | List | filters: `status`, `category`, `group`, `region`, `country`, `site`, `collection`, `min_bedrooms`, `max_bedrooms`, `min_guests`, `q`; `include=`; `ordering=` |
+| GET | `/properties` | List | filters: `status`, `region`, `country`, `site`, `collection`, `min_bedrooms`, `max_bedrooms`, `min_guests`, `q`; `include=`; `ordering=` |
 | POST | `/properties` | Create | staff |
 | GET | `/properties/{id}` | Detail | accepts numeric id or slug |
 | PATCH | `/properties/{id}` | Partial update | |
@@ -228,20 +228,6 @@ Per-property bounded set of weekdays on which a booking may start. Many rows per
 ### 2.3 Property Metadata
 
 Catalogue resources — mostly thin CRUD, all admin-scoped writes, anon-readable for public endpoints under `/public/`.
-
-#### Categories
-| Method | Path |
-|---|---|
-| GET / POST | `/property-categories` |
-| GET / PATCH / DELETE | `/property-categories/{id}` |
-
-#### Groups (portfolio/brand)
-| Method | Path | Purpose |
-|---|---|---|
-| GET / POST | `/property-groups` | List / create |
-| GET / PATCH / DELETE | `/property-groups/{id}` | Detail |
-| GET / PATCH | `/property-groups/{id}/settings` | Group-level settings — the inheritance floor for `PropertySettings` null fields. Same fields as `/properties/{id}/settings`. Row is auto-created with the group; no `POST`/`DELETE`. See reconciliation issue #37. |
-| GET / PATCH | `/property-groups/{id}/finance` | Group-level finance config — the inheritance floor for `PropertyFinance` null fields. Single flat resource (commission / tax / bank account / payment schedule / security deposit policy), same shape as `/properties/{id}/finance`. Row is auto-created with the group; no `POST`/`DELETE`. See reconciliation issues #36 and #38. |
 
 #### Collections (marketing sets)
 | Method | Path | Purpose |

@@ -18,9 +18,17 @@ from pricing import models
 from pricing.enums import DiscountKind, ExtraCalc, ExtraKind, RuleKind
 from properties.factories import PropertyFactory
 
+
 # Wide enough that generated stays (a few months out) always land inside it.
-_WINDOW_FROM = date.today() - timedelta(days=30)
-_WINDOW_TO = date.today() + timedelta(days=400)
+# Evaluated per build (not at import) so the window follows a frozen or
+# long-running clock rather than the moment the module was first imported.
+def _window_from() -> date:
+    return date.today() - timedelta(days=30)
+
+
+def _window_to() -> date:
+    return date.today() + timedelta(days=400)
+
 
 _CURRENCIES = [
     ("GBP", "Pound sterling", "£"),
@@ -49,8 +57,8 @@ class RatePlanFactory(DjangoModelFactory):
     property = factory.SubFactory(PropertyFactory)
     currency = factory.SubFactory(CurrencyFactory)
     name = factory.Sequence(lambda n: f"Standard rates {n}")
-    effective_from = _WINDOW_FROM
-    effective_to = _WINDOW_TO
+    effective_from = factory.LazyFunction(_window_from)
+    effective_to = factory.LazyFunction(_window_to)
     is_active = True
 
 
@@ -67,8 +75,8 @@ class RatePeriodFactory(DjangoModelFactory):
 
     plan = factory.SubFactory(RatePlanFactory)
     name = factory.Sequence(lambda n: f"Period {n}")
-    date_from = _WINDOW_FROM
-    date_to = _WINDOW_TO
+    date_from = factory.LazyFunction(_window_from)
+    date_to = factory.LazyFunction(_window_to)
     is_active = True
 
 
@@ -98,8 +106,8 @@ class DiscountFactory(DjangoModelFactory):
     rule_kind = RuleKind.EARLY_BIRD
     kind = DiscountKind.PERCENT
     amount = Decimal("10.00")
-    valid_from = _WINDOW_FROM
-    valid_to = _WINDOW_TO
+    valid_from = factory.LazyFunction(_window_from)
+    valid_to = factory.LazyFunction(_window_to)
 
 
 class FxRateFactory(DjangoModelFactory):

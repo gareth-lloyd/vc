@@ -65,9 +65,10 @@ absence as breakage.
 
 ## Traps for the fix (from investigation)
 
-- **`category` name collision.** `PropertyFilter.category` is already taken
-  by `PropertyCategory` (`filters/property.py:25`) — a feature-category
-  filter on `/properties` can't reuse the name.
+- **`category` name collision — cleared 2026-09-02.** `PropertyFilter.category`
+  *was* taken by `PropertyCategory` (`filters/property.py:25`); GAP-093 removed
+  `Property.category` and that filter, so the name is free for a
+  feature-category filter on `/properties`.
 - **`.distinct()` or inflated counts.** The features M2M join multiplies
   rows; the existing multi-valued filters call `.distinct()`
   (`filters/property.py:79–80`). A features filter that forgets it inflates

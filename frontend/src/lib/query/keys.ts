@@ -187,10 +187,6 @@ export const queryKeys = {
         ? (["regions", "list"] as const)
         : (["regions", "list", filters] as const),
   },
-  propertyCategories: {
-    all: () => ["property-categories"] as const,
-    list: () => ["property-categories", "list"] as const,
-  },
   collections: {
     all: () => ["collections"] as const,
     list: () => ["collections", "list"] as const,

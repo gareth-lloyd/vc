@@ -19,6 +19,12 @@
 > historic bookings come from Nick's spreadsheets, not the legacy loader;
 > `CUTOVER.md` §4 updated). The booking webhook URL was delivered
 > 2026-07-29. The `financials` block content is now specced as **GAP-085**.
+>
+> **Amendment 2026-09-01 (GAP-093):** the villa payload no longer carries
+> a `category` object — `Property.category` was removed (country + region
+> is enough). The key is dropped outright, not nulled. Limitless should be
+> told at the next touchpoint so any Deluge mapping reading `category.*`
+> is retired; a missing key parses as null, so nothing breaks meanwhile.
 
 - **Severity:** Gap
 - **Source:** Descoped from [GAP-081](done/gap-081-zoho-flow-outbound-push.md)

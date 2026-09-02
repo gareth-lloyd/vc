@@ -1,5 +1,5 @@
-"""Lookup-table loaders: Region, Currency, PropertyCategory, NearbyPlaceType,
-FeatureCategory, Feature.
+"""Lookup-table loaders: Region, Currency, NearbyPlaceType, FeatureCategory,
+Feature.
 
 Most are pure field renames via DeclarativeLoader. Feature has a special
 case: legacy uses a many-to-many `VillaFeaturesCategoryMappings` table, but
@@ -18,7 +18,6 @@ from data_migration.loaders.sentinels import unknown_country
 from pricing.models.currency import Currency
 from properties.models.features import Feature, FeatureCategory
 from properties.models.geo import Country, NearbyPlaceType, Region
-from properties.models.property import PropertyCategory
 
 
 class RegionLoader(DeclarativeLoader):
@@ -80,22 +79,6 @@ class CurrencyLoader(DeclarativeLoader):
         kwargs["name"] = (kwargs.get("name") or "").strip()[:64] or code
         kwargs["symbol"] = (kwargs.get("symbol") or "").strip()[:8]
         kwargs["is_active"] = not bool(row.get("DeletedAt"))
-        return kwargs
-
-
-class PropertyCategoryLoader(DeclarativeLoader):
-    name = "property_category"
-    legacy_table = "VillaPropertyCategory"
-    target_model = PropertyCategory
-    field_map = {"Name": "name"}
-
-    def transform_extra(self, row: dict[str, Any], kwargs: dict[str, Any]) -> dict[str, Any] | None:
-        name = (kwargs.get("name") or "").strip()
-        if not name:
-            return None
-        kwargs["name"] = name[:128]
-        kwargs["slug"] = slugify(name)[:128] or f"category-{row['Id']}"
-        kwargs["is_active"] = True
         return kwargs
 
 

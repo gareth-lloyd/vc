@@ -12,7 +12,6 @@ from core.enums import StaffRole
 from properties.models import (
     Country,
     Property,
-    PropertyCategory,
     Region,
 )
 
@@ -56,11 +55,6 @@ def viewer(db: None) -> User:
 
 
 @pytest.fixture
-def category(db: None) -> PropertyCategory:
-    return PropertyCategory.objects.create(name="Villa", slug="villa")
-
-
-@pytest.fixture
 def country(db: None) -> Country:
     country, _ = Country.objects.get_or_create(
         iso2="GB",
@@ -75,14 +69,10 @@ def region(country: Country) -> Region:
 
 
 @pytest.fixture
-def property_(
-    category: PropertyCategory,
-    region: Region,
-) -> Property:
+def property_(region: Region) -> Property:
     return Property.objects.create(
         name="Test Villa",
         display_name="Test Villa",
         slug="test-villa",
-        category=category,
         region=region,
     )

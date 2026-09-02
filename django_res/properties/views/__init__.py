@@ -39,9 +39,6 @@ from properties.views.image import (
     PropertyImageSetHeroView,
 )
 from properties.views.location import PropertyLocationView
-from properties.views.metadata import (
-    PropertyCategoryViewSet,
-)
 from properties.views.price_display import PropertyPriceDisplayView
 from properties.views.property import PropertyViewSet
 from properties.views.room import (
@@ -67,7 +64,6 @@ __all__ = [
     "FeatureViewSet",
     "NearbyPlaceTypeViewSet",
     "PropertyCapacityView",
-    "PropertyCategoryViewSet",
     "PropertyChangeOverRuleListCreateView",
     "PropertyCollectionsView",
     "PropertyContactAssignmentDetailView",

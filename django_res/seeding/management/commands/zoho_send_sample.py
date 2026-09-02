@@ -372,6 +372,8 @@ def _enquiry(tag: str, person: Person, villa: Property, **overrides: Any) -> Enq
 
 def _stay_option(enquiry: Enquiry, villa: Property, **overrides: Any) -> dict[str, Any]:
     """One quotation-line spec matching the enquiry's dates."""
+    if enquiry.date_from is None or enquiry.date_to is None:
+        raise CommandError("Cannot quote an enquiry with no dates")
     option: dict[str, Any] = {
         "property": villa,
         "date_from": enquiry.date_from,
@@ -871,6 +873,148 @@ def _scenario_status_transitions(ctx: SampleContext) -> Iterator[PushStep]:
     yield ("quote", [q2])
 
 
+def _scenario_multi_option_quote(ctx: SampleContext) -> Iterator[PushStep]:
+    """One quotation carrying THREE alternative lines, one of them selected.
+
+    Every quote the sample flows have seen has exactly one line, so the Flow's
+    handling of alternatives is untested: which line drives the CRM Deal
+    figures, and whether the unselected two are carried at all.
+    CHECK-005 item 1.
+    """
+    tag = _scenario_tag("multi_option_quote")
+    terms = _terms()
+    villa_a = _priceable_villa(ctx, f"{tag} A", currency=_currency("GBP"))
+    villa_b = _priceable_villa(ctx, f"{tag} B", currency=_currency("GBP"))
+    person = _person(tag, "Options")
+    enquiry = _enquiry(tag, person, villa_a)
+
+    yield ("contact", [person])
+    yield ("villa", [villa_a, villa_b])
+    yield ("enquiry", [enquiry])
+
+    # Two properties, three shapes: the guest is choosing between villas AND
+    # between stay lengths, which is what a real alternative-options quote is.
+    longer_stay = _stay_option(enquiry, villa_a)
+    longer_stay["date_to"] = longer_stay["date_to"] + timedelta(days=7)
+    quotation = _sent_quote(
+        enquiry,
+        terms,
+        [_stay_option(enquiry, villa_a), longer_stay, _stay_option(enquiry, villa_b, adults=4)],
+    )
+    yield ("quote", [quotation])
+
+    # `accept()` is what marks a line selected — there is no other path.
+    booking = _accepted_booking(quotation, _first_line(quotation), terms)
+    yield ("quote", [quotation])
+    yield ("booking", [booking])
+
+
+def _scenario_discounted(ctx: SampleContext) -> Iterator[PushStep]:
+    """A quotation line with a real operator discount netted off its total.
+
+    Every sample line so far has `discount: "0.00"`, so the CRM mapping for a
+    discounted stay has never been exercised (CHECK-005 item 2). Repricing is
+    what applies it: `price_line` stamps `pricing_snapshot["gross"]` and sets
+    `total = gross - discount` (`quotations.py:83-89`).
+
+    The booking is pushed deliberately, unasserted: BUG-020 copies the
+    snapshot's GROSS onto the booking, so its `financials` block still shows
+    the undiscounted figure. That divergence is the point — it is visible in
+    the CRM side by side with the quote, rather than argued in a ticket.
+    """
+    from reservations.services.quotations import QuotationService
+
+    tag = _scenario_tag("discounted")
+    terms = _terms()
+    villa = _priceable_villa(ctx, tag, currency=_currency("GBP"))
+    person = _person(tag, "Discount")
+    enquiry = _enquiry(tag, person, villa)
+
+    yield ("contact", [person])
+    yield ("villa", [villa])
+    yield ("enquiry", [enquiry])
+
+    quotation = _sent_quote(enquiry, terms, [_stay_option(enquiry, villa)])
+    line = _first_line(quotation)
+    line.discount = Decimal("250.00")
+    line.save(update_fields=["discount", "updated_at"])
+    # Pin the currency, as every reprice must (`quotations.py:64-68`).
+    QuotationService.price_line(quotation, line, currency=line.currency)
+    yield ("quote", [quotation])
+
+    booking = _accepted_booking(quotation, line, terms)
+    yield ("booking", [booking])
+
+
+def _scenario_mixed_currency(ctx: SampleContext) -> Iterator[PushStep]:
+    """One quotation whose two lines are denominated differently.
+
+    A Quotation carries no header currency by design (GAP-014: currency is
+    per line, and mixed quotes are expected, not normalised). Nothing has ever
+    demonstrated that to the Flow, so a CRM mapping that reads "the quote's
+    currency" off the first line is unfalsified. CHECK-005 item 5.
+    """
+    tag = _scenario_tag("mixed_currency")
+    terms = _terms()
+    villa_gbp = _priceable_villa(ctx, f"{tag} GBP", currency=_currency("GBP"))
+    villa_eur = _priceable_villa(ctx, f"{tag} EUR", currency=_currency("EUR"))
+    person = _person(tag, "Currencies")
+    enquiry = _enquiry(tag, person, villa_gbp)
+
+    yield ("contact", [person])
+    yield ("villa", [villa_gbp, villa_eur])
+    yield ("enquiry", [enquiry])
+
+    # No `currency=` on either option: each line takes its own plan's currency.
+    quotation = _sent_quote(
+        enquiry,
+        terms,
+        [_stay_option(enquiry, villa_gbp), _stay_option(enquiry, villa_eur)],
+    )
+    yield ("quote", [quotation])
+
+
+def _scenario_sparse_financials(ctx: SampleContext) -> Iterator[PushStep]:
+    """A booking whose whole `financials` block is null.
+
+    A manual quotation line is never priced, so `pricing_snapshot` stays `{}`
+    (`quotations.py:344-350`), `create_from_quotation_line` copies that verbatim
+    (`bookings.py:64`), and `owner_money_from_snapshot` returns None — every one
+    of the eight GAP-085 figures lands null (`zoho_payload.py:265`). This is the
+    shape the spreadsheet-imported historic bookings will arrive in, so it is
+    the one the Flow most needs to survive rather than the fully-priced case.
+    CHECK-004 item 5.
+    """
+    tag = _scenario_tag("sparse_financials")
+    terms = _terms()
+    currency = _currency("GBP")
+    villa = _priceable_villa(ctx, tag, currency=currency)
+    person = _person(tag, "Manual")
+    enquiry = _enquiry(tag, person, villa)
+
+    yield ("contact", [person])
+    yield ("villa", [villa])
+    yield ("enquiry", [enquiry])
+
+    quotation = _sent_quote(
+        enquiry,
+        terms,
+        [
+            _stay_option(
+                enquiry,
+                villa,
+                is_manual=True,
+                total=Decimal("4500.00"),
+                currency=currency,
+            )
+        ],
+    )
+    yield ("quote", [quotation])
+
+    booking = _accepted_booking(quotation, _first_line(quotation), terms)
+    yield ("booking", [booking])
+
+
 # Ordered registry: the `--scenarios` vocabulary, and the order `all` runs in.
 # `baseline` first, so its records keep landing in the CRM exactly as Limitless
 # already mapped them.
@@ -878,5 +1022,9 @@ _SCENARIOS: dict[str, Callable[[SampleContext], Iterator[PushStep]]] = {
     "baseline": _scenario_baseline,
     "repush": _scenario_repush,
     "status_transitions": _scenario_status_transitions,
+    "multi_option_quote": _scenario_multi_option_quote,
+    "discounted": _scenario_discounted,
+    "mixed_currency": _scenario_mixed_currency,
+    "sparse_financials": _scenario_sparse_financials,
 }
 _DEFAULT_SCENARIOS = ("baseline",)

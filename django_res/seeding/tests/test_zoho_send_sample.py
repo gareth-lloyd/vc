@@ -17,6 +17,7 @@ URLs via `monkeypatch.setenv`, then assert:
 from __future__ import annotations
 
 from collections import defaultdict
+from decimal import Decimal
 from io import StringIO
 from typing import Any
 from unittest import mock
@@ -374,6 +375,76 @@ def test_a_shape_scenario_running_first_does_not_move_baseline(
     ]
     assert baseline_lines, "no baseline quote line captured"
     assert baseline_lines[0]["currency"] == "GBP"
+
+
+@pytest.mark.django_db
+def test_multi_option_quote_scenario_sends_three_lines_one_selected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "multi_option_quote")
+
+    lines = payloads["quote"][-1]["lines"]
+    assert len(lines) == 3, f"a one-line quote is the shape we already had: {len(lines)}"
+    assert sum(1 for line in lines if line["is_selected"]) == 1, lines
+
+
+@pytest.mark.django_db
+def test_discounted_scenario_sends_a_non_zero_line_discount(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Asserted on the QUOTE, never the booking: BUG-020 loses the discount on
+    # conversion, and this scenario demonstrates that rather than depending on
+    # its fix.
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "discounted")
+
+    lines = [line for quote in payloads["quote"] for line in quote["lines"]]
+    discounted = [line for line in lines if Decimal(line["discount"]) > 0]
+    assert discounted, [line["discount"] for line in lines]
+    line = discounted[0]
+    assert Decimal(line["total"]) > 0, "a discount must not zero the line"
+    assert Decimal(line["pricing_snapshot"]["gross"]) - Decimal(line["discount"]) == Decimal(
+        line["total"]
+    )
+
+
+@pytest.mark.django_db
+def test_mixed_currency_scenario_sends_two_currencies_in_one_quote(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "mixed_currency")
+
+    lines = payloads["quote"][-1]["lines"]
+    assert len({line["currency"] for line in lines}) == 2, [line["currency"] for line in lines]
+
+
+@pytest.mark.django_db
+def test_sparse_financials_scenario_sends_a_booking_with_null_financials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A manual quotation line leaves `pricing_snapshot` empty, so every owner
+    money figure is null — the shape a spreadsheet-imported booking will have."""
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "sparse_financials")
+
+    financials = payloads["booking"][-1]["financials"]
+    assert set(financials) == {
+        "total_gross",
+        "total_net",
+        "gross_deposit",
+        "net_deposit",
+        "deposit_commission",
+        "gross_balance",
+        "net_balance",
+        "balance_commission",
+    }, sorted(financials)
+    assert all(value is None for value in financials.values()), financials
 
 
 # ── guard ────────────────────────────────────────────────────────────────

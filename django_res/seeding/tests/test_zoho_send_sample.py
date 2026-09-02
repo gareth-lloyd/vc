@@ -164,6 +164,9 @@ def test_every_enum_transmitting_attribute_is_covered(
         "net_balance",
     ):
         assert financials[key] is not None, f"financials.{key} is null"
+    # GAP-099: the scheduler stamps due_at, so the end-to-end ISO path is live.
+    assert financials["deposit_status"] is not None
+    assert financials["deposit_due_at"] is not None
 
 
 # ── rollback ─────────────────────────────────────────────────────────────

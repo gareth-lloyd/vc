@@ -23,6 +23,23 @@
 > instead of authority zeros — is a one-branch change). (b) `extras` rides
 > as a **sibling** of `financials`, not inside it. The open contract points
 > below still stand for that call.
+>
+> **Extended by GAP-099 (2026-09-02)** — the block now also carries each
+> component's payment state, because Limitless were inferring "deposit
+> paid?" from `BookingStatus` and getting it wrong (CHECK-004 item 3):
+> `deposit_status`, `deposit_due_at`, `balance_status`, `balance_due_at`.
+> `*_status` is the raw `PaymentStatus` of the **latest** schedule row for
+> that purpose (a FAILED deposit superseded by a fresh PENDING re-collection
+> reports `pending`; a booking cancelled with its schedule unpaid reports
+> `cancelled`). The full vocabulary is `pending`, `processing`, `succeeded`,
+> `failed`, `refunded`, `cancelled`, `expired`, `waived` — any of the eight
+> can appear, so consumers should test membership, not `!=` one value.
+> `*_due_at` is the earliest `due_at` among that purpose's non-terminal
+> rows, ISO-8601 with offset (e.g. `2026-10-01T12:00:00+00:00`). Same
+> degrade posture as the amounts: keys always present, `null` on a sparse
+> snapshot or when the purpose has no schedule rows, never invented. Values
+> are the FinanceTab authority's (`payment_component_splits`) verbatim.
+> This resolves the `balance_due_at` open contract point below.
 
 - **Severity:** 🟢 Gap (integration contract — the booking push works, but
   carries no money).
@@ -110,7 +127,8 @@ systems (dropdown + free-text fallback — the taxonomy itself is GAP-088).
   Res has a first-class track (`payments/models/security_deposit.py` +
   `PropertyFinance.security_deposit_*` policy) — does it get a Zoho field?
 - **`balance_due_at`:** where does it fit in their layout (was already an
-  agenda item).
+  agenda item). **Resolved by GAP-099 (2026-09-02):** shipped inside
+  `financials` as `balance_due_at` (with `deposit_due_at`), ISO-8601.
 
 ## Acceptance
 

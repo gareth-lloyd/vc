@@ -447,6 +447,38 @@ def test_sparse_financials_scenario_sends_a_booking_with_null_financials(
     assert all(value is None for value in financials.values()), financials
 
 
+@pytest.mark.django_db
+def test_anonymised_person_scenario_stops_pushing_after_erasure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """This scenario proves an ABSENCE: after `Person.anonymize()` the pipeline
+    parks the record DISABLED and sends nothing, so the CRM keeps the
+    pre-erasure name forever. GAP-095's hole, made visible."""
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, out = _run_capturing_posts(monkeypatch, "--scenarios", "anonymised_person")
+
+    assert len(payloads["contact"]) == 1, (
+        f"the erased person must not be POSTed a second time: {payloads['contact']}"
+    )
+    assert "[REDACTED]" not in str(payloads["contact"]), "erased PII must never be sent"
+    assert "-> DISABLED" in out, out
+
+
+@pytest.mark.django_db
+def test_agency_only_contact_scenario_sends_a_contact_with_no_personal_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "agency_only_contact")
+
+    nameless = [
+        c for c in payloads["contact"] if not c["last_name"] and c["agency"] and c["agency"]["name"]
+    ]
+    assert nameless, [(c["last_name"], c["agency"]) for c in payloads["contact"]]
+
+
 # ── guard ────────────────────────────────────────────────────────────────
 
 

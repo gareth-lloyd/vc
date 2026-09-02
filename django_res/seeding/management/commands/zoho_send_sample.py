@@ -1015,6 +1015,67 @@ def _scenario_sparse_financials(ctx: SampleContext) -> Iterator[PushStep]:
     yield ("booking", [booking])
 
 
+def _scenario_anonymised_person(ctx: SampleContext) -> Iterator[PushStep]:
+    """Push a contact, erase them, push again — and watch nothing happen.
+
+    The only scenario that demonstrates an ABSENCE. `push_sync_record` parks an
+    ANONYMIZED person's record DISABLED and never POSTs (`tasks.py:77-82`), so
+    the second pass is silent and the CRM keeps the pre-erasure name, email and
+    phone forever. Res is then *more* erased than Zoho, which is the whole of
+    GAP-095 stated as an observation rather than an argument.
+
+    Order matters: the person MUST be pushed before `anonymize()`, or both
+    passes are silent and the scenario shows nothing.
+    """
+    tag = _scenario_tag("anonymised_person")
+    # Exactly one email and one phone (the factory's own): `anonymize()` blanks
+    # every channel in lockstep, and a second row of either kind collides on
+    # `unique_contact_phone` / `unique_contact_email` the moment both are "".
+    # Worth a ticket of its own — see the GAP-101 close-out.
+    person = _person(tag, "Erasure")
+
+    yield ("contact", [person])  # delivered: full PII reaches the CRM
+
+    person.anonymize()
+
+    # Yielded exactly as before. The pipeline — not this command — is what
+    # refuses; the push is reported `-> disabled` and no HTTP call is made.
+    yield ("contact", [person])
+
+
+def _scenario_agency_only_contact(ctx: SampleContext) -> Iterator[PushStep]:
+    """A contact who has an agency and no personal name of their own.
+
+    GAP-029 made the name-OR-agency floor legal in res: a B2B contact may be
+    nothing but their agency. Zoho's Contacts module makes `Last_Name`
+    mandatory, so this payload is the one the Flow is most likely to have the
+    CRM reject outright — and, per GAP-097, a rejection is currently invisible
+    to us because the Flow still answers 2xx. CHECK-001 item 2.
+    """
+    from accounts.enums import OrgStatus, OrgType
+    from accounts.factories import CustomerPersonFactory, OrganisationFactory
+
+    tag = _scenario_tag("agency_only_contact")
+    agency = OrganisationFactory(
+        name=f"{tag} Agency",
+        org_type=OrgType.AGENCY,
+        status=OrgStatus.ACTIVE,
+        email="agency.only@synthetic.example",
+    )
+    person = cast(
+        "Person",
+        CustomerPersonFactory(
+            title="",
+            first_name="",
+            last_name="",
+            agency=agency,
+            notes=f"{tag} — booked under the agency, no personal name held.",
+        ),
+    )
+
+    yield ("contact", [person])
+
+
 # Ordered registry: the `--scenarios` vocabulary, and the order `all` runs in.
 # `baseline` first, so its records keep landing in the CRM exactly as Limitless
 # already mapped them.
@@ -1026,5 +1087,7 @@ _SCENARIOS: dict[str, Callable[[SampleContext], Iterator[PushStep]]] = {
     "discounted": _scenario_discounted,
     "mixed_currency": _scenario_mixed_currency,
     "sparse_financials": _scenario_sparse_financials,
+    "anonymised_person": _scenario_anonymised_person,
+    "agency_only_contact": _scenario_agency_only_contact,
 }
 _DEFAULT_SCENARIOS = ("baseline",)

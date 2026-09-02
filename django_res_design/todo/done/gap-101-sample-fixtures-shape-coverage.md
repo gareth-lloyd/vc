@@ -27,7 +27,7 @@
 >    converted booking the gross one, side by side in the CRM — so its test is
 >    pinned to the quote side and survives BUG-020's landing.
 >
-> **Spun off:** **BUG-021** — `Person.anonymize()` blanks every phone to `""`,
+> **Spun off:** **BUG-024** — `Person.anonymize()` blanks every phone to `""`,
 > so a person holding two numbers violates `unique_contact_phone` and cannot be
 > erased at all. Found by building `anonymised_person`; the scenario keeps one
 > phone to stay on the working path.

@@ -1,4 +1,4 @@
-# BUG-021 — `Person.anonymize()` cannot erase anyone holding two phone numbers
+# BUG-024 — `Person.anonymize()` cannot erase anyone holding two phone numbers
 
 - **Severity:** 🔴 Bug (a GDPR erasure raises `IntegrityError` and rolls back;
   the affected person cannot be erased at all through the supported path).

@@ -1086,7 +1086,7 @@ def _scenario_anonymised_person(ctx: SampleContext) -> Iterator[PushStep]:
     # Exactly one phone (the factory's own). `anonymize()` gives each email a
     # per-row sentinel but blanks EVERY phone to "", so a person holding two
     # numbers violates `unique_contact_phone` and cannot be erased at all —
-    # BUG-021. Add a second phone here once that lands.
+    # BUG-024. Add a second phone here once that lands.
     person = _person(tag, "Erasure")
 
     yield ("contact", [person])  # delivered: full PII reaches the CRM

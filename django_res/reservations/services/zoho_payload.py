@@ -71,7 +71,12 @@ nothing is left for Zoho to derive. Figures come from the FinanceTab
 authority (`owner_finance`), 2dp strings; keys are always present and
 degrade to null (sparse imported snapshot / no schedule rows) — never
 invented zeros. An authority 0.00 (e.g. a booking cancelled while its
-schedule was still PENDING) is pushed as-is. `extras` itemizes the
+schedule was still PENDING) is pushed as-is. GAP-099 adds per-component
+payment state alongside the amounts — `deposit_status` / `balance_status`
+(raw `PaymentStatus` of the latest schedule row for that purpose) and
+`deposit_due_at` / `balance_due_at` (earliest scheduled due date, ISO-8601)
+— so Zoho reads "deposit paid?" as a fact instead of inferring it from the
+booking `status` (CHECK-004 item 3). `extras` itemizes the
 engine-applied pricing extras plus manual charge lines with their
 commissionable flags — informational only (both already sit inside
 `total_gross`); `category` carries the GAP-088 `ChargeCategory` taxonomy.
@@ -79,8 +84,9 @@ commissionable flags — informational only (both already sit inside
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from integrations.services.zoho_flow import is_anonymized_person
 from reservations.enums import ChargeCategory
@@ -244,17 +250,35 @@ _FINANCIALS_KEYS = (
     "gross_balance",
     "net_balance",
     "balance_commission",
+    # GAP-099: per-component payment state.
+    "deposit_status",
+    "deposit_due_at",
+    "balance_status",
+    "balance_due_at",
 )
 
 
+def _money2dp(value: Any) -> str:
+    return f"{value:.2f}"
+
+
 def _financials_payload(booking: Booking) -> dict[str, Any]:
-    """GAP-085: the 8-figure owner-money block, every figure explicit.
+    """GAP-085 + GAP-099: the owner-money block — eight explicit amounts plus
+    each component's payment state.
 
     Source of truth = `owner_finance` (the FinanceTab authority), so res-UI
     and Zoho can never disagree. Keys always present; a figure the authority
     can't produce is null (sparse imported snapshot → all null; owner money
     but no deposit/balance schedule rows → component figures null), never an
     invented zero.
+
+    Per component (GAP-099): `*_status` is the raw `PaymentStatus` of the
+    latest schedule row for that purpose (so a FAILED row superseded by a
+    fresh PENDING one reports `pending`, and a booking cancelled with its
+    schedule unpaid reports `cancelled`); `*_due_at` is the earliest `due_at`
+    among that purpose's non-terminal rows, ISO-8601, null when unscheduled.
+    Both are the split authority's values verbatim — documented, not
+    reinterpreted.
     """
     from reservations.services.owner_finance import (
         owner_money_for_booking,
@@ -269,19 +293,27 @@ def _financials_payload(booking: Booking) -> dict[str, Any]:
     # lossless and the per-purpose figures ARE the FinanceTab row figures.
     splits = {s["purpose"]: s for s in payment_component_splits(booking, money=money) or []}
 
-    def _component(purpose: str, field: str) -> str | None:
+    def _component(
+        purpose: str,
+        field: Literal["gross", "net_to_owner", "commission", "status", "due_at"],
+        fmt: Callable[[Any], str | None] = _money2dp,
+    ) -> str | None:
         split = splits.get(purpose)
-        return f"{split[field]:.2f}" if split is not None else None  # type: ignore[literal-required]
+        return fmt(split[field]) if split is not None else None
 
     return {
-        "total_gross": f"{money['gross_total']:.2f}",
-        "total_net": f"{money['net_to_owner']:.2f}",
+        "total_gross": _money2dp(money["gross_total"]),
+        "total_net": _money2dp(money["net_to_owner"]),
         "gross_deposit": _component("deposit", "gross"),
         "net_deposit": _component("deposit", "net_to_owner"),
         "deposit_commission": _component("deposit", "commission"),
         "gross_balance": _component("balance", "gross"),
         "net_balance": _component("balance", "net_to_owner"),
         "balance_commission": _component("balance", "commission"),
+        "deposit_status": _component("deposit", "status", fmt=str),
+        "deposit_due_at": _component("deposit", "due_at", fmt=_iso),
+        "balance_status": _component("balance", "status", fmt=str),
+        "balance_due_at": _component("balance", "due_at", fmt=_iso),
     }
 
 

@@ -165,6 +165,9 @@ def test_every_enum_transmitting_attribute_is_covered(
         "net_balance",
     ):
         assert financials[key] is not None, f"financials.{key} is null"
+    # GAP-099: the scheduler stamps due_at, so the end-to-end ISO path is live.
+    assert financials["deposit_status"] is not None
+    assert financials["deposit_due_at"] is not None
 
 
 # ── rollback ─────────────────────────────────────────────────────────────
@@ -449,7 +452,10 @@ def test_sparse_financials_scenario_sends_a_booking_with_null_financials(
     _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "sparse_financials")
 
     financials = payloads["booking"][-1]["financials"]
-    assert set(financials) == {
+    # Every key is still PRESENT — the block degrades to explicit nulls, it is
+    # never omitted or invented as zeros (GAP-085). Asserted as a superset so
+    # GAP-099-style additions to `_FINANCIALS_KEYS` don't break this test.
+    assert {
         "total_gross",
         "total_net",
         "gross_deposit",
@@ -458,7 +464,7 @@ def test_sparse_financials_scenario_sends_a_booking_with_null_financials(
         "gross_balance",
         "net_balance",
         "balance_commission",
-    }, sorted(financials)
+    } <= set(financials), sorted(financials)
     assert all(value is None for value in financials.values()), financials
 
 

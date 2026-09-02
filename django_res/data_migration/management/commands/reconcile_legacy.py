@@ -41,7 +41,11 @@ from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
 from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
 from data_migration.loaders.integrations import SyncRecordZohoLoader, zoho_id_column_exists
-from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX, UNKNOWN_CLIENT_LEGACY_ID
+from data_migration.loaders.sentinels import (
+    CLIENT_LEGACY_PREFIX,
+    SHEET_LEGACY_PREFIX,
+    UNKNOWN_CLIENT_LEGACY_ID,
+)
 from integrations.enums import SyncProvider
 from integrations.models import SyncRecord
 from payments.models.payment import Payment
@@ -118,9 +122,13 @@ _CHECKS: list[_Check] = [
         # so exclude every `client-` row here (the customer rows AND the
         # `unknown_client` sentinel) or they'd inflate the loaded count and turn
         # this check RED. The `client-` slice is checked separately below.
-        loaded_count=lambda m: m._default_manager.exclude(
-            legacy_id__startswith=CLIENT_LEGACY_PREFIX
-        ).count(),
+        # GAP-089: the spreadsheet importers' `sheet-` persons have no legacy
+        # twin either.
+        loaded_count=lambda m: (
+            m._default_manager.exclude(legacy_id__startswith=CLIENT_LEGACY_PREFIX)
+            .exclude(legacy_id__startswith=SHEET_LEGACY_PREFIX)
+            .count()
+        ),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaContactEmail",
@@ -130,19 +138,24 @@ _CHECKS: list[_Check] = [
         # columns onto the `client-` Person slice, but the legacy side here
         # counts only VillaContactEmail — exclude client-owned channels
         # (mirrors the "Person (owner/agent)" slice split above) or every
-        # client email shows as a negative gap (dry-run 1: 30 of them).
-        loaded_count=lambda m: m._default_manager.exclude(
-            contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX
-        ).count(),
+        # client email shows as a negative gap (dry-run 1: 30 of them). The
+        # GAP-089 `sheet-` persons' channels are excluded for the same reason.
+        loaded_count=lambda m: (
+            m._default_manager.exclude(contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX)
+            .exclude(contact__legacy_id__startswith=SHEET_LEGACY_PREFIX)
+            .count()
+        ),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaContactTele",
         PersonPhone,
         "PersonPhone",
-        # Same client-slice exclusion as PersonEmail above.
-        loaded_count=lambda m: m._default_manager.exclude(
-            contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX
-        ).count(),
+        # Same client- and sheet-slice exclusions as PersonEmail above.
+        loaded_count=lambda m: (
+            m._default_manager.exclude(contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX)
+            .exclude(contact__legacy_id__startswith=SHEET_LEGACY_PREFIX)
+            .count()
+        ),
     ),
     _Check(
         # GAP-046: every distinct (case/space-normalised) VillaContact.Company
@@ -309,6 +322,11 @@ _CHECKS: list[_Check] = [
         # quotations (BookingLoader.ensure_enquiry) and legacy quotations that
         # carried no enquiry of their own.
         expected_gap=-8,
+        # GAP-089: `import_enquiry_sheet` adds ~2.4k historic `sheet-enquiry-`
+        # rows with no VillaEnquire twin — leave them out of the comparison.
+        loaded_count=lambda m: m._default_manager.exclude(
+            legacy_id__startswith=SHEET_LEGACY_PREFIX
+        ).count(),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaFinance WHERE VillaId IS NOT NULL",

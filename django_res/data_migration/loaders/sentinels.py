@@ -20,6 +20,12 @@ _UNKNOWN = "__unknown__"
 # drift.
 CLIENT_LEGACY_PREFIX = "client-"
 
+# GAP-089: `legacy_id` prefix shared by every row the spreadsheet importers
+# write (`sheet-person-…`, `sheet-stay-…`, `sheet-enquiry-…`). Those rows have
+# no res-DB twin, so `reconcile_legacy` excludes the prefix from every count
+# that is compared against the legacy dump.
+SHEET_LEGACY_PREFIX = "sheet-"
+
 # Fixed legacy_id for the `unknown_client` sentinel Person. Carries the
 # `client-` prefix so it sorts with the customer rows, but reconcile_legacy
 # excludes it from BOTH Person count slices (owner/agent AND client) so the

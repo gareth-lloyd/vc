@@ -229,6 +229,31 @@ def test_person_checks_count_their_own_legacy_id_slice(monkeypatch: pytest.Monke
 
 
 @pytest.mark.django_db
+def test_sheet_imported_rows_do_not_move_the_legacy_counts() -> None:
+    """GAP-089: the spreadsheet importers write Person / PersonEmail /
+    PersonPhone / Enquiry rows keyed `sheet-…`. They have no legacy-DB twin, so
+    every count that compares against the res dump must leave them out or the
+    checks go RED after the import (an unexplained gap blocks cutover)."""
+    from accounts.factories import PersonEmailFactory, PersonFactory, PersonPhoneFactory
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+
+    legacy = PersonFactory(legacy_id="10")
+    PersonEmailFactory(contact=legacy, email="legacy@example.com")
+    PersonPhoneFactory(contact=legacy, number="+441234567890")
+    sheet = PersonFactory(legacy_id="sheet-person-0123456789abcdef")
+    PersonEmailFactory(contact=sheet, email="sheet@example.com")
+    PersonPhoneFactory(contact=sheet, number="+449876543210")
+    EnquiryFactory(legacy_id="enquiry-1", person=None)
+    EnquiryFactory(legacy_id="sheet-enquiry-0123456789abcdef", person=sheet)
+
+    by_label = {c.label: c for c in _CHECKS}
+    for label in ("Person (owner/agent)", "PersonEmail", "PersonPhone", "Enquiry"):
+        check = by_label[label]
+        assert check.loaded_count is not None, label
+        assert check.loaded_count(check.model) == 1, label
+
+
+@pytest.mark.django_db
 def test_rate_plan_basis_check_counts_only_legacy_non_gross() -> None:
     """SMELL-021: legacy cannot express NET, so the loader stamps GROSS on every
     imported plan — the basis-invariant check must count only *legacy* plans

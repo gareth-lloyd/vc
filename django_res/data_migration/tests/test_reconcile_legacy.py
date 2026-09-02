@@ -17,6 +17,8 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from accounts.enums import OrgType
+from accounts.models import Organisation
 from data_migration.loaders.integrations import SyncRecordZohoLoader
 from data_migration.management.commands import reconcile_legacy
 from data_migration.management.commands.reconcile_legacy import _Check
@@ -245,9 +247,19 @@ def test_sheet_imported_rows_do_not_move_the_legacy_counts() -> None:
     PersonPhoneFactory(contact=sheet, number="+449876543210")
     EnquiryFactory(legacy_id="enquiry-1", person=None)
     EnquiryFactory(legacy_id="sheet-enquiry-0123456789abcdef", person=sheet)
+    Organisation.objects.create(name="Legacy Travel", dedup_key="k1", org_type=OrgType.AGENCY)
+    Organisation.objects.create(
+        name="Sheet Travel", dedup_key="k2", org_type=OrgType.AGENCY, legacy_id="sheet-org-k2"
+    )
 
     by_label = {c.label: c for c in _CHECKS}
-    for label in ("Person (owner/agent)", "PersonEmail", "PersonPhone", "Enquiry"):
+    for label in (
+        "Person (owner/agent)",
+        "PersonEmail",
+        "PersonPhone",
+        "Enquiry",
+        "Organisation (agency)",
+    ):
         check = by_label[label]
         assert check.loaded_count is not None, label
         assert check.loaded_count(check.model) == 1, label

@@ -135,16 +135,21 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         country = obj.country
         return country.name if country is not None else None
 
+    # Both counts are annotated on list/retrieve; un-annotated instances
+    # (create/update/merge responses) fall back to one COUNT each, cached on
+    # the instance so `is_repeat_customer` / `contact_types` reuse it.
     def get_booking_count(self, obj: Person) -> int:
         count = getattr(obj, "booking_count", None)
         if count is None:
             count = obj.bookings_as_customer.count()
+            obj.booking_count = count  # type: ignore[attr-defined]
         return count
 
     def get_past_stay_count(self, obj: Person) -> int:
         count = getattr(obj, "past_stay_count", None)
         if count is None:
             count = obj.past_stays.count()
+            obj.past_stay_count = count  # type: ignore[attr-defined]
         return count
 
     def get_is_repeat_customer(self, obj: Person) -> bool:

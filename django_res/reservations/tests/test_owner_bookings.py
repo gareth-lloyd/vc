@@ -424,6 +424,14 @@ def test_repeat_guest_detected_from_a_sheet_imported_past_stay(
     PastStay.objects.create(person=customer, villa_name="Somewhere else", year=2018)
     assert _detail(api_client, booking)["is_repeat_guest"] is False
 
+    # Same villa, same year as this booking: most likely the sheet's copy of
+    # THIS stay (the sources overlap around late 2024), so not a repeat.
+    same_year = PastStay.objects.create(
+        person=customer, villa_name="Here", property=property_, year=booking.date_from.year
+    )
+    assert _detail(api_client, booking)["is_repeat_guest"] is False
+
+    same_year.delete()
     PastStay.objects.create(person=customer, villa_name="Here", property=property_, year=2019)
     assert _detail(api_client, booking)["is_repeat_guest"] is True
 

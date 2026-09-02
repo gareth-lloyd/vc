@@ -120,18 +120,27 @@ def parse_sheet_date(value: Any) -> date | None:
     text = str(value).strip()
     if not text:
         return None
+    # Drop a time suffix ("1/6/2019 00:00", "2019-06-01T09:15") before parsing
+    # so single-digit day/month strings are not clipped mid-token.
+    head = text.split()[0].split("T")[0]
     try:
-        return date.fromisoformat(text[:10])
+        return date.fromisoformat(head)
     except ValueError:
         pass
     try:
-        return datetime.strptime(text[:10], "%d/%m/%Y").date()
+        return datetime.strptime(head, "%d/%m/%Y").date()
     except ValueError:
         return None
 
 
 def html_to_text(value: Any) -> str:
-    """Flatten the ``<br />``-laden Notes cells to plain text."""
+    """Flatten the ``<br />``-laden Notes cells to plain text.
+
+    Deliberately not `comms.compilers.html_to_plaintext`: that one is
+    html2text (Markdown-flavoured — it escapes ``- `` / ``1. `` list markers),
+    which is right for e-mail bodies and wrong for notes cells that should read
+    exactly as Nick typed them.
+    """
     if value is None:
         return ""
     text = _HTML_BREAK.sub("\n", str(value))
@@ -208,7 +217,13 @@ def resolve_region(country_name: Any, region_name: Any) -> Region | None:
         return None
     qs = Region.objects.filter(name__iexact=str(region_name).strip())
     if country_name is not None and str(country_name).strip():
-        qs = qs.filter(country__name__iexact=str(country_name).strip())
+        # Through `resolve_country` so the sheet's aliases ("UK", "Holland",
+        # "USA") scope the lookup the same way they resolve `Person.country`;
+        # a country we cannot place means a region we cannot trust.
+        country = resolve_country(country_name)
+        if country is None:
+            return None
+        qs = qs.filter(country=country)
     hits = list(qs[:2])
     return hits[0] if len(hits) == 1 else None
 
@@ -233,10 +248,18 @@ class PersonMatch:
     created: bool
     ambiguous: bool = False
     filled: list[str] = field(default_factory=list)
+    #: The row's own `legacy_id` resolved to a Person that is no longer ACTIVE
+    #: (anonymised / deactivated after an earlier run). Nothing was written;
+    #: the caller must not append notes or channels either.
+    inactive: bool = False
 
 
 def _names_agree(first_a: str, last_a: str, first_b: str, last_b: str) -> bool:
-    if normalise_name(last_a) != normalise_name(last_b):
+    """Same e-mail, same person? Last names must agree unless one side has
+    none (an e-mail-only row), and likewise for first names. Two different
+    last names on one address is the spouse case → a new Person."""
+    la, lb = normalise_name(last_a), normalise_name(last_b)
+    if la and lb and la != lb:
         return False
     fa, fb = normalise_name(first_a), normalise_name(first_b)
     return not fa or not fb or fa == fb
@@ -249,13 +272,37 @@ def fill_blanks(person: Person, defaults: dict[str, Any]) -> list[str]:
     """
     changed: list[str] = []
     for name, value in defaults.items():
-        if value in (None, ""):
+        if _is_blank(value):
             continue
-        current = getattr(person, name)
-        if current in (None, ""):
+        if _is_blank(getattr(person, name)):
             setattr(person, name, value)
             changed.append(name)
     return changed
+
+
+def _is_blank(value: Any) -> bool:
+    # `[]` covers ArrayField defaults (tags) so list-valued defaults blank-fill
+    # a matched Person exactly as they apply on create.
+    return value is None or value == "" or value == []
+
+
+def match_person_by_name(first: str, last: str) -> tuple[Person | None, bool]:
+    """The no-e-mail rule, shared by both importers: exactly one ACTIVE person
+    with this (first, last) — customers preferred when several — else
+    ``(None, ambiguous)``. ``ambiguous`` is True whenever more than one
+    namesake exists and the customer preference did not single one out (so
+    two owner/agent namesakes are flagged, not silently duplicated)."""
+    by_name = list(
+        Person.objects.filter(
+            status=PersonStatus.ACTIVE, first_name__iexact=first, last_name__iexact=last
+        )
+    )
+    if len(by_name) <= 1:
+        return (by_name[0] if by_name else None), False
+    customers = [p for p in by_name if p.kind == PersonKind.CUSTOMER]
+    if len(customers) == 1:
+        return customers[0], False
+    return None, True
 
 
 def find_or_create_person(
@@ -284,26 +331,26 @@ def find_or_create_person(
     existing = Person.objects.filter(legacy_id=legacy_id).first()
     ambiguous = False
     if existing is None and addr:
-        for candidate in Person.objects.filter(
-            emails__email=addr, status=PersonStatus.ACTIVE
-        ).distinct():
+        # Any status: a deactivated person who still carries this address must
+        # come back as `inactive`, not be re-minted from the sheet. (A fully
+        # anonymised person has no e-mail or name left to match — see the
+        # CUTOVER note on re-runs after an erasure.)
+        for candidate in Person.objects.filter(emails__email=addr).order_by("status"):
             if _names_agree(first, last, candidate.first_name, candidate.last_name):
                 existing = candidate
                 break
     if existing is None and not addr:
-        by_name = list(
-            Person.objects.filter(
-                status=PersonStatus.ACTIVE,
-                first_name__iexact=first,
-                last_name__iexact=last,
+        existing, ambiguous = match_person_by_name(first, last)
+        if existing is None and not ambiguous:
+            existing = (
+                Person.objects.filter(first_name__iexact=first, last_name__iexact=last)
+                .exclude(status=PersonStatus.ACTIVE)
+                .first()
             )
-        )
-        if len(by_name) > 1:
-            by_name = [p for p in by_name if p.kind == PersonKind.CUSTOMER]
-        if len(by_name) == 1:
-            existing = by_name[0]
-        elif len(by_name) > 1:
-            ambiguous = True
+    if existing is not None and existing.status != PersonStatus.ACTIVE:
+        # Minted or matched by an earlier run and since anonymised /
+        # deactivated: a re-run must not write the sheet's PII back onto it.
+        return PersonMatch(existing, created=False, inactive=True)
 
     if existing is not None:
         filled = fill_blanks(existing, defaults)

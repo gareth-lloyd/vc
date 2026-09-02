@@ -11,16 +11,19 @@ from accounts.models import Person, PersonEmail
 from data_migration.sheets.matching import (
     PropertyMatcher,
     append_note_line,
+    fill_blanks,
     find_or_create_person,
     html_to_text,
     map_tags,
+    match_person_by_name,
     normalise_name,
     parse_sheet_date,
+    person_legacy_id,
     resolve_country,
     resolve_region,
     split_tags,
 )
-from properties.models import Country, Property, PropertyCategory, Region
+from properties.models import Country, Property, Region
 
 pytestmark = pytest.mark.django_db
 
@@ -77,12 +80,10 @@ def _property(name: str, display_name: str | None = None) -> Property:
         iso2="GR", defaults={"name": "Greece", "iso3": "GRC"}
     )
     region, _ = Region.objects.get_or_create(country=country, name="Corfu", slug="corfu")
-    category, _ = PropertyCategory.objects.get_or_create(name="Villa", slug="villa")
     return Property.objects.create(
         name=name,
         display_name=display_name or name,
         slug=normalise_name(name).replace(" ", "-"),
-        category=category,
         region=region,
     )
 
@@ -263,3 +264,101 @@ def test_append_note_line_is_idempotent() -> None:
 
     person.refresh_from_db()
     assert person.notes == "Agent/advisor: Bob\nSheet tags: LC"
+
+
+# --- review hardening (Unit 2 review, 2026-09-02) ----------------------------
+
+
+def test_resolve_region_scopes_country_through_the_alias_map() -> None:
+    gb, _ = Country.objects.get_or_create(iso2="GB", defaults={"name": "United Kingdom"})
+    gr, _ = Country.objects.get_or_create(iso2="GR", defaults={"name": "Greece"})
+    cornwall = Region.objects.create(country=gb, name="Cornwall", slug="cornwall")
+    Region.objects.create(country=gr, name="Cornwall", slug="cornwall-gr")  # same name
+
+    assert resolve_region("UK", "Cornwall") == cornwall
+    assert resolve_region("England", "cornwall") == cornwall
+    assert resolve_region("Atlantis", "Cornwall") is None  # unknown country → no guess
+
+
+def test_email_only_row_matches_the_existing_person_on_that_address() -> None:
+    john = _person("John", "Smith", "john@example.com")
+
+    match = find_or_create_person(
+        email="john@example.com",
+        first_name="",
+        last_name="",
+        legacy_id=person_legacy_id("john@example.com", "", ""),
+    )
+
+    assert match.person == john
+    assert match.created is False
+    assert PersonEmail.objects.filter(email="john@example.com").count() == 1
+
+
+def test_rerun_leaves_an_anonymised_sheet_person_alone() -> None:
+    legacy_id = person_legacy_id("ada@example.com", "Ada", "Lovelace")
+    first = find_or_create_person(
+        email="ada@example.com",
+        first_name="Ada",
+        last_name="Lovelace",
+        legacy_id=legacy_id,
+        defaults={"town": "Bath"},
+    )
+    first.person.anonymize()
+
+    again = find_or_create_person(
+        email="ada@example.com",
+        first_name="Ada",
+        last_name="Lovelace",
+        legacy_id=legacy_id,
+        defaults={"town": "Bath"},
+    )
+
+    assert again.inactive is True
+    assert again.created is False
+    again.person.refresh_from_db()
+    assert again.person.town == ""
+    assert again.person.status == PersonStatus.ANONYMIZED
+    assert Person.objects.count() == 1
+
+
+def test_fill_blanks_treats_an_empty_list_as_blank() -> None:
+    person = _person("Ada", "Lovelace", kind=PersonKind.CUSTOMER)
+    assert person.tags == []
+
+    assert fill_blanks(person, {"tags": [PersonTag.VIP], "town": ""}) == ["tags"]
+    assert person.tags == [PersonTag.VIP]
+    assert fill_blanks(person, {"tags": [PersonTag.PA]}) == []
+
+
+def test_deactivated_person_on_the_same_email_is_reported_inactive_not_reminted() -> None:
+    # A res-DB person the importer matched on run 1 never got a sheet key; if
+    # staff deactivate them, run 2 must not mint a fresh copy from the sheet.
+    _person("Ada", "Lovelace", "ada@example.com", status=PersonStatus.INACTIVE)
+
+    match = find_or_create_person(
+        email="ada@example.com",
+        first_name="Ada",
+        last_name="Lovelace",
+        legacy_id=person_legacy_id("ada@example.com", "Ada", "Lovelace"),
+    )
+
+    assert match.inactive is True
+    assert Person.objects.count() == 1
+
+
+def test_namesakes_that_are_not_customers_are_flagged_ambiguous() -> None:
+    _person("John", "Smith", kind=PersonKind.CONTACT)
+    _person("John", "Smith", kind=PersonKind.CONTACT)
+
+    assert match_person_by_name("John", "Smith") == (None, True)
+    match = find_or_create_person(
+        email=None, first_name="John", last_name="Smith", legacy_id="sheet-person-x"
+    )
+    assert match.created is True and match.ambiguous is True
+
+
+def test_parse_sheet_date_ignores_a_time_suffix() -> None:
+    assert parse_sheet_date("1/6/2019 00:00") == date(2019, 6, 1)
+    assert parse_sheet_date("2019-06-01T09:15:00") == date(2019, 6, 1)
+    assert parse_sheet_date("31/12/2020") == date(2020, 12, 31)

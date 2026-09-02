@@ -169,7 +169,13 @@ _CHECKS: list[_Check] = [
         "WHERE LTRIM(RTRIM(ISNULL(Company, ''))) <> ''",
         Organisation,
         "Organisation (agency)",
-        loaded_count=lambda m: m._default_manager.filter(org_type=OrgType.AGENCY).count(),
+        # GAP-089: `import_enquiry_sheet` mints agencies from the sheet's
+        # `Trade` column, stamped `sheet-org-…` — no VillaContact twin.
+        loaded_count=lambda m: (
+            m._default_manager.filter(org_type=OrgType.AGENCY)
+            .exclude(legacy_id__startswith=SHEET_LEGACY_PREFIX)
+            .count()
+        ),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaMaster WHERE DeletedAt IS NULL",

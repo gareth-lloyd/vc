@@ -10,7 +10,9 @@ flag, and is never scheduled, invoiced, or pushed to Zoho (deferred).
 Lifecycle: created only by `import_past_bookers`; `person` is PROTECT (matches
 `Booking.person`; a contact DELETE with stays 409s via the shared exception
 handler) and `Person.merge` rewrites it through the generic related-objects
-loop. `Person.anonymize` leaves these rows in place — they carry no PII.
+loop. `Person.anonymize` keeps the row (FK integrity; villa / year / booking
+number are not personal data) but blanks `notes`, the one free-text column fed
+from the sheet row — extend `anonymize` if another free-text column is added.
 """
 
 from __future__ import annotations

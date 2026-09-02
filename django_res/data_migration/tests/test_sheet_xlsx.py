@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook
 
-from data_migration.sheets.xlsx import read_sheet
+from data_migration.sheets.xlsx import BLANK_RUN_LIMIT, read_sheet
 
 
 @pytest.fixture
@@ -23,17 +23,20 @@ def workbook(tmp_path: Path) -> Path:
     ws.append([None, "Bob", "+44 7000", "2020-01-02", 2.5, None])
     ws.append([None, "", None, None, None, None])  # only-empty-strings row → blank
     ws.append([None, None, None, None, None, None])
-    ws.append([None, "Ghost", None, None, None, None])  # after the blank row: ignored
+    ws.append([None, "Carol", None, None, None, None])  # a blank spacer row is skipped
+    for _ in range(BLANK_RUN_LIMIT):
+        ws.append([None] * 6)
+    ws.append([None, "Ghost", None, None, None, None])  # after the blank run: ignored
     wb.create_sheet("Other").append(["x"])
     path = tmp_path / "book.xlsx"
     wb.save(path)
     return path
 
 
-def test_read_sheet_coerces_cells_and_stops_at_first_blank_row(workbook: Path) -> None:
+def test_read_sheet_coerces_cells_and_skips_blank_rows_until_a_long_run(workbook: Path) -> None:
     rows = read_sheet(workbook, "Contacts")
 
-    assert [r["First Name"] for r in rows] == ["Ada", "Bob"]
+    assert [r["First Name"] for r in rows] == ["Ada", "Bob", "Carol"]
     # Integral floats (Excel's number-typed phone cells) drop the ".0".
     assert rows[0]["Phone"] == "447985414214"
     assert rows[1]["Phone"] == "+44 7000"
@@ -69,3 +72,17 @@ def test_read_sheet_keeps_date_cells(tmp_path: Path) -> None:
     assert (row["When"].date() if isinstance(row["When"], datetime) else row["When"]) == date(
         2018, 3, 4
     )
+
+
+def test_read_sheet_keeps_both_columns_of_a_repeated_header(tmp_path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.append(["Name", "Notes", "Notes"])
+    ws.append(["Ada", "first", "second"])
+    path = tmp_path / "dup.xlsx"
+    wb.save(path)
+
+    (row,) = read_sheet(path, ws.title)
+
+    assert row == {"Name": "Ada", "Notes": "first", "Notes_3": "second"}

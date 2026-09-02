@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Sum
+from django.db.models.functions import ExtractYear
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -181,13 +182,17 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
         # production writers no longer persist the nullable `guest` leg — a
         # `guest_id=OuterRef("guest_id")` join would be NULL=NULL → never a match.
         # GAP-089: a sheet-imported historic stay at one of the caller's villas
-        # counts too (only when the importer resolved the villa to a Property).
+        # counts too (only when the importer resolved the villa to a Property),
+        # except one in this booking's own check-in year — the sheet and the
+        # res DB overlap around late 2024, so that is most likely this stay.
         repeat = Exists(
             Booking.objects.filter(
                 person_id=OuterRef("person_id"), property_id__in=property_ids
             ).exclude(pk=OuterRef("pk"))
         ) | Exists(
-            PastStay.objects.filter(person_id=OuterRef("person_id"), property_id__in=property_ids)
+            PastStay.objects.filter(
+                person_id=OuterRef("person_id"), property_id__in=property_ids
+            ).exclude(year=OuterRef("check_in_year"))
         )
         qs: QuerySet[Booking] = (
             Booking.objects.filter(property_id__in=property_ids, is_archived=False)
@@ -199,7 +204,7 @@ class OwnerBookingViewSet(viewsets.ReadOnlyModelViewSet):
                 "currency",
             )
             .prefetch_related("person__emails", "person__phones")
-            .annotate(is_repeat_guest=repeat)
+            .annotate(check_in_year=ExtractYear("date_from"), is_repeat_guest=repeat)
             .order_by("-date_from")
         )
         if self.action == "retrieve":

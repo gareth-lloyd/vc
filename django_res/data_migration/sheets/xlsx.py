@@ -10,10 +10,13 @@ so every scalar is coerced here in one place:
 - ``datetime`` / ``date`` → left alone (``parse_sheet_date`` normalises later);
 - ``None`` → ``None``.
 
-Reading stops at the first row whose every cell coerces to ``None``: the real
-exports report ~1M rows because trailing formatting keeps the used range open.
+Rows whose every cell coerces to ``None`` are skipped (hand-kept sheets have
+blank spacer rows); reading stops after ``BLANK_RUN_LIMIT`` of them in a row,
+because the real exports report ~1M rows — trailing formatting keeps the used
+range open.
 Unnamed header cells get a positional ``col_<n>`` key (1-based) so a stray
-mail-merge column is preserved rather than colliding on ``None``.
+mail-merge column is preserved rather than colliding on ``None``; a repeated
+header name gets a ``<name>_<n>`` suffix for the same reason.
 """
 
 from __future__ import annotations
@@ -23,6 +26,9 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+
+#: Consecutive all-blank rows that end the sheet (see module doc).
+BLANK_RUN_LIMIT = 200
 
 
 def _coerce(value: Any) -> Any:
@@ -53,15 +59,24 @@ def read_sheet(path: str | Path, sheet_name: str) -> list[dict[str, Any]]:
             raw_header = next(rows_iter)
         except StopIteration:
             return []
-        header = [
-            (str(cell).strip() if cell is not None and str(cell).strip() else f"col_{i}")
-            for i, cell in enumerate(raw_header, start=1)
-        ]
+        header: list[str] = []
+        for i, cell in enumerate(raw_header, start=1):
+            name = str(cell).strip() if cell is not None and str(cell).strip() else f"col_{i}"
+            # A repeated header would otherwise collapse to the last column's
+            # value in the row dict; suffix the repeat with its position.
+            header.append(name if name not in header else f"{name}_{i}")
         rows: list[dict[str, Any]] = []
+        blank_run = 0
         for raw in rows_iter:
             values = [_coerce(cell) for cell in raw]
             if all(v is None for v in values):
-                break
+                # A blank spacer row is skipped; only a long run of them means
+                # the used range has run out (the real exports report ~1M rows).
+                blank_run += 1
+                if blank_run >= BLANK_RUN_LIMIT:
+                    break
+                continue
+            blank_run = 0
             # Trailing cells beyond the header (or short rows) are tolerated.
             values = (values + [None] * len(header))[: len(header)]
             rows.append(dict(zip(header, values, strict=True)))

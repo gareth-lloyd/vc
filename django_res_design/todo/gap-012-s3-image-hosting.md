@@ -114,6 +114,14 @@ set its keys as Render env vars per service. Do not ship the
    (`obj.image.url` — storage-generated; `/media/…` locally, S3 URL on
    staging/prod). No variant dict.
 
+   **Downstream consumer (noted 2026-09-01):** `Property.hero_image_url()`
+   feeds the Zoho villa payload's `hero_image_url`, and Limitless flagged on
+   the villa-sync demo that the value arrives with no domain — expected, since
+   that is the local `/media/…` form pre-S3. They have parked it in a plain
+   text field, which is the right call; it becomes a usable link once this
+   ticket's staging/prod cutover runs. No Flow-side change needed and nothing
+   to raise with them. See CHECK-003.
+
 6. **Delete cleanup.** `post_delete` signals on `PropertyImage` and
    `Collection` queue the stored file's deletion via `transaction.on_commit`
    (works identically for local and S3 backends), so a hard-deleted row

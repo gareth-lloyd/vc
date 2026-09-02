@@ -45,13 +45,23 @@ tier; the rest are handled the next time their app is touched.
 
 Each ticket has:
 
-- **Severity** — bug / footgun / smell / question / gap.
+- **Severity** — bug / footgun / smell / question / gap / check.
 - **Source** — pointer to the design doc that surfaced it.
 - **Files touched** — best-guess file:line references.
 - **Problem** — what's wrong.
 - **Proposed fix** — concrete approach.
 - **Acceptance** — how we'll know it's done (tests, constraints, etc.).
 - **Dependencies** — other tickets this blocks or is blocked by.
+
+**`CHECK-*` tickets are different in kind.** They track work owned by an
+**external party** (today: Limitless, on the Zoho Flow side of the
+integration) where we have nothing to build — the ticket is closed by
+*verifying* someone else's change, not by landing one of our own. They carry
+an extra **Verify with** line naming how to check, and each item states the
+observable test rather than a fix. Anything in the same review that turns out
+to depend on our code is split out as its own `GAP-`/`BUG-` ticket and
+cross-referenced, so a CHECK never hides work of ours behind someone else's
+name.
 
 When a ticket is merged, prepend a `✅ RESOLVED` banner (problem / fix /
 commit), `git mv` the file into `done/`, and update its row in `INDEX.md`.

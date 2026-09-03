@@ -1,5 +1,30 @@
 # BUG-023 — Clearing a deposit override re-bills a deposit on a property that requires none
 
+> **✅ RESOLVED (2026-09-03, local `main` unpushed)** — shipped on
+> `feat/bug-022-023` with BUG-022: 0cf8dc44 carries the `deposit_required`
+> gate and the resync rule, 861e206b adds the policy pins, and this commit is
+> the docs close-out. **Fix:** the policy
+> branch of the resync deposit target returns `Decimal("0")` when
+> `deposit_required` is false, mirroring `create_for_booking`; the zero target
+> then cancels the PENDING deposit row per BUG-022, so clearing an override on
+> a deposit-optional property returns the schedule to BALANCE-only instead of
+> re-billing the policy percentage. The gate landed inside BUG-022's commit
+> because that commit widened the mint arm, which would otherwise have grown a
+> policy deposit on a deposit-optional property; this ticket's own commit adds
+> the pins. **Decided along the way:** property deposit policy is **live** for
+> unsettled schedules — flipping `deposit_required` off cancels a PENDING
+> deposit on the next resync, flipping it on mints one while the booking is
+> still `AWAITING_DEPOSIT`.
+>
+> ⚠️ **Tell Limitless:** Zoho `deposit_status` can now read `"cancelled"` on a
+> **live** booking (one that wants no deposit), not only on a cancelled one —
+> read `== "succeeded"` for "paid?", never `"cancelled"` for "booking dead?".
+> The re-push timing itself is [BUG-021](../bug-021-zoho-booking-not-repushed-on-money-edits.md).
+>
+> ⚠️ **Left open:** a booking with no deposit row has no path out of
+> `awaiting_deposit` — pre-existing, filed as
+> [BUG-026](../bug-026-no-deposit-booking-parked-in-awaiting-deposit.md).
+
 - **Severity:** 🔴 Bug (money — the customer is asked for a deposit the
   property's policy forbids).
 - **Found:** 2026-09-02, by the `/ship gap-099` code review (verifier

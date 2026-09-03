@@ -39,6 +39,15 @@ Guard with `push_suppressed()` / `webhook_url("booking")` like the sibling
 receivers. Test: add a charge item to a CONFIRMED booking → exactly one
 booking push enqueued; mark the deposit paid → one push.
 
+## Related
+
+- **BUG-022/023 (resolved 2026-09-03)** changed what a stale push can mean:
+  `deposit_status` now reads `"cancelled"` on a **live** booking whose deposit
+  was cancelled because none is wanted, so a booking that never re-pushes can
+  sit in Zoho showing a deposit state that no longer exists in either
+  direction. Tell Limitless to read `deposit_status == "succeeded"` for
+  "paid?", never `"cancelled"` for "booking dead?".
+
 ## Out of scope
 
 - Zoho-side insert-only behaviour (CHECK-004 item 1) — until Limitless fix

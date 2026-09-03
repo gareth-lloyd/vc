@@ -265,6 +265,32 @@ Constraint: `UniqueConstraint(provider, event_id)` — provider re-delivery is a
 ## Services
 
 ### `PaymentScheduler` (in `payments/services.py`)
+
+> **As-built (2026-09-03).** The pseudo-code below is the original sketch and is
+> **superseded** by `payments/services/payment_scheduler.py`; it shows only the
+> create path and no resync at all. Two rules worth knowing before reading it:
+>
+> - **`create_for_booking`** builds the schedule once, at confirmation
+>   (`booking_transitioned` → `AWAITING_DEPOSIT`), and creates a DEPOSIT row
+>   only when a deposit is actually wanted:
+>   `(override is not None or deposit_required) and amount > 0`.
+> - **`resync_for_booking`** resizes the *unsettled* rows whenever
+>   `booking_total_changed` fires (charge items, `modify_dates`, party changes,
+>   `set_deposit_override`). It computes one deposit target — the per-booking
+>   override if set, else the property policy, which honours `deposit_required`.
+>   A **zero** target (override `0`, policy off, or nothing left to collect)
+>   **cancels** the PENDING deposit row (`transition_to(CANCELLED)`, event kind
+>   `DEPOSIT_NOT_REQUIRED` / `DEPOSIT_COVERED`) rather than writing an unpayable
+>   `0.00`; the BALANCE still clamps at 0 and any residual is written to the
+>   booking Timeline. A **positive** target with no active deposit row mints
+>   one, but only while the booking is still `AWAITING_DEPOSIT` (read from the
+>   DB, not the caller's instance). Property policy is therefore *live* for
+>   unsettled schedules. See BUG-022/023 and [`../decisions.md`](../decisions.md).
+>
+> Known gap: a booking that wants **no** deposit has no path out of
+> `AWAITING_DEPOSIT` —
+> [`../../todo/bug-026-…`](../../todo/bug-026-no-deposit-booking-parked-in-awaiting-deposit.md).
+
 At `Booking` creation, generates the schedule from the effective `PropertyFinance.payment_schedule`:
 
 ```python

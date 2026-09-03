@@ -14,7 +14,7 @@ from typing import Any
 from rest_framework import serializers
 
 from reservations.enums import QuotationStatus
-from reservations.models import Booking, Enquiry, GuestPreference, Quotation
+from reservations.models import Booking, Enquiry, GuestPreference, PastStay, Quotation
 
 
 class ContactBookingSerializer(serializers.ModelSerializer[Booking]):
@@ -141,3 +141,32 @@ class ContactTravelPreferenceSerializer(serializers.ModelSerializer[GuestPrefere
             "created_at",
         ]
         read_only_fields = fields
+
+
+class ContactPastStaySerializer(serializers.ModelSerializer[PastStay]):
+    """GAP-089 row for `/contacts/{id}/past-stays`: the sheet facts plus the
+    resolved property (when the importer matched the villa name). `property`
+    is the bare pk and `property_name` the resolved display name — the same
+    pair the enquiry/quotation/booking serializers expose."""
+
+    property_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PastStay
+        fields = [
+            "id",
+            "booking_number",
+            "villa_name",
+            "property",
+            "property_name",
+            "destination",
+            "year",
+            "notes",
+        ]
+        read_only_fields = fields
+
+    def get_property_name(self, obj: PastStay) -> str | None:
+        prop = obj.property
+        if prop is None:
+            return None
+        return prop.display_name or prop.name

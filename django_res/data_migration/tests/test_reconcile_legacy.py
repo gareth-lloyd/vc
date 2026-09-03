@@ -17,6 +17,8 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from accounts.enums import OrgType
+from accounts.models import Organisation
 from data_migration.loaders.integrations import SyncRecordZohoLoader
 from data_migration.management.commands import reconcile_legacy
 from data_migration.management.commands.reconcile_legacy import _Check
@@ -226,6 +228,41 @@ def test_person_checks_count_their_own_legacy_id_slice(monkeypatch: pytest.Monke
     assert client_check.loaded_count(client_check.model) == 1
     # The client check keeps the documented no-name gap.
     assert client_check.expected_gap == 1
+
+
+@pytest.mark.django_db
+def test_sheet_imported_rows_do_not_move_the_legacy_counts() -> None:
+    """GAP-089: the spreadsheet importers write Person / PersonEmail /
+    PersonPhone / Enquiry rows keyed `sheet-…`. They have no legacy-DB twin, so
+    every count that compares against the res dump must leave them out or the
+    checks go RED after the import (an unexplained gap blocks cutover)."""
+    from accounts.factories import PersonEmailFactory, PersonFactory, PersonPhoneFactory
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+
+    legacy = PersonFactory(legacy_id="10")
+    PersonEmailFactory(contact=legacy, email="legacy@example.com")
+    PersonPhoneFactory(contact=legacy, number="+441234567890")
+    sheet = PersonFactory(legacy_id="sheet-person-0123456789abcdef")
+    PersonEmailFactory(contact=sheet, email="sheet@example.com")
+    PersonPhoneFactory(contact=sheet, number="+449876543210")
+    EnquiryFactory(legacy_id="enquiry-1", person=None)
+    EnquiryFactory(legacy_id="sheet-enquiry-0123456789abcdef", person=sheet)
+    Organisation.objects.create(name="Legacy Travel", dedup_key="k1", org_type=OrgType.AGENCY)
+    Organisation.objects.create(
+        name="Sheet Travel", dedup_key="k2", org_type=OrgType.AGENCY, legacy_id="sheet-org-k2"
+    )
+
+    by_label = {c.label: c for c in _CHECKS}
+    for label in (
+        "Person (owner/agent)",
+        "PersonEmail",
+        "PersonPhone",
+        "Enquiry",
+        "Organisation (agency)",
+    ):
+        check = by_label[label]
+        assert check.loaded_count is not None, label
+        assert check.loaded_count(check.model) == 1, label
 
 
 @pytest.mark.django_db

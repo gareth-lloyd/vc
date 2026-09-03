@@ -40,7 +40,11 @@ Five models carry the weight of the system:
   `Person` (kind=CONTACT) via `PropertyContactAssignment`.
 - **`Booking`** — central to reservations. Has its own satellite cluster:
   `BookingEvent`, `BookingNote`, `BookingHold`, `BookingConciergeItem`, and a
-  1:N to `Payment`.
+  1:N to `Payment`. Its historic cousin **`PastStay`** (GAP-089) is a
+  Person-owned record of a stay imported from Nick's spreadsheets — villa
+  name (+ optional resolved `Property`), year, legacy booking number, no
+  dates or money — surfaced on Customer-360 and counted into the
+  repeat-customer flag, never scheduled, invoiced or pushed to Zoho.
 - **`Person`** (`accounts`) — the single unified human-identity model. A
   `kind` enum (`CUSTOMER` vs `CONTACT`) distinguishes booking-side customers
   (across Enquiry → Quotation → Booking) from operator-side owners/managers/

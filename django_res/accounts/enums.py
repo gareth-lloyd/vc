@@ -46,6 +46,9 @@ class PersonTag(models.TextChoices):
     PAST_ISSUES = "past_issues", "Past issues"
     SPECIFIC_PREFERENCES = "specific_preferences", "Specific preferences"
     TIME_WASTER = "time_waster", "Time waster"
+    # GAP-089: vocabulary carried over from Nick's historic spreadsheets.
+    HNW = "hnw", "High net worth"
+    OWNER = "owner", "Villa owner"
 
 
 class PersonRelationshipKind(models.TextChoices):

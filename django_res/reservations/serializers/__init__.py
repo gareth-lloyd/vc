@@ -20,6 +20,7 @@ from reservations.serializers.concierge import (
 from reservations.serializers.contact import (
     ContactBookingSerializer,
     ContactEnquirySerializer,
+    ContactPastStaySerializer,
     ContactQuotationSerializer,
     ContactTravelPreferenceSerializer,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "ClientListSerializer",
     "ContactBookingSerializer",
     "ContactEnquirySerializer",
+    "ContactPastStaySerializer",
     "ContactQuotationSerializer",
     "ContactTravelPreferenceSerializer",
     "DamageClaimPhotoSerializer",

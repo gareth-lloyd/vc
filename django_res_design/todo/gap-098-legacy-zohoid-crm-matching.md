@@ -78,6 +78,7 @@ should be answered before any of the fix is built.
   settle error reporting and id write-back together.
 - **CHECK-001** item 1 / item 9 — the email fallback and the `searchRecords`
   lag are both consequences of having no durable external key.
-- **GAP-089** — the spreadsheet historic import creates bookings that may
+- **GAP-089** — the spreadsheet historic import creates people (and
+  `PastStay` rows, not bookings — shipped 2026-09-02) that may
   correspond to legacy CRM records; worth checking whether it should carry
   `external_id` through.

@@ -29,6 +29,7 @@ from reservations.models import Booking, Quotation, QuotationLine
 from reservations.serializers import (
     ContactBookingSerializer,
     ContactEnquirySerializer,
+    ContactPastStaySerializer,
     ContactQuotationSerializer,
     ContactTravelPreferenceSerializer,
 )
@@ -88,6 +89,12 @@ class ContactCustomerReadViewSet(viewsets.GenericViewSet[Person]):
         # the shared exclusion every Quotation-surfacing read routes through.
         qs = person.quotations_as_customer.real().order_by("-created_at")
         return self._paginated(qs, ContactQuotationSerializer)
+
+    def past_stays(self, request: Request, contact_pk: str | None = None) -> Response:
+        # GAP-089: sheet-imported historic stays (model Meta orders newest year first).
+        person = self._person(contact_pk)
+        qs = person.past_stays.select_related("property")
+        return self._paginated(qs, ContactPastStaySerializer)
 
     def travel_preferences(self, request: Request, contact_pk: str | None = None) -> Response:
         person = self._person(contact_pk)

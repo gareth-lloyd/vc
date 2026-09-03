@@ -96,12 +96,44 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > `BookingLoader` back-stamps `Booking.created_at` from legacy `CreatedAt`
 > (the Zoho payload's `booking_date`, the CRM's historic-import filter).
 > Per the 2026-07-29 Limitless call, historic bookings now arrive via the
-> **spreadsheet import** instead
-> (`django_res_design/todo/gap-089-spreadsheet-historic-import.md`), which
-> does its own `created_at` back-stamp from the sheet's booking date — the
-> legacy booking-loader step is no longer part of cutover (the loader code
-> stays as the schema record). The booking backfill runs **after** the
-> spreadsheet import.
+> **spreadsheet import** instead — the legacy booking-loader step is no
+> longer part of cutover (the loader code stays as the schema record).
+>
+> **Built 2026-09-02 (GAP-089).** The sheets carry a villa, a year and a
+> legacy booking number per stay — no dates, no money — so they land as
+> `reservations.PastStay` rows (Customer-360 "Past stays", repeat-customer
+> flag), **not** as Bookings, and are **not** pushed to Zoho (deferred —
+> raise the shape with Limitless). The two commands run right after
+> `loadlegacy --all` and before `reconcile_legacy`
+> (`D` = wherever the two `.xlsx` files live; they are not in the repo):
+>
+> ```bash
+> ./manage.py import_enquiry_sheet --file "$D/Enquiries - FINAL.xlsx" --dry-run
+> ./manage.py import_enquiry_sheet --file "$D/Enquiries - FINAL.xlsx"
+> ./manage.py import_past_bookers  --file "$D/VC Past Bookers Final.xlsx" --dry-run
+> ./manage.py import_past_bookers  --file "$D/VC Past Bookers Final.xlsx"
+> ```
+>
+> Each prints created / updated / skipped-per-reason counts plus the villa
+> and person names it could not resolve (left unlinked or skipped —
+> reported, never guessed); `--dry-run` rolls the whole run back. Both are
+> re-runnable: people are found by `sheet-person-…` key (blank-fill only,
+> so operator edits survive), stays and enquiries are create-only on their
+> `sheet-stay-…` / `sheet-enquiry-…` keys. Two re-run caveats: a person
+> staff **merged away** loses the `sheet-person-…` key with the deleted
+> row, so a later re-run can re-mint that person's shell (stays/enquiries
+> stay on the merge target); and a person staff **anonymised** has no
+> name/e-mail left to match, so a later re-run re-creates them from the
+> sheet — redact the sheet row too before re-running after an erasure
+> (a merely deactivated person is recognised and skipped). Sheet enquiries land
+> `DEAD / lost_reason=UNKNOWN / COLD` with `created_at` back-stamped to the
+> sheet date (the res `EnquiryLoader` back-stamps its rows from legacy
+> `CreatedAt` for the same reason — that needs one FULL `loadlegacy enquiry`
+> run to repair rows loaded before 2026-09-02). `reconcile_legacy` leaves
+> every `sheet-` row out of its counts. The later `zoho_backfill` contact
+> and enquiry kinds push the sheet people (with their tags — including the
+> new `hnw` / `owner` values) and the ~2.4k DEAD historic enquiries by
+> design; the booking kind is unaffected.
 
 ## 4b. Capture external IDs into `SyncRecord` (Zoho)
 

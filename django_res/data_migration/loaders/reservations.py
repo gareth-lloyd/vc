@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.utils import timezone
+
 from accounts.enums import ContactRole, PersonKind, PersonStatus
 from accounts.models import Person
 from accounts.services.person_channels import (
@@ -237,9 +239,26 @@ class EnquiryLoader(BaseLoader):
         "SELECT Id, FirstName, LastName, Email, CountryCode, MobileNo, "
         "VillaId, RegionsId, FromDate, ToDate, MinBed, MaxBed, "
         "Adult, Children, Notes, Status, AgentId, EnquiryNo, ReferralCode, "
-        "RequestType, CreatedBy "
+        "RequestType, CreatedBy, CreatedAt "
         "FROM VillaEnquire"
     )
+
+    def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
+        super()._process_row(row, report)
+        # GAP-089: the spreadsheet importer back-stamps its 2017-2024 enquiries
+        # to the sheet date, so the res rows (Nov-2024 onward) must carry their
+        # legacy `CreatedAt` too or every one of them sorts as "created on
+        # cutover day" in Customer-360 and Zoho. Same technique as
+        # BookingLoader: `auto_now_add` ignores assignment, so a queryset
+        # `.update()` after the upsert (naive SQL Server datetime → aware).
+        # Idempotent on rerun; a `--since` delta run skips unmodified rows, so
+        # repairing earlier loads needs one FULL run (CUTOVER.md).
+        legacy_created = row.get("CreatedAt")
+        if legacy_created is None:
+            return
+        if timezone.is_naive(legacy_created):
+            legacy_created = timezone.make_aware(legacy_created)
+        Enquiry.objects.filter(legacy_id=str(row["Id"])).update(created_at=legacy_created)
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         first = (row.get("FirstName") or "").strip()[:128]

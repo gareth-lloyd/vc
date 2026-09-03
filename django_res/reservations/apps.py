@@ -46,6 +46,7 @@ class ReservationsConfig(AppConfig):
             DamageClaimPhoto,
             Enquiry,
             OwnerBlock,
+            PastStay,
             Quotation,
             QuotationLine,
         )
@@ -57,6 +58,14 @@ class ReservationsConfig(AppConfig):
         # via `_booking_guest_post_save`'s `queryset.update()` (no pre_save
         # signal — bypasses this trail by design), so the LEAD change history
         # lives on the audited `BookingGuest` row, not here.
+        # GAP-089: sheet-imported historic stays. Row-level edits to the
+        # person/property links and the sheet facts are the trail; a
+        # `Person.merge` moves rows via queryset `.update()` (no pre_save) and
+        # is summarised on the merge row by `record_merge` instead.
+        track(
+            PastStay,
+            fields=["person_id", "property_id", "booking_number", "villa_name", "year"],
+        )
         track(
             Booking,
             fields=[

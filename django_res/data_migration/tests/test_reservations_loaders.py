@@ -9,12 +9,16 @@ can't catch the duplicate-primary constraint trip a re-run would otherwise cause
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
+from django.utils import timezone
 
 from accounts.enums import ContactRole, PersonKind, PersonStatus
 from accounts.models import Person
 from data_migration.base import LoadReport
 from data_migration.loaders.reservations import ClientLoader, EnquiryLoader, _role_for
+from reservations.models import Enquiry
 
 
 @pytest.mark.parametrize(
@@ -164,3 +168,51 @@ def test_enquiry_empty_phone_stays_empty() -> None:
     kwargs = EnquiryLoader().transform(_enquiry_row())
     assert kwargs is not None
     assert kwargs["phone"] == ""
+
+
+# --- GAP-089: created_at back-stamp (date coherence next to the sheet import) ---
+
+
+def _enquiry_db_row(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        **_enquiry_row(),
+        "Email": "ada@example.com",
+        "Status": 0,
+        "EnquiryNo": "E-000001",
+        "CreatedAt": datetime(2024, 11, 20, 9, 15),
+    }
+    base.update(overrides)
+    return base
+
+
+def test_enquiry_created_at_backstamped_from_legacy(db: None) -> None:
+    """Res enquiries must sort by their real date next to the 2017-2024 sheet
+    rows (GAP-089), so `CreatedAt` is back-stamped past `auto_now_add`."""
+    report = LoadReport(loader="enquiry")
+
+    EnquiryLoader()._process_row(_enquiry_db_row(), report)
+
+    enquiry = Enquiry.objects.get(legacy_id="1")
+    assert timezone.is_aware(enquiry.created_at)
+    assert enquiry.created_at == timezone.make_aware(datetime(2024, 11, 20, 9, 15))
+    assert report.created == 1
+
+
+def test_enquiry_created_at_backstamp_survives_rerun(db: None) -> None:
+    report = LoadReport(loader="enquiry")
+    row = _enquiry_db_row()
+    EnquiryLoader()._process_row(row, report)
+    EnquiryLoader()._process_row(row, report)
+
+    enquiry = Enquiry.objects.get(legacy_id="1")
+    assert enquiry.created_at == timezone.make_aware(datetime(2024, 11, 20, 9, 15))
+    assert Enquiry.objects.count() == 1
+
+
+def test_enquiry_without_legacy_created_at_keeps_auto_stamp(db: None) -> None:
+    report = LoadReport(loader="enquiry")
+    before = timezone.now()
+
+    EnquiryLoader()._process_row(_enquiry_db_row(CreatedAt=None), report)
+
+    assert Enquiry.objects.get(legacy_id="1").created_at >= before

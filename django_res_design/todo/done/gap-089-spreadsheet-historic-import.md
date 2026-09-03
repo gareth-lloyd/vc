@@ -1,8 +1,79 @@
 # GAP-089 — Historic import pivot: bookings from spreadsheets, enquiry top-up
 
-- **Severity:** 🟢 Gap (cutover-path change). **⛔ BLOCKED on Nick's sample
+> **✅ RESOLVED (2026-09-02)** — built on `feat/gap-089` once the two
+> sheets arrived (`Enquiries - FINAL.xlsx`, `VC Past Bookers Final.xlsx`;
+> gitignored under `data_imports/`). The sheets changed the design below
+> in three places, each user-confirmed 2026-09-01:
+>
+> 1. **Stays are `reservations.PastStay` rows, not Bookings.** The Booking
+>    History sheet has a villa, a year and a `BN…` number per stay — no
+>    dates, no money, no email — so a Booking (real dates, occupancy,
+>    currency, terms) would have to be faked and would show on calendars
+>    and finance. `PastStay` is the honest minimal record: surfaced on
+>    Customer-360 as "Past stays", counted into `is_repeat_customer`, the
+>    `contact_types` CUSTOMER badge, `/clients?repeat=true` and the
+>    owner-portal `is_repeat_guest` (linked stays only). The synthetic
+>    `booking-*` quotation + `created_at` back-stamp design is therefore
+>    **not used for bookings**, and past stays are **not pushed to Zoho**
+>    (deferred — raise the shape with Limitless; `booked_region_slugs` in
+>    the clients directory also ignores them).
+> 2. **Undated enquiry-sheet rows are contact exports**, not enquiries
+>    (1,245 rows, 1,237 with neither villa nor notes): they land as a
+>    Person with one provenance notes line. Dated rows become create-only
+>    `Enquiry` rows keyed `sheet-enquiry-…` with an explicit `E-SHEET-…`
+>    reference, `status=DEAD / lost_reason=UNKNOWN / lead_status=COLD`
+>    (assumption: every ≤2024-12 sheet row is dead — one constant to
+>    change) and `created_at` back-stamped to the sheet date. No
+>    res-vs-sheet enquiry dedupe: measured against the April-2025 snapshot
+>    the sources are complementary in time (res 2024-11-14…, sheet
+>    …2024-12-09, 30 shared emails, none within 60 days). `EnquiryLoader`
+>    now back-stamps its rows from legacy `CreatedAt` for the same date
+>    coherence (needs one FULL `loadlegacy enquiry` to repair earlier loads).
+> 3. **Tags extend `PersonTag`** with `hnw` ("High net worth") and `owner`
+>    ("Villa owner"); VIP/VIP?→vip, PA→pa, Trade→trade, NC→nicks_friend,
+>    NWC→nicks_network; unknown tokens (LC, HWC) go to `Person.notes`.
+>    ⚠️ The Zoho contact payload pushes tags verbatim, so Limitless's Flow
+>    will now see `hnw` / `owner` — tell them (same class as the GAP-093
+>    `category` note); whether `hnw` belongs in `SENSITIVE_TAGS` is an
+>    open call. `PersonTag.OWNER` is a sheet fact, not a
+>    `PropertyContactAssignment` — the Owner *type* badge stays derived
+>    from assignments.
+>
+> Person matching (both importers): `sheet-person-{sha1(email|first|last)}`
+> key → email + last-name agreement over ACTIVE people (same email,
+> different last name = spouse → second Person; blank names = e-mail-only
+> row) → exactly-one ACTIVE name match (customers preferred) → create.
+> Matched people are **blank-filled only**, so operator edits survive
+> re-runs; a person anonymised after an earlier run is skipped. Villa
+> match: exact normalised name / display_name with "Villa " prefix
+> tolerated, else **unlinked and tallied** (report, don't guess); region:
+> exactly one `(country, name)` hit with the country resolved through the
+> alias map. `reconcile_legacy` excludes every `sheet-` row; the Zoho
+> backfill's contact + enquiry kinds push the sheet people and the ~2.4k
+> DEAD enquiries by design.
+>
+> **Dev-DB run 2026-09-02** (seed_dev data, so villa/person match rates
+> are not meaningful — the seed villas are fictional):
+> `import_enquiry_sheet`: 3,624 rows read → 2,376 enquiries + 3,617
+> people created, 1,245 undated rows person-only, 3 rows rejected
+> (invalid e-mail). `import_past_bookers` (run after the enquiry sheet):
+> 1,484 rows read (637 contacts + 847 stays) → 621 people created + 7
+> matched onto enquiry-sheet people (blank-filled) + 762 past stays
+> created, 85 stays skipped (person not resolvable: sheet-only "Nick
+> Corrie" ×5, mangled names like "Jemima Khan (Goldsmith)"), 7 unresolved
+> mailing countries, 1 bad year kept as a note, 1 invalid e-mail dropped.
+> Re-running both: 0 created, 2,376 enquiries and 762 stays reported
+> `exists`, the same skips.
+>
+> Shipped as: `b7858823` deps · `45e99297` tags · `af3b19fc` helpers ·
+> `7d5633af` PastStay · `afcbee88` EnquiryLoader back-stamp · `b674b559`
+> reconcile · `71f2cbb5` FE · `40d9795a` review hardening · `10b88fc7`
+> `import_past_bookers` · `b409a013` `import_enquiry_sheet`. `CUTOVER.md`
+> §4 carries the run order.
+
+- **Severity:** 🟢 Gap (cutover-path change). ~~**⛔ BLOCKED on Nick's sample
   sheets** (column structure) — design past the skeleton below waits for
-  them.
+  them.~~ Sheets arrived 2026-09-01; see the resolution block above.
 - **Source:** Limitless call 2026-07-29 — **import pivot decision**:
   historic bookings will come from Nick's spreadsheets ONLY; the legacy
   res-DB booking data (~60 thin archive rows) is **ignored** for import.

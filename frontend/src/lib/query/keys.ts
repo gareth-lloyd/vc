@@ -82,6 +82,7 @@ export const queryKeys = {
     properties: (id: ContactId) => ["contacts", "detail", k(id), "properties"] as const,
     enquiries: (id: ContactId) => ["contacts", "detail", k(id), "enquiries"] as const,
     bookings: (id: ContactId) => ["contacts", "detail", k(id), "bookings"] as const,
+    pastStays: (id: ContactId) => ["contacts", "detail", k(id), "past-stays"] as const,
     relationships: (id: ContactId) => ["contacts", "detail", k(id), "relationships"] as const,
     // `kind` and `status` are part of the cache key: the same query string
     // scoped to `contact` (business directory) vs `customer` (enquiry picker),

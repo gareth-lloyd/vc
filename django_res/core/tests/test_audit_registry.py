@@ -60,6 +60,7 @@ EXPECTED_TRACKED_MODELS = {
     "reservations.DamageClaimPhoto",
     "reservations.Enquiry",
     "reservations.OwnerBlock",
+    "reservations.PastStay",
     "reservations.Quotation",
     "reservations.QuotationLine",
 }

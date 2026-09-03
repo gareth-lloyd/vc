@@ -29,6 +29,7 @@ from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
     BookingChargeItem,
+    PastStay,
     Quotation,
     QuotationLine,
     TermsVersion,
@@ -399,6 +400,40 @@ def test_repeat_guest_detected_on_person_only_bookings(
     api_client.force_authenticate(user)
     detail = _detail(api_client, booking)
     assert detail["is_repeat_guest"] is True
+
+
+def test_repeat_guest_detected_from_a_sheet_imported_past_stay(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, customer: Person, property_: Property
+) -> None:
+    """GAP-089: a historic stay at this villa imported from the spreadsheets
+    (linked to the Property) makes the guest a repeat one; a stay the importer
+    could not link to a property does not (property-scoped flag)."""
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_)
+    today = timezone.localdate()
+    booking = _make_booking(
+        property_=property_,
+        gbp=gbp,
+        terms=terms,
+        person=customer,
+        date_from=today - timedelta(days=20),
+    )
+    api_client.force_authenticate(user)
+
+    PastStay.objects.create(person=customer, villa_name="Somewhere else", year=2018)
+    assert _detail(api_client, booking)["is_repeat_guest"] is False
+
+    # Same villa, same year as this booking: most likely the sheet's copy of
+    # THIS stay (the sources overlap around late 2024), so not a repeat.
+    same_year = PastStay.objects.create(
+        person=customer, villa_name="Here", property=property_, year=booking.date_from.year
+    )
+    assert _detail(api_client, booking)["is_repeat_guest"] is False
+
+    same_year.delete()
+    PastStay.objects.create(person=customer, villa_name="Here", property=property_, year=2019)
+    assert _detail(api_client, booking)["is_repeat_guest"] is True
 
 
 def test_co_owned_villa_or_merges_money_visibility(

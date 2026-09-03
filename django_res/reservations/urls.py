@@ -80,6 +80,11 @@ _contact_read_routes: list[URLPattern | URLResolver] = [
         name="contact-quotations",
     ),
     path(
+        "contacts/<int:contact_pk>/past-stays",
+        ContactCustomerReadViewSet.as_view({"get": "past_stays"}),
+        name="contact-past-stays",
+    ),
+    path(
         "contacts/<int:contact_pk>/travel-preferences",
         ContactCustomerReadViewSet.as_view({"get": "travel_preferences"}),
         name="contact-travel-preferences",

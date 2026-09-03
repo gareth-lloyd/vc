@@ -1399,6 +1399,392 @@ def test_convert_schedules_payments_on_booking(
     assert PaymentPurpose.BALANCE.value in purposes
 
 
+# ----------------------------------------------------------------------
+# BUG-020 — the operator discount must survive conversion
+# ----------------------------------------------------------------------
+def _convert_priced_line(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    *,
+    discount: str,
+    patch_manual_total: str | None = None,
+) -> tuple[QuotationLine, Booking]:
+    """Price a 7-night line (engine gross £1400) with a 15% commission policy
+    in place BEFORE pricing, apply `discount`, optionally PATCH it to a manual
+    total (keeping the now-stale engine snapshot), send + convert.
+
+    Commission/tax are zero unless a `PropertyFinance` policy exists when the
+    engine runs, so the finance row is created first: GROSS plan → commission
+    carved out of 1400 = 210, tax 0, engine `net_to_owner` = 1190.
+    """
+    from properties.enums import CommissionCalcType
+    from properties.models.finance import PropertyFinance
+
+    PropertyFinance.objects.create(
+        property=property_,
+        commission_calculation_type=CommissionCalcType.PERCENT,
+        commission_amount=Decimal("15"),
+        tax_percentage=Decimal("0"),
+    )
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "discount": discount,
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line_obj = QuotationLine.objects.get()
+    if patch_manual_total is not None:
+        patch = api_client.patch(
+            f"/api/v1/quotations/{quotation.pk}/lines/{line_obj.pk}",
+            {
+                "is_manual": True,
+                "total": patch_manual_total,
+                "price_override_reason": "Negotiated rate",
+            },
+            format="json",
+        )
+        assert patch.status_code == 200, patch.data
+        line_obj.refresh_from_db()
+    quotation.send()
+    convert = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line_obj.pk, "terms_accepted": True},
+        format="json",
+    )
+    assert convert.status_code == 201, convert.data
+    return line_obj, Booking.objects.get(pk=convert.data["id"])
+
+
+@pytest.mark.django_db
+def test_convert_manual_override_with_stale_snapshot_drops_old_operator_discount(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Price with a 150 discount, then PATCH to manual with discount 0: the
+    stale snapshot's `operator_discount` (150) must not reach the booking."""
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "discount": "150.00",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line_obj = QuotationLine.objects.get()
+    assert line_obj.pricing_snapshot["operator_discount"] == "150.00"
+    patch = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line_obj.pk}",
+        {
+            "is_manual": True,
+            "total": "1000.00",
+            "discount": "0.00",
+            "price_override_reason": "Negotiated rate",
+        },
+        format="json",
+    )
+    assert patch.status_code == 200, patch.data
+    quotation.send()
+    convert = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line_obj.pk, "terms_accepted": True},
+        format="json",
+    )
+    assert convert.status_code == 201, convert.data
+    snap = Booking.objects.get(pk=convert.data["id"]).pricing_snapshot
+    assert snap["total"] == "1000.00"
+    assert snap["operator_discount"] == "0.00"
+
+
+_GAP_099_STATE_KEYS = frozenset(
+    {"deposit_status", "deposit_due_at", "balance_status", "balance_due_at"}
+)
+
+
+def _financials_money(booking: Booking) -> dict[str, str]:
+    """GAP-085's eight money figures, exact-dict pinnable (GAP-099's four
+    payment-state keys are asserted present, then dropped — their values
+    are the scheduler's, not this fix's)."""
+    from reservations.services.zoho_payload import build_booking_payload
+
+    financials = dict(build_booking_payload(booking)["financials"])
+    assert _GAP_099_STATE_KEYS <= financials.keys()
+    for key in _GAP_099_STATE_KEYS:
+        financials.pop(key)
+    return financials
+
+
+@pytest.mark.django_db
+def test_convert_discounted_line_books_at_quoted_total(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """The ticket's probe: quoted £1250 must book at £1250, not the engine's £1400.
+
+    Owner absorbs the operator discount: `total` and `net_to_owner` are netted
+    on the booking snapshot; `commission`/`tax` stay as the engine computed.
+    """
+    line_obj, booking = _convert_priced_line(
+        api_client, staff, quotation, property_, discount="150.00"
+    )
+    line_snap = line_obj.pricing_snapshot
+    assert line_snap["commission"] == "210.00"
+    assert line_snap["tax"] == "0.00"
+    assert line_snap["net_to_owner"] == "1190.00"
+
+    assert booking.balance_due == Decimal("1250.00")
+    snap = booking.pricing_snapshot
+    assert snap["total"] == "1250.00"
+    assert snap["gross"] == "1400.00"
+    assert snap["operator_discount"] == "150.00"
+    assert snap["commission"] == line_snap["commission"]
+    assert snap["tax"] == line_snap["tax"]
+    assert snap["net_to_owner"] == "1040.00"  # 1250 - 210 - 0
+
+
+@pytest.mark.django_db
+def test_convert_discounted_line_owner_money_matches_quote(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    from reservations.services.owner_finance import owner_money_for_booking
+
+    _, booking = _convert_priced_line(api_client, staff, quotation, property_, discount="150.00")
+    money = owner_money_for_booking(booking)
+    assert money is not None
+    assert money["gross_total"] == Decimal("1250.00")
+    assert money["net_to_owner"] == Decimal("1040.00")
+
+
+@pytest.mark.django_db
+def test_convert_discounted_line_schedule_sums_to_quoted_total(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    from payments.enums import PaymentPurpose
+    from payments.models import Payment
+
+    _, booking = _convert_priced_line(api_client, staff, quotation, property_, discount="150.00")
+    amounts = dict(Payment.objects.filter(booking=booking).values_list("purpose", "amount"))
+    assert amounts == {
+        PaymentPurpose.DEPOSIT.value: Decimal("375.00"),  # 30% of 1250
+        PaymentPurpose.BALANCE.value: Decimal("875.00"),
+    }
+
+
+@pytest.mark.django_db
+def test_convert_discounted_line_zoho_financials(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """GAP-085's 8-figure block flows from the netted snapshot (full dict so no
+    stray figure inherits the engine's £1400)."""
+    _, booking = _convert_priced_line(api_client, staff, quotation, property_, discount="150.00")
+    assert _financials_money(booking) == {
+        "total_gross": "1250.00",
+        "total_net": "1040.00",
+        "gross_deposit": "375.00",
+        "net_deposit": "312.00",  # 375 * 1040/1250
+        "deposit_commission": "63.00",  # 375 * 210/1250
+        "gross_balance": "875.00",
+        "net_balance": "728.00",
+        "balance_commission": "147.00",
+    }
+
+
+@pytest.mark.django_db
+def test_convert_zero_discount_line_snapshot_unchanged(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Regression floor: with no discount the booking snapshot is byte-equal
+    to the engine's on the money keys."""
+    line_obj, booking = _convert_priced_line(
+        api_client, staff, quotation, property_, discount="0.00"
+    )
+    snap = booking.pricing_snapshot
+    assert booking.balance_due == Decimal("1400.00")
+    assert snap["total"] == "1400.00"
+    assert snap["net_to_owner"] == line_obj.pricing_snapshot["net_to_owner"] == "1190.00"
+    assert snap["operator_discount"] == "0.00"
+
+
+@pytest.mark.django_db
+def test_convert_manual_override_line_without_snapshot(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """A manual line never priced by the engine has an empty snapshot — the
+    booking books at the manual total and the snapshot stays `{}`."""
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "is_manual": True,
+            "total": "750.00",
+            "price_override_reason": "Negotiated package rate",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+    line_obj = QuotationLine.objects.get()
+    quotation.send()
+    convert = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line_obj.pk, "terms_accepted": True},
+        format="json",
+    )
+    assert convert.status_code == 201, convert.data
+    booking = Booking.objects.get(pk=convert.data["id"])
+    assert booking.balance_due == Decimal("750.00")
+    assert booking.pricing_snapshot == {}
+
+
+@pytest.mark.django_db
+def test_convert_manual_override_line_with_stale_snapshot(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """PATCHing a priced line to manual keeps the old engine snapshot. The
+    line total is still the authority: `total`/`net_to_owner` are re-derived
+    from the manual figure with the (stale) engine commission/tax."""
+    _, booking = _convert_priced_line(
+        api_client, staff, quotation, property_, discount="0.00", patch_manual_total="900.00"
+    )
+    snap = booking.pricing_snapshot
+    assert booking.balance_due == Decimal("900.00")
+    assert snap["total"] == "900.00"
+    assert snap["commission"] == "210.00"
+    assert snap["net_to_owner"] == "690.00"  # 900 - 210 - 0
+    # Re-stamped from the line, not inherited from the stale engine snapshot.
+    assert snap["operator_discount"] == "0.00"
+
+
+@pytest.mark.django_db
+def test_convert_fully_discounted_line_floors_owner_net_at_zero(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """A discount that clamps the line to £0 must not push the owner's net
+    negative — floor at 0, clip commission to the £0 the guest pays, warn."""
+    import structlog.testing
+
+    with structlog.testing.capture_logs() as logs:
+        line_obj, booking = _convert_priced_line(
+            api_client, staff, quotation, property_, discount="99999.00"
+        )
+    assert line_obj.total == Decimal("0")
+    assert booking.balance_due == Decimal("0")
+    snap = booking.pricing_snapshot
+    assert snap["total"] == "0.00"
+    assert snap["commission"] == "0.00"
+    assert snap["net_to_owner"] == "0.00"
+    floored = [log for log in logs if log["event"] == "booking.owner_net_floored"]
+    assert len(floored) == 1
+    assert floored[0]["quotation_line_id"] == line_obj.pk
+
+
+@pytest.mark.django_db
+def test_convert_partially_floored_line_keeps_money_identity(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Discount larger than the owner's net but smaller than the price: the
+    guest pays £150, so commission is clipped to £150 and the owner nets £0.
+    Component splits and the Zoho block must stay non-negative and sum."""
+    from reservations.services.owner_finance import payment_component_splits
+
+    _, booking = _convert_priced_line(api_client, staff, quotation, property_, discount="1250.00")
+    snap = booking.pricing_snapshot
+    assert booking.balance_due == Decimal("150.00")
+    assert snap["total"] == "150.00"
+    assert snap["commission"] == "150.00"  # engine 210, clipped
+    assert snap["tax"] == "0.00"
+    assert snap["net_to_owner"] == "0.00"
+
+    splits = payment_component_splits(booking)
+    assert splits is not None
+    assert [(s["gross"], s["commission"], s["net_to_owner"]) for s in splits] == [
+        (Decimal("45.00"), Decimal("45.00"), Decimal("0.00")),
+        (Decimal("105.00"), Decimal("105.00"), Decimal("0.00")),
+    ]
+    assert _financials_money(booking) == {
+        "total_gross": "150.00",
+        "total_net": "0.00",
+        "gross_deposit": "45.00",
+        "net_deposit": "0.00",
+        "deposit_commission": "45.00",
+        "gross_balance": "105.00",
+        "net_balance": "0.00",
+        "balance_commission": "105.00",
+    }
+
+
+@pytest.mark.django_db
+def test_net_snapshot_helper_drops_stale_net_when_money_unparseable() -> None:
+    """A snapshot whose commission cannot parse still gets the netted `total`
+    but loses the engine `net_to_owner`, so no half-netted pair survives."""
+    from reservations.services.bookings import BookingService
+
+    snapshot = {"total": "1400.00", "commission": None, "tax": "0.00", "net_to_owner": "1190.00"}
+    line_stub = QuotationLine(pk=1, property_id=1)
+    BookingService._net_snapshot_to_line_total(
+        snapshot, Decimal("1250.00"), quotation_line=line_stub
+    )
+    assert snapshot["total"] == "1250.00"
+    assert "net_to_owner" not in snapshot
+
+
 @pytest.mark.django_db
 def test_quotation_convert_endpoint_attributes_to_request_user(
     api_client: APIClient,
@@ -1787,6 +2173,62 @@ def test_create_line_with_discount_reduces_total(
     assert create.data["total"] == "1250.00"
     assert create.data["discount"] == "150.00"
     assert create.data["inclusions"] == "Welcome hamper"
+    # BUG-020 / FG-018: the operator discount lives under its own snapshot
+    # key; `discount` stays the engine's (0 here — no promo rules) and the
+    # snapshot `total` stays the engine figure on the *line* (netted at
+    # conversion by `BookingService`).
+    snap = line_obj.pricing_snapshot
+    assert snap["operator_discount"] == "150.00"
+    assert snap["discount"] == "0.00"
+    assert snap["gross"] == "1400.00"
+    assert snap["total"] == "1400.00"
+
+
+@pytest.mark.django_db
+def test_priced_line_keeps_engine_promo_discount_beside_operator_discount(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """A non-zero engine promo discount (Q-018) must survive an operator
+    discount on the same line — the bug was `price_line` overwriting it."""
+    from pricing.enums import DiscountKind, RuleKind
+    from pricing.models import Discount
+
+    Discount.objects.create(
+        property=property_,
+        name="Ten off",
+        rule_kind=RuleKind.EARLY_BIRD,
+        kind=DiscountKind.PERCENT,
+        amount=Decimal("10.00"),
+        valid_from=date(2026, 1, 1),
+        valid_to=date(2026, 12, 31),
+    )
+    api_client.force_login(staff)
+    create = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}/lines",
+        {
+            "property": property_.pk,
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "adults": 2,
+            "children": 0,
+            "discount": "150.00",
+        },
+        format="json",
+    )
+    assert create.status_code == 201, create.data
+
+    line_obj = QuotationLine.objects.get()
+    snap = line_obj.pricing_snapshot
+    # Engine: 1400 - 10% = 1260 (its `total`); operator takes a further 150.
+    assert snap["discount"] == "140.00"
+    assert snap["operator_discount"] == "150.00"
+    assert snap["gross"] == "1260.00"
+    assert snap["total"] == "1260.00"
+    assert line_obj.total == Decimal("1110.00")
 
 
 @pytest.mark.django_db

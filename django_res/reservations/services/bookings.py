@@ -15,6 +15,7 @@ from reservations.models.booking import Booking
 from reservations.models.booking_guest import BookingGuest
 from reservations.models.quotation import QuotationLine
 from reservations.services.holds import HoldService
+from reservations.services.owner_finance import owner_money_from_snapshot
 
 logger = structlog.get_logger(__name__)
 
@@ -80,7 +81,13 @@ class BookingService:
         # (GAP-007), so there is nothing to re-validate or re-align here.
         requires_pre_approval = cls._requires_pre_approval(property_)
         balance_due_at = property_.balance_due_at(quotation_line.date_from)
-        total = cls._decimal(snapshot.get("total", quotation_line.total))
+        # BUG-020: the line total (net of the operator discount, or the manual
+        # override figure) is the authority for what the guest pays. The
+        # snapshot's `total` is the engine's pre-operator-discount figure —
+        # net it here so every downstream reader of the booking snapshot
+        # (owner money, payment schedule, Zoho financials) sees one number.
+        total = cls._decimal(quotation_line.total)
+        cls._net_snapshot_to_line_total(snapshot, total, quotation_line=quotation_line)
 
         # GAP-045 Unit 3d-A/C: `Quotation.person` is the authoritative, NOT-NULL
         # customer FK — read it directly and set it on both the Booking and its
@@ -165,6 +172,80 @@ class BookingService:
         if value is None:
             return Decimal("0")
         return Decimal(str(value)).quantize(Decimal("0.01"))
+
+    @classmethod
+    def _net_snapshot_to_line_total(
+        cls, snapshot: dict[str, Any], total: Decimal, *, quotation_line: QuotationLine
+    ) -> None:
+        """Rewrite the engine snapshot's money so `total` is what the guest pays.
+
+        BUG-020 / FG-018: `QuotationLine.pricing_snapshot["total"]` is the
+        engine figure *before* the operator's line discount (kept beside it as
+        `operator_discount`, `gross`), whereas `line.total` is the quoted
+        price. On the booking snapshot the only consistent meaning of `total`
+        is "net of everything", so it is overwritten with the line total and
+        `net_to_owner` re-derived from it.
+
+        The owner absorbs the operator discount (product decision 2026-09-02):
+        `commission` and `tax` stay as the engine computed and
+        `net_to_owner = total - commission - tax`. When the discount exceeds
+        the owner's net that identity would go negative; rather than leave a
+        commission larger than the guest pays (every reader — component
+        splits, Zoho financials — assumes `total - commission - tax = net`),
+        `tax` is clipped to `total`, `commission` to what remains, and
+        `net_to_owner` floors at 0. A structlog warning
+        (`booking.owner_net_floored`) records the clamp.
+
+        Parsing goes through `owner_money_from_snapshot` so the same
+        quantise/NaN rules apply as on the read side. If the snapshot's
+        money does not parse, `total` is still rewritten and the stale
+        engine `net_to_owner` dropped so no half-netted pair survives.
+
+        Deliberately untouched: `commission_base` and
+        `extras_non_commissionable_total` remain the engine's figures (they
+        can exceed `total` on a discounted booking) — nothing reads them off
+        a booking snapshot, and they document what commission was charged on.
+        `rental_price` on the booking row likewise stays the engine
+        `rate_subtotal` (accommodation subtotal, not the guest total).
+
+        A manual-override line PATCHed after pricing keeps its stale engine
+        snapshot; the same netting applies, using the stale commission/tax,
+        and `operator_discount` is re-stamped from the line so the booking
+        never shows a discount the operator has since zeroed. Whether
+        commission should be charged on an operator-invented price is an
+        open product question. An empty snapshot (manual line never priced)
+        is left empty.
+        """
+        if not snapshot:
+            return
+        money = owner_money_from_snapshot({**snapshot, "total": f"{total:.2f}"})
+        snapshot["total"] = f"{total:.2f}"
+        snapshot["operator_discount"] = f"{quotation_line.discount:.2f}"
+        if money is None:
+            snapshot.pop("net_to_owner", None)
+            logger.warning(
+                "booking.snapshot_money_unparseable",
+                quotation_line_id=quotation_line.pk,
+                property_id=quotation_line.property_id,
+            )
+            return
+        commission, tax = money["commission"], money["tax"]
+        net = total - commission - tax
+        if net < 0:
+            logger.warning(
+                "booking.owner_net_floored",
+                quotation_line_id=quotation_line.pk,
+                property_id=quotation_line.property_id,
+                total=str(total),
+                commission=str(commission),
+                tax=str(tax),
+            )
+            tax = min(tax, total)
+            commission = max(min(commission, total - tax), Decimal("0"))
+            net = Decimal("0")
+            snapshot["commission"] = f"{commission:.2f}"
+            snapshot["tax"] = f"{tax:.2f}"
+        snapshot["net_to_owner"] = f"{net:.2f}"
 
     @staticmethod
     def _requires_pre_approval(property_: Any) -> bool:

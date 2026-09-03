@@ -257,7 +257,9 @@
     "finance.deposit_override.fields.reason",
     "finance.deposit_override.submit_label",
     "finance.deposit_override.set_success",
-    "finance.deposit_override.clear_success"
+    "finance.deposit_override.clear_success",
+    "finance.fields.operator_discount",
+    "owner.payout.fields.operator_discount"
   ],
   "admin": [
     "email_templates.title",

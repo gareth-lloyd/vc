@@ -35,7 +35,8 @@ class BookingListSerializer(serializers.ModelSerializer[Booking]):
     guest_email = serializers.SerializerMethodField()
     night_count = serializers.SerializerMethodField()
     currency_code = serializers.CharField(source="currency.code", read_only=True)
-    # `balance_due` holds the denormalised engine-gross total (07-payments.md)
+    # `balance_due` holds the denormalised booking total — the quoted line
+    # total net of any operator discount (BUG-020), not the engine gross
     # — it is *not* decremented as payments settle, and a re-price rewrites it
     # without touching manual charge items. What the guest actually owes is
     # `booking_total()` — the single money authority (SMELL-020): snapshot

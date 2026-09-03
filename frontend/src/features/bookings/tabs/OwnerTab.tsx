@@ -145,16 +145,20 @@ function SnapshotBlock({
 }) {
   if (!snapshot) return null;
   const code = snapshot.currency_code ?? currency;
-  const rows: Array<[string, unknown]> = [
+  // Discount rows are hidden at zero (the engine always emits them; BUG-020
+  // added the operator's line discount beside the engine's rule discount).
+  const rows: Array<[string, unknown, { hideZero?: boolean }?]> = [
     [t("owner.payout.fields.rate_subtotal"), snapshot.rate_subtotal],
     [t("owner.payout.fields.extras_total"), snapshot.extras_total],
-    [t("owner.payout.fields.discount"), snapshot.discount],
+    [t("owner.payout.fields.discount"), snapshot.discount, { hideZero: true }],
+    [t("owner.payout.fields.operator_discount"), snapshot.operator_discount, { hideZero: true }],
     [t("owner.payout.fields.commission"), snapshot.commission],
     [t("owner.payout.fields.tax"), snapshot.tax ?? snapshot.taxes],
     [t("owner.payout.fields.total"), snapshot.grand_total ?? snapshot.total],
   ];
-  const visible = rows.flatMap(([label, raw]) => {
+  const visible = rows.flatMap(([label, raw, opts]) => {
     if (raw == null || raw === "") return [];
+    if (opts?.hideZero && Number(raw) === 0) return [];
     return [{ label, value: formatComponent(raw as string | number, code) }];
   });
   if (visible.length === 0) return null;

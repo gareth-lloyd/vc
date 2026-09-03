@@ -1,5 +1,37 @@
 # BUG-020 — A quotation line's discount is dropped when the quote converts to a booking
 
+> **✅ RESOLVED (2026-09-02, local `main` unpushed)** — shipped on `feat/bug-020`
+> in 4 units (60a93d66 `price_line` snapshot keys, 85fc6071 + 58acee82 conversion netting,
+> 8c00d492 frontend rows, docs). **Fix:** `BookingService.create_from_quotation_line`
+> now takes `line.total` as the authority and
+> `_net_snapshot_to_line_total` rewrites the booking snapshot's `total` and
+> `net_to_owner` from it, and re-stamps `operator_discount` from the line
+> (so a manual override's stale engine snapshot cannot carry a discount the
+> operator has since zeroed). **Decisions (Gareth, 2026-09-02):** the **owner
+> absorbs** the operator discount — `commission`/`tax` stay as the engine
+> computed, `net_to_owner = total − commission − tax`; when the discount
+> exceeds the owner's net, tax then commission are **clipped** to what the
+> guest pays and `net_to_owner` **floors at 0** (structlog warning
+> `booking.owner_net_floored`), so `total − commission − tax = net` still
+> holds for component splits and the Zoho block; FG-018 options 2 + 3 taken
+> with it — `price_line` writes
+> the operator figure to a new `operator_discount` key and no longer
+> clobbers the engine's `discount`; `commission_base` /
+> `extras_non_commissionable_total` are left as engine figures on purpose.
+> **Blast radius waived:** no live data in prod. Pre-fix dev/staging lines
+> keep `discount` = operator figure and carry no `operator_discount`; they
+> will be reseeded, not migrated. Manual-override lines PATCHed after
+> pricing keep their stale engine snapshot and get the same netting;
+> whether commission applies to an operator-invented price is a Nick-call
+> item. Reprice paths still drop the discount → **BUG-025**.
+> **Residuals from the unit reviews (not fixed here):** `Booking.rental_price`
+> stays the engine `rate_subtotal` (accommodation subtotal, not the guest
+> total — the owner-dashboard YTD sum reads it); the line serializer accepts
+> `discount` on a manual line without netting it into `total` (Nick item,
+> alongside commission-on-manual-price); the FE breakdown rows render
+> discounts unsigned (pre-existing for `discount`). The FE hides both
+> discount rows at £0.00.
+
 - **Severity:** 🔴 Bug (money — the guest is quoted one figure and booked at
   a higher one).
 - **Found:** 2026-09-02, while reviewing the Limitless quote Flow. The Flow

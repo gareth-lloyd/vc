@@ -360,6 +360,17 @@ def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
 
 
 def _line_payload(line: QuotationLine) -> dict[str, Any]:
+    """One quotation line, money as strings.
+
+    Two keys are named `total` and they differ (FG-018): the line-level
+    `total` is what the guest pays; `pricing_snapshot.total` is the engine
+    figure *before* the operator's line discount (`discount` here, recorded
+    beside it as `pricing_snapshot.operator_discount`), floored at 0 when
+    the discount exceeds it. `pricing_snapshot.discount` is the engine's own
+    promo/rule discount and is already inside `pricing_snapshot.total`.
+    Manual lines (`is_manual`) never pass through the engine: their
+    `pricing_snapshot` is `{}` and `total` is the operator's typed figure.
+    """
     return {
         "RES_ID": line.pk,
         "id": line.pk,
@@ -389,7 +400,9 @@ def build_quotation_payload(quotation: Quotation) -> dict[str, Any]:
     Built at push time from the live row. `.real()` lines only — the
     booking-synthesised fill rows never leave res. The header carries no
     currency by design (GAP-014: per-line currency, mixed currencies are
-    expected and not normalised).
+    expected and not normalised). Per line, `total` is the guest price and
+    `pricing_snapshot.total` the pre-operator-discount engine figure — see
+    `_line_payload` (FG-018).
     """
     person_summary = _person_summary(quotation.person)
     person_erased = is_anonymized_person(quotation.person)

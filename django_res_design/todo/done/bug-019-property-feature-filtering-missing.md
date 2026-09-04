@@ -1,3 +1,22 @@
+> **✅ RESOLVED (2026-09-04)** — Problem: no `features` filter anywhere
+> (backend or frontend), and `/features` silently ignored `?category=` +
+> truncated at 50 rows. Fix: `FeatureViewSet`/`FeatureCategoryViewSet` got a
+> `category` filterset + `ConfigurablePageSizePagination`; `PropertyFilter`
+> gained a `features=` AND filter (comma-separated id-or-slug, `.distinct()`
+> covered); feature read-side moved to `src/lib/domain/features/` (GAP-072
+> pattern) so it's shared by `properties` and `quotations` without a new
+> allowlist edge; new `FeatureMultiSelect` picker wired into the properties
+> list (URL-persisted) and the quote-builder criteria form; swept the 5
+> redundant `filter_backends` redeclarations while in there. Commits:
+> d661d178, 48bffa30, 5823f152, 25220b92, c638422a, 2ec2e1b8, 2e1f3d73.
+>
+> ⚠️ **Operational note**: a `features=` filter only matches manual +
+> `recompute_derived_features`-derived links — an environment whose backfill
+> hasn't run will see derived-only matches (e.g. "pool" implied by a room
+> attribute) come back empty until it's run. Not a code gap.
+>
+> _Original ticket preserved below for context._
+
 # BUG-019 — Property feature filtering does not work: no `features` filter exists anywhere, and the `/features` endpoint ignores `?category=` + truncates at 50 rows
 
 - **Severity:** 🔴 Bug

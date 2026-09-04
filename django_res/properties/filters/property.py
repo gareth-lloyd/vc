@@ -25,6 +25,7 @@ class PropertyFilter(filters.FilterSet):
     region = filters.CharFilter(method="filter_region")
     country = filters.CharFilter(method="filter_country")
     collection = filters.CharFilter(method="filter_collection")
+    features = filters.CharFilter(method="filter_features")
     min_bedrooms = filters.NumberFilter(field_name="capacity__bedrooms", lookup_expr="gte")
     max_bedrooms = filters.NumberFilter(field_name="capacity__bedrooms", lookup_expr="lte")
     min_guests = filters.NumberFilter(field_name="capacity__guests", lookup_expr="gte")
@@ -51,6 +52,7 @@ class PropertyFilter(filters.FilterSet):
             "region",
             "country",
             "collection",
+            "features",
             "min_bedrooms",
             "max_bedrooms",
             "min_guests",
@@ -76,6 +78,28 @@ class PropertyFilter(filters.FilterSet):
         if value.isdigit():
             return qs.filter(collections__id=int(value)).distinct()
         return qs.filter(collections__slug=value).distinct()
+
+    def filter_features(self, qs: QuerySet[Property], name: str, value: str) -> QuerySet[Property]:
+        """AND semantics (legacy `FeatureIds`): a property must carry every
+        requested feature. Chaining `.filter()` once per token — rather than a
+        single `features__slug__in=` — adds a fresh join per token, which is
+        Django's documented "has ALL of" pattern for a multi-valued relation;
+        OR would need only one `__in` filter.
+
+        Each token is id-or-slug, mirroring `filter_region`/`filter_collection`.
+        `Feature.slug` is an unconstrained `SlugField`, so an all-digit slug is
+        theoretically possible and would be read as an id here — the existing
+        category-filter caller already accepts the same ambiguity, so this
+        mirrors established convention rather than adding disambiguation.
+        """
+        for token in (t.strip() for t in value.split(",")):
+            if not token:
+                continue
+            if token.isdigit():
+                qs = qs.filter(features__id=int(token))
+            else:
+                qs = qs.filter(features__slug=token)
+        return qs.distinct()
 
     def filter_q(self, qs: QuerySet[Property], name: str, value: str) -> QuerySet[Property]:
         return qs.filter(

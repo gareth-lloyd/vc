@@ -148,6 +148,34 @@ def test_expire_bookings_skips_within_window(
     assert booking.status == BookingStatus.AWAITING_DEPOSIT.value
 
 
+def test_expire_bookings_skips_no_deposit_booking_already_advanced(
+    quotation_line: QuotationLine,
+) -> None:
+    """BUG-026: a booking that never wanted a deposit reaches DEPOSIT_PAID at
+    schedule-creation time (`PaymentScheduler.create_for_booking`), not just
+    "excluded from `expire_bookings()`" — that exclusion alone was already
+    true pre-fix (no PENDING deposit row to match the sweep's join) and
+    would have passed even with the underlying strand-forever bug still
+    live, so this pins the actual status too."""
+    from payments.services import PaymentScheduler
+    from properties.models.finance import PropertyFinance
+
+    finance = PropertyFinance.objects.get_or_create(property=quotation_line.property)[0]
+    finance.deposit_required = False
+    finance.save(update_fields=["deposit_required"])
+    booking = _booking(quotation_line, BookingStatus.AWAITING_DEPOSIT.value)
+
+    PaymentScheduler.create_for_booking(booking)
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.DEPOSIT_PAID.value
+
+    count = expire_bookings()
+
+    booking.refresh_from_db()
+    assert count == 0
+    assert booking.status == BookingStatus.DEPOSIT_PAID.value
+
+
 def test_expire_bookings_expires_leftover_pending_balance_too(
     quotation_line: QuotationLine,
 ) -> None:

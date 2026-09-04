@@ -511,7 +511,8 @@ def test_set_deposit_override_clear_reverts_to_policy(booking: Booking) -> None:
 def test_set_deposit_override_zero_cancels_deposit_row(booking: Booking) -> None:
     """BUG-022: a zero override means "no deposit" — through the service +
     signal path the PENDING deposit row is cancelled (not resized to an
-    unpayable 0.00) and the balance carries the whole total."""
+    unpayable 0.00) and the balance carries the whole total. BUG-026: the
+    booking no longer strands there — it advances straight to DEPOSIT_PAID."""
     from payments.enums import PaymentPurpose, PaymentStatus
     from payments.models import Payment
 
@@ -528,7 +529,8 @@ def test_set_deposit_override_zero_cancels_deposit_row(booking: Booking) -> None
         status=PaymentStatus.PENDING.value,
     ).exists()
     assert _schedule_row(booking, PaymentPurpose.BALANCE.value).amount == Decimal("1400.00")
-    assert booking.status == BookingStatus.AWAITING_DEPOSIT.value
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.DEPOSIT_PAID.value
 
 
 @pytest.mark.django_db

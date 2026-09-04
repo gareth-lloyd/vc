@@ -531,10 +531,11 @@ def test_payload_financials_status_is_latest_row_not_failed_predecessor(
 
 
 def test_payload_financials_deposit_cancelled_on_live_booking(booking: Booking) -> None:
-    """BUG-022: a zero deposit override cancels the PENDING deposit row on a
-    booking that stays live — Zoho then reads `deposit_status: "cancelled"`
-    with a null due date and 0.00 deposit figures while the booking itself is
-    still `awaiting_deposit`. Pins the documented meaning of `cancelled`."""
+    """BUG-022: a zero deposit override cancels the PENDING deposit row —
+    Zoho then reads `deposit_status: "cancelled"` with a null due date and
+    0.00 deposit figures. BUG-026: the booking itself no longer strands in
+    `awaiting_deposit` when that happens — the same resync call now advances
+    it to `deposit_paid`. Pins the documented meaning of `cancelled`."""
     from payments.services import PaymentScheduler
     from properties.models.finance import PropertyFinance
 
@@ -548,7 +549,8 @@ def test_payload_financials_deposit_cancelled_on_live_booking(booking: Booking) 
 
     financials = build_booking_payload(fresh)["financials"]
 
-    assert fresh.status == BookingStatus.AWAITING_DEPOSIT.value
+    fresh.refresh_from_db()
+    assert fresh.status == BookingStatus.DEPOSIT_PAID.value
     assert financials["deposit_status"] == "cancelled"
     assert financials["deposit_due_at"] is None
     assert financials["gross_deposit"] == "0.00"

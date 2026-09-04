@@ -111,6 +111,17 @@ TERMINAL_REFUND_STATUSES: tuple[str, ...] = (
     RefundStatus.FAILED.value,
 )
 
+# Terminal refund statuses where no money actually moved — narrower than
+# `TERMINAL_REFUND_STATUSES` (which includes SUCCEEDED, a refund that did).
+# The "is this payment still effectively refunded?" exclusion shared by
+# `RefundService.request`'s over-refund guard and `PaymentScheduler`'s
+# over-collection advance (BUG-026).
+DEAD_REFUND_STATUSES: tuple[str, ...] = (
+    RefundStatus.REJECTED.value,
+    RefundStatus.CANCELLED.value,
+    RefundStatus.FAILED.value,
+)
+
 
 # The Refund workflow's transition table, enforced centrally by
 # `Refund._transition` (mirrors `PAYMENT_ALLOWED_TRANSITIONS`). The service

@@ -40,6 +40,7 @@ from core.idempotency import find_by_meta_key, stamp_meta
 from core.locking import refresh_locked
 from core.logging.operations import log_operation
 from payments.enums import (
+    DEAD_REFUND_STATUSES,
     EventSource,
     PaymentPurpose,
     PaymentStatus,
@@ -120,11 +121,7 @@ class RefundService:
             already_refunded = Refund.objects.filter(
                 against_payment=against_payment,
             ).exclude(
-                status__in=(
-                    RefundStatus.REJECTED.value,
-                    RefundStatus.CANCELLED.value,
-                    RefundStatus.FAILED.value,
-                ),
+                status__in=DEAD_REFUND_STATUSES,
             ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
             if (already_refunded + Decimal(str(amount))) > Decimal(against_payment.amount):
                 raise DomainValidationError(

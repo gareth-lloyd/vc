@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any, cast
 
 from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import DjangoFilterBackend, FilterSet
-from rest_framework import filters, status, viewsets
+from django_filters.rest_framework import FilterSet
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -39,7 +39,6 @@ class UserViewSet(viewsets.ModelViewSet[User]):
     """
 
     queryset = User.objects.all().order_by("email")
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = UserFilterSet
     search_fields = ["email", "first_name", "last_name"]
     ordering_fields = ["email", "date_joined", "last_login"]

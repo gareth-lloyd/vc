@@ -8,8 +8,8 @@ GAP-048 (management companies) and q-007 (suppliers) reuse it.
 from __future__ import annotations
 
 from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import DjangoFilterBackend, FilterSet
-from rest_framework import filters, status, viewsets
+from django_filters.rest_framework import FilterSet
+from rest_framework import status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -33,7 +33,6 @@ class OrganisationViewSet(viewsets.ModelViewSet[Organisation]):
     queryset = Organisation.objects.all()
     serializer_class = OrganisationSerializer
     permission_classes = [IsStaff]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = OrganisationFilterSet
     search_fields = ["name", "email"]
     ordering_fields = ["name", "created_at"]

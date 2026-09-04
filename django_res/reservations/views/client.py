@@ -15,8 +15,6 @@ from typing import Any
 
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models import Exists, OuterRef, Q, QuerySet, Subquery
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters as drf_filters
 from rest_framework import generics
 
 from accounts.enums import PersonKind
@@ -49,11 +47,6 @@ class ClientListView(generics.ListAPIView[Person]):
 
     serializer_class = ClientListSerializer
     permission_classes = [IsStaff]
-    filter_backends = [
-        DjangoFilterBackend,
-        drf_filters.SearchFilter,
-        drf_filters.OrderingFilter,
-    ]
     filterset_class = ClientFilterSet
     search_fields = ["first_name", "last_name", "emails__email"]
     ordering_fields = ["last_name", "first_name", "created_at"]

@@ -11,8 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Subquery
 from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -66,7 +65,6 @@ class PropertyViewSet(viewsets.ModelViewSet):
         )
     )
     filterset_class = PropertyFilter
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     # GAP-078: the quote builder sends
     # `ordering=region__country__name,region__name,name,id` to bunch candidates
     # by geography. `id` must be requestable because OrderingFilter REPLACES

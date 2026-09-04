@@ -12,10 +12,9 @@ from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import (
     CharFilter,
     ChoiceFilter,
-    DjangoFilterBackend,
     FilterSet,
 )
-from rest_framework import filters, serializers, status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -172,7 +171,6 @@ class ContactViewSet(viewsets.ModelViewSet[Person]):
     )
     serializer_class = ContactSerializer
     permission_classes = [IsStaff]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = ContactFilterSet
     # GAP-046: search the structured `agency__name` (a single-valued forward FK →
     # no row multiplication, so no COUNT inflation — the CLAUDE.md multi-valued

@@ -1,6 +1,7 @@
 import { apiGet, apiSend } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import { TAXONOMY_PAGE_SIZE, fetchRegions, fetchCollections } from "@/lib/geo/api";
+import { toFeaturesParam } from "@/lib/domain/features/api";
 import {
   availabilityCalendarResponseSchema,
   availabilityHoldsResponseSchema,
@@ -87,6 +88,7 @@ function toQuery(filters: PropertyFilters): QueryParams {
     country: filters.country || undefined,
     region: filters.region || undefined,
     collection: filters.collection || undefined,
+    features: toFeaturesParam(filters.features),
     min_bedrooms: filters.min_bedrooms || undefined,
     status: filters.status || undefined,
     ordering: filters.ordering || undefined,

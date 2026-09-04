@@ -63,6 +63,49 @@ describe("PropertiesListPage", () => {
           ]),
         ),
       ),
+      http.get("/api/v1/feature-categories", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 1,
+              name: "Outdoor",
+              slug: "outdoor",
+              description: "",
+              icon: "",
+              sort_order: 0,
+              is_active: true,
+            },
+          ]),
+        ),
+      ),
+      http.get("/api/v1/features", () =>
+        HttpResponse.json(
+          drfPage([
+            {
+              id: 10,
+              category: 1,
+              name: "Pool",
+              slug: "pool",
+              description: "",
+              icon: "",
+              sort_order: 0,
+              is_active: true,
+              service_type: "amenity",
+            },
+            {
+              id: 11,
+              category: 1,
+              name: "Sea view",
+              slug: "sea-view",
+              description: "",
+              icon: "",
+              sort_order: 1,
+              is_active: true,
+              service_type: "amenity",
+            },
+          ]),
+        ),
+      ),
     );
   });
 
@@ -304,5 +347,75 @@ describe("PropertiesListPage", () => {
       expect(seen).toContainEqual(expect.objectContaining({ country: "ES", region: null })),
     );
     expect(seen).not.toContainEqual(expect.objectContaining({ country: "ES", region: "11" }));
+  });
+
+  it("forwards selected features to the API as a single comma-joined param", async () => {
+    const seen: string[] = [];
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        const url = new URL(request.url);
+        seen.push(url.searchParams.get("features") ?? "");
+        return HttpResponse.json(fixture);
+      }),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties" },
+    );
+    await screen.findByText("Casa Norte");
+    await userEvent.click(screen.getByRole("button", { name: /features/i }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Pool" }));
+    await waitFor(() => expect(seen).toContain("pool"));
+  });
+
+  it("hydrates the features filter from the URL and shows it as a chip", async () => {
+    server.use(http.get("/api/v1/properties", () => HttpResponse.json(fixture)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties?features=pool,sea-view" },
+    );
+    await screen.findByText("Casa Norte");
+    expect(await screen.findByText("Pool")).toBeInTheDocument();
+    expect(screen.getByText("Sea view")).toBeInTheDocument();
+  });
+
+  it("trims a whitespace-mangled features URL param before matching a chip", async () => {
+    // Guards against a hand-edited/bookmarked URL like `?features=pool,%20pool`
+    // (space after the comma) — untrimmed, "sea-view" with a leading space
+    // would match no real feature and render as a raw, unresolved chip.
+    server.use(http.get("/api/v1/properties", () => HttpResponse.json(fixture)));
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties?features=pool,%20sea-view" },
+    );
+    await screen.findByText("Casa Norte");
+    expect(await screen.findByText("Pool")).toBeInTheDocument();
+    expect(screen.getByText("Sea view")).toBeInTheDocument();
+  });
+
+  it("removes `features` from the URL entirely when the last selected feature is deselected", async () => {
+    const seen: Array<string | null> = [];
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("features"));
+        return HttpResponse.json(fixture);
+      }),
+    );
+    renderWithProviders(
+      <Routes>
+        <Route path="/properties" element={<PropertiesListPage />} />
+      </Routes>,
+      { route: "/properties?features=pool" },
+    );
+    await screen.findByText("Casa Norte");
+    await userEvent.click(screen.getByRole("button", { name: /remove pool/i }));
+
+    await waitFor(() => expect(seen).toContain(null));
   });
 });

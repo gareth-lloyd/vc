@@ -382,6 +382,7 @@ export interface PropertyFilters {
   country?: string;
   region?: string;
   collection?: string;
+  features?: string[];
   min_bedrooms?: number;
   status?: string;
   ordering?: string;

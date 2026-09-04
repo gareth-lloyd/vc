@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { FeatureMultiSelect } from "@/components/form/FeatureMultiSelect";
+import { fromFeaturesParam, toFeaturesParam } from "@/lib/domain/features/api";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { propertyDetailsPath } from "@/lib/routes";
@@ -34,11 +36,13 @@ const STATUS_VALUES = ["active", "draft", "archived"] as const;
 
 function paramsToFilters(params: URLSearchParams): PropertyFilters {
   const page = Number(params.get("page") ?? "1");
+  const features = fromFeaturesParam(params.get("features"));
   return {
     q: params.get("q") ?? undefined,
     country: params.get("country") ?? undefined,
     region: params.get("region") ?? undefined,
     status: params.get("status") ?? undefined,
+    features: features.length > 0 ? features : undefined,
     ordering: params.get("ordering") ?? undefined,
     page: Number.isFinite(page) && page > 0 ? page : 1,
   };
@@ -125,6 +129,8 @@ export function PropertiesListPage() {
     );
   };
   const updateParam = (key: string, value: string | undefined) => updateParams({ [key]: value });
+
+  const updateFeatures = (slugs: string[]) => updateParams({ features: toFeaturesParam(slugs) });
 
   const goToPage = (zeroBased: number) => {
     setParams(
@@ -236,6 +242,7 @@ export function PropertiesListPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <FeatureMultiSelect value={filters.features ?? []} onChange={updateFeatures} />
             </>
           }
         />

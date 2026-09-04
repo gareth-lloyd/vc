@@ -68,7 +68,13 @@
     "iconPicker.clear",
     "iconPicker.more_results_one",
     "iconPicker.more_results_other",
-    "nav.email_templates"
+    "nav.email_templates",
+    "feature_multi_select.placeholder",
+    "feature_multi_select.selected_count_one",
+    "feature_multi_select.selected_count_other",
+    "feature_multi_select.uncategorised",
+    "feature_multi_select.empty",
+    "feature_multi_select.remove_label"
   ],
   "dashboard": ["greeting", "hero.arrivals_label", "hero.view_schedule"],
   "properties": [

@@ -115,6 +115,14 @@
     "any_country": "All countries",
     "any_region": "All regions"
   },
+  "feature_multi_select": {
+    "placeholder": "Select features",
+    "selected_count_one": "{{count}} feature selected",
+    "selected_count_other": "{{count}} features selected",
+    "uncategorised": "Other",
+    "empty": "No features available",
+    "remove_label": "Remove {{name}}"
+  },
   "zod": {
     "invalid_type": "Required",
     "invalid_email": "Enter a valid email",

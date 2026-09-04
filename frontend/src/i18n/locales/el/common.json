@@ -115,6 +115,14 @@
     "any_country": "Όλες οι χώρες",
     "any_region": "Όλες οι περιοχές"
   },
+  "feature_multi_select": {
+    "placeholder": "Επιλέξτε χαρακτηριστικά",
+    "selected_count_one": "{{count}} χαρακτηριστικό επιλέχθηκε",
+    "selected_count_other": "{{count}} χαρακτηριστικά επιλέχθηκαν",
+    "uncategorised": "Άλλο",
+    "empty": "Δεν υπάρχουν διαθέσιμα χαρακτηριστικά",
+    "remove_label": "Αφαίρεση {{name}}"
+  },
   "zod": {
     "invalid_type": "Υποχρεωτικό",
     "invalid_email": "Εισαγάγετε έγκυρο email",

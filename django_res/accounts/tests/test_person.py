@@ -131,7 +131,26 @@ def test_anonymize_blanks_pii_and_cascades(contact: Person) -> None:
     assert contact.last_name == "[REDACTED]"
     assert isinstance(contact.anonymized_at, datetime)
     assert email.email == f"redacted-{email.pk}@anonymized.local"
-    assert phone.number == ""
+    assert phone.number == f"redacted-{phone.pk}"
+
+
+@pytest.mark.django_db
+def test_anonymize_scrubs_multiple_phones_without_collision(contact: Person) -> None:
+    """BUG-024: a person holding two phones must still anonymise — each phone
+    needs a distinct sentinel, not a shared blank, else the second row trips
+    `unique_contact_phone`."""
+    mobile = PersonPhone.objects.create(contact=contact, number="+44 20 7000 0001", is_primary=True)
+    landline = PersonPhone.objects.create(
+        contact=contact, number="+44 20 7000 0002", is_primary=False
+    )
+
+    contact.anonymize()
+
+    mobile.refresh_from_db()
+    landline.refresh_from_db()
+    assert mobile.number == f"redacted-{mobile.pk}"
+    assert landline.number == f"redacted-{landline.pk}"
+    assert mobile.number != landline.number
 
 
 @pytest.mark.django_db

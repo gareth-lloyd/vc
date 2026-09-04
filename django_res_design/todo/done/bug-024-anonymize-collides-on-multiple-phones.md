@@ -1,5 +1,16 @@
 # BUG-024 — `Person.anonymize()` cannot erase anyone holding two phone numbers
 
+> **✅ RESOLVED (2026-09-04, local `main` unpushed)** — shipped on
+> `feat/bug-024`: 5afd34fc. **Fix:** the phone loop in `anonymize()` now
+> mirrors the email loop — each `PersonPhone` row gets a per-row sentinel
+> (`redacted-{pk}`) instead of a shared `""`, so `unique_contact_phone` never
+> collides. `primary_phone()` already fails closed on `ANONYMIZED` status
+> regardless of sentinel value, and `push_sync_record` already skips
+> ANONYMIZED persons, so nothing new reaches Zoho. **Tests:** a new case
+> anonymises a person with two phones and asserts both get distinct
+> sentinels; the existing single-phone test updated for the new sentinel
+> value.
+
 - **Severity:** 🔴 Bug (a GDPR erasure raises `IntegrityError` and rolls back;
   the affected person cannot be erased at all through the supported path).
 - **Source:** 2026-09-02, found while building GAP-101's `anonymised_person`

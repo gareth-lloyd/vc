@@ -240,7 +240,7 @@ class Person(AuditedModel):
             email.email = f"redacted-{email.pk}@anonymized.local"
             email.save(update_fields=["email", "updated_at"])
         for phone in self.phones.all():
-            phone.number = ""
+            phone.number = f"redacted-{phone.pk}"
             phone.save(update_fields=["number", "updated_at"])
         # GAP-041: drop standing relationships on erasure — a surviving link
         # leaks "X is [redacted]'s spouse". Per-instance delete keeps the

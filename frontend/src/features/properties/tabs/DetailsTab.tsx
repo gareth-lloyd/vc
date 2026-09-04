@@ -8,7 +8,8 @@ import { FactList, FactRow } from "@/components/data/FactList";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { formatDate } from "@/lib/format/date";
-import { useFeatures } from "@/features/admin/tags/hooks";
+import { FEATURE_CATALOGUE_PAGE_SIZE } from "@/lib/domain/features/api";
+import { useFeatures } from "@/lib/domain/features/hooks";
 import { usePropertyRooms } from "../hooks";
 import { DescriptionsSection } from "../components/DescriptionsSection";
 import { CapacitySection } from "../components/CapacitySection";
@@ -30,7 +31,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function DetailsTab() {
   const { t } = useTranslation("properties");
   const { property } = useOutletContext<DetailsContext>();
-  const features = useFeatures({});
+  const features = useFeatures({ pageSize: FEATURE_CATALOGUE_PAGE_SIZE });
   const rooms = usePropertyRooms(property.id);
 
   const propertyFeatures = useMemo(() => {

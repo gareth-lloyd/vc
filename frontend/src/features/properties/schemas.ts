@@ -138,8 +138,8 @@ export {
   featuresListResponseSchema as propertyFeaturesResponseSchema,
   featureCategoriesListResponseSchema,
   featureCategorySchema,
-} from "@/features/admin/tags/schemas";
-export type { Feature as PropertyFeature, FeatureCategory } from "@/features/admin/tags/schemas";
+} from "@/lib/domain/features/schemas";
+export type { Feature as PropertyFeature, FeatureCategory } from "@/lib/domain/features/schemas";
 
 // GAP-065: the building axis. Blank means "unknown / not specified" (the
 // backend dropped the defaulted main_house lie). Tuple order doubles as the

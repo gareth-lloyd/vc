@@ -24,8 +24,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FeatureIcon } from "@/components/data/FeatureIcon";
-import { useFeatureCategories, useFeatures } from "@/features/admin/tags/hooks";
-import type { Feature } from "@/features/admin/tags/schemas";
+import { FEATURE_CATALOGUE_PAGE_SIZE } from "@/lib/domain/features/api";
+import { useFeatureCategories, useFeatures } from "@/lib/domain/features/hooks";
+import type { Feature } from "@/lib/domain/features/schemas";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api/errors";
@@ -101,8 +102,8 @@ export function FeaturesTab() {
   const { property } = useOutletContext<FeaturesContext>();
   const { t } = useTranslation("properties");
   const canWrite = useHasReservationsRole();
-  const features = useFeatures({});
-  const categories = useFeatureCategories({});
+  const features = useFeatures({ pageSize: FEATURE_CATALOGUE_PAGE_SIZE });
+  const categories = useFeatureCategories({ pageSize: FEATURE_CATALOGUE_PAGE_SIZE });
   const saveMutation = useUpdatePropertyFeatures(property.id);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 

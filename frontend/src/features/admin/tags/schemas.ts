@@ -1,40 +1,23 @@
 import { z } from "zod";
-import { paginated } from "@/lib/api/pagination";
+import { featureServiceTypeSchema } from "@/lib/domain/features/schemas";
 
-export const featureServiceTypeSchema = z.enum(["amenity", "included_service", "paid_addon"]);
-export type FeatureServiceType = z.infer<typeof featureServiceTypeSchema>;
-export const FEATURE_SERVICE_TYPES: FeatureServiceType[] = [
-  "amenity",
-  "included_service",
-  "paid_addon",
-];
-
-export const featureCategorySchema = z.object({
-  id: z.number(),
-  name: z.string(),
-  slug: z.string(),
-  description: z.string().nullable().optional().default(""),
-  icon: z.string().nullable().optional().default(""),
-  sort_order: z.number().optional().default(0),
-  is_active: z.boolean(),
-});
-export type FeatureCategory = z.infer<typeof featureCategorySchema>;
-
-export const featureSchema = z.object({
-  id: z.number(),
-  category: z.number(),
-  name: z.string(),
-  slug: z.string(),
-  description: z.string().nullable().optional().default(""),
-  icon: z.string().nullable().optional().default(""),
-  sort_order: z.number().optional().default(0),
-  is_active: z.boolean(),
-  service_type: z.string().default("amenity"),
-});
-export type Feature = z.infer<typeof featureSchema>;
-
-export const featureCategoriesListResponseSchema = paginated(featureCategorySchema);
-export const featuresListResponseSchema = paginated(featureSchema);
+// The feature READ shapes now live in lib/domain/features (BUG-019, mirrors
+// GAP-072) so any feature can read them without a properties/admin edge;
+// re-exported here for intra-feature consumers. The WRITE schemas stay here —
+// feature/category CRUD is an admin-only concern.
+export {
+  featureCategoriesListResponseSchema,
+  featureCategorySchema,
+  featureSchema,
+  featureServiceTypeSchema,
+  featuresListResponseSchema,
+  FEATURE_SERVICE_TYPES,
+  type Feature,
+  type FeatureCategory,
+  type FeatureCategoryFilters,
+  type FeatureFilters,
+  type FeatureServiceType,
+} from "@/lib/domain/features/schemas";
 
 export const featureCategoryWriteInputSchema = z.object({
   name: z.string().trim().min(1).max(128),
@@ -57,12 +40,3 @@ export const featureWriteInputSchema = z.object({
   service_type: featureServiceTypeSchema.optional(),
 });
 export type FeatureWriteInput = z.infer<typeof featureWriteInputSchema>;
-
-export interface FeatureFilters {
-  category?: number;
-  page?: number;
-}
-
-export interface FeatureCategoryFilters {
-  page?: number;
-}

@@ -96,3 +96,12 @@ class TestFeaturePagination:
         body = resp.json()
         assert body["count"] == 60
         assert len(body["results"]) < 60
+
+
+class TestFeatureCategoryPagination:
+    def test_page_size_param_is_honoured(self, api_client: APIClient) -> None:
+        FeatureCategoryFactory.create_batch(60)
+        resp = api_client.get("/api/v1/feature-categories", {"page_size": "500"})
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 60
+        assert len(resp.json()["results"]) == 60

@@ -1,28 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import {
   createFeature,
   createFeatureCategory,
   deleteFeature,
   deleteFeatureCategory,
-  fetchFeatureCategories,
-  fetchFeatures,
   updateFeature,
   updateFeatureCategory,
 } from "./api";
-import type {
-  FeatureCategoryFilters,
-  FeatureCategoryWriteInput,
-  FeatureFilters,
-  FeatureWriteInput,
-} from "./schemas";
+import type { FeatureCategoryWriteInput, FeatureWriteInput } from "./schemas";
 
-export function useFeatureCategories(filters: FeatureCategoryFilters) {
-  return useQuery({
-    queryKey: queryKeys.tagFeatureCategories.list(filters),
-    queryFn: () => fetchFeatureCategories(filters),
-  });
-}
+// The list-read hooks now live in lib/domain/features (BUG-019, mirrors
+// GAP-072); re-exported here for intra-feature (CRUD screen) callers.
+export { useFeatureCategories, useFeatures } from "@/lib/domain/features/hooks";
 
 export function useCreateFeatureCategory() {
   const queryClient = useQueryClient();
@@ -51,13 +41,6 @@ export function useDeleteFeatureCategory(id: number) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagFeatureCategories.lists() });
     },
-  });
-}
-
-export function useFeatures(filters: FeatureFilters) {
-  return useQuery({
-    queryKey: queryKeys.tagFeatures.list(filters),
-    queryFn: () => fetchFeatures(filters),
   });
 }
 

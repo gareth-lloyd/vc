@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AdminPageShell } from "@/features/admin/components/AdminPageShell";
@@ -24,6 +24,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { FeatureIcon } from "@/components/data/FeatureIcon";
 import { useHasAdminRole } from "@/lib/auth/useHasAdminRole";
+import { FEATURE_CATALOGUE_PAGE_SIZE } from "@/lib/domain/features/api";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   useDeleteFeature,
@@ -36,6 +37,7 @@ import { FeatureFormDialog } from "./components/FeatureFormDialog";
 import type { Feature, FeatureCategory } from "./schemas";
 
 const ALL_CATEGORIES = "__all__";
+const FEATURES_PAGE_SIZE = 50;
 
 export function TagsAdminPage() {
   const { t } = useTranslation("admin");
@@ -216,17 +218,38 @@ function DeleteCategoryConfirm({
 function FeaturesSection({ canWrite }: { canWrite: boolean }) {
   const { t } = useTranslation("admin");
   const [categoryFilter, setCategoryFilter] = useState<string>(ALL_CATEGORIES);
+  const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Feature | null>(null);
   const [deleting, setDeleting] = useState<Feature | null>(null);
 
-  const categoriesQuery = useFeatureCategories({});
+  // Full catalogue, not the paginated FEATURES_PAGE_SIZE — this feeds the
+  // category filter <Select> and the id→name lookup, both of which need
+  // every category regardless of which page of features is showing.
+  const categoriesQuery = useFeatureCategories({ pageSize: FEATURE_CATALOGUE_PAGE_SIZE });
   const categories = categoriesQuery.data?.results ?? [];
   const categoriesById = new Map<number, FeatureCategory>(categories.map((c) => [c.id, c]));
 
   const featuresQuery = useFeatures({
     category: categoryFilter === ALL_CATEGORIES ? undefined : Number(categoryFilter),
+    page,
+    pageSize: FEATURES_PAGE_SIZE,
   });
+  const pageCount = Math.max(1, Math.ceil((featuresQuery.data?.count ?? 0) / FEATURES_PAGE_SIZE));
+
+  // Deleting the last row on a page (or narrowing the category filter) can
+  // shrink pageCount below the current page — clamp back rather than let the
+  // next refetch 404 on an out-of-range page.
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
+
+  // Changing the category filter must reset to page 1 — the previous page
+  // number may not exist in the narrowed result set.
+  const handleCategoryFilterChange = (value: string) => {
+    setCategoryFilter(value);
+    setPage(1);
+  };
 
   const columns: ColumnDef<Feature>[] = [
     {
@@ -320,7 +343,7 @@ function FeaturesSection({ canWrite }: { canWrite: boolean }) {
           {t("tags.features.section_title")}
         </h2>
         <div className="flex items-center gap-2">
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <Select value={categoryFilter} onValueChange={handleCategoryFilterChange}>
             <SelectTrigger
               className="w-[200px]"
               aria-label={t("tags.features.filters.category_label")}
@@ -358,12 +381,12 @@ function FeaturesSection({ canWrite }: { canWrite: boolean }) {
           columns={columns}
           data={featuresQuery.data?.results}
           isLoading={featuresQuery.isLoading}
-          pageIndex={0}
-          pageCount={1}
-          pageSize={100}
+          pageIndex={page - 1}
+          pageCount={pageCount}
+          pageSize={FEATURES_PAGE_SIZE}
           sorting={[]}
           onSortingChange={() => {}}
-          onPageChange={() => {}}
+          onPageChange={(next) => setPage(next + 1)}
           rowKey={(row) => row.id}
           emptyContent={
             <EmptyState

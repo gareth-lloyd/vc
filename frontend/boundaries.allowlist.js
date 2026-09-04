@@ -23,7 +23,7 @@ export const SANCTIONED_EDGES = {
   dashboard: ["bookings", "enquiries"], // dashboard aggregates downstream work
   enquiries: ["contacts", "users"], // customer panel; assignee pickers
   "owner-portal": ["auth"], // downstream auth flow
-  properties: ["admin", "audit", "contacts"], // tags/currencies taxonomy; audit; people mgmt
+  properties: ["admin", "audit", "contacts"], // currencies taxonomy (BUG-019 moved tags to lib/domain/features); audit; people mgmt
   quotations: ["contacts", "enquiries", "properties"], // customer pickers; quote is downstream of its enquiry; searches properties
 };
 

@@ -18,6 +18,7 @@ class FeatureCategoryViewSet(viewsets.ModelViewSet):
     queryset = FeatureCategory.objects.all()
     serializer_class = FeatureCategorySerializer
     permission_classes = [AllowAnyReadStaffWrite]
+    pagination_class = ConfigurablePageSizePagination
 
 
 class FeatureFilterSet(filters.FilterSet):

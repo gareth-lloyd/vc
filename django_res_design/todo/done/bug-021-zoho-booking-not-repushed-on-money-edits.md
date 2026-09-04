@@ -1,5 +1,22 @@
 # BUG-021 — Zoho booking record goes stale after charge-item and payment-row edits
 
+> **✅ RESOLVED (2026-09-04, local `main` unpushed)** — shipped on
+> `feat/bug-021`: 55f83d8a. **Fix:** re-push the Booking from both seams that
+> move money without a `Booking.save()`. `_resync_schedule_on_booking_total_changed`
+> and `_advance_booking_on_payment_settled` (`payments/signals.py`) now
+> `enqueue_zoho_push(booking)` after their existing work; a new
+> `_repush_booking_on_payment_failed` receiver covers a schedule-row
+> (DEPOSIT/BALANCE) `Payment` reaching FAILED, which the original fix sketch
+> named ("status changes on schedule rows") but had no wiring for. Dropped a
+> redundant `push_suppressed()`/`webhook_url()` pre-guard at the two original
+> call sites — `enqueue_zoho_push` already checks both internally, and unlike
+> the `reservations/signals.py` precedent there's no FK-deref to protect.
+> Reuses the existing PENDING-dedupe, so a burst of edits in one transaction
+> still collapses to one dispatch. **Tests:** 4 new cases in
+> `reservations/tests/test_zoho_booking.py` (charge item added/deleted,
+> deposit settled while already-advanced, deposit failed) proving each seam
+> re-pushes.
+
 - **Severity:** 🔴 Bug (integration — Zoho shows money figures and payment
   state that res has since changed; sharpened by GAP-099, which put
   `deposit_status` / `balance_status` into the same block).

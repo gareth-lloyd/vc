@@ -101,12 +101,23 @@ def _resync_schedule_on_booking_total_changed(
     services live in `payments`, and the charge-item write paths run inside one
     transaction with this receiver, so the charge and the resized rows commit
     (or roll back) together.
+
+    BUG-021: none of the above touches `Booking.save()`, so the Zoho auto-push
+    never fires on its own — re-push explicitly so the pushed record doesn't
+    go stale relative to the resized schedule. No guard needed here:
+    `enqueue_zoho_push` already checks `push_suppressed()`/`webhook_url()`
+    internally, and `booking` is already a resolved in-memory row (unlike the
+    `reservations/signals.py` precedent, whose pre-guard exists to skip an FK
+    deref that can raise `DoesNotExist`).
     """
+    from integrations.services.zoho_flow import enqueue_zoho_push
     from payments.services.payment_scheduler import PaymentScheduler
     from payments.services.security_deposit import SecurityDepositService
 
     PaymentScheduler.resync_for_booking(booking)
     SecurityDepositService.resize_for_booking(booking)
+
+    enqueue_zoho_push(booking)
 
 
 def _advance_booking_on_payment_settled(sender: Any, *, payment: Any, **_: Any) -> None:
@@ -123,8 +134,16 @@ def _advance_booking_on_payment_settled(sender: Any, *, payment: Any, **_: Any) 
     stand and ops resolves from the warning. Anything *other* than
     `InvalidTransition` propagates and rolls back the payment transition
     (`transition_to` dispatches inside its atomic block).
+
+    BUG-021: a successful `advance()` ends in `Booking.save()`, which already
+    auto-pushes — but the swallowed-`InvalidTransition` branch does not, even
+    though real money just settled. Re-push unconditionally after the
+    try/except: on the success path the existing PENDING-dedupe collapses the
+    second enqueue to a no-op, so this call is only load-bearing on the
+    swallowed path. No pre-guard needed — see the sibling receiver above.
     """
     from core.exceptions import InvalidTransition
+    from integrations.services.zoho_flow import enqueue_zoho_push
     from payments.enums import PaymentPurpose
 
     if payment.purpose == PaymentPurpose.DEPOSIT.value:
@@ -145,6 +164,28 @@ def _advance_booking_on_payment_settled(sender: Any, *, payment: Any, **_: Any) 
             booking_status=payment.booking.status,
             reason="invalid_transition",
         )
+
+    enqueue_zoho_push(payment.booking)
+
+
+def _repush_booking_on_payment_failed(sender: Any, *, payment: Any, **_: Any) -> None:
+    """Re-push the Booking when a schedule-row (DEPOSIT/BALANCE) payment
+    fails.
+
+    BUG-021: unlike settle/waive, a failure never calls `record_*` — there is
+    nothing to advance — but GAP-099's `deposit_status`/`balance_status` in
+    the Zoho `financials` block read the Payment row live, so a FAILED
+    schedule row is exactly the kind of "money-row status change" the ticket's
+    fix sketch names. Non-schedule purposes (SECURITY_DEPOSIT, CONCIERGE,
+    REFUND) don't feed that block, so they're ignored here.
+    """
+    from integrations.services.zoho_flow import enqueue_zoho_push
+    from payments.enums import PaymentPurpose
+
+    if payment.purpose not in (PaymentPurpose.DEPOSIT.value, PaymentPurpose.BALANCE.value):
+        return
+
+    enqueue_zoho_push(payment.booking)
 
 
 def _close_money_on_booking_closed(
@@ -280,4 +321,8 @@ def _register() -> None:
     payment_failed.connect(
         _sync_refund_on_outbound_payment,
         dispatch_uid="payments.sync_refund_on_payment_failed",
+    )
+    payment_failed.connect(
+        _repush_booking_on_payment_failed,
+        dispatch_uid="payments.repush_booking_on_payment_failed",
     )

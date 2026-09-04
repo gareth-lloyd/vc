@@ -44,6 +44,45 @@ export const roomAttributeHandlers = [
   ),
 ];
 
+// BUG-019: FeatureMultiSelect (properties list filter bar, quote-builder
+// criteria form) fetches both endpoints on every mount — always-on so every
+// existing test for those screens doesn't trip onUnhandledRequest:"error".
+// Same rationale as roomAttributeHandlers above.
+export const featureLookupHandlers = [
+  http.get("/api/v1/feature-categories", () =>
+    HttpResponse.json(
+      drfPage([
+        {
+          id: 1,
+          name: "Outdoor",
+          slug: "outdoor",
+          description: "",
+          icon: "",
+          sort_order: 0,
+          is_active: true,
+        },
+      ]),
+    ),
+  ),
+  http.get("/api/v1/features", () =>
+    HttpResponse.json(
+      drfPage([
+        {
+          id: 10,
+          category: 1,
+          name: "Pool",
+          slug: "pool",
+          description: "",
+          icon: "",
+          sort_order: 0,
+          is_active: true,
+          service_type: "amenity",
+        },
+      ]),
+    ),
+  ),
+];
+
 export const defaultHandlers = [
   http.get("/api/v1/auth/me", () =>
     HttpResponse.json({ detail: "Unauthenticated" }, { status: 401 }),
@@ -52,6 +91,7 @@ export const defaultHandlers = [
   // unrelated tests don't trip onUnhandledRequest.
   http.get("/api/v1/auth/csrf", () => new HttpResponse(null, { status: 204 })),
   ...roomAttributeHandlers,
+  ...featureLookupHandlers,
 ];
 
 // The block dialogs read a property's calendar to grey out occupied days in the

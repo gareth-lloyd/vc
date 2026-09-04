@@ -3,6 +3,7 @@ import type { QueryParams } from "@/lib/api/url";
 import type { Paginated } from "@/types/api";
 import type { QuotationId } from "@/lib/query/keys";
 import { isCapacityUnset, propertyListResponseSchema } from "@/features/properties/schemas";
+import { toFeaturesParam } from "@/lib/domain/features/api";
 import { bookingDetailSchema, type BookingDetail } from "@/features/bookings/schemas";
 import {
   quotationDetailSchema,
@@ -144,6 +145,7 @@ interface PropertySearchFilters {
   max_bedrooms?: number;
   min_guests?: number;
   q?: string;
+  features?: string[];
   // Searched stay window. Sent with `include_unavailable=true` so held/booked
   // villas come back flagged (`available_for_range`) instead of being dropped —
   // the builder shows them as unavailable rather than silently offering them.
@@ -177,6 +179,7 @@ async function fetchCandidateProperties(
     max_bedrooms: filters.max_bedrooms,
     min_guests: filters.min_guests,
     q: filters.q || undefined,
+    features: toFeaturesParam(filters.features),
     date_from: filters.date_from || undefined,
     date_to: filters.date_to || undefined,
     // Keep held/booked villas in the page — each row carries
@@ -217,6 +220,7 @@ async function fetchCapacityUnsetCandidates(
     country: filters.country || undefined,
     region: filters.region || undefined,
     q: filters.q || undefined,
+    features: toFeaturesParam(filters.features),
   };
   const data = await apiGet<unknown>("/properties", { query });
   const page = propertyListResponseSchema.parse(data);
@@ -237,6 +241,7 @@ export async function searchQuoteOptions(
     country: criteria.country || undefined,
     region: criteria.region || undefined,
     q: criteria.q || undefined,
+    features: criteria.features,
   };
   const datedFilters: PropertySearchFilters = {
     ...searchFilters,

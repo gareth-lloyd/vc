@@ -186,6 +186,7 @@
     "descriptions.actions.saving_internal"
   ],
   "quotations": [
+    "builder.criteria.features",
     "builder.shortlist.line.manual_locked_hint",
     "builder.results.add_manual",
     "builder.results.incomplete_pricing",

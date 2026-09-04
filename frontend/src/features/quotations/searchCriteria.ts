@@ -29,6 +29,7 @@ export function searchFormToCriteria(form: QuoteSearchForm): QuoteCriteriaInput 
     min_bedrooms: form.min_bedrooms,
     max_bedrooms: form.max_bedrooms,
     q: form.q,
+    features: form.features,
     flex_days: flex,
   };
 }

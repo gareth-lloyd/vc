@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FeatureMultiSelect } from "@/components/form/FeatureMultiSelect";
 import { RegionPicker } from "@/components/form/RegionPicker";
 import { useCountries, useRegions } from "@/lib/geo/hooks";
 import { TAXONOMY_PAGE_SIZE } from "@/lib/geo/api";
@@ -49,6 +50,7 @@ const DEFAULTS: QuoteSearchForm = {
   min_bedrooms: null,
   max_bedrooms: null,
   q: "",
+  features: [],
 };
 
 export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
@@ -85,6 +87,7 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
   const regionsQuery = useRegions({ hasProperties: true });
   const countryCtrl = useController({ control: form.control, name: "country" });
   const regionCtrl = useController({ control: form.control, name: "region" });
+  const featuresCtrl = useController({ control: form.control, name: "features" });
   const selectedCountry = countryCtrl.field.value;
 
   // The region options themselves live in RegionPicker (scoped by the chosen
@@ -273,6 +276,15 @@ export function QuoteCriteriaForm({ initial, isSubmitting, onSubmit }: Props) {
             {...form.register("q")}
           />
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="qcf-features">{t("builder.criteria.features")}</Label>
+        <FeatureMultiSelect
+          id="qcf-features"
+          value={featuresCtrl.field.value ?? []}
+          onChange={featuresCtrl.field.onChange}
+        />
       </div>
 
       <div className="flex justify-end">

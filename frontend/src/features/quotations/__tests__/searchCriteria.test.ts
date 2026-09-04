@@ -15,6 +15,7 @@ const FORM: QuoteSearchForm = {
   min_bedrooms: null,
   max_bedrooms: null,
   q: "",
+  features: [],
 };
 
 describe("searchFormToCriteria", () => {
@@ -62,6 +63,7 @@ describe("searchFormToCriteria", () => {
       min_bedrooms: 3,
       max_bedrooms: 6,
       q: "beach",
+      features: ["pool", "sea-view"],
     });
     expect(criteria).toMatchObject({
       adults: 5,
@@ -71,6 +73,7 @@ describe("searchFormToCriteria", () => {
       min_bedrooms: 3,
       max_bedrooms: 6,
       q: "beach",
+      features: ["pool", "sea-view"],
     });
   });
 

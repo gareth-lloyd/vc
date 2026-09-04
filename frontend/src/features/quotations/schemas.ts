@@ -56,6 +56,8 @@ export const quoteCriteriaInputSchema = z
     min_bedrooms: z.number().int().min(0).nullable(),
     max_bedrooms: z.number().int().min(0).nullable(),
     q: z.string(),
+    // Feature/amenity slugs, AND semantics (matches PropertyFilter.features).
+    features: z.array(z.string()),
     // ± days around the preferred dates (seeded from the enquiry's
     // flexibility_days). The backend derives the search window; the dates
     // above stay the client's true requested stay. Wide enough for a
@@ -91,6 +93,7 @@ export const quoteSearchFormSchema = z
     min_bedrooms: z.number().int().min(0).nullable(),
     max_bedrooms: z.number().int().min(0).nullable(),
     q: z.string(),
+    features: z.array(z.string()),
   })
   .superRefine((v, ctx) => {
     if (v.specific_date) return;

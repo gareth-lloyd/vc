@@ -21,6 +21,7 @@ const criteria: QuoteCriteriaInput = {
   max_bedrooms: null,
   q: "",
   flex_days: 0,
+  features: [],
 };
 
 // A candidate row whose requested dates are flagged unavailable.
@@ -223,6 +224,40 @@ describe("searchQuoteOptions", () => {
     expect(seenOrdering).toBe("region__country__name,region__name,name,id");
     expect(result.options[0].region_name).toBe("Crete");
     expect(result.options[0].country_name).toBe("Greece");
+  });
+
+  it("forwards selected features to the candidate query as one comma-joined param", async () => {
+    let seenFeatures: string | null = null;
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        seenFeatures = new URL(request.url).searchParams.get("features");
+        return HttpResponse.json(drfPage([heldCandidateRow(1)]));
+      }),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({ quotes: [{ property_id: 1, available: true }] }),
+      ),
+    );
+
+    await searchQuoteOptions({ ...criteria, features: ["pool", "sea-view"] });
+
+    expect(seenFeatures).toBe("pool,sea-view");
+  });
+
+  it("omits `features` from the candidate query when none are selected", async () => {
+    let seenFeatures: string | null = null;
+    server.use(
+      http.get("/api/v1/properties", ({ request }) => {
+        seenFeatures = new URL(request.url).searchParams.get("features");
+        return HttpResponse.json(drfPage([heldCandidateRow(1)]));
+      }),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({ quotes: [{ property_id: 1, available: true }] }),
+      ),
+    );
+
+    await searchQuoteOptions(criteria);
+
+    expect(seenFeatures).toBeNull();
   });
 
   it("carries the plan/card enrichment fields through to the option", async () => {

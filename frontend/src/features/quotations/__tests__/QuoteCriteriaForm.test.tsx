@@ -116,6 +116,34 @@ describe("QuoteCriteriaForm", () => {
     expect(decrease).toBeEnabled();
   });
 
+  it("submits selected feature slugs (backed by the always-on feature-lookup fixture)", async () => {
+    const onSubmit = renderRange(vi.fn(), {
+      arrive_from: "2026-07-04",
+      arrive_to: "2026-07-10",
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /features/i }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Pool" }));
+    await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ features: ["pool"] })),
+    );
+  });
+
+  it("submits an empty features array when none are selected", async () => {
+    const onSubmit = renderRange(vi.fn(), {
+      arrive_from: "2026-07-04",
+      arrive_to: "2026-07-10",
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ features: [] })),
+    );
+  });
+
   it("seeds from the provided initial values", () => {
     renderRange(vi.fn(), {
       arrive_from: "2026-07-01",

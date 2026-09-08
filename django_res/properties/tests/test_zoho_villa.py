@@ -147,6 +147,37 @@ def test_payload_identity_and_region() -> None:
     assert payload["updated_at"] == prop.updated_at.isoformat()
 
 
+def test_payload_region_and_country_carry_join_keys() -> None:
+    """GAP-102: geo sub-objects are keyable — region `slug` + `is_active`,
+    country `iso3` + `is_active` — so Limitless stop matching on `name`.
+    Covered per-module because `_region_payload` is deliberately duplicated
+    in `reservations.services.zoho_payload`."""
+    prop = _property(region__is_active=False)
+    region = prop.region
+    # CountryFactory get_or_creates on iso2 (migration-seeded rows), so the
+    # flag has to be flipped on the row rather than passed as a kwarg.
+    region.country.is_active = False
+    region.country.save(update_fields=["is_active"])
+
+    payload = build_property_payload(prop)
+
+    assert payload["region"] == {
+        "RES_ID": region.pk,
+        "id": region.pk,
+        "name": region.name,
+        "slug": region.slug,
+        "is_active": False,
+        "country": {
+            "RES_ID": region.country.pk,
+            "id": region.country.pk,
+            "name": region.country.name,
+            "iso2": region.country.iso2,
+            "iso3": region.country.iso3,
+            "is_active": False,
+        },
+    }
+
+
 def test_payload_location_and_capacity_decimals_as_strings() -> None:
     prop = _property()
     location = prop.location
@@ -171,6 +202,8 @@ def test_payload_location_and_capacity_decimals_as_strings() -> None:
         "id": location.country.pk,
         "name": location.country.name,
         "iso2": location.country.iso2,
+        "iso3": location.country.iso3,
+        "is_active": True,
     }
     assert loc["latitude"] == "38.123456"
     assert loc["longitude"] == "-9.654321"

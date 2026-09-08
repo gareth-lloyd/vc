@@ -89,6 +89,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from integrations.services.zoho_flow import is_anonymized_person
+from integrations.services.zoho_payloads import country_payload
 from reservations.enums import ChargeCategory
 
 if TYPE_CHECKING:
@@ -152,19 +153,18 @@ def _assigned_to_payload(user: Any) -> dict[str, Any] | None:
 
 
 def _region_payload(region: Region | None) -> dict[str, Any] | None:
+    """GAP-102 join keys: `RES_ID` is the identity; `slug` is unique only
+    per country (a matching aid, never the key) and `is_active=false` means
+    "retired from new selection" while staying readable on historic rows."""
     if region is None:
         return None
-    country = region.country
     return {
         "RES_ID": region.pk,
         "id": region.pk,
         "name": region.name,
-        "country": {
-            "RES_ID": country.pk,
-            "id": country.pk,
-            "name": country.name,
-            "iso2": country.iso2,
-        },
+        "slug": region.slug,
+        "is_active": region.is_active,
+        "country": country_payload(region.country),
     }
 
 

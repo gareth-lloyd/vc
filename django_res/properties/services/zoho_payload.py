@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 from django.db.models import Prefetch
 
 from integrations.services.zoho_flow import is_anonymized_person
+from integrations.services.zoho_payloads import country_payload
 
 if TYPE_CHECKING:
     from accounts.models import Organisation, Person
@@ -76,26 +77,24 @@ def _person_summary(person: Person | None) -> dict[str, Any] | None:
 
 
 def _region_payload(region: Region | None) -> dict[str, Any] | None:
+    """GAP-102 join keys: `RES_ID` is the identity; `slug` is unique only
+    per country (a matching aid, never the key) and `is_active=false` means
+    "retired from new selection" while staying readable on historic rows."""
     if region is None:
         return None
-    country = region.country
     return {
         "RES_ID": region.pk,
         "id": region.pk,
         "name": region.name,
-        "country": {
-            "RES_ID": country.pk,
-            "id": country.pk,
-            "name": country.name,
-            "iso2": country.iso2,
-        },
+        "slug": region.slug,
+        "is_active": region.is_active,
+        "country": country_payload(region.country),
     }
 
 
 def _location_payload(location: PropertyLocation | None) -> dict[str, Any] | None:
     if location is None:
         return None
-    country = location.country
     return {
         "address_line_1": location.address_line_1,
         "address_line_2": location.address_line_2,
@@ -103,12 +102,7 @@ def _location_payload(location: PropertyLocation | None) -> dict[str, Any] | Non
         "post_code": location.post_code,
         "locality_town": location.locality_town,
         "locality_region": location.locality_region,
-        "country": {
-            "RES_ID": country.pk,
-            "id": country.pk,
-            "name": country.name,
-            "iso2": country.iso2,
-        },
+        "country": country_payload(location.country),
         # Decimals as strings: not JSON-serialisable, floats drift.
         "latitude": str(location.latitude) if location.latitude is not None else None,
         "longitude": str(location.longitude) if location.longitude is not None else None,

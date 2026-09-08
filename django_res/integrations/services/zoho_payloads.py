@@ -42,7 +42,12 @@ def _iso(value: datetime | date | None) -> str | None:
     return value.isoformat() if value is not None else None
 
 
-def _country_payload(country: Any) -> dict[str, Any] | None:
+def country_payload(country: Any) -> dict[str, Any] | None:
+    """The ONE country sub-object shape on the wire (GAP-102): shared by the
+    contact, villa, enquiry, quote and booking builders. `RES_ID` is the
+    identity; `iso2`/`iso3` are matching aids sent verbatim from the row
+    (loader-minted rows can carry synthetic codes) and `is_active=false`
+    means "not offered for new selection", never "record invalid"."""
     # Duck-typed `properties.Country`: `properties` sits ABOVE `integrations`
     # in the import spine, so this module must not import it (even under
     # TYPE_CHECKING — import-linter counts those).
@@ -54,6 +59,7 @@ def _country_payload(country: Any) -> dict[str, Any] | None:
         "name": country.name,
         "iso2": country.iso2,
         "iso3": country.iso3,
+        "is_active": country.is_active,
     }
 
 
@@ -71,7 +77,7 @@ def _agency_payload(agency: Organisation | None) -> dict[str, Any] | None:
         "address_line_2": agency.address_line_2,
         "town": agency.town,
         "post_code": agency.post_code,
-        "country": _country_payload(agency.country),
+        "country": country_payload(agency.country),
         "website_url": agency.website_url,
         "notes": agency.notes,
         "status": agency.status,
@@ -168,7 +174,7 @@ def build_person_payload(person: Person) -> dict[str, Any]:
         "address_line_2": person.address_line_2,
         "town": person.town,
         "post_code": person.post_code,
-        "country": _country_payload(person.country),
+        "country": country_payload(person.country),
         "marketing_consent": person.marketing_consent,
         "tags": [tag for tag in person.tags if tag not in SENSITIVE_TAGS],
         "notes": person.notes,

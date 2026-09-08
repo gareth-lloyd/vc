@@ -79,6 +79,8 @@ def test_payload_nests_country_and_agency_with_res_ids(full_person: Person) -> N
     country = payload["country"]
     assert country["RES_ID"] == full_person.country_id
     assert country["iso2"] == "GB"
+    assert country["iso3"] == "GBR"
+    assert country["is_active"] is True
     assert country["name"]
 
     agency = payload["agency"]
@@ -87,6 +89,20 @@ def test_payload_nests_country_and_agency_with_res_ids(full_person: Person) -> N
     assert agency["country"]["iso2"] == "GB"
     # Org notes push too (user decision 2026-07-23, same call as Person.notes).
     assert agency["notes"] == "Preferred partner — NET rates"
+
+
+def test_payload_country_is_active_false_reaches_the_wire(
+    full_person: Person, country: Country
+) -> None:
+    """GAP-102: `is_active` is the one geo key with no substitute — pin that a
+    retired country pushes `false` on both the person and its agency."""
+    country.is_active = False
+    country.save(update_fields=["is_active"])
+
+    payload = build_person_payload(full_person)
+
+    assert payload["country"]["is_active"] is False
+    assert payload["agency"]["country"]["is_active"] is False
 
 
 def test_payload_carries_all_emails_and_phones_with_primary_flagged(

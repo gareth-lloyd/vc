@@ -130,6 +130,11 @@ def test_every_enum_transmitting_attribute_is_covered(
         r["beds"]["double_size"] for r in villa["rooms"] if r["beds"] and r["beds"]["double_size"]
     }
     assert bed_sizes, "no room bed size transmitted"
+    # GAP-102: the extras catalogue rides the villa push.
+    extra_categories = {e["category"] for e in villa["extras"]}
+    assert {"cleaning", "heating"} <= extra_categories, extra_categories
+    extra_calcs = {e["calc"] for e in villa["extras"]}
+    assert {"fixed_per_stay"} <= extra_calcs, extra_calcs
     service_types = {f["service_type"] for f in villa["features"]}
     assert {"amenity", "included_service", "paid_addon"} <= service_types, service_types
 

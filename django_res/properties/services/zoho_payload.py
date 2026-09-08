@@ -16,15 +16,22 @@ Last_Activity_Time→`created_at`/`updated_at`.
 **Omitted, no placeholders**: `Villa_URL` (no public site URL exists) and
 `Note` (no single note field; descriptions are guest-facing copy).
 
-Deliberately NO availability or pricing data — res stays the sole source of
-truth for both; the Zoho record is for segmentation/reporting only.
+Deliberately NO availability or rate data — res stays the sole source of
+truth for both; the Zoho record is for segmentation/reporting only. The ONE
+carve-out is the GAP-102 extras catalogue (`extras[]`, option (a), user
+decision 2026-09-08): Zoho must hold the villa's products BEFORE a booking
+references one, and the product key is the (villa `RES_ID`, extra `RES_ID`)
+pair — `pricing.Extra` is property-scoped, so two villas' "Cleaning" are two
+products. Inactive extras ride too (`is_active: false`) so a historic
+booking's reference resolves.
 
 Embedded copies of catalog/related rows (feature + room-attribute names,
 region/country, organisation details, person summaries) refresh
 only when the villa itself next pushes — a catalog rename does NOT fan out
 re-pushes to every villa embedding it. Accepted trade-off for
 segmentation-only data; person/organisation records push their own `contact`
-kind and stay current there.
+kind and stay current there. Extras are the exception — see `pricing.signals`
+for the `Extra` save/delete → villa bump.
 
 `_iso`/`_person_summary`/`_region_payload` are duplicated byte-identical from
 `reservations/services/zoho_payload.py` (the established cross-app pattern —
@@ -229,6 +236,37 @@ def build_property_payload(prop: Property) -> dict[str, Any]:
         )
     )
     feature_links = prop.feature_links.select_related("feature__category")
+    # `pricing.Extra` reached only through the reverse FK: `pricing` sits ABOVE
+    # `properties` on the import spine, so the model is never imported here —
+    # building the rows inline keeps them type-checked (mypy infers the
+    # manager's row type) without an import. Explicit order: `Meta.ordering`
+    # is (property, sort_order, name) and a rename would reorder rows between
+    # pushes; pk is the stable tiebreak.
+    extras = [
+        {
+            "RES_ID": extra.pk,
+            "id": extra.pk,
+            "name": extra.name,
+            "description": extra.description,
+            # `Extra.kind` verbatim — every `ExtraKind` value is a
+            # `ChargeCategory` (pinned by reservations/tests/test_charge_item.py
+            # ::test_charge_category_embeds_extra_kind_verbatim), so villa and
+            # booking rows share one `category` vocabulary.
+            "category": extra.kind,
+            "calc": extra.calc,
+            "amount": str(extra.amount),
+            "currency": extra.currency.code,
+            "is_mandatory": extra.is_mandatory,
+            "commissionable": extra.commissionable,
+            "is_active": extra.is_active,
+            "applies_from": _iso(extra.applies_from),
+            "applies_to": _iso(extra.applies_to),
+            "min_party": extra.min_party,
+            "max_party": extra.max_party,
+            "sort_order": extra.sort_order,
+        }
+        for extra in prop.extras.select_related("currency").order_by("sort_order", "pk")
+    ]
     return {
         "RES_ID": prop.pk,
         "id": prop.pk,
@@ -246,6 +284,7 @@ def build_property_payload(prop: Property) -> dict[str, Any]:
         "contacts": [_contact_payload(assignment) for assignment in assignments],
         "rooms": [_room_payload(room) for room in rooms],
         "features": [_feature_payload(link) for link in feature_links],
+        "extras": extras,
         "hero_image_url": prop.hero_image_url(),
         "created_at": _iso(prop.created_at),
         "updated_at": _iso(prop.updated_at),

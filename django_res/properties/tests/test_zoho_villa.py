@@ -24,10 +24,14 @@ from django.test.utils import CaptureQueriesContext
 from accounts.enums import ContactRole, OrgType
 from accounts.factories import OrganisationFactory, PersonFactory, UserFactory
 from accounts.models import Organisation, Person, User
+from core.tests import assert_max_queries
 from integrations import tasks
 from integrations.enums import SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from integrations.services.zoho_flow import get_zoho_spec, suppress_zoho_push
+from pricing.enums import ExtraCalc, ExtraKind
+from pricing.factories import CurrencyFactory, ExtraFactory
+from pricing.models import Extra
 from properties.enums import BedSize, PropertyStatus
 from properties.factories import (
     FeatureFactory,
@@ -426,15 +430,23 @@ def test_payload_hero_image_url() -> None:
     assert payload["hero_image_url"] is not None
 
 
-def test_payload_is_json_serializable() -> None:
+def _full_property() -> Property:
+    """One of everything the payload embeds — rooms, features, contacts AND
+    the GAP-102 extras catalogue — so whole-payload invariants (JSON-safety,
+    key omissions, query count) see every branch."""
     prop = _property()
     prop.location.latitude = Decimal("38.1")
     prop.location.save()
     PropertyContactAssignmentFactory(property=prop, contact=PersonFactory(), role=ContactRole.OWNER)
     RoomFactory(property=prop)
     PropertyFeature.objects.create(property=prop, feature=_feature())
+    ExtraFactory(property=prop)
+    ExtraFactory(property=prop)
+    return prop
 
-    json.dumps(build_property_payload(prop))
+
+def test_payload_is_json_serializable() -> None:
+    json.dumps(build_property_payload(_full_property()))
 
 
 def _all_keys(value: Any) -> set[str]:
@@ -452,21 +464,132 @@ def _all_keys(value: Any) -> set[str]:
 def test_payload_omits_villa_url_note_availability_and_pricing() -> None:
     """ZohoVillaPostData's Villa_URL/Note have no model source (documented
     omissions, never placeholders), and res stays the sole source of truth for
-    availability + pricing — none of it may ride the villa payload."""
-    prop = _property()
-    RoomFactory(property=prop)
-    PropertyFeature.objects.create(property=prop, feature=_feature())
+    availability + rates — none of it may ride the villa payload. The GAP-102
+    extras catalogue is the one deliberate carve-out: its rows carry `amount`,
+    never a `price*`/`availability*` key — the fixture attaches extras so
+    this walk actually sees them."""
+    prop = _full_property()
 
     payload = build_property_payload(prop)
+    assert payload["extras"]
     keys = _all_keys(payload)
 
     assert "Villa_URL" not in keys
     assert "Note" not in keys
     # GAP-093: Property.category is gone and the key was dropped outright.
-    # Top-level only — feature rows legitimately carry their own `category`.
+    # Top-level only — feature rows (category display names) and extras rows
+    # (ExtraKind slugs) legitimately carry their own `category`, in two
+    # different vocabularies.
     assert "category" not in payload
     assert not [k for k in keys if "availability" in k.lower()]
     assert not [k for k in keys if "price" in k.lower() or "pricing" in k.lower()]
+
+
+# --- extras catalogue (GAP-102) -------------------------------------------
+
+
+def test_payload_extras_catalogue_full_row_shape_and_order() -> None:
+    """Option (a): the villa carries its own extras catalogue so Zoho has the
+    product BEFORE any booking references it. Ordered by (sort_order, pk),
+    inactive rows included (a historic booking's reference must resolve)."""
+    prop = _property()
+    eur = CurrencyFactory(code="EUR")
+    later = cast(
+        Extra,
+        ExtraFactory(
+            property=prop,
+            currency=eur,
+            name="Chef",
+            description="Private chef, per night",
+            kind=ExtraKind.SERVICE_FEE,
+            calc=ExtraCalc.FIXED_PER_NIGHT,
+            amount=Decimal("250.00"),
+            is_mandatory=False,
+            commissionable=False,
+            applies_from=date(2026, 6, 1),
+            applies_to=date(2026, 9, 30),
+            min_party=2,
+            max_party=8,
+            sort_order=5,
+            is_active=False,
+            notes="internal only",
+            idempotency_key="abc",
+        ),
+    )
+    first = cast(Extra, ExtraFactory(property=prop, currency=eur, name="Cleaning", sort_order=1))
+
+    payload = build_property_payload(prop)
+
+    assert payload["extras"] == [
+        {
+            "RES_ID": first.pk,
+            "id": first.pk,
+            "name": "Cleaning",
+            "description": "",
+            "category": "cleaning",
+            "calc": "fixed_per_stay",
+            "amount": "150.00",
+            "currency": "EUR",
+            "is_mandatory": True,
+            "commissionable": True,
+            "is_active": True,
+            "applies_from": None,
+            "applies_to": None,
+            "min_party": None,
+            "max_party": None,
+            "sort_order": 1,
+        },
+        {
+            "RES_ID": later.pk,
+            "id": later.pk,
+            "name": "Chef",
+            "description": "Private chef, per night",
+            "category": "service_fee",
+            "calc": "fixed_per_night",
+            "amount": "250.00",
+            "currency": "EUR",
+            "is_mandatory": False,
+            "commissionable": False,
+            "is_active": False,
+            "applies_from": "2026-06-01",
+            "applies_to": "2026-09-30",
+            "min_party": 2,
+            "max_party": 8,
+            "sort_order": 5,
+        },
+    ]
+    assert json.loads(json.dumps(payload["extras"])) == payload["extras"]
+
+
+def test_payload_extras_catalogue_same_name_on_two_villas_has_distinct_res_ids() -> None:
+    """`Extra` is property-scoped: the product key is the (villa, extra) pair,
+    so two villas' "Cleaning" must never collapse into one Zoho product."""
+    prop_a, prop_b = _property(), _property()
+    ExtraFactory(property=prop_a, name="Cleaning")
+    ExtraFactory(property=prop_b, name="Cleaning")
+
+    ids_a = [e["RES_ID"] for e in build_property_payload(prop_a)["extras"]]
+    ids_b = [e["RES_ID"] for e in build_property_payload(prop_b)["extras"]]
+
+    assert len(ids_a) == len(ids_b) == 1
+    assert ids_a != ids_b
+
+
+def test_payload_extras_catalogue_empty_list_when_none() -> None:
+    assert build_property_payload(_property())["extras"] == []
+
+
+def test_payload_query_count_pinned() -> None:
+    """Pinned on a BARE instance (a fresh `.get()`, exactly what
+    `push_sync_record` hands the builder — a factory-warm instance hides the
+    five lazy scalar walks: region, region.country, location, location.country,
+    capacity). 13 = 5 scalar walks + 1 base row + 6 collection SELECTs + the
+    GAP-102 extras SELECT; `currency` rides that one via select_related, and
+    the two-row fixture turns a per-row currency fetch into a red test."""
+    prop = Property.objects.get(pk=_full_property().pk)
+
+    with assert_max_queries(13):
+        build_property_payload(prop)
 
 
 # --- enqueue behaviour ----------------------------------------------------

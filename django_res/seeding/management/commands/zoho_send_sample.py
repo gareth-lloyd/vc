@@ -14,7 +14,8 @@ The fixtures span two axes, and they are different questions.
 example of every attribute that transmits a closed enum: contact
 preferred_method/status/kind/tags/agency + email/phone labels + both
 relationship directions; villa status/channel + contact roles + org type +
-room placement/floor/ensuite_type/access + bed size + feature service types;
+room placement/floor/ensuite_type/access + bed size + feature service types +
+extras category/calc (GAP-102 catalogue);
 enquiry contact_method/request_type/site_source/status/lead_status/lost_reason
 + note kinds; quote status; booking status/site_source/payment_method +
 extras[].category (snapshot ExtraKind AND charge-only damage/credit) +
@@ -716,10 +717,11 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
     plan = RatePlanFactory(property=villa, currency=currency, name=f"{_TAG} rates")
     period = RatePeriodFactory(plan=plan, name=f"{_TAG} period")
     RateBandFactory(period=period, min_party=1, max_party=30, nightly=_NIGHTLY_RATE)
-    # Two mandatory extras with distinct ExtraKinds — the engine snapshots
-    # them into pricing_snapshot["extras"], so booking extras[].category
-    # covers snapshot-sourced kinds. Currency MUST equal the plan currency
-    # for the engine to apply them.
+    # Two mandatory extras with distinct ExtraKinds — they ride the villa
+    # push as its extras[] catalogue (GAP-102, so create them BEFORE the villa
+    # yields) and the engine snapshots them into pricing_snapshot["extras"],
+    # so booking extras[].category covers snapshot-sourced kinds. Currency
+    # MUST equal the plan currency for the engine to apply them.
     ExtraFactory(
         property=villa,
         currency=currency,

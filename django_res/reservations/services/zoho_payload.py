@@ -337,7 +337,8 @@ def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
     `total_gross` (snapshot total / charge overlay) — Zoho must not re-add
     them. `category` is the GAP-088 taxonomy: snapshot extras pass their
     stored `ExtraKind` through (every value is a `ChargeCategory` — pinned by
-    test), charge lines send `BookingChargeItem.category`, so Zoho sees ONE
+    `reservations/tests/test_charge_item.py::test_charge_category_embeds_extra_kind_verbatim`),
+    charge lines send `BookingChargeItem.category`, so Zoho sees ONE
     vocabulary.
 
     GAP-102 identity: two id spaces feed one array, so the key is the PAIR

@@ -127,6 +127,11 @@ label and type concatenated into `Description`, so per-type reporting is
 impossible. **Whatever is settled on CHECK-004 applies here identically —
 do not decide these separately.**
 
+> **Answered 2026-09-08 — see the CHECK-004 note (GAP-102).** For quotes the
+> product reference is `line.pricing_snapshot.extras[].extra_id` = the villa
+> catalogue's `extras[].RES_ID`; the catalogue reaches Zoho on the villa push,
+> i.e. before any quote references it.
+
 One inconsistency to fix alongside it: this Flow reads `extra.kind`, the
 booking Flow reads `extra.category`. Both are the GAP-088 vocabulary
 (`ExtraKind` ⊂ `ChargeCategory`), but the same extra will render differently

@@ -136,6 +136,18 @@ a stable vocabulary. Asked in the email: a Product per category, or a
 picklist field on the subform row? Either is fine on our side — the payload
 does not change. **Decide before closing this ticket.**
 
+> **Answered 2026-09-08 (call + GAP-102).** Extras are full products with
+> stable res ids, not a category picklist. Our half shipped in **GAP-102**:
+> every `extras[]` row now carries `RES_ID` + `source` + `currency`, and the
+> villa payload carries the **catalogue** (`extras[]`, keyed by the *(villa
+> `RES_ID`, extra `RES_ID`)* pair — property-scoped, two villas' "Cleaning"
+> are two products). Their half: map `source="extra"` rows onto the Product
+> created from the villa's `extras[]` by `RES_ID` (same id as
+> `line.pricing_snapshot.extras[].extra_id`; may no longer resolve if the
+> Extra was since deleted), and `source="charge_item"` rows (own pk, not a
+> catalogue product) onto a manual line. **Never key on `RES_ID` alone** —
+> the two id spaces collide.
+
 ## Smaller items
 
 - **Datetimes carry no offset.** `Arrival_Date` / `Departure_Date` are

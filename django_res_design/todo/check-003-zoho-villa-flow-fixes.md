@@ -69,6 +69,13 @@ no push of its own) and the relative hero-image URL, which is a note on
    `locality_town`/`locality_region` as separate locality fields. Also asked
    them to flag any record where `location.country` and `region.country`
    disagree — that would be a data problem at our end.
+   *GAP-102 (2026-09-08):* `region` now also carries `slug` + `is_active`
+   and both country objects `iso3` + `is_active` — key on `RES_ID`
+   (`slug` is unique only per country; `iso3` can be synthetic on
+   loader-minted rows; `is_active=false` = retired from new selection). The
+   villa payload also gained an `extras[]` **catalogue** to map onto
+   Products (see CHECK-004's extras note) — a new block to map, and the one
+   pricing carve-out in the villa push.
 
 7. **Status collapses to a boolean.** `draft`/`active`/`archived` →
    `Product_Active`, so draft and archived are indistinguishable. Asked for:

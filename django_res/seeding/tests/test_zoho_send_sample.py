@@ -220,6 +220,11 @@ def test_dry_run_prints_payloads_without_posting(monkeypatch: pytest.MonkeyPatch
     assert not any(payloads.values())
     assert "payload:" in out
     assert '"RES_ID"' in out
+    # GAP-102: the printed envelope is what the wire would carry — `_meta`
+    # included, with no SyncRecord behind a dry run.
+    assert '"_meta"' in out
+    assert '"source": "res"' in out
+    assert '"sync_record_id": null' in out
     assert Booking.objects.count() == before
 
 

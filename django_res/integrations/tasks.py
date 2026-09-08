@@ -18,10 +18,12 @@ from django.utils import timezone
 from integrations.enums import SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from integrations.services.zoho_flow import (
+    PROVENANCE_HEADER,
     get_zoho_spec,
     is_anonymized_person,
     registered_zoho_models,
     webhook_url,
+    with_provenance,
 )
 
 logger = structlog.get_logger(__name__)
@@ -82,7 +84,11 @@ def push_sync_record(sync_record_id: int) -> None:
         return
 
     try:
-        payload = spec.build_payload(target)
+        # Envelope applied INSIDE the try on purpose: a builder returning a
+        # non-dict or minting its own `_meta` is a programming error that must
+        # park the row ERROR like any broken builder, not escape the task and
+        # leave it PENDING for the sweep (GAP-102).
+        body = with_provenance(spec.build_payload(target), spec.kind, record.pk)
     except Exception as exc:
         # A broken builder is a poison pill: raising leaves the row PENDING
         # and the sweep re-dispatches it every tick. Park it ERROR (class +
@@ -99,7 +105,12 @@ def push_sync_record(sync_record_id: int) -> None:
         return
 
     try:
-        response = httpx.post(url, json=payload, timeout=PUSH_TIMEOUT_SECONDS)
+        response = httpx.post(
+            url,
+            json=body,
+            headers={PROVENANCE_HEADER: body["_meta"]["env"]},
+            timeout=PUSH_TIMEOUT_SECONDS,
+        )
     except httpx.TransportError as exc:
         if _record_transient_failure(record, repr(exc)):
             return  # retry budget spent — parked ERROR, stop raising

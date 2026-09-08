@@ -14,12 +14,13 @@ unregistered after.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from unittest import mock
 
 import httpx
 import pytest
+import time_machine
 from django.contrib.contenttypes.models import ContentType
 from django.test import override_settings
 from django.utils import timezone
@@ -38,6 +39,7 @@ from integrations import tasks
 from integrations.enums import SyncDirection, SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from integrations.services.zoho_flow import (
+    PROVENANCE_HEADER,
     ZOHO_FLOW_KINDS,
     ZohoFlowSpec,
     enqueue_zoho_push,
@@ -47,6 +49,7 @@ from integrations.services.zoho_flow import (
     unregister_zoho_flow,
     webhook_url,
 )
+from integrations.services.zoho_payloads import build_person_payload
 from integrations.tasks import TransientPushError, push_pending, push_sync_record
 from properties.models.rooms import Room
 
@@ -813,6 +816,106 @@ def test_push_unset_url_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     post.assert_not_called()
     record.refresh_from_db()
     assert record.status == SyncStatus.PENDING
+
+
+# --- provenance envelope (GAP-102) ----------------------------------------
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("contact_webhook")
+def test_push_carries_provenance_meta_and_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every POST carries a `_meta` sibling key + `X-Res-Env` header so a Flow
+    execution is attributable: anything without `_meta.source == "res"` is
+    provably not ours, and dev/live pushes into the shared CRM org are
+    distinguishable. Sibling key, never a wrapper — the root must not move."""
+    person = _person(first_name="Ada", last_name="Lovelace")
+    record = _make_record(person.pk)
+    post = mock.Mock(return_value=_response(200))
+    monkeypatch.setattr(tasks.httpx, "post", post)
+
+    with time_machine.travel(datetime(2026, 9, 8, 10, 30, tzinfo=UTC), tick=False):
+        push_sync_record(record.pk)
+
+    sent = post.call_args.kwargs["json"]
+    meta = sent.pop("_meta")
+    assert sent == build_person_payload(person)  # no existing root key moves
+    assert meta == {
+        "source": "res",
+        "env": "test",
+        "pushed_at": "2026-09-08T10:30:00+00:00",
+        "sync_record_id": record.pk,
+        "kind": "contact",
+    }
+    assert post.call_args.kwargs["headers"] == {"X-Res-Env": "test"}
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("contact_webhook")
+def test_push_provenance_env_reads_settings_at_call_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    person = _person()
+    record = _make_record(person.pk)
+    post = mock.Mock(return_value=_response(200))
+    monkeypatch.setattr(tasks.httpx, "post", post)
+
+    with override_settings(ENVIRONMENT="staging"):
+        push_sync_record(record.pk)
+
+    assert post.call_args.kwargs["json"]["_meta"]["env"] == "staging"
+    assert post.call_args.kwargs["headers"] == {PROVENANCE_HEADER: "staging"}
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("contact_webhook")
+def test_builder_emitting_meta_is_parked_error_not_left_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A builder that returns its own `_meta` is a programming error; it must
+    park the row ERROR like any broken builder — never escape the task and
+    leave the row PENDING for the sweep to re-dispatch forever."""
+    person = _person()
+    record = _make_record(person.pk)
+
+    def _collides(instance: Any) -> dict[str, Any]:
+        return {"RES_ID": instance.pk, "_meta": {"source": "x"}}
+
+    spec = ZohoFlowSpec(kind="contact", build_payload=_collides, auto_push=True)
+    monkeypatch.setattr(tasks, "get_zoho_spec", lambda model: spec)
+    post = mock.Mock(return_value=_response(200))
+    monkeypatch.setattr(tasks.httpx, "post", post)
+
+    push_sync_record(record.pk)  # must not raise
+
+    post.assert_not_called()
+    record.refresh_from_db()
+    assert record.status == SyncStatus.ERROR
+    assert record.error_message.startswith("ValueError: ")
+    assert "_meta" in record.error_message
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("contact_webhook")
+def test_builder_returning_non_dict_is_parked_error_not_left_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The envelope merge runs INSIDE the builder try: a builder returning a
+    list (or None) used to blow up at the `{**payload, ...}` merge after the
+    try, escaping the task and stranding the row PENDING for the sweep."""
+    person = _person()
+    record = _make_record(person.pk)
+
+    spec = ZohoFlowSpec(kind="contact", build_payload=lambda instance: None, auto_push=True)  # type: ignore[arg-type,return-value]
+    monkeypatch.setattr(tasks, "get_zoho_spec", lambda model: spec)
+    post = mock.Mock(return_value=_response(200))
+    monkeypatch.setattr(tasks.httpx, "post", post)
+
+    push_sync_record(record.pk)  # must not raise
+
+    post.assert_not_called()
+    record.refresh_from_db()
+    assert record.status == SyncStatus.ERROR
+    assert record.error_message.startswith("TypeError: ")
 
 
 # --- push_pending sweep ---------------------------------------------------

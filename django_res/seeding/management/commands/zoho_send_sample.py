@@ -109,6 +109,7 @@ from integrations.services.zoho_flow import (
     get_zoho_spec,
     is_anonymized_person,
     suppress_zoho_push,
+    with_provenance,
 )
 from integrations.tasks import push_sync_record
 
@@ -297,7 +298,13 @@ class Command(BaseCommand):
             # instance would print a DIFFERENT payload wherever a scenario
             # mutated the row through a related object or a service call —
             # `--dry-run` has to show what the real push would send.
-            payload = spec.build_payload(type(obj)._base_manager.get(pk=obj.pk))
+            # Same envelope `push_sync_record` sends (GAP-102), keyed on the
+            # registry's `spec.kind` exactly as the task is — a dry run has no
+            # SyncRecord, so `sync_record_id` is null. The body is the whole
+            # story here; the wire also carries `X-Res-Env: <_meta.env>`.
+            payload = with_provenance(
+                spec.build_payload(type(obj)._base_manager.get(pk=obj.pk)), spec.kind, None
+            )
             self.stdout.write(f"[{scenario}/{kind}] pk={obj.pk} payload:")
             self.stdout.write(json.dumps(payload, indent=2, default=str))
 

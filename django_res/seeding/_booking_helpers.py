@@ -95,7 +95,11 @@ def advance_status(booking: Any, i: int, ctx: SeedContext) -> None:
     if track == 5:
         booking.cancel("Guest changed plans")
         return
-    booking.record_deposit()
+    if booking.status == BookingStatus.AWAITING_DEPOSIT.value:
+        # BUG-026: the scheduler may already have advanced a no-deposit
+        # booking straight to DEPOSIT_PAID — a redundant record_deposit()
+        # here would raise InvalidTransition and crash the seed run.
+        booking.record_deposit()
     mark_payment_paid(booking, PaymentPurpose.DEPOSIT.value)
     if ctx.knobs.pct_booking_cancel_post_deposit and (i * 19) % 100 < int(
         ctx.knobs.pct_booking_cancel_post_deposit * 100
@@ -199,6 +203,7 @@ def create_one_booking(
 
 def advance_pre_approval(booking: Any, i: int, ctx: SeedContext) -> None:
     from payments.enums import PaymentPurpose
+    from reservations.enums import BookingStatus
 
     decline_threshold = int(ctx.knobs.pct_booking_pre_approval_declines * 100)
     if (i * 7) % 100 < decline_threshold:
@@ -209,5 +214,8 @@ def advance_pre_approval(booking: Any, i: int, ctx: SeedContext) -> None:
     booking.owner_approve()  # → AWAITING_DEPOSIT; the payments receiver schedules here
     line = booking.quotation_line
     line.quotation.accept(line)
-    booking.record_deposit()
+    if booking.status == BookingStatus.AWAITING_DEPOSIT.value:
+        # BUG-026: the receiver above may already have advanced a no-deposit
+        # booking straight to DEPOSIT_PAID.
+        booking.record_deposit()
     mark_payment_paid(booking, PaymentPurpose.DEPOSIT.value)

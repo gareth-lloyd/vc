@@ -174,6 +174,7 @@ class BookingStatus(models.TextChoices):
 | `owner_approve()` | PENDING_OWNER_APPROVAL | AWAITING_DEPOSIT | owner | Sends initial-deposit email |
 | `owner_decline(reason)` | PENDING_OWNER_APPROVAL | DECLINED | owner | Releases the BookingHold |
 | `record_deposit(payment)` | AWAITING_DEPOSIT | DEPOSIT_PAID | payments signal | Locks the property dates (hold remains until balance) |
+| `skip_deposit()` | AWAITING_DEPOSIT | DEPOSIT_PAID | `PaymentScheduler` (create/resync) | BUG-026: no deposit wanted (policy `deposit_required=False`, a zero override, or over-collection cancelling the last pending deposit) — schedule advance, not a real payment. `EventSource.SYSTEM`, `reason="deposit_not_required"`. |
 | `arm_balance()` | DEPOSIT_PAID | AWAITING_BALANCE | beat task | When within `balance_due_at` window |
 | `record_balance(payment)` | AWAITING_BALANCE, DEPOSIT_PAID | BALANCE_PAID | payments signal | |
 | `check_in()` | BALANCE_PAID | CHECKED_IN | admin / on date | |

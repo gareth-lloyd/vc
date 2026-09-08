@@ -286,10 +286,27 @@ Constraint: `UniqueConstraint(provider, event_id)` — provider re-delivery is a
 >   one, but only while the booking is still `AWAITING_DEPOSIT` (read from the
 >   DB, not the caller's instance). Property policy is therefore *live* for
 >   unsettled schedules. See BUG-022/023 and [`../decisions.md`](../decisions.md).
->
-> Known gap: a booking that wants **no** deposit has no path out of
-> `AWAITING_DEPOSIT` —
-> [`../../todo/bug-026-…`](../../todo/bug-026-no-deposit-booking-parked-in-awaiting-deposit.md).
+> - **BUG-026 (fixed 2026-09-04).** Whenever either method above leaves an
+>   `AWAITING_DEPOSIT` booking with no active deposit row (no deposit
+>   required, a zero override, a policy flip, or over-collection cancelling
+>   the last pending deposit), it calls `Booking.skip_deposit()`
+>   (AWAITING_DEPOSIT → DEPOSIT_PAID, `EventSource.SYSTEM`,
+>   `reason="deposit_not_required"`) — nothing else would ever move the
+>   booking on. `resync_for_booking`'s over-collection case additionally
+>   replays `record_balance()` for an already-settled BALANCE row whose own
+>   settle-time advance had raised `InvalidTransition` and been swallowed
+>   (`payment.booking_advance_skipped`), but never off a row with a live
+>   (non-dead-status) `Refund` against it. Both call sites swallow a lost
+>   `InvalidTransition` race via a shared `_advance_or_log` helper rather
+>   than propagate — uncaught, it would abort whatever unrelated transaction
+>   triggered the resync, or (at `create_for_booking`) roll back the
+>   schedule rows just created in the same atomic block. Two known adjacent
+>   gaps, deliberately not covered by this fix: the `payment_action` "void"
+>   endpoint cancels a deposit without going through the scheduler, so it
+>   can still strand a booking (needs a product decision on remint-vs-advance,
+>   not a code fix); a booking on a property with no `PropertyFinance` row
+>   was already stuck pre-existing this ticket (`create_for_booking` returns
+>   early before either advance path runs).
 
 At `Booking` creation, generates the schedule from the effective `PropertyFinance.payment_schedule`:
 

@@ -449,3 +449,93 @@ def test_create_for_booking__zero_override_creates_no_deposit_row(
     assert PaymentPurpose.DEPOSIT.value not in purposes
     balance = next(p for p in created if p.purpose == PaymentPurpose.BALANCE.value)
     assert balance.amount == Decimal("1400.00")
+
+
+@pytest.mark.django_db
+def test_create_for_booking__deposit_required_false_advances_booking_to_deposit_paid(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """BUG-026: no deposit wanted must not strand the booking in AWAITING_DEPOSIT."""
+    finance = _ensure_finance(property_)
+    finance.deposit_required = False
+    finance.save(update_fields=["deposit_required"])
+
+    from reservations.enums import BookingStatus
+    from reservations.models import BookingEvent
+
+    PaymentScheduler.create_for_booking(booking)
+
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.DEPOSIT_PAID.value
+    assert BookingEvent.objects.filter(
+        booking=booking,
+        to_status=BookingStatus.DEPOSIT_PAID.value,
+        reason="deposit_not_required",
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_create_for_booking__zero_override_advances_booking_to_deposit_paid(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """BUG-026: a zero override is 'no deposit', same as policy — must advance."""
+    _ensure_finance(property_)
+    booking = _booking_with_override(booking, Decimal("0.00"))
+
+    from reservations.enums import BookingStatus
+
+    PaymentScheduler.create_for_booking(booking)
+
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.DEPOSIT_PAID.value
+
+
+@pytest.mark.django_db
+def test_create_for_booking__deposit_required_true_leaves_booking_awaiting_deposit(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """Guard: the normal deposit-required path is untouched by BUG-026."""
+    _ensure_finance(property_)
+
+    from reservations.enums import BookingStatus
+
+    PaymentScheduler.create_for_booking(booking)
+
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.AWAITING_DEPOSIT.value
+
+
+@pytest.mark.django_db
+def test_create_for_booking__skip_deposit_invalid_transition_is_swallowed(
+    booking: Any,
+    property_: Property,
+) -> None:
+    """A stale pre-check racing a real status change must not propagate or
+    roll back the schedule that was just created in the same transaction."""
+    finance = _ensure_finance(property_)
+    finance.deposit_required = False
+    finance.save(update_fields=["deposit_required"])
+
+    from reservations.enums import BookingStatus
+    from reservations.models import Booking
+
+    # Move the booking on behind the in-memory object's back — the `booking`
+    # instance passed below still reports AWAITING_DEPOSIT, so the scheduler's
+    # own pre-check passes and only `Booking._transition`'s locked re-read
+    # catches the race.
+    Booking.objects.filter(pk=booking.pk).update(status=BookingStatus.DEPOSIT_PAID.value)
+
+    from structlog.testing import capture_logs
+
+    with capture_logs() as logs:
+        created = PaymentScheduler.create_for_booking(booking)
+
+    purposes = {p.purpose for p in created}
+    assert PaymentPurpose.BALANCE.value in purposes
+    assert any(e["log_level"] == "warning" for e in logs)
+
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.DEPOSIT_PAID.value

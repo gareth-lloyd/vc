@@ -184,6 +184,16 @@ def _set_override(booking: Booking, amount: Decimal | None) -> Booking:
     return Booking.objects.get(pk=booking.pk)
 
 
+def _force_awaiting_deposit(booking: Booking) -> Booking:
+    """BUG-026: `create_for_booking` now advances a no-deposit booking
+    straight to DEPOSIT_PAID, so a `deposit_required=False` booking no
+    longer stays AWAITING_DEPOSIT with an empty schedule on its own. Some
+    tests below exist to pin `resync_for_booking`'s mint-arm mechanics in
+    isolation and need that state constructed directly."""
+    Booking.objects.filter(pk=booking.pk).update(status=BookingStatus.AWAITING_DEPOSIT.value)
+    return Booking.objects.get(pk=booking.pk)
+
+
 @pytest.mark.django_db
 def test_resync_honours_override(scheduled_booking: Booking) -> None:
     """Setting an override resizes the PENDING deposit; balance is the remainder."""
@@ -237,6 +247,7 @@ def test_resync_mints_deposit_row_when_override_set_and_none_exists(
     fresh = Booking.objects.get(pk=booking.pk)
     PaymentScheduler.create_for_booking(fresh)
     assert not Payment.objects.filter(booking=fresh, purpose=PaymentPurpose.DEPOSIT.value).exists()
+    fresh = _force_awaiting_deposit(fresh)
 
     overridden = _set_override(fresh, Decimal("500.00"))
     PaymentScheduler.resync_for_booking(overridden)
@@ -362,6 +373,12 @@ def test_zero_override_then_positive_override_mints_fresh_deposit(
     a fresh PENDING deposit rather than resurrecting the old one."""
     old = _row(scheduled_booking, PaymentPurpose.DEPOSIT)
     PaymentScheduler.resync_for_booking(_set_override(scheduled_booking, Decimal("0")))
+    # BUG-026: that resync just correctly advanced the booking to
+    # DEPOSIT_PAID (nothing was left to collect) — force it back to pin the
+    # mint-arm mechanics below in isolation. In production a later override
+    # on an already-settled booking is rejected by `set_deposit_override`,
+    # not routed through this raw test bypass.
+    scheduled_booking = _force_awaiting_deposit(scheduled_booking)
 
     fresh = _set_override(scheduled_booking, Decimal("500.00"))
     PaymentScheduler.resync_for_booking(fresh)
@@ -378,6 +395,9 @@ def test_zero_override_then_clear_remints_policy_deposit(scheduled_booking: Book
     policy deposit back (the mint arm no longer needs an override)."""
     old = _row(scheduled_booking, PaymentPurpose.DEPOSIT)
     PaymentScheduler.resync_for_booking(_set_override(scheduled_booking, Decimal("0")))
+    # BUG-026: see the sibling test above — force back to AWAITING_DEPOSIT to
+    # pin the mint-arm mechanics in isolation from the (correct) advance.
+    scheduled_booking = _force_awaiting_deposit(scheduled_booking)
 
     fresh = _set_override(scheduled_booking, None)
     PaymentScheduler.resync_for_booking(fresh)
@@ -512,6 +532,7 @@ def test_clearing_override_on_deposit_optional_property_removes_deposit(
     fresh = Booking.objects.get(pk=booking.pk)
     PaymentScheduler.create_for_booking(fresh)
     assert not _deposit_rows(fresh).exists()
+    fresh = _force_awaiting_deposit(fresh)
 
     overridden = _set_override(fresh, Decimal("500.00"))
     PaymentScheduler.resync_for_booking(overridden)
@@ -562,6 +583,7 @@ def test_policy_flip_to_required_mints_deposit_while_awaiting(
     fresh = Booking.objects.get(pk=booking.pk)
     PaymentScheduler.create_for_booking(fresh)
     assert not _deposit_rows(fresh).exists()
+    _force_awaiting_deposit(fresh)
 
     _set_deposit_required(property_, True)
     PaymentScheduler.resync_for_booking(Booking.objects.get(pk=booking.pk))
@@ -586,3 +608,108 @@ def test_policy_flip_to_required_does_not_mint_once_advanced(
 
     assert not _deposit_rows(fresh).exists()
     assert _pending_row(fresh, PaymentPurpose.BALANCE).amount == Decimal("1400.00")
+
+
+# ---------------------------------------------------------------------------
+# BUG-026: a resync that cancels the last active deposit must not strand the
+# booking in AWAITING_DEPOSIT — nothing else ever moves it on.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_resync_zero_override_advances_booking_to_deposit_paid(
+    scheduled_booking: Booking,
+) -> None:
+    fresh = _set_override(scheduled_booking, Decimal("0"))
+
+    PaymentScheduler.resync_for_booking(fresh)
+
+    fresh.refresh_from_db()
+    assert fresh.status == BookingStatus.DEPOSIT_PAID.value
+
+
+@pytest.mark.django_db
+def test_resync_policy_flip_advances_booking_to_deposit_paid(
+    scheduled_booking: Booking, property_: Property
+) -> None:
+    _set_deposit_required(property_, False)
+
+    PaymentScheduler.resync_for_booking(Booking.objects.get(pk=scheduled_booking.pk))
+
+    scheduled_booking.refresh_from_db()
+    assert scheduled_booking.status == BookingStatus.DEPOSIT_PAID.value
+
+
+@pytest.mark.django_db
+def test_resync_overcollection_advances_booking_to_balance_paid(
+    scheduled_booking: Booking,
+) -> None:
+    """BUG-026's nastiest route: the BALANCE settled while the booking was
+    still AWAITING_DEPOSIT (its own `record_balance()` raised and was
+    swallowed). The next resync must self-heal it to BALANCE_PAID."""
+    balance = _row(scheduled_booking, PaymentPurpose.BALANCE)
+    Payment.objects.filter(pk=balance.pk).update(
+        status=PaymentStatus.SUCCEEDED.value, amount=Decimal("1500.00")
+    )
+
+    PaymentScheduler.resync_for_booking(scheduled_booking)
+
+    scheduled_booking.refresh_from_db()
+    assert scheduled_booking.status == BookingStatus.BALANCE_PAID.value
+    events = list(
+        BookingEvent.objects.filter(booking=scheduled_booking)
+        .order_by("pk")
+        .values_list("from_status", "to_status")
+    )
+    assert (
+        BookingStatus.AWAITING_DEPOSIT.value,
+        BookingStatus.DEPOSIT_PAID.value,
+    ) in events
+    assert (
+        BookingStatus.DEPOSIT_PAID.value,
+        BookingStatus.BALANCE_PAID.value,
+    ) in events
+
+
+@pytest.mark.django_db
+def test_resync_overcollection_with_live_refund_does_not_advance_to_balance_paid(
+    scheduled_booking: Booking,
+) -> None:
+    """A settled BALANCE row with an open refund against it is not "real"
+    committed money any more — advancing to BALANCE_PAID off it would
+    manufacture a false paid state. The deposit still clears (nothing left
+    to collect either way), but the balance advance must not fire."""
+    from payments.enums import RefundPurposeTrack, RefundReasonCode
+    from payments.models.refund import Refund
+
+    balance = _row(scheduled_booking, PaymentPurpose.BALANCE)
+    Payment.objects.filter(pk=balance.pk).update(
+        status=PaymentStatus.SUCCEEDED.value, amount=Decimal("1500.00")
+    )
+    Refund.objects.create(
+        booking=scheduled_booking,
+        against_payment=balance,
+        purpose_track=RefundPurposeTrack.BALANCE.value,
+        amount=Decimal("100.00"),
+        currency=scheduled_booking.currency,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+    )
+
+    PaymentScheduler.resync_for_booking(scheduled_booking)
+
+    scheduled_booking.refresh_from_db()
+    assert scheduled_booking.status == BookingStatus.DEPOSIT_PAID.value
+
+
+@pytest.mark.django_db
+def test_resync_deposit_still_required_does_not_advance_booking(
+    scheduled_booking: Booking,
+) -> None:
+    """Guard: a resync that resizes (rather than cancels) the deposit leaves
+    the booking untouched."""
+    _add_charge(scheduled_booking, "200.00")
+
+    PaymentScheduler.resync_for_booking(scheduled_booking)
+
+    scheduled_booking.refresh_from_db()
+    assert scheduled_booking.status == BookingStatus.AWAITING_DEPOSIT.value

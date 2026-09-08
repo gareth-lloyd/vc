@@ -12,7 +12,7 @@ from django.utils import timezone
 from core.exceptions import InvalidTransition, NoRateAvailable, OverlappingBooking
 from pricing.models import Currency, RateBand
 from properties.models import Property
-from reservations.enums import BookingStatus, PaymentMethod
+from reservations.enums import BookingStatus, EventSource, PaymentMethod
 from reservations.models import (
     Booking,
     BookingEvent,
@@ -113,6 +113,12 @@ _TRANSITION_TABLE: list[tuple[str, str, str, tuple[str, ...]]] = [
         (BookingStatus.DRAFT.value, BookingStatus.BALANCE_PAID.value),
     ),
     (
+        "skip_deposit",
+        BookingStatus.AWAITING_DEPOSIT.value,
+        BookingStatus.DEPOSIT_PAID.value,
+        (BookingStatus.DRAFT.value, BookingStatus.BALANCE_PAID.value),
+    ),
+    (
         "arm_balance",
         BookingStatus.DEPOSIT_PAID.value,
         BookingStatus.AWAITING_BALANCE.value,
@@ -207,6 +213,20 @@ def test_record_balance_from_deposit_paid(booking: Booking) -> None:
     booking.record_balance()
     booking.refresh_from_db()
     assert booking.status == BookingStatus.BALANCE_PAID.value
+
+
+@pytest.mark.django_db
+def test_skip_deposit_event_records_system_source_and_reason(booking: Booking) -> None:
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+    booking.skip_deposit()
+    booking.refresh_from_db()
+    event = BookingEvent.objects.get(
+        booking=booking,
+        from_status=BookingStatus.AWAITING_DEPOSIT.value,
+        to_status=BookingStatus.DEPOSIT_PAID.value,
+    )
+    assert event.source == EventSource.SYSTEM.value
+    assert event.reason == "deposit_not_required"
 
 
 @pytest.mark.django_db
@@ -491,7 +511,8 @@ def test_set_deposit_override_clear_reverts_to_policy(booking: Booking) -> None:
 def test_set_deposit_override_zero_cancels_deposit_row(booking: Booking) -> None:
     """BUG-022: a zero override means "no deposit" — through the service +
     signal path the PENDING deposit row is cancelled (not resized to an
-    unpayable 0.00) and the balance carries the whole total."""
+    unpayable 0.00) and the balance carries the whole total. BUG-026: the
+    booking no longer strands there — it advances straight to DEPOSIT_PAID."""
     from payments.enums import PaymentPurpose, PaymentStatus
     from payments.models import Payment
 
@@ -508,7 +529,8 @@ def test_set_deposit_override_zero_cancels_deposit_row(booking: Booking) -> None
         status=PaymentStatus.PENDING.value,
     ).exists()
     assert _schedule_row(booking, PaymentPurpose.BALANCE.value).amount == Decimal("1400.00")
-    assert booking.status == BookingStatus.AWAITING_DEPOSIT.value
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.DEPOSIT_PAID.value
 
 
 @pytest.mark.django_db

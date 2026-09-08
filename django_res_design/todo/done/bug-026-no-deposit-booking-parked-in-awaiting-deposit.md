@@ -1,3 +1,37 @@
+> **✅ RESOLVED (2026-09-04, local main unpushed)** — shipped on `feat/bug-026`
+> (6af647a6 `skip_deposit()` transition; 011c2d05 `PaymentScheduler` advance
+> at both `create_for_booking`/`resync_for_booking`, all four routes): a
+> booking that leaves the scheduler with no active DEPOSIT row while still
+> `AWAITING_DEPOSIT` now advances to `DEPOSIT_PAID` via `Booking.skip_deposit()`
+> (`EventSource.SYSTEM`, `reason="deposit_not_required"`) instead of sitting
+> there forever. Route 4 (over-collection) additionally replays
+> `record_balance()` for a BALANCE row that already settled while the
+> booking was stuck — but never off a row with a live `Refund` against it,
+> which would otherwise manufacture a false `BALANCE_PAID` for money being
+> given back. Both new call sites swallow a lost `InvalidTransition` race
+> (a stale pre-check vs. the transition's own locked re-read) via a shared
+> `_advance_or_log` helper rather than letting it propagate and roll back
+> an unrelated transaction. `expire_bookings` needed no change (a no-deposit
+> booking now advances before it would ever reach the expiry sweep) and
+> neither did Zoho's `deposit_status` (already computed purely from `Payment`
+> rows, never `Booking.status`). Fixed the `seed_dev` crash trap this change
+> opened (`seeding/_booking_helpers.py`'s two unconditional `record_deposit()`
+> calls now guard on `AWAITING_DEPOSIT`) and 6 pre-existing pinned tests whose
+> setup assumed the pre-fix "stuck forever" state. ⚠️ Two adjacent gaps found
+> by review, deliberately **not** fixed here — flagged as candidate follow-up
+> tickets, not guessed at: (1) the `payment_action` "void" endpoint
+> (`payments/views/track.py`) cancels a deposit without going through
+> `PaymentScheduler`, so it can still strand a booking — fixing it needs a
+> product decision (should voiding the last deposit re-mint per policy,
+> advance the booking, or require pairing with `set_deposit_override(0)`?),
+> not a code guess; (2) a booking on a property with no `PropertyFinance` row
+> was already stuck pre-existing this ticket (`create_for_booking` returns
+> before either advance path runs) — a distinct root cause (missing policy
+> data, not "no deposit wanted"). Historical bookings already stranded in
+> production are not backfilled by this change; future scheduler runs
+> self-heal them (the check is state-based, not edge-triggered), a one-off
+> repair pass is separate work if wanted.
+
 # BUG-026 — A booking that wants no deposit is parked in `awaiting_deposit` forever
 
 - **Severity:** 🔴 Bug (money workflow — the booking never advances, and a

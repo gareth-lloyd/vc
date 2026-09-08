@@ -436,6 +436,16 @@ class Booking(AuditedModel):
             meta={"payment_id": getattr(payment, "pk", None)},
         )
 
+    def skip_deposit(self, *, actor: Any = None, reason: str = "deposit_not_required") -> Booking:
+        """AWAITING_DEPOSIT → DEPOSIT_PAID (no deposit wanted, schedule advance)."""
+        return self._transition(
+            (BookingStatus.AWAITING_DEPOSIT.value,),
+            BookingStatus.DEPOSIT_PAID.value,
+            actor=actor,
+            source=EventSource.SYSTEM.value,
+            reason=reason,
+        )
+
     def arm_balance(self, *, actor: Any = None) -> Booking:
         """DEPOSIT_PAID → AWAITING_BALANCE (beat task)."""
         return self._transition(

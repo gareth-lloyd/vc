@@ -10,6 +10,7 @@ scheduler stays focused on the deposit/interim/balance track).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -18,9 +19,17 @@ import structlog
 from django.db import transaction
 from django.utils import timezone
 
+from core.exceptions import InvalidTransition
 from core.logging.operations import log_operation
-from payments.enums import ACTIVE_PAYMENT_STATUSES, EventSource, PaymentPurpose, PaymentStatus
+from payments.enums import (
+    ACTIVE_PAYMENT_STATUSES,
+    DEAD_REFUND_STATUSES,
+    EventSource,
+    PaymentPurpose,
+    PaymentStatus,
+)
 from payments.models.payment import Payment
+from payments.models.refund import Refund
 from pricing.services.currency import quantise_money
 from properties.enums import DepositCalcType
 from reservations.enums import BookingStatus
@@ -108,7 +117,10 @@ class PaymentScheduler:
         # row is created (deposit_required False / deposit_amount 0), the same
         # quantised value is subtracted as before, only now quantised.
         quantised_deposit = quantise_money(deposit_amount, currency)
-        if (override is not None or schedule.get("deposit_required")) and deposit_amount > 0:
+        deposit_created = (
+            override is not None or schedule.get("deposit_required")
+        ) and deposit_amount > 0
+        if deposit_created:
             to_create.append(
                 Payment(
                     booking=booking,
@@ -160,6 +172,17 @@ class PaymentScheduler:
         # but is conceptually part of the schedule the operator sees.
         SecurityDepositService.create_for_booking(booking)
 
+        # BUG-026: no deposit wanted must not strand the booking in
+        # AWAITING_DEPOSIT forever — nothing else will ever move it on.
+        # `booking.status` is the caller's in-memory value (this method never
+        # refreshes it), so a stale read racing a real status change is
+        # possible — `_advance_or_log`'s call is the real guard (a locked
+        # re-read), this is just a cheap pre-filter. The schedule rows
+        # already `bulk_create`d above must survive even if the advance
+        # itself can't apply.
+        if not deposit_created and booking.status == BookingStatus.AWAITING_DEPOSIT.value:
+            cls._advance_or_log(booking.skip_deposit, booking=booking)
+
         return list(created)
 
     @classmethod
@@ -191,6 +214,15 @@ class PaymentScheduler:
         at 0 and the residual is logged *and* written to a BookingEvent so
         operators see it on the Timeline; collecting or refunding it stays
         an explicit operator action.
+
+        Lock order: this takes the Payment-row locks below first, and BUG-026's
+        advance further down may then also lock the Booking row (inside
+        `skip_deposit`/`record_balance`). Every real caller (`ChargeItemService`,
+        `Booking.modify_dates`/`modify_guests`, `set_deposit_override`) already
+        locks the Booking row before triggering `booking_total_changed`, so
+        this is always a reentrant re-lock, not a fresh acquisition — a future
+        caller reaching resync *without* pre-locking the Booking row would
+        invert that order against those callers and risk a Postgres deadlock.
         """
         rows = list(
             Payment.objects.select_for_update()
@@ -248,6 +280,12 @@ class PaymentScheduler:
                     base=total,
                 )
 
+            # BUG-026: tracks whether an active (pending/processing/succeeded)
+            # deposit row survives this call, so the no-active-deposit advance
+            # below can tell "cancelled just now" and "never had one" apart
+            # from "still mid-flight" (a PROCESSING deposit is active but
+            # never enters `pending`, so it's invisible to the branches below).
+            deposit_still_active = has_active_deposit
             if deposit is not None:
                 wanted = _deposit_wanted()
                 target = quantise_money(min(remaining, wanted), booking.currency)
@@ -266,6 +304,7 @@ class PaymentScheduler:
                         kind="DEPOSIT_NOT_REQUIRED" if wanted <= 0 else "DEPOSIT_COVERED",
                     )
                     pending.remove(deposit)
+                    deposit_still_active = False
             elif not has_active_deposit and cls._is_awaiting_deposit(booking):
                 target = quantise_money(min(remaining, _deposit_wanted()), booking.currency)
                 if target > 0:
@@ -287,6 +326,7 @@ class PaymentScheduler:
                     # accounts for the newly minted deposit.
                     pending.append(minted_row)
                     remaining -= target
+                    deposit_still_active = True
 
             balance = next((r for r in pending if r.purpose == PaymentPurpose.BALANCE.value), None)
             if balance is not None:
@@ -308,9 +348,66 @@ class PaymentScheduler:
                     meta={"residual": str(residual), "total": str(total)},
                 )
 
+            # BUG-026: a resync that cancels the last active deposit (zero
+            # override, a policy flip, or over-collection) must not strand
+            # the booking in AWAITING_DEPOSIT — same rationale as
+            # `create_for_booking`'s advance above. `_is_awaiting_deposit` is
+            # the real guard (locked re-read inside `_advance_or_log`'s call);
+            # this is a cheap pre-filter.
+            if not deposit_still_active and cls._is_awaiting_deposit(booking):
+                if cls._advance_or_log(booking.skip_deposit, booking=booking):
+                    # Route 4 (over-collection): a BALANCE row may have
+                    # already settled while the booking sat AWAITING_DEPOSIT
+                    # — its own `record_balance()` call raised InvalidTransition
+                    # and was swallowed at the time. Replay it now, but never
+                    # off a row with a live refund against it — an operator
+                    # refund never flips the original Payment's status, so a
+                    # naive "any SUCCEEDED/WAIVED balance" search would
+                    # manufacture a false BALANCE_PAID for money that is
+                    # actually being given back.
+                    settled_balance = next(
+                        (
+                            r
+                            for r in rows
+                            if r.purpose == PaymentPurpose.BALANCE.value
+                            and r.status
+                            in (PaymentStatus.SUCCEEDED.value, PaymentStatus.WAIVED.value)
+                            and not Refund.objects.filter(against_payment=r)
+                            .exclude(status__in=DEAD_REFUND_STATUSES)
+                            .exists()
+                        ),
+                        None,
+                    )
+                    if settled_balance is not None:
+                        cls._advance_or_log(
+                            lambda: booking.record_balance(settled_balance), booking=booking
+                        )
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _advance_or_log(call: Callable[[], Any], *, booking: Any) -> bool:
+        """Run a `Booking` transition, swallowing (and logging) a lost race
+        rather than propagating. Shared by `create_for_booking`'s and
+        `resync_for_booking`'s BUG-026 advance — both need the same
+        try/except InvalidTransition shape, and a caller-side pre-check is
+        only ever an optimisation, never the real guard: the transition's
+        own locked re-read (`Booking._transition`) is what actually decides.
+        Returns whether the transition succeeded.
+        """
+        try:
+            call()
+        except InvalidTransition:
+            logger.warning(
+                "payment.schedule_advance_skipped",
+                reason="invalid_transition",
+                booking_id=booking.pk,
+                booking_status=booking.status,
+            )
+            return False
+        return True
+
     @staticmethod
     def _is_awaiting_deposit(booking: Any) -> bool:
         """Read the booking's status from the DB, not the caller's instance.

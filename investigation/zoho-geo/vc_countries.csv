@@ -1,0 +1,7 @@
+res_id,name,iso2,sort_order,is_active,live_villas
+1,Greece,GR,1,1,242
+2,Italy,,1,2,48
+3,France,,1,3,24
+4,Morocco,,1,4,12
+5,Spain,,1,5,39
+9,Kenya,,1,6,20

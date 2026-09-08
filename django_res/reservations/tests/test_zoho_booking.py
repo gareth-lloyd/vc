@@ -38,6 +38,7 @@ from reservations.services.zoho_payload import (
 
 if TYPE_CHECKING:
     from accounts.models import Person
+    from payments.models import Payment
     from pricing.models import Currency, RateBand
     from properties.models import Property
     from reservations.models import TermsVersion
@@ -244,11 +245,11 @@ def _payment(
     amount: str,
     status: str = "pending",
     due_at: datetime | None = None,
-) -> None:
+) -> Payment:
     # Test scaffolding may import `payments` (layers contract ignores tests).
     from payments.models import Payment
 
-    Payment.objects.create(
+    return Payment.objects.create(
         booking=booking,
         purpose=purpose,
         status=status,
@@ -531,10 +532,11 @@ def test_payload_financials_status_is_latest_row_not_failed_predecessor(
 
 
 def test_payload_financials_deposit_cancelled_on_live_booking(booking: Booking) -> None:
-    """BUG-022: a zero deposit override cancels the PENDING deposit row on a
-    booking that stays live — Zoho then reads `deposit_status: "cancelled"`
-    with a null due date and 0.00 deposit figures while the booking itself is
-    still `awaiting_deposit`. Pins the documented meaning of `cancelled`."""
+    """BUG-022: a zero deposit override cancels the PENDING deposit row —
+    Zoho then reads `deposit_status: "cancelled"` with a null due date and
+    0.00 deposit figures. BUG-026: the booking itself no longer strands in
+    `awaiting_deposit` when that happens — the same resync call now advances
+    it to `deposit_paid`. Pins the documented meaning of `cancelled`."""
     from payments.services import PaymentScheduler
     from properties.models.finance import PropertyFinance
 
@@ -548,7 +550,8 @@ def test_payload_financials_deposit_cancelled_on_live_booking(booking: Booking) 
 
     financials = build_booking_payload(fresh)["financials"]
 
-    assert fresh.status == BookingStatus.AWAITING_DEPOSIT.value
+    fresh.refresh_from_db()
+    assert fresh.status == BookingStatus.DEPOSIT_PAID.value
     assert financials["deposit_status"] == "cancelled"
     assert financials["deposit_due_at"] is None
     assert financials["gross_deposit"] == "0.00"
@@ -898,3 +901,76 @@ def test_lead_guest_swap_bumps(booking: Booking, delay_mock: mock.Mock) -> None:
     assert record.status == SyncStatus.PENDING
     booking.refresh_from_db()
     assert booking.person_id == new_lead.pk
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately")
+def test_charge_item_added_bumps(booking: Booking, delay_mock: mock.Mock) -> None:
+    """BUG-021: a charge item moves the total via `booking_total_changed`
+    (never `Booking.save()`) — the resync receiver must re-push."""
+    with override_settings(ZOHO_FLOW_WEBHOOKS=WEBHOOKS):
+        enqueue_zoho_push(booking)
+        record = _record_for(booking)
+        _mark_in_sync(record)
+        delay_mock.reset_mock()
+
+        _charge(booking, label="Chef pass-through", amount="500.00", commissionable=False)
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+    assert delay_mock.call_count == 1
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately")
+def test_charge_item_deleted_bumps(booking: Booking, delay_mock: mock.Mock) -> None:
+    """Same seam via `post_delete` — deleting a charge item also moves the
+    total and must re-push."""
+    from reservations.models import BookingChargeItem
+
+    with override_settings(ZOHO_FLOW_WEBHOOKS=WEBHOOKS):
+        _charge(booking, label="Chef pass-through", amount="500.00", commissionable=False)
+        record = _record_for(booking)
+        _mark_in_sync(record)
+
+        BookingChargeItem.objects.get(booking=booking).delete()
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately")
+def test_deposit_settle_bumps_even_when_booking_already_advanced(
+    booking: Booking, delay_mock: mock.Mock
+) -> None:
+    """BUG-021: real money settling while `record_deposit` is swallowed as an
+    `InvalidTransition` (seeding-order double-advance, mirrors
+    payments/tests/test_booking_advance_receiver.py
+    ::test_settlement_with_booking_already_advanced_is_idempotent_skip) must
+    still re-push — the payment state genuinely changed."""
+    with override_settings(ZOHO_FLOW_WEBHOOKS=WEBHOOKS):
+        booking.record_deposit()
+        record = _record_for(booking)
+        _mark_in_sync(record)
+
+        payment = _payment(booking, purpose="deposit", amount="3000.00")
+        payment.mark_paid(payment.amount, timezone.now(), "bank_transfer", "BT-REF-1")
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately")
+def test_deposit_failed_bumps(booking: Booking, delay_mock: mock.Mock) -> None:
+    """BUG-021: a schedule-row payment reaching FAILED changes `deposit_status`
+    in the Zoho financials block (GAP-099) but advances nothing — the ticket's
+    own fix sketch names 'Payment post_save for status changes on schedule
+    rows', not just settled/waived, so a failure must re-push too."""
+    with override_settings(ZOHO_FLOW_WEBHOOKS=WEBHOOKS):
+        enqueue_zoho_push(booking)
+        record = _record_for(booking)
+        _mark_in_sync(record)
+
+        payment = _payment(booking, purpose="deposit", amount="3000.00")
+        payment.transition_to("failed")
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING

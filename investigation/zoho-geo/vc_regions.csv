@@ -1,0 +1,58 @@
+res_id,name,slug,country_res_id,country_name,live_villas
+64,London,london,24,England,0
+5,Aquitaine,aquitaine,3,France,1
+40,Corsica,corsica,3,France,0
+48,Cote dAzur,cote-dazur,13,France,0
+3,Cote D'Azur,cote-dazur,3,France,8
+26,Languedoc,languedoc,3,France,0
+60,Midi-Pyrenees,midi-pyrenees,3,France,0
+50,MidiPyrenese,midipyrenese,13,France,0
+4,Provence,provence,3,France,13
+31,Andros,andros,1,Greece,0
+32,Antiparos,antiparos,1,Greece,13
+70,Athens Riviera,NULL,1,Greece,2
+67,Chios,NULL,1,Greece,1
+14,Corfu,corfu,1,Greece,92
+24,Crete,crete,1,Greece,3
+33,Hydra,hydra,1,Greece,0
+16,Ithaca,ithaca,1,Greece,3
+21,Kea,kea,1,Greece,1
+18,Kefalonia,kefalonia,1,Greece,6
+17,Lefkada,lefkada,1,Greece,6
+34,Meganisi,meganisi,1,Greece,7
+35,Milos,milos,1,Greece,0
+36,Mykonos,mykonos,1,Greece,3
+37,Paros,paros,1,Greece,21
+22,Patmos,patmos,1,Greece,10
+15,Paxos,paxos,1,Greece,28
+61,Peloponnese,peloponnese,1,Greece,7
+41,Porto Heli,porto-heli,1,Greece,6
+20,Santorini,santorini,1,Greece,2
+38,Sifnos,sifnos,1,Greece,5
+23,Skiathos,skiathos,1,Greece,8
+39,Spetses,spetses,1,Greece,3
+68,Syros,NULL,1,Greece,2
+69,Tinos,NULL,1,Greece,6
+19,Zakynthos,zakynthos,1,Greece,3
+46,Goa,goa,11,India,0
+55,Gujarat,gujarat,20,India,0
+45,Turia,turia,11,India,0
+7,Amalfi Coast,amalfi-coast,2,Italy,1
+71,Portofino,NULL,2,Italy,2
+28,Puglia,puglia,2,Italy,13
+2,The Lakes,the-lakes,2,Italy,2
+6,Tuscany,tuscany,2,Italy,19
+29,Umbria,umbria,2,Italy,11
+62,Diani,diani,9,Kenya,3
+59,Kilifi,kilifi,9,Kenya,4
+57,Lamu,lamu,9,Kenya,11
+58,Watamu,watamu,9,Kenya,2
+9,Marrakech,marrakech,4,Morocco,12
+44,Canterbury,canterbury,10,New Zealand,0
+49,Andalucia,andalucia,5,Spain,3
+11,Ibiza,ibiza,5,Spain,0
+12,Mallorca,mallorca,5,Spain,29
+13,Menorca,menorca,5,Spain,7
+54,Test Regions,test-regions,19,Test Sync Country,0
+42,Orana,orana,6,United Kingdom,0
+51,Villa Villa Region,villa-villa-region,12,Villa Country,0

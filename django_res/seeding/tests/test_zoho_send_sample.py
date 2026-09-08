@@ -152,6 +152,11 @@ def test_every_enum_transmitting_attribute_is_covered(
     assert booking["status"]
     assert booking["site_source"]
     assert booking["payment_method"]
+    # GAP-102: the only real-engine path — pins that the engine's snapshot
+    # `extra_id` key is what the payload reads as `RES_ID` (a hand-written
+    # snapshot literal in the unit tests can't catch a key rename).
+    engine_rows = [x for x in booking["extras"] if x["source"] == "extra"]
+    assert engine_rows and all(isinstance(x["RES_ID"], int) for x in engine_rows)
     categories = {x["category"] for x in booking["extras"] if x["category"]}
     # Charge-only values AND a snapshot-sourced ExtraKind must both appear.
     assert {"damage", "credit"} <= categories, categories

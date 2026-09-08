@@ -28,7 +28,14 @@ from integrations.enums import SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from integrations.services.zoho_flow import enqueue_zoho_push, get_zoho_spec
 from reservations.enums import BookingGuestRole, BookingStatus
-from reservations.models import Booking, BookingGuest, Enquiry, Quotation, QuotationLine
+from reservations.models import (
+    Booking,
+    BookingChargeItem,
+    BookingGuest,
+    Enquiry,
+    Quotation,
+    QuotationLine,
+)
 from reservations.services.bookings import BookingService
 from reservations.services.zoho_payload import (
     _iso,
@@ -266,10 +273,8 @@ def _charge(
     amount: str,
     commissionable: bool,
     category: str = "other",
-) -> None:
-    from reservations.models import BookingChargeItem
-
-    BookingChargeItem.objects.create(
+) -> BookingChargeItem:
+    return BookingChargeItem.objects.create(
         booking=booking,
         label=label,
         amount=Decimal(amount),
@@ -454,7 +459,15 @@ def test_payload_cancelled_booking_keeps_full_financials(booking: Booking) -> No
         "balance_due_at": None,
     }
     assert payload["extras"] == [
-        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": "heating"}
+        {
+            "RES_ID": 7,
+            "source": "extra",
+            "label": "Heated pool",
+            "amount": "350.00",
+            "currency": "GBP",
+            "commissionable": True,
+            "category": "heating",
+        }
     ]
 
 
@@ -615,10 +628,21 @@ def test_payload_extras_itemizes_engine_snapshot_extras(booking: Booking) -> Non
     payload = build_booking_payload(booking)
 
     assert payload["extras"] == [
-        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": "heating"},
         {
+            "RES_ID": 7,
+            "source": "extra",
+            "label": "Heated pool",
+            "amount": "350.00",
+            "currency": "GBP",
+            "commissionable": True,
+            "category": "heating",
+        },
+        {
+            "RES_ID": 9,
+            "source": "extra",
             "label": "Chef (pass-through)",
             "amount": "900.00",
+            "currency": "GBP",
             "commissionable": False,
             "category": "service_fee",
         },
@@ -629,32 +653,88 @@ def test_payload_extras_appends_manual_charge_items(booking: Booking) -> None:
     """Manual lines after engine extras; signed amounts survive verbatim —
     a negative line is a credit, not a data error."""
     _set_snapshot(booking, {**FINANCIALS_SNAPSHOT, "extras": [SNAPSHOT_EXTRAS[0]]})
-    _charge(
+    late = _charge(
         booking,
         label="Late checkout",
         amount="120.00",
         commissionable=True,
         category="service_fee",
     )
-    _charge(booking, label="Negotiated rate adjustment", amount="-150.00", commissionable=True)
+    adjustment = _charge(
+        booking, label="Negotiated rate adjustment", amount="-150.00", commissionable=True
+    )
 
     payload = build_booking_payload(booking)
 
     assert payload["extras"] == [
-        {"label": "Heated pool", "amount": "350.00", "commissionable": True, "category": "heating"},
         {
+            "RES_ID": 7,
+            "source": "extra",
+            "label": "Heated pool",
+            "amount": "350.00",
+            "currency": "GBP",
+            "commissionable": True,
+            "category": "heating",
+        },
+        {
+            "RES_ID": late.pk,
+            "source": "charge_item",
             "label": "Late checkout",
             "amount": "120.00",
+            "currency": "GBP",
             "commissionable": True,
             "category": "service_fee",
         },
         {
+            "RES_ID": adjustment.pk,
+            "source": "charge_item",
             "label": "Negotiated rate adjustment",
             "amount": "-150.00",
+            "currency": "GBP",
             "commissionable": True,
             "category": "other",
         },
     ]
+
+
+def test_payload_extras_res_id_is_scoped_by_source(booking: Booking) -> None:
+    """GAP-102: two id spaces feed one array. A snapshot extra whose
+    `extra_id` collides numerically with a charge item's pk stays
+    distinguishable by `(source, RES_ID)` — `RES_ID` alone is never a key."""
+    item = _charge(booking, label="Late checkout", amount="120.00", commissionable=True)
+    _set_snapshot(
+        booking,
+        {**FINANCIALS_SNAPSHOT, "extras": [{**SNAPSHOT_EXTRAS[0], "extra_id": item.pk}]},
+    )
+
+    payload = build_booking_payload(booking)
+
+    keys = [(e["source"], e["RES_ID"]) for e in payload["extras"]]
+    assert keys == [("extra", item.pk), ("charge_item", item.pk)]
+
+
+def test_payload_extras_res_id_degrades_to_null_on_missing_or_junk_extra_id(
+    booking: Booking,
+) -> None:
+    """`pricing_snapshot` is read-only in every serializer, so only
+    hand-crafted snapshots can carry a missing or non-int `extra_id`; those
+    degrade to null rather than sending a string Zoho can't join on."""
+    _set_snapshot(
+        booking,
+        {
+            **FINANCIALS_SNAPSHOT,
+            "extras": [
+                {k: v for k, v in SNAPSHOT_EXTRAS[0].items() if k != "extra_id"},
+                {**SNAPSHOT_EXTRAS[0], "extra_id": "7"},
+                {**SNAPSHOT_EXTRAS[0], "extra_id": True},
+                SNAPSHOT_EXTRAS[1],
+            ],
+        },
+    )
+
+    payload = build_booking_payload(booking)
+
+    assert [e["RES_ID"] for e in payload["extras"]] == [None, None, None, 9]
 
 
 def test_payload_extras_sanitizes_unknown_snapshot_kind_to_null(booking: Booking) -> None:

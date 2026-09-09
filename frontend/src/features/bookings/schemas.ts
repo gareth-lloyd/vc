@@ -173,6 +173,8 @@ export const bookingDetailSchema = bookingListItemSchema.extend({
   charges_total: z.string().nullable().optional(),
   terms_version: z.number().nullable().optional(),
   terms_accepted_at: z.string().nullable().optional(),
+  // GAP-094: house rules agreed at confirmation (read-only; contract source).
+  house_rules_snapshot: z.string().optional(),
   payment_method: z.string().nullable().optional(),
   cancel_reason: z.string().nullable().optional(),
   cancelled_at: z.string().nullable().optional(),

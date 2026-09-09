@@ -246,6 +246,16 @@ class PropertyFactory(DjangoModelFactory):
             section=DescriptionSection.OVERVIEW,
             body=villa["style_anchor"].strip() if villa else _faker.paragraph(),
         )
+        # GAP-094: house rules are contract-only (never public); seeded so a
+        # confirmed booking's contract has something to render.
+        models.PropertyDescription.objects.create(
+            property=obj,
+            section=DescriptionSection.HOUSE_RULES,
+            body=(
+                "No parties or events. Quiet hours 23:00-08:00. No smoking "
+                "indoors. Check-out by 10:00."
+            ),
+        )
         villa_slug = villa["slug"] if villa else None
         models.PropertyImage.objects.create(
             property=obj,

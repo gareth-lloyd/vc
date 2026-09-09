@@ -9,7 +9,7 @@ from typing import cast
 import pytest
 
 from properties import factories, models
-from properties.enums import ImageKind, PropertyStatus
+from properties.enums import DescriptionSection, ImageKind, PropertyStatus
 
 pytestmark = pytest.mark.django_db
 
@@ -130,7 +130,10 @@ def test_property_factory_draws_identity_and_hero_from_manifest_villa() -> None:
         ),
     )
     assert prop.display_name == villa["display_name"]
-    assert prop.descriptions.get().body == villa["style_anchor"].strip()
+    assert (
+        prop.descriptions.get(section=DescriptionSection.OVERVIEW).body
+        == villa["style_anchor"].strip()
+    )
     # A real JPEG, not the ~70-byte 1x1 placeholder.
     assert prop.images.get(kind=ImageKind.HERO).image.size > 1000
 

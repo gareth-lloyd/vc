@@ -23,6 +23,8 @@ from core.fields import DateRangeFunc
 from core.locking import refresh_locked
 from core.models.base import AuditedModel, TimestampedModel
 from core.refs import booking_reference, generate_reference
+from properties.enums import DescriptionSection
+from properties.models import PropertyDescription
 from reservations.enums import (
     ACTIVE_BOOKING_STATUSES,
     OVERLAP_BLOCKING_BOOKING_STATUSES,
@@ -104,6 +106,22 @@ class BookingQuerySet(models.QuerySet["Booking"]):
         return qs
 
 
+def live_house_rules(property_id: int) -> str:
+    """The property's current HOUSE_RULES body ("" when none/blank) — GAP-094.
+
+    Whitespace-only bodies (a cleared editor) count as "no rules".
+    """
+    body = (
+        PropertyDescription.objects.filter(
+            property_id=property_id, section=DescriptionSection.HOUSE_RULES
+        )
+        .values_list("body", flat=True)
+        .first()
+        or ""
+    )
+    return body.strip()
+
+
 class Booking(AuditedModel):
     """The reservation. Locked to a QuotationLine pricing snapshot at creation."""
 
@@ -181,6 +199,13 @@ class Booking(AuditedModel):
         related_name="+",
     )
     terms_accepted_at = models.DateTimeField()
+    # GAP-094: the property's HOUSE_RULES text as it stood when the booking
+    # was confirmed (transition into AWAITING_DEPOSIT — the moment the contract
+    # is issued). The contract renders this, never the live section, so later
+    # property edits cannot rewrite an issued contract. Stamped once by the
+    # two confirming transitions via `_house_rules_stamp`; "" doubles as
+    # "no rules" and "not yet stamped" — there is no re-entry path today.
+    house_rules_snapshot = models.TextField(blank=True, default="")
     payment_method = models.CharField(
         max_length=16,
         choices=PaymentMethod.choices,
@@ -389,6 +414,16 @@ class Booking(AuditedModel):
             meta=meta,
         )
 
+    def _house_rules_stamp(self) -> dict[str, Any]:
+        """`extra_updates` for a confirming transition (GAP-094).
+
+        Snapshot the live house rules once; an already-stamped booking keeps
+        what it has.
+        """
+        if self.house_rules_snapshot:
+            return {}
+        return {"house_rules_snapshot": live_house_rules(self.property_id)}
+
     def auto_accept(
         self,
         *,
@@ -404,6 +439,7 @@ class Booking(AuditedModel):
             source=EventSource.SYSTEM.value,
             reason=reason,
             meta=meta,
+            extra_updates=self._house_rules_stamp(),
         )
 
     def owner_approve(self, *, actor: Any = None, reason: str = "") -> Booking:
@@ -414,6 +450,7 @@ class Booking(AuditedModel):
             actor=actor,
             source=EventSource.OWNER.value,
             reason=reason,
+            extra_updates=self._house_rules_stamp(),
         )
 
     def owner_decline(self, reason: str, *, actor: Any = None) -> Booking:

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import pytest
+import structlog
+from django.contrib.contenttypes.models import ContentType
 
+from core.models import AuditLog
 from data_migration.base import LoadReport
 from data_migration.loaders.properties import PropertyLoader
 from data_migration.loaders.sentinels import unknown_country, unknown_region
@@ -163,3 +166,159 @@ def test_no_website_copy_writes_no_extra_sections() -> None:
     sections = _write_and_fetch()
     assert DescriptionSection.WEB_DESCRIPTION not in sections
     assert DescriptionSection.LOCATION not in sections
+
+
+# GAP-091: FeatureDescription and RoomDescription are unrelated legacy columns
+# (Features-page prose vs the bedrooms blurb) and land in their own sections.
+
+
+@pytest.mark.django_db
+def test_feature_and_room_descriptions_land_in_separate_sections() -> None:
+    sections = _write_and_fetch(
+        FeatureDescription="  Licence 0829K. Pool cannot be heated.  ",
+        RoomDescription="  All bedrooms have sea views.  ",
+    )
+    assert sections[DescriptionSection.OTHER_INFORMATION] == "Licence 0829K. Pool cannot be heated."
+    assert sections[DescriptionSection.ROOMS] == "All bedrooms have sea views."
+    assert "villa_info" not in sections
+
+
+@pytest.mark.django_db
+def test_blank_feature_description_writes_no_other_information() -> None:
+    sections = _write_and_fetch(FeatureDescription="", RoomDescription="Rooms only")
+    assert DescriptionSection.OTHER_INFORMATION not in sections
+    assert sections[DescriptionSection.ROOMS] == "Rooms only"
+
+
+@pytest.mark.django_db
+def test_both_blank_writes_neither_section() -> None:
+    sections = _write_and_fetch()
+    assert DescriptionSection.OTHER_INFORMATION not in sections
+    assert DescriptionSection.ROOMS not in sections
+
+
+def _seed_fused_row(body: str) -> Property:
+    """A property loaded before GAP-091 whose fused `villa_info` row migration
+    0007 renamed to `other_information`, provenance intact."""
+    loader = PropertyLoader()
+    loader._process_row(_row(), LoadReport(loader=loader.name))
+    prop = Property.objects.get(legacy_id="100")
+    PropertyDescription.objects.create(
+        property=prop,
+        section=DescriptionSection.OTHER_INFORMATION,
+        body=body,
+        legacy_id="100-villa_info",
+    )
+    return prop
+
+
+@pytest.mark.django_db
+def test_rerun_drops_the_fused_row_when_only_rooms_copy_remains() -> None:
+    """Migration 0007 renamed the fused `villa_info` row with its old
+    `legacy_id`; a re-run over a rooms-only villa must drop it (no string split
+    can recover the halves) and write the `rooms` row — with an audit tombstone
+    and a log event for the drop."""
+    prop = _seed_fused_row("All bedrooms have sea views.")
+
+    with structlog.testing.capture_logs() as logs:
+        sections = _write_and_fetch(
+            FeatureDescription="", RoomDescription="All bedrooms have sea views."
+        )
+
+    assert DescriptionSection.OTHER_INFORMATION not in sections
+    assert sections[DescriptionSection.ROOMS] == "All bedrooms have sea views."
+    rooms = PropertyDescription.objects.get(property=prop, section=DescriptionSection.ROOMS)
+    assert rooms.legacy_id == "100-rooms"
+    assert any(log["event"] == "data_migration.fused_description_dropped" for log in logs)
+    ct = ContentType.objects.get_for_model(PropertyDescription)
+    tombstones = AuditLog.objects.filter(
+        content_type=ct, field_diffs__section=["other_information", None]
+    )
+    assert tombstones.count() == 1
+
+
+@pytest.mark.django_db
+def test_rerun_replaces_the_fused_row_when_feature_copy_is_present() -> None:
+    """The replace half: a non-blank FeatureDescription rewrites the renamed
+    row in place — one `other_information` row, loader provenance refreshed."""
+    prop = _seed_fused_row("Licence 0829K.\n\nAll bedrooms have sea views.")
+
+    sections = _write_and_fetch(
+        FeatureDescription="Licence 0829K.", RoomDescription="All bedrooms have sea views."
+    )
+
+    assert sections[DescriptionSection.OTHER_INFORMATION] == "Licence 0829K."
+    other = PropertyDescription.objects.get(
+        property=prop, section=DescriptionSection.OTHER_INFORMATION
+    )
+    assert other.legacy_id == "100-other_information"
+    assert not PropertyDescription.objects.filter(legacy_id="100-villa_info").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("body", "overrides"),
+    [
+        pytest.param(
+            "Staff rewrote this after the rename.",
+            {"FeatureDescription": "", "RoomDescription": "All bedrooms have sea views."},
+            id="staff-rewrote-it",
+        ),
+        pytest.param(
+            "Licence 0829K.\n\nAll bedrooms have sea views.",
+            {"FeatureDescription": "", "RoomDescription": ""},
+            id="legacy-blanked-both-since",
+        ),
+    ],
+)
+def test_rerun_keeps_a_fused_row_whose_body_no_longer_matches_the_legacy_join(
+    body: str, overrides: dict[str, str]
+) -> None:
+    """The drop is gated on the body still equalling the old join of the
+    current legacy columns. Anything else — staff rewrote the renamed row, or
+    legacy changed since the earlier load — is kept and logged, never deleted."""
+    _seed_fused_row(body)
+
+    with structlog.testing.capture_logs() as logs:
+        sections = _write_and_fetch(**overrides)
+
+    assert sections[DescriptionSection.OTHER_INFORMATION] == body
+    assert PropertyDescription.objects.filter(legacy_id="100-villa_info").exists()
+    assert any(
+        log["event"] == "data_migration.fused_description_kept"
+        and log["reason"] == "body_differs_from_legacy_join"
+        for log in logs
+    )
+
+
+@pytest.mark.django_db
+def test_rerun_never_sweeps_a_loader_row_whose_source_went_blank() -> None:
+    """Policy pin: the fused-row drop is a targeted one-off, not a stale-row
+    sweep. A row the split loader itself wrote survives a later run where the
+    legacy column is blank — the same as every other section has always
+    behaved."""
+    _write_and_fetch(FeatureDescription="Licence 0829K.", RoomDescription="Rooms blurb")
+
+    sections = _write_and_fetch(FeatureDescription="", RoomDescription="")
+
+    assert sections[DescriptionSection.OTHER_INFORMATION] == "Licence 0829K."
+    assert sections[DescriptionSection.ROOMS] == "Rooms blurb"
+
+
+@pytest.mark.django_db
+def test_rerun_keeps_a_hand_written_other_information_row() -> None:
+    """Staff copy typed into the Features tab after cutover (no `legacy_id`)
+    survives a delta load with a blank source."""
+    loader = PropertyLoader()
+    loader._process_row(_row(), LoadReport(loader=loader.name))
+    prop = Property.objects.get(legacy_id="100")
+    PropertyDescription.objects.create(
+        property=prop,
+        section=DescriptionSection.OTHER_INFORMATION,
+        body="Typed by staff",
+        legacy_id=None,
+    )
+
+    sections = _write_and_fetch(FeatureDescription="")
+
+    assert sections[DescriptionSection.OTHER_INFORMATION] == "Typed by staff"

@@ -167,9 +167,11 @@ money columns; skip chatty timestamps and free-form JSON blobs.
 `EXPECTED_TRACKED_MODELS` in the same commit when deregistering.
 
 The trail rides `pre_save` / `post_delete`, so **bulk writes bypass it
-silently**: `queryset.update()`, `bulk_create()`, `bulk_update()` and
-`queryset.delete()` fire no signals. A bulk write to a *tracked* model must
-either go through a `.save()` loop or write an explicit audit row. The merge
+silently**: `queryset.update()`, `bulk_create()` and `bulk_update()` fire no
+signals. (`queryset.delete()` is the exception: the collector skips its
+fast path whenever a model has `pre_delete`/`post_delete` receivers, so a
+tracked model still gets one tombstone per row.) A bulk write to a *tracked*
+model must either go through a `.save()` loop or write an explicit audit row. The merge
 FK rewrites (`Contact.merge` / `Guest.merge`) use `.update()` by design and
 summarise what moved onto the deletion row via `core.audit.record_merge`
 (destination pk + per-relation counts, FG-016) rather than auditing each row.

@@ -688,6 +688,55 @@ secrets shouldn't ride a data migration). Create the single production
 is the office365 profile for info@villacollective.com; fetch the current
 credentials from the ops secret store, not from the dump.
 
+## 6e. Unfuse `villa_info` after GAP-091 (only for DBs loaded before 2026-09)
+
+Before GAP-091 the property loader fused `VillaMaster.FeatureDescription`
+(the legacy Features page's "Other information description") and
+`VillaMaster.RoomDescription` (the bedrooms blurb) into one `villa_info`
+description with a blank-line join. Migration `properties.0007` renames those
+rows to `other_information` **unchanged** — the join is not reversible by
+string splitting. A fresh cutover load (§4) never sees this; a DB that was
+loaded earlier (staging) needs one property-loader re-run, **immediately after
+the deploy and before staff edit anything**, and **without `--since`** (the
+fused rows belong to villas whose legacy `UpdatedAt` has not moved):
+
+```bash
+uv run python manage.py loadlegacy property
+uv run python manage.py zoho_backfill --kinds villa   # loaders run under suppress_zoho_push()
+```
+
+**Blast radius.** `property` is a full upsert from the dump, not a
+descriptions-only fix: it rewrites `Property`, `PropertyLocation`,
+`PropertyCapacity`, `PropertySettings` and every description section whose
+legacy column is non-blank (`overview`, `house_rules`, `further_info`,
+`web_description`, `location`, and now `other_information` / `rooms`) for
+every villa. Staff edits to any of those made after the earlier load are
+overwritten — the same contract as any cutover-window delta load, which is
+why it runs before staff get the keys. The Zoho re-push is suppressed inside
+the loader (base.py), hence the backfill line.
+
+What the re-run does to the renamed row: `FeatureDescription` non-blank →
+rewritten in place as `other_information` with `<Id>-other_information`
+provenance. `FeatureDescription` blank → the `<Id>-villa_info` row is dropped
+(audit tombstone + `data_migration.fused_description_dropped` log line) **only
+while its body still equals the old join of the current legacy columns**; a
+row that no longer matches (staff rewrote it, or legacy changed since) is kept
+and logged as `data_migration.fused_description_kept` — grep the run's log for
+that event and clear those by hand. Rows staff typed after cutover carry no
+`legacy_id` and are never touched. This is a targeted one-off keyed on the
+`-villa_info` provenance, not a stale-row sweep: a description whose legacy
+column later goes blank is left in place, as it always was for every section.
+Idempotent.
+
+Two related one-offs after the feature loaders run:
+
+- The "Other information" tags are `Feature` rows in the `other-information`
+  `FeatureCategory` (legacy category Code 60 / Id 8). Legacy carries one live
+  junk row there — `304 Dev Feature` — which WILL surface as an assignable tag.
+  Deactivate it in the Tags admin (`is_active=false`); nothing in code filters it.
+- `298 Sea View` is mapped to eight legacy categories; `FeatureLoader` files it
+  under the first (`Included Features`), not under other-information. Expected.
+
 ## 7. England → GB merge
 
 After Phase 1.1 added the canonical `GB` row, the legacy "England"

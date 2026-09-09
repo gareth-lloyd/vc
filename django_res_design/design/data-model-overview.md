@@ -159,7 +159,22 @@ Confirmation auto-generates and emails the contract (`booking.contract`, the
 PDF attached, correlation `{booking_id, document_id}`); `sent_to_guest_at`
 means "handed to the mail pipeline" — stamped when the `EmailLog` comes back
 `QUEUED` **or** `SENT` (eager dispatch, which is what staging runs, never
-leaves a row `QUEUED`), never on `FAILED` or allowlist-`BLOCKED`.
+leaves a row `QUEUED`), never on `FAILED` or allowlist-`BLOCKED`. **Only an
+unsent document can be deleted** (`DELETE …/documents/{id}`, gap-094-retro):
+the `EmailLog` that carried it references the blob by storage key and a
+resend re-reads it, so a stamped row answers 409 `document_sent`. The
+service re-reads the row under `select_for_update` before deciding; the row
+goes inside the transaction (audit tombstone via `track`) and a
+`post_delete` receiver releases the PDF `on_commit` through
+`core.storage.release_stored_file_after_commit` — so cascades and admin
+deletes release it too — logging, never raising, on a storage fault.
+`Booking.has_been_confirmed()` (status ∈ `CONFIRMED_BOOKING_STATUSES`, else
+the `BookingEvent` trail) is the one "confirmed" predicate: the generate
+guard and the detail serializer's `has_been_confirmed` both use it, and the
+Documents tab warns when a confirmed booking has no contract on file.
+Environment faults are system checks: `reservations.E001` (WeasyPrint's
+native toolchain / fonts; `W001` under DEBUG) fails Render's `migrate`
+pre-deploy instead of every confirmation silently producing no contract.
 
 **Content is snapshotted, not referenced.** `Booking.house_rules_snapshot`
 (TextField, blank) is stamped on the first entry to `AWAITING_DEPOSIT`: the
@@ -170,7 +185,13 @@ as `extra_updates` so the write lands on the same `save()` as the status
 change. (`_transition` is generic — the house-rules read is at the call site,
 not in it.) Every contract renders from that column, so editing a property's
 house rules cannot retroactively rewrite a contract a guest already agreed
-to. Same instinct as `snapshot_defaults` above and
+to. `house_rules_snapshot_at` (nullable) is stamped with every genuine
+snapshot by `house_rules_stamp()`; a non-empty body with a **null**
+timestamp was reconstructed by the `0010` backfill from the property's
+then-current rules, and the contract labels it as such rather than
+"Recorded at confirmation on <date>" (`Booking.house_rules_reconstructed`).
+`PropertyFactory` seeds no house rules unless `with_house_rules=True`.
+Same instinct as `snapshot_defaults` above and
 `Booking.pricing_snapshot`: a document that outlives its source copies the
 source. House rules reach no public payload, pinned by sentinel tests across
 the Zoho villa/booking payloads, the WordPress intake response, the

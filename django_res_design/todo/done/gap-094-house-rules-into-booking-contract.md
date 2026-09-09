@@ -34,7 +34,8 @@
 > `GET /bookings/{id}/documents`, `POST …/documents:generate`,
 > `GET …/documents/{doc_id}`, `GET …/documents/{doc_id}:download`,
 > `POST …/documents/{doc_id}:send`, and `GET …/documents:preview` (a
-> `BookingViewSet` action, no stored document needed). Acceptance 1 and 3 are pinned by tests — the leak guard
+> `BookingViewSet` action, no stored document needed) — plus, since
+> gap-094-retro, `DELETE …/documents/{doc_id}` (seven in all). Acceptance 1 and 3 are pinned by tests — the leak guard
 > (unit 2) seeds a sentinel rules body and asserts it is absent from the Zoho
 > villa payload, the Zoho booking payload, the WordPress intake response, the
 > public quote-options serializer and the owner-portal booking serializer.
@@ -75,7 +76,8 @@
 >
 > **⚠️ Deploy blocker — user action.** Create a **private,
 > public-access-blocked** S3 bucket for documents, grant the existing AWS keys
-> read/write on it, and set **`DOCUMENTS_S3_BUCKET`**. `production.py` reads it
+> Get/Put **and `s3:DeleteObject`** on it (gap-094-retro's DELETE releases the
+> PDF), and set **`DOCUMENTS_S3_BUCKET`**. `production.py` reads it
 > with **no default** — deliberately, so a forgotten variable breaks loudly at
 > boot rather than having `auto_generate_contract` swallow a `ClientError` per
 > confirmation and every guest silently get no contract — and `staging.py`
@@ -95,11 +97,12 @@
 > to nothing. That is why contract generation is a plain function.
 >
 > **⚠️ Developers need native libraries.** WeasyPrint links against pango:
-> `brew install pango harfbuzz libffi` on macOS (`settings/dev.py` and
-> `settings/test.py` set `DYLD_FALLBACK_LIBRARY_PATH` on darwin so cffi finds
-> `gobject-2.0`); the Dockerfile and CI install `libpango-1.0-0
+> `brew install pango harfbuzz libffi` on macOS (`settings/base.py` sets
+> `DYLD_FALLBACK_LIBRARY_PATH` on darwin so cffi finds `gobject-2.0` under
+> every settings module); the Dockerfile and CI install `libpango-1.0-0
 > libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core`. Noted in
-> `django_res/CLAUDE.md`.
+> `django_res/CLAUDE.md`. Since gap-094-retro a missing toolchain is a Django
+> system check (`reservations.E001`, `W001` under DEBUG) — see below.
 >
 > **Two findings worth carrying forward.** (i) `DOCUMENT_READ_ERRORS`
 > includes `ClientError`, not just `(OSError, ValueError)`: django-storages
@@ -140,6 +143,40 @@
 > alongside Get/Put, or every delete 204s while the PDF stays behind (logged
 > as `reservations.booking_document_blob_orphaned` with the key).
 > Still no idempotency key on `:generate` — the delete route is the remedy.
+>
+> **gap-094-retro (2026-09-09, 14f8b64a…78d5be34) — what an adversarial
+> retrospective changed.** (1) **The 0010 backfill is labelled.**
+> `Booking.house_rules_snapshot_at` is stamped with every genuine snapshot
+> (`house_rules_stamp()` is the one place for "no body → no timestamp", used
+> by the transitions and `make_occupying_booking`); migration 0012 is
+> AddField only, so a non-empty body with a null timestamp means
+> "reconstructed by 0010 from the property's then-current rules", and the
+> contract says so instead of "Recorded at confirmation on <date>":
+> *"These house rules were recorded after this booking was confirmed; they
+> are the property's rules as held when recorded, not as agreed at
+> confirmation."* (`Booking.house_rules_reconstructed`; admin makes both
+> columns read-only.) The backfill stays: historic confirmed bookings get
+> rules on their contract, honestly labelled. (2) **A broken PDF toolchain
+> is loud.** `reservations.checks.check_pdf_toolchain` probes the WeasyPrint
+> import (never a render; captures the stdout banner; treats the no-fonts
+> warning as a failure) on every `manage.py` command that runs checks, so
+> Render's `migrate` pre-deploy fails with `reservations.E001` and a
+> brew/apt hint; `W001` under DEBUG keeps `runserver` usable. A storage
+> check was planned and dropped — every shipped non-DEBUG module binds the
+> alias to S3 and refuses to import without `DOCUMENTS_S3_BUCKET`, which is
+> already the fail-fast. (3) **Staff can see the gap.** The Documents tab
+> shows "This confirmed booking has no contract on file" when
+> `has_been_confirmed` (now `Booking.has_been_confirmed()`, exposed on the
+> detail serializer — status plus the event trail, so cancelled-after-
+> confirmation counts) and no `contract` row exists; Generate is disabled
+> for a never-confirmed booking. Confirming invalidates the documents
+> query. (4) **`PropertyFactory` seeds no house rules by default** —
+> `with_house_rules=True` (or the text) is the opt-in the seed stages use;
+> the GAP-091 test workarounds are reverted to plain `create`, and the
+> seeding tests pin that every seeded confirmed booking carries rules.
+> (5) **`DELETE …/documents/{doc_id}`** — the seventh route, above.
+> Recommended before the first staging deploy: a `seed_dev` end-to-end run
+> (deliberately not done in the retro; the plan's only skipped item).
 >
 > **Deferred, deliberately:** the other four `BookingDocumentKind` values
 > (enum only — the API answers `unsupported_kind`); a `/jobs` surface and a

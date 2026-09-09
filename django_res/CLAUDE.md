@@ -7,13 +7,15 @@
 3. `uv sync && uv run python manage.py migrate`
 4. `uv run pytest` (pytest-django creates the test DB automatically).
 5. **PDF rendering (WeasyPrint, GAP-094)** needs native Pango/HarfBuzz. macOS:
-   `brew install pango harfbuzz libffi` — `settings/dev.py` and
-   `settings/test.py` seed `DYLD_FALLBACK_LIBRARY_PATH` with `$HOMEBREW_PREFIX/lib`
+   `brew install pango harfbuzz libffi` — `settings/base.py` seeds
+   `DYLD_FALLBACK_LIBRARY_PATH` with `$HOMEBREW_PREFIX/lib`
    (default `/opt/homebrew`) plus the loader's own defaults, so cffi finds the
    libraries; export the var yourself to override. Debian/CI: `libpango-1.0-0
    libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core` (see `Dockerfile` /
    `.github/workflows/ci.yml`). Without them `core.pdf.html_to_pdf` raises
    `OSError` and the PDF tests fail — it is a hard dependency of the suite.
+   `manage.py check` reports a missing toolchain as `reservations.W001`
+   (`E001` outside DEBUG, which fails Render's `migrate` pre-deploy).
 
 From the repo root, `make test-backend` runs the backend suite and `make test`
 runs backend + frontend together.

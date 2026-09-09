@@ -219,6 +219,11 @@ _quotation_actions: list[URLPattern | URLResolver] = [
 # ----------------------------------------------------------------------
 _booking_actions: list[URLPattern | URLResolver] = [
     path(
+        "bookings/<int:pk>/documents:preview",
+        BookingViewSet.as_view({"get": "documents_preview"}),
+        name="booking-documents-preview",
+    ),
+    path(
         "bookings/<int:pk>:confirm",
         BookingViewSet.as_view({"post": "confirm"}),
         name="booking-confirm",

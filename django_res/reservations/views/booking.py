@@ -35,6 +35,7 @@ from reservations.serializers import (
     BookingWriteSerializer,
 )
 from reservations.serializers.booking import BookingEventSerializer
+from reservations.services.booking_contract_render import render_document_html
 from reservations.services.charges import with_charges_total as _with_charges_total
 from reservations.views.status_counts import StatusCountsMixin
 
@@ -173,6 +174,14 @@ class BookingViewSet(
         # person email on its own so the two never double up on one queryset.
         if self.action == "list":
             qs = qs.prefetch_related("person__emails")
+        elif self.action == "documents_preview":
+            # GAP-094: the contract render walks region + country, the terms
+            # body and the charge/payment rows — and none of the owner /
+            # commission chain `_detail_owner_qs` joins for the detail
+            # serializer. Declare exactly what it reads.
+            qs = qs.select_related("property__region__country", "terms_version").prefetch_related(
+                "charge_items", "payments"
+            )
         else:
             qs = _detail_owner_qs(qs)
         return qs
@@ -302,6 +311,25 @@ class BookingViewSet(
         events = BookingEvent.objects.filter(booking=booking).order_by("created_at")
         return Response(BookingEventSerializer(events, many=True).data)
 
+    @action(detail=True, methods=["get"], url_path="documents/preview")
+    def documents_preview(self, request: Request, pk: str | None = None) -> Response:
+        """GAP-094: render a booking document's HTML for the staff preview.
+
+        `?kind=` selects the document (default and only kind today:
+        `contract`); the render seam owns the allowlist and raises
+        `UnsupportedDocumentKind` (400) for anything else. The HTML is the
+        same render seam the stored PDF is printed from, so the preview is
+        what the guest receives.
+
+        Archived bookings 404 here: the preview reads through
+        `BookingViewSet.get_object()`, which filters `is_archived=False`. The
+        stored-document endpoints (Unit 7) deliberately do *not* filter it —
+        an archived booking's issued documents stay retrievable.
+        """
+        booking = self.get_object()
+        kind = request.query_params.get("kind", "contract")
+        return Response({"html": render_document_html(booking, kind)})
+
 
 class BookingArchiveViewSet(
     mixins.ListModelMixin,
@@ -327,6 +355,14 @@ class BookingArchiveViewSet(
         qs = _with_charges_total(_with_amount_paid(qs))
         if self.action == "list":
             qs = qs.prefetch_related("person__emails")
+        elif self.action == "documents_preview":
+            # GAP-094: the contract render walks region + country, the terms
+            # body and the charge/payment rows — and none of the owner /
+            # commission chain `_detail_owner_qs` joins for the detail
+            # serializer. Declare exactly what it reads.
+            qs = qs.select_related("property__region__country", "terms_version").prefetch_related(
+                "charge_items", "payments"
+            )
         else:
             qs = _detail_owner_qs(qs)
         return qs

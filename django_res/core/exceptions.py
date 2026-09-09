@@ -79,6 +79,16 @@ class InvalidTfaCode(DomainValidationError):
     code = "invalid_tfa_code"
 
 
+class UnsupportedDocumentKind(DomainValidationError):
+    """A booking document `kind` the render/generate seam doesn't know (GAP-094).
+
+    A 400: the caller named a document that doesn't exist (only `contract`
+    today), not a booking state that refused the request.
+    """
+
+    code = "unsupported_kind"
+
+
 class IdempotencyConflict(DomainError):
     """Two racing requests carried the same idempotency key.
 

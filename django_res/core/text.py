@@ -8,11 +8,14 @@ import markdown as _markdown
 def render_markdown(text: str) -> str:
     """Render operator-authored Markdown to a safe HTML fragment.
 
-    Used for `TermsVersion.body_markdown` in the quotation render seam.
-    The `markdown` library escapes raw HTML by default (no `extra`/`md_in_html`
-    extensions are enabled), so authored copy can't inject markup; we only
-    turn on the `nl2br` extension so single newlines become `<br>`, matching
-    how operators expect terms copy to wrap.
+    Used for `TermsVersion.body_markdown` in the quotation/contract render
+    seams. Only the `nl2br` extension is on, so single newlines become `<br>`,
+    matching how operators expect terms copy to wrap.
+
+    ⚠️ "Safe" here means *trusted-author* safe, not sanitised: `markdown`
+    passes raw HTML in the source straight through to the output. Feed this
+    only operator-authored copy, never guest input or a free-text field an
+    untrusted party can reach.
     """
     if not text:
         return ""

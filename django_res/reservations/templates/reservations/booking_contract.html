@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Booking contract {{ booking_reference }}</title>
+<style>
+  @page { size: A4; margin: 18mm; }
+  body { margin: 0; padding: 0; background-color: #ffffff; }
+  .vc-wrap { font-family: Helvetica, Arial, sans-serif; color: #555555; font-size: 13px; line-height: 19px; }
+  .vc-card { max-width: 720px; margin: 0 auto; background-color: #ffffff; }
+  .vc-pad { padding: 24px; }
+  .vc-h1 { font-size: 22px; font-weight: bold; color: #222222; margin: 0 0 4px; }
+  .vc-h2 { font-size: 15px; font-weight: bold; color: #222222; margin: 22px 0 8px; border-bottom: 2px solid #eeeeee; padding-bottom: 4px; }
+  .vc-meta { font-size: 12px; color: #888888; margin: 0 0 16px; }
+  table.vc-lines { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  table.vc-lines th { text-align: left; font-size: 12px; color: #888888; border-bottom: 2px solid #eeeeee; padding: 6px; }
+  table.vc-lines td { font-size: 13px; color: #333333; border-bottom: 1px solid #f0f0f0; padding: 8px 6px; vertical-align: top; }
+  td.vc-right, th.vc-right { text-align: right; }
+  tr.vc-total td { font-weight: bold; color: #222222; border-top: 2px solid #eeeeee; border-bottom: none; }
+  tr.vc-disc td { color: #2e7d32; }
+  table.vc-facts td { padding: 4px 6px; border: none; }
+  table.vc-facts td.vc-label { color: #888888; width: 30%; }
+  .vc-terms { font-size: 12px; color: #777777; line-height: 17px; }
+  .vc-rules { font-size: 13px; color: #333333; }
+</style>
+</head>
+<body>
+<div class="vc-wrap">
+  <div class="vc-card">
+    <div class="vc-pad">
+      <p class="vc-h1">Booking contract {{ booking_reference }}</p>
+      <p class="vc-meta">Prepared for {{ guest_full_name }} &middot; generated {{ generated_on }}</p>
+
+      <p class="vc-h2">Property</p>
+      <table class="vc-lines vc-facts">
+        <tr><td class="vc-label">Property</td><td><strong>{{ property_name }}</strong></td></tr>
+        <tr><td class="vc-label">Location</td><td>{{ region_name }} &middot; {{ country_name }}</td></tr>
+      </table>
+
+      <p class="vc-h2">Stay</p>
+      <table class="vc-lines vc-facts">
+        <tr><td class="vc-label">Check-in</td><td>{{ date_from }}</td></tr>
+        <tr><td class="vc-label">Check-out</td><td>{{ date_to }}</td></tr>
+        <tr><td class="vc-label">Nights</td><td>{{ nights }}</td></tr>
+        <tr><td class="vc-label">Guests</td><td>{{ adults }} adult{{ adults|pluralize }}{% if children %}, {{ children }} child{{ children|pluralize:"ren" }}{% endif %}</td></tr>
+        <tr><td class="vc-label">Lead guest</td><td>{{ guest_full_name }}</td></tr>
+      </table>
+
+      <p class="vc-h2">Price</p>
+      <table class="vc-lines">
+        <thead>
+          <tr><th>Item</th><th class="vc-right">Amount ({{ breakdown.currency }})</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Accommodation</td><td class="vc-right">{{ breakdown.base_amount }}</td></tr>
+          {% for line in breakdown.charges %}
+          <tr><td>{{ line.label }}</td><td class="vc-right">{{ line.amount }}</td></tr>
+          {% endfor %}
+          {% for line in breakdown.discounts %}
+          <tr class="vc-disc"><td>{{ line.label }}</td><td class="vc-right">{{ line.amount }}</td></tr>
+          {% endfor %}
+          <tr class="vc-total"><td>Total</td><td class="vc-right">{{ breakdown.currency }} {{ breakdown.total }}</td></tr>
+        </tbody>
+      </table>
+
+      {% if payment_schedule %}
+      <p class="vc-h2">Payment schedule</p>
+      <table class="vc-lines">
+        <thead>
+          <tr><th>Payment</th><th>Due</th><th class="vc-right">Amount ({{ breakdown.currency }})</th><th class="vc-right">Status</th></tr>
+        </thead>
+        <tbody>
+          {% for row in payment_schedule %}
+          <tr>
+            <td>{{ row.label }}</td>
+            <td>{% if row.due_at %}{{ row.due_at }}{% else %}&ndash;{% endif %}</td>
+            <td class="vc-right">{{ row.amount }}</td>
+            <td class="vc-right">{% if row.is_paid %}Paid{% else %}Due{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {# Plain text, not Markdown: free-text an owner typed. `linebreaks`
+         escapes under autoescape, so markup in the snapshot stays inert. #}
+      {% if house_rules %}
+      <p class="vc-h2">House rules</p>
+      <div class="vc-rules">{{ house_rules|linebreaks }}</div>
+      {% endif %}
+
+      {% if terms_html %}
+      <p class="vc-h2">Terms and conditions</p>
+      <div class="vc-terms">
+        {{ terms_html|safe }}
+        {% if terms_accepted_at %}<p class="vc-meta">Terms accepted on {{ terms_accepted_at }}.</p>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+</body>
+</html>

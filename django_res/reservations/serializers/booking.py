@@ -149,8 +149,10 @@ class BookingDetailSerializer(BookingListSerializer):
             "charges_total",
             "terms_version",
             "terms_accepted_at",
-            # GAP-094: the house rules agreed at confirmation (read-only).
+            # GAP-094: the house rules agreed at confirmation (read-only);
+            # `_at` is null when the body was backfilled, not agreed.
             "house_rules_snapshot",
+            "house_rules_snapshot_at",
             "payment_method",
             "cancel_reason",
             "cancelled_at",
@@ -168,6 +170,7 @@ class BookingDetailSerializer(BookingListSerializer):
             *BookingListSerializer.Meta.read_only_fields,
             "deposit_override_amount",
             "house_rules_snapshot",
+            "house_rules_snapshot_at",
         ]
 
     # ------------------------------------------------------------------

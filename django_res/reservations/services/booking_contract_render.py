@@ -110,6 +110,14 @@ def build_contract_context(booking: Booking) -> dict[str, Any]:
         # through the conversion service, which stamps it.
         "terms_accepted_at": format_date(booking.terms_accepted_at),
         "house_rules": snapshot,
+        # A body with no timestamp was reconstructed by the 0010 backfill;
+        # the template says so instead of claiming it was agreed.
+        "house_rules_recorded_at": (
+            format_date(booking.house_rules_snapshot_at)
+            if booking.house_rules_snapshot_at
+            else None
+        ),
+        "house_rules_reconstructed": booking.house_rules_reconstructed,
         "generated_on": format_date(timezone.localdate()),
     }
 

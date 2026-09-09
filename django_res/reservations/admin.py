@@ -78,6 +78,10 @@ class BookingAdmin(admin.ModelAdmin):
     list_filter = ("status", "is_archived", "payment_method")
     search_fields = ("reference",)
     raw_id_fields = ("person", "agent")
+    # GAP-094: the contract cites these as what was agreed and when; a free
+    # edit here would silently rewrite (or relabel as reconstructed) an
+    # issued contract.
+    readonly_fields = ("house_rules_snapshot", "house_rules_snapshot_at")
 
 
 @admin.register(BookingHold)

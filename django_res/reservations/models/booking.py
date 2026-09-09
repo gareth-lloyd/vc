@@ -8,6 +8,7 @@ asserts the source state is in `allowed_from`, mutates inside
 
 from __future__ import annotations
 
+import builtins
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
@@ -122,6 +123,21 @@ def live_house_rules(property_id: int) -> str:
     return body.strip()
 
 
+def house_rules_stamp(property_id: int) -> dict[str, Any]:
+    """The field values a confirming write stamps for GAP-094 house rules.
+
+    One place for the invariant "no body → no timestamp": the `_transition`
+    path (`Booking._house_rules_stamp`) and `make_occupying_booking` (which inserts
+    straight into AWAITING_DEPOSIT) both go through here, so a blank
+    `house_rules_snapshot` never carries a `house_rules_snapshot_at`.
+    """
+    body = live_house_rules(property_id)
+    return {
+        "house_rules_snapshot": body,
+        "house_rules_snapshot_at": timezone.now() if body else None,
+    }
+
+
 class Booking(AuditedModel):
     """The reservation. Locked to a QuotationLine pricing snapshot at creation."""
 
@@ -206,6 +222,11 @@ class Booking(AuditedModel):
     # two confirming transitions via `_house_rules_stamp`; "" doubles as
     # "no rules" and "not yet stamped" — there is no re-entry path today.
     house_rules_snapshot = models.TextField(blank=True, default="")
+    # When `house_rules_snapshot` was stamped. Null with a non-empty body
+    # means the body was *reconstructed* by the `0010` backfill from the
+    # property's then-current rules — not what the guest agreed at
+    # confirmation — and the contract says so (`house_rules_reconstructed`).
+    house_rules_snapshot_at = models.DateTimeField(null=True, blank=True)
     payment_method = models.CharField(
         max_length=16,
         choices=PaymentMethod.choices,
@@ -422,7 +443,20 @@ class Booking(AuditedModel):
         """
         if self.house_rules_snapshot:
             return {}
-        return {"house_rules_snapshot": live_house_rules(self.property_id)}
+        return house_rules_stamp(self.property_id)
+
+    # `builtins.property`: the `property` FK shadows the decorator in the
+    # class body (same workaround as `Enquiry`).
+    @builtins.property
+    def house_rules_reconstructed(self) -> bool:
+        """True when the snapshot body was backfilled rather than agreed.
+
+        The `0010` backfill wrote bodies with no timestamp; every genuine
+        stamp carries one. A blank body is "no rules", not a reconstruction.
+        """
+        # `.strip()` mirrors the contract context: a whitespace-only body is
+        # "no rules" there too, so it must not read as a reconstruction here.
+        return bool(self.house_rules_snapshot.strip()) and self.house_rules_snapshot_at is None
 
     def auto_accept(
         self,

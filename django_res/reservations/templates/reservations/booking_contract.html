@@ -87,6 +87,7 @@
       {% if house_rules %}
       <p class="vc-h2">House rules</p>
       <div class="vc-rules">{{ house_rules|linebreaks }}</div>
+      {% if house_rules_reconstructed %}<p class="vc-meta">These house rules were recorded after this booking was confirmed; they are the property's rules as held when recorded, not as agreed at confirmation.</p>{% elif house_rules_recorded_at %}<p class="vc-meta">Recorded at confirmation on {{ house_rules_recorded_at }}.</p>{% endif %}
       {% endif %}
 
       {% if terms_html %}

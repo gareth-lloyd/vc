@@ -17,6 +17,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
+from core.formats import format_date
 from core.tests import assert_max_queries
 from payments.models import Payment
 from properties.enums import DescriptionSection
@@ -91,7 +92,23 @@ def test_build_contract_context_carries_booking_facts(booking: Booking) -> None:
     assert ctx["terms_accepted_at"]
     # Plain text, verbatim — the template does the wrapping/escaping.
     assert ctx["house_rules"] == RULES
+    assert booking.house_rules_snapshot_at is not None
+    assert ctx["house_rules_recorded_at"] == format_date(booking.house_rules_snapshot_at)
+    assert ctx["house_rules_reconstructed"] is False
     assert ctx["generated_on"]
+
+
+@pytest.mark.django_db
+def test_context_flags_reconstructed_house_rules(booking: Booking) -> None:
+    """A body with no timestamp is what the 0010 backfill wrote."""
+    booking.house_rules_snapshot_at = None
+    booking.save(update_fields=["house_rules_snapshot_at"])
+
+    ctx = build_contract_context(booking)
+
+    assert ctx["house_rules"] == RULES
+    assert ctx["house_rules_recorded_at"] is None
+    assert ctx["house_rules_reconstructed"] is True
 
 
 @pytest.mark.django_db
@@ -157,14 +174,46 @@ def test_html_renders_snapshot_not_live_rules(booking: Booking) -> None:
     assert "<strong>T&amp;Cs</strong>" in html
 
 
+RECONSTRUCTED_SENTENCE = (
+    "These house rules were recorded after this booking was confirmed; they are "
+    "the property's rules as held when recorded, not as agreed at confirmation."
+)
+
+
+@pytest.mark.django_db
+def test_html_says_when_house_rules_were_recorded(booking: Booking) -> None:
+    booking.house_rules_snapshot_at = datetime(2026, 6, 1, 9, 0, tzinfo=UTC)
+    booking.save(update_fields=["house_rules_snapshot_at"])
+
+    html = render_contract_html(booking)
+
+    assert "Recorded at confirmation on 1 June 2026." in html
+    assert "recorded after this booking was confirmed" not in html
+
+
+@pytest.mark.django_db
+def test_html_labels_reconstructed_house_rules(booking: Booking) -> None:
+    booking.house_rules_snapshot_at = None
+    booking.save(update_fields=["house_rules_snapshot_at"])
+
+    html = render_contract_html(booking)
+
+    assert "No parties." in html
+    assert RECONSTRUCTED_SENTENCE in html
+    assert "Recorded at confirmation" not in html
+
+
 @pytest.mark.django_db
 def test_html_omits_house_rules_section_when_snapshot_blank(booking: Booking) -> None:
     booking.house_rules_snapshot = ""
-    booking.save(update_fields=["house_rules_snapshot"])
+    booking.house_rules_snapshot_at = None
+    booking.save(update_fields=["house_rules_snapshot", "house_rules_snapshot_at"])
 
     html = render_contract_html(booking)
 
     assert "House rules" not in html
+    assert "Recorded at confirmation" not in html
+    assert "recorded after this booking was confirmed" not in html
 
 
 @pytest.mark.django_db

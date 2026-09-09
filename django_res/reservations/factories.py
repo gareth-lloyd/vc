@@ -35,7 +35,7 @@ from reservations.enums import (
     PaymentMethod,
     ServiceStatus,
 )
-from reservations.models.booking import live_house_rules
+from reservations.models.booking import house_rules_stamp
 
 if TYPE_CHECKING:
     from accounts.models import Person
@@ -223,7 +223,7 @@ def make_occupying_booking(
             payment_method=PaymentMethod.CARD.value,
             status=BookingStatus.AWAITING_DEPOSIT.value,
             # Inserted directly as confirmed, so stamp what `auto_accept` would.
-            house_rules_snapshot=live_house_rules(property.pk),
+            **house_rules_stamp(property.pk),
         )
         # The LEAD BookingGuest invariant — a Booking is incomplete without it.
         models.BookingGuest.objects.get_or_create(

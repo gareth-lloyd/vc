@@ -175,6 +175,8 @@ export const bookingDetailSchema = bookingListItemSchema.extend({
   terms_accepted_at: z.string().nullable().optional(),
   // GAP-094: house rules agreed at confirmation (read-only; contract source).
   house_rules_snapshot: z.string().optional(),
+  // Null = body was backfilled, not agreed at confirmation (GAP-094 retro).
+  house_rules_snapshot_at: z.string().nullable().optional(),
   payment_method: z.string().nullable().optional(),
   cancel_reason: z.string().nullable().optional(),
   cancelled_at: z.string().nullable().optional(),

@@ -9,13 +9,18 @@ handler returns quickly.
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 import structlog
+from botocore.exceptions import ClientError
 from django.conf import settings
+from django.utils import timezone
 
 from comms.contexts import booking_context as _booking_context
+from comms.contexts import contract_context as _contract_context
 from comms.contexts import payment_context as _payment_context
+from comms.enums import EmailLogStatus
 from comms.exceptions import EmailTemplateNotFound, NoSmtpProfileAvailable
 from comms.recipients import (
     agent_user_for,
@@ -23,12 +28,13 @@ from comms.recipients import (
     recipient_email,
     recipient_first_name,
 )
-from comms.services import TEMPLATE_RENDER_ERRORS, EmailService
+from comms.services import TEMPLATE_RENDER_ERRORS, Attachment, EmailService
 from core.formats import format_date
 from reservations.enums import BookingStatus
 
 if TYPE_CHECKING:
     from reservations.models.booking import Booking, BookingHold
+    from reservations.models.booking_document import BookingDocument
     from reservations.models.owner_block import OwnerBlock
     from reservations.models.quotation import Quotation
 
@@ -258,6 +264,149 @@ def booking_confirmation_resend_requested_handler(
     )
 
 
+# QUEUED (a worker will pick it up) and SENT (eager dispatch already ran)
+# both mean the message reached the mail pipeline. BLOCKED (we refused) and
+# FAILED (the server refused) must not stamp `sent_to_guest_at`.
+_HANDED_TO_MAIL_PIPELINE = frozenset({EmailLogStatus.QUEUED, EmailLogStatus.SENT})
+
+# GAP-094 — the errors a contract send may degrade to a logged skip. Same set
+# `_safe_send` swallows: infrastructure that isn't ready must not turn into an
+# exception escaping an `on_commit` callback (auto-generation) or a 500 on the
+# staff `:send` action.
+_CONTRACT_SEND_ERRORS = (
+    NoSmtpProfileAvailable,
+    EmailTemplateNotFound,
+    *TEMPLATE_RENDER_ERRORS,
+)
+
+# Reading the stored PDF's size hits storage, so the same failures
+# `comms.tasks` classifies at dispatch can happen here at send-request time:
+# the object is gone (`FileNotFoundError`), S3 is unreachable or refuses
+# (`ClientError`), or the row somehow has no file (`ValueError` from an empty
+# `FieldFile`). None of these may escape — the auto path's blanket `except`
+# would log `booking_document_failed`, which is untrue (the document generated
+# and committed), and the staff `:send` action would 500.
+_ATTACHMENT_READ_ERRORS = (OSError, ValueError, ClientError)
+
+
+def booking_document_send_requested_handler(
+    sender: Any,
+    *,
+    document: BookingDocument,
+    actor: Any | None = None,
+    **_: Any,
+) -> None:
+    """Email a generated `BookingDocument` to the guest, with the file attached.
+
+    Resend-or-send, mirroring `booking_confirmation_resend_requested_handler`:
+    `EmailService.send` dedupes on `(template_key, to, correlation)` and the
+    correlation is stable per document, so a staff resend of the *same*
+    document would otherwise return the original row and put no mail on the
+    wire. A prior log for this document therefore goes through
+    `EmailService.resend` (which copies `attachments` verbatim, so the guest
+    gets the same PDF), and only the first send is a fresh `send`.
+
+    `sent_to_guest_at` is stamped when the resulting row reaches the mail
+    pipeline — QUEUED **or** SENT. Both are needed: `EmailService.send`
+    schedules dispatch on `transaction.on_commit` and then re-reads the row, so
+    under `CELERY_TASK_ALWAYS_EAGER` in autocommit (staging, and the
+    `on_commit`-scheduled auto-generation path) the callback has already run
+    and the row comes back SENT, never QUEUED. An allowlist-BLOCKED row, a
+    FAILED one, or a skip leaves the stamp null rather than claiming a delivery
+    that never started. Whether the message actually left is the `EmailLog`
+    status' job, reachable from the Comms tab via `correlation.document_id`.
+    """
+    from comms.models import EmailLog
+
+    booking = document.booking
+    recipient = recipient_email(booking.person)
+    if recipient is None:
+        logger.warning(
+            "comms.email_skipped",
+            template_key="booking.contract",
+            reason="no_guest_email",
+            booking_id=booking.pk,
+            document_id=document.pk,
+        )
+        return
+
+    # Scoped to *this* recipient, not just this document: `EmailService.resend`
+    # re-sends to the original row's addresses, so a contract first sent to a
+    # mistyped address and resent after staff corrected the Person would go to
+    # the old address again — and stamp as though the guest had it. No prior
+    # log for the current address means a fresh send, which the idempotency
+    # key (which already includes `to`) correctly treats as a distinct message.
+    latest = (
+        EmailLog.objects.filter(
+            template_key="booking.contract",
+            correlation__document_id=document.pk,
+            to__contains=[recipient],
+        )
+        .order_by("-queued_at", "-id")
+        .first()
+    )
+
+    attachments = []
+    if latest is None:
+        # Only the fresh send needs it — a resend copies the metadata off the
+        # row it is cloning.
+        try:
+            attachments = [_contract_attachment(document)]
+        except _ATTACHMENT_READ_ERRORS as exc:
+            logger.warning(
+                "comms.email_skipped",
+                template_key="booking.contract",
+                reason="attachment_unreadable",
+                detail=str(exc),
+                booking_id=booking.pk,
+                document_id=document.pk,
+            )
+            return
+
+    try:
+        if latest is not None:
+            log = EmailService.resend(latest, actor=actor)
+        else:
+            log = EmailService.send(
+                template_key="booking.contract",
+                context=_contract_context(document),
+                to=[recipient],
+                attachments=attachments,
+                correlation={"booking_id": booking.pk, "document_id": document.pk},
+            )
+    except _CONTRACT_SEND_ERRORS as exc:
+        logger.warning(
+            "comms.email_skipped",
+            template_key="booking.contract",
+            reason=str(exc),
+            booking_id=booking.pk,
+            document_id=document.pk,
+            resend=latest is not None,
+        )
+        return
+
+    if log.status in _HANDED_TO_MAIL_PIPELINE:
+        document.sent_to_guest_at = timezone.now()
+        document.save(update_fields=["sent_to_guest_at", "updated_at"])
+
+
+def _contract_attachment(document: BookingDocument) -> Attachment:
+    """Metadata for the stored PDF; `comms.tasks._send` re-reads the bytes.
+
+    `size` is read off storage rather than trusted from the caller — it is
+    what the operator sees on the Comms tab, and a stale figure there is worse
+    than the one extra HEAD this costs.
+    """
+    name = document.file.name or ""
+    return Attachment(
+        filename=PurePosixPath(name).name,
+        content_type="application/pdf",
+        size=document.file.size,
+        storage_key=name,
+        storage="documents",
+    )
+
+
 def hold_expired_handler(
     sender: Any,
     *,
@@ -475,6 +624,7 @@ def _register() -> None:
     )
     from reservations.signals import (
         booking_confirmation_resend_requested,
+        booking_document_send_requested,
         booking_transitioned,
         hold_expired,
         ical_conflict_detected,
@@ -489,6 +639,10 @@ def _register() -> None:
     booking_confirmation_resend_requested.connect(
         booking_confirmation_resend_requested_handler,
         dispatch_uid="comms.booking_confirmation_resend_requested",
+    )
+    booking_document_send_requested.connect(
+        booking_document_send_requested_handler,
+        dispatch_uid="comms.booking_document_send_requested",
     )
     quotation_sent.connect(
         quotation_sent_handler,

@@ -13,6 +13,7 @@ local to each function to avoid import-time cycles during app loading.
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import Any
 
 from comms.recipients import recipient_first_name
@@ -36,6 +37,21 @@ def booking_context(booking: Any) -> dict[str, Any]:
     }
 
 
+def contract_context(document: Any) -> dict[str, Any]:
+    """Merge fields for `booking.contract` — the booking's, plus the filename.
+
+    The body names the attachment, which is the one thing a `booking_id` alone
+    cannot resolve: a booking can have several contract documents and only the
+    one being sent belongs in the copy. Hence the separate builder (and the
+    `document_id` branch in `resolve_context`) rather than reusing
+    `booking_context` at both call sites.
+    """
+    return {
+        **booking_context(document.booking),
+        "document_filename": PurePosixPath(document.file.name or "").name,
+    }
+
+
 def payment_context(payment: Any) -> dict[str, Any]:
     booking = payment.booking
     return {
@@ -53,6 +69,7 @@ def resolve_context(
     context: dict[str, Any] | None = None,
     booking_id: int | None = None,
     quotation_id: int | None = None,
+    document_id: int | None = None,
 ) -> dict[str, Any]:
     """Resolve the render context for a template preview.
 
@@ -63,7 +80,9 @@ def resolve_context(
        empty dict is treated as "no explicit context" so it doesn't silently
        shadow a ``booking_id`` / ``quotation_id`` sent alongside it.
     2. Otherwise dispatch on the provided id to the matching domain builder,
-       reusing the same prefetching the live send relies on.
+       reusing the same prefetching the live send relies on. `document_id` is
+       checked before `quotation_id` and after `booking_id`; the ids are
+       mutually exclusive in practice (each template key takes exactly one).
     3. With neither, return ``{}`` — Django renders missing variables as the
        empty string (``string_if_invalid``), which is the acceptable "blank
        skeleton" preview against no data.
@@ -86,6 +105,18 @@ def resolve_context(
             pk=booking_id,
         )
         return booking_context(booking)
+    if document_id is not None:
+        from django.shortcuts import get_object_or_404
+
+        from reservations.models import BookingDocument
+
+        document = get_object_or_404(
+            BookingDocument.objects.select_related(
+                "booking__person", "booking__property", "booking__currency"
+            ).prefetch_related("booking__charge_items"),
+            pk=document_id,
+        )
+        return contract_context(document)
     if quotation_id is not None:
         from django.shortcuts import get_object_or_404
 

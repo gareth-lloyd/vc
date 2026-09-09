@@ -59,3 +59,37 @@ def test_no_inputs_returns_empty_skeleton() -> None:
 def test_unknown_booking_id_raises_404() -> None:
     with pytest.raises(Http404):
         resolve_context(booking_id=9_999_999)
+
+
+def test_contract_context_names_the_attached_file() -> None:
+    """`booking.contract` renders the filename, which a `booking_id` alone
+    cannot resolve — a booking can hold several contract documents."""
+    from comms.contexts import contract_context
+
+    booking = SimpleNamespace(
+        reference="VC-9",
+        person=None,
+        guest=SimpleNamespace(first_name="Ada"),
+        property=SimpleNamespace(display_name="Villa Sol", name="villa-sol"),
+        date_from=date(2025, 7, 8),
+        date_to=date(2025, 7, 14),
+        charge_items=SimpleNamespace(all=list),
+        currency=SimpleNamespace(code="GBP"),
+        pricing_snapshot={"total": "1400.00"},
+        balance_due=Decimal("0"),
+    )
+    document = SimpleNamespace(
+        booking=booking,
+        file=SimpleNamespace(name="booking_documents/2026/09/VC-9-contract-3.pdf"),
+    )
+
+    ctx = contract_context(document)
+
+    assert ctx["document_filename"] == "VC-9-contract-3.pdf"
+    assert ctx["booking_reference"] == "VC-9"
+
+
+@pytest.mark.django_db
+def test_unknown_document_id_raises_404() -> None:
+    with pytest.raises(Http404):
+        resolve_context(document_id=9_999_999)

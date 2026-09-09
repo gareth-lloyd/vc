@@ -12,8 +12,11 @@ from __future__ import annotations
 import smtplib
 from datetime import timedelta
 
+from botocore.exceptions import ClientError, HTTPClientError
+from botocore.exceptions import ConnectionError as BotoConnectionError
 from celery import shared_task
 from django.conf import settings
+from django.core.files.storage import InvalidStorageError, storages
 from django.core.mail import EmailMultiAlternatives, get_connection
 from django.utils import timezone
 
@@ -62,6 +65,70 @@ class TransientEmailError(Exception):
     """Raised to trigger the ``send_email_log`` task's autoretry/backoff."""
 
 
+class AttachmentFetchError(Exception):
+    """An attachment's bytes could not be read from its storage alias.
+
+    Carries the operator-facing `filename` (the storage key is an opaque
+    hashed path) and chains the underlying storage/botocore error as
+    `__cause__`, which is what `_is_transient_storage_error` classifies.
+    """
+
+    def __init__(self, filename: str, cause: BaseException) -> None:
+        super().__init__(f"Attachment {filename!r} could not be read: {cause}")
+        self.filename = filename
+
+
+def _is_transient_storage_error(exc: BaseException) -> bool:
+    """True when re-reading the attachment later could plausibly succeed.
+
+    Classified separately from the SMTP errors above, and checked *first*,
+    because the two families overlap in exactly the wrong place:
+    ``FileNotFoundError`` is an ``OSError``, which ``_is_transient_smtp_error``
+    reads as a socket blip. A permanently-absent object would then burn six
+    backed-off retries before failing anyway.
+
+    Permanent: the object is gone (``FileNotFoundError``), the alias is not
+    configured (``InvalidStorageError`` — a deploy/settings bug), the entry is
+    malformed (``KeyError``), or S3 answered with a 4xx (missing key, no
+    permission, wrong bucket). Transient: a connection/timeout failure
+    reaching the store, or a 5xx from it.
+    """
+    if isinstance(exc, (FileNotFoundError, InvalidStorageError)):
+        return False
+    if isinstance(exc, ClientError):
+        status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
+        return int(status or 0) >= 500
+    if isinstance(exc, (BotoConnectionError, HTTPClientError)):
+        return True
+    return isinstance(exc, OSError)
+
+
+def _attachment_payloads(log: EmailLog) -> list[tuple[str, bytes, str]]:
+    """Re-read every attachment's bytes from its storage alias.
+
+    ``EmailLog.attachments`` is JSON metadata, not a blob — the binary is
+    fetched here, at dispatch, so a queued row stays small and a resend
+    (which copies the metadata verbatim) re-attaches the same object.
+
+    ``storage`` defaults to ``"default"`` for rows written before the alias
+    field existed.
+    """
+    payloads: list[tuple[str, bytes, str]] = []
+    for entry in log.attachments or []:
+        # The whole tuple is built inside the `try`: a row missing `filename`
+        # or `content_type` would otherwise raise a bare KeyError out of
+        # `_send`, which is neither classified nor terminal — the row would
+        # stay QUEUED and `requeue_stuck_emails` would re-dispatch it forever.
+        try:
+            storage = storages[entry.get("storage") or "default"]
+            with storage.open(entry["storage_key"]) as handle:
+                content = handle.read()
+            payloads.append((entry["filename"], content, entry["content_type"]))
+        except Exception as exc:
+            raise AttachmentFetchError(entry.get("filename", ""), exc) from exc
+    return payloads
+
+
 def _send(log_id: int) -> None:
     log = EmailLog.objects.select_related("smtp_profile").get(pk=log_id)
 
@@ -90,6 +157,21 @@ def _send(log_id: int) -> None:
         log.save(update_fields=["status", "failure_reason", "updated_at"])
         return
 
+    # Fetch attachment bytes before anything else is built: a permanently
+    # missing object must land as FAILED, not as a retry storm (see
+    # `_is_transient_storage_error`), and it must not half-open an SMTP
+    # connection on the way.
+    try:
+        attachments = _attachment_payloads(log)
+    except AttachmentFetchError as exc:
+        cause = exc.__cause__ or exc
+        if _is_transient_storage_error(cause):
+            raise TransientEmailError(str(exc)) from exc
+        log.status = EmailLogStatus.FAILED
+        log.failure_reason = str(exc)
+        log.save(update_fields=["status", "failure_reason", "updated_at"])
+        return
+
     # encrypted_password is an EncryptedTextField — the descriptor returns
     # cleartext on attribute access, so no manual decrypt is needed here.
     password = profile.encrypted_password or ""
@@ -115,6 +197,8 @@ def _send(log_id: int) -> None:
     )
     if log.rendered_body_html:
         message.attach_alternative(log.rendered_body_html, "text/html")
+    for filename, content, content_type in attachments:
+        message.attach(filename, content, content_type)
     try:
         message.send(fail_silently=False)
     except Exception as exc:
@@ -144,6 +228,13 @@ def send_email_log(log_id: int) -> None:
     """Dispatch the persisted ``EmailLog`` via SMTP and update its status.
 
     Idempotent at the row level: a log already in ``SENT`` is not re-sent.
+
+    Attachments are metadata on the row; their bytes are re-read from the
+    named storage alias at this point (``_attachment_payloads``). A fetch
+    failure is classified by ``_is_transient_storage_error`` — a missing
+    object or a 4xx is FAILED, a connection failure or 5xx retries — and is
+    deliberately checked before the SMTP classifier, which would read
+    ``FileNotFoundError`` as a retryable socket error.
 
     Transient SMTP failures (dropped connection, host blip, 4xx greylisting —
     see ``_is_transient_smtp_error``) leave the row ``QUEUED`` and re-raise as

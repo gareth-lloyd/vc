@@ -66,9 +66,9 @@ class EmailTemplatePreviewRequestSerializer(serializers.Serializer):
     """POST body for `:preview`.
 
     Context sources (explicit `context` wins): a synthetic `context` dict, or a
-    real `booking_id` / `quotation_id` to render against. Optional draft
-    overrides let the editor preview unsaved edits — when any override is
-    present the active row fills in the rest.
+    real `booking_id` / `quotation_id` / `document_id` to render against.
+    Optional draft overrides let the editor preview unsaved edits — when any
+    override is present the active row fills in the rest.
 
     The `context` dict is read straight from `request.data` in the view rather
     than declared here: `context` is a reserved attribute on DRF serializers,
@@ -77,6 +77,9 @@ class EmailTemplatePreviewRequestSerializer(serializers.Serializer):
 
     booking_id = serializers.IntegerField(required=False)
     quotation_id = serializers.IntegerField(required=False)
+    # `booking.contract` renders against a specific BookingDocument — a booking
+    # can hold several and only the one being sent belongs in the copy.
+    document_id = serializers.IntegerField(required=False)
     # Draft overrides (preview-before-publish loop). Plaintext is derived from
     # the HTML, so only the authored fields are overridable.
     subject_template = serializers.CharField(required=False, allow_blank=True)
@@ -92,3 +95,7 @@ class TestSendRequestSerializer(serializers.Serializer):
     to = serializers.EmailField(required=False)
     booking_id = serializers.IntegerField(required=False)
     quotation_id = serializers.IntegerField(required=False)
+    # Deliberately no `document_id`: test-send attaches nothing, so a
+    # `booking.contract` test-send would arrive saying "attached as <file>"
+    # with no attachment — the one thing testing that template is for. Preview
+    # (which renders the body only) does take it.

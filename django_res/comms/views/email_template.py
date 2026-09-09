@@ -50,14 +50,15 @@ def _context_from_request(request: Request, data: dict[str, Any]) -> dict[str, A
     """Resolve the render context from the request.
 
     `context` is read raw from `request.data` (it can't be a serializer field —
-    the name collides with `Serializer.context`); `booking_id` / `quotation_id`
-    come validated off the request serializer.
+    the name collides with `Serializer.context`); `booking_id` /
+    `quotation_id` / `document_id` come validated off the request serializer.
     """
     explicit = request.data.get("context")
     return resolve_context(
         context=explicit if isinstance(explicit, dict) else None,
         booking_id=data.get("booking_id"),
         quotation_id=data.get("quotation_id"),
+        document_id=data.get("document_id"),
     )
 
 

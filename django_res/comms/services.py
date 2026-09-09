@@ -53,15 +53,21 @@ BLOCKED_BY_ALLOWLIST_REASON = "All primary recipients blocked by EMAIL_RECIPIENT
 class Attachment:
     """Reference to an attachment stored on object storage.
 
-    The binary content lives on S3 (or MinIO locally); the log row carries
-    only the metadata needed to re-fetch and re-attach when the message is
-    rendered for delivery.
+    The binary content lives on S3 (or the filesystem locally); the log row
+    carries only the metadata needed to re-fetch and re-attach when the message
+    is rendered for delivery (`comms.tasks._send`).
+
+    `storage` names the `settings.STORAGES` alias holding the object. It
+    defaults to `"default"` — which is the world-readable images bucket in
+    production — so anything PII-bearing has to say so explicitly; booking
+    contracts pass `"documents"` (GAP-094).
     """
 
     filename: str
     content_type: str
     size: int
     storage_key: str
+    storage: str = "default"
 
     def to_log_entry(self) -> dict[str, Any]:
         return {
@@ -69,6 +75,7 @@ class Attachment:
             "content_type": self.content_type,
             "size": self.size,
             "storage_key": self.storage_key,
+            "storage": self.storage,
         }
 
 

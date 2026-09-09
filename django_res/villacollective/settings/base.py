@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,23 @@ env = environ.Env()
 # …) can live there for local commands. Real environment variables still take
 # precedence — read_env only fills in keys not already set in os.environ.
 environ.Env.read_env(BASE_DIR.parent / ".env")
+
+# WeasyPrint's cffi loader can't find Homebrew's gobject/pango on macOS unless
+# the fallback library path points at the brew prefix (GAP-094). Only a hint —
+# an explicit env var wins, and non-darwin hosts are untouched. Setting the
+# var *replaces* the default search list `ctypes.macholib.dyld` would use, so
+# spell out that list too, or a host with its libraries under /usr/local/lib
+# (Intel brew, MacPorts) would stop finding them in-process. Lives in base —
+# not dev/test — so an operator running a management command under the
+# production or staging module from a laptop (the GAP-012 image runbook does)
+# is not failed by the `reservations.E001` toolchain check.
+if sys.platform == "darwin":
+    _brew_lib = Path(os.environ.get("HOMEBREW_PREFIX", "/opt/homebrew")) / "lib"
+    if _brew_lib.is_dir():
+        os.environ.setdefault(
+            "DYLD_FALLBACK_LIBRARY_PATH",
+            f"{_brew_lib}:{Path.home() / 'lib'}:/usr/local/lib:/lib:/usr/lib",
+        )
 
 SECRET_KEY = env.str("DJANGO_SECRET_KEY", default="dev-insecure-change-me")
 DEBUG = env.bool("DJANGO_DEBUG", default=False)

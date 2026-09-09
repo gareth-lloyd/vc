@@ -95,5 +95,15 @@ def configure_structlog(
             # zapikey, GAP-081) and `redact_sensitive` doesn't scrub inside
             # event strings — pin it to WARNING so request lines never land.
             "httpx": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+            # WeasyPrint's progress logger inherits root INFO and narrates
+            # every render (Steps 1-7 per `write_pdf`) plus three "Step 2"
+            # lines at import, which the GAP-094 system check triggers on
+            # every `manage.py` command. We log the operation ourselves
+            # (`booking.contract_pdf`), so pin this to WARNING.
+            "weasyprint.progress": {
+                "handlers": ["console"],
+                "level": "WARNING",
+                "propagate": False,
+            },
         },
     }

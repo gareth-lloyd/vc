@@ -35,7 +35,7 @@ class ReservationsConfig(AppConfig):
 
     def ready(self) -> None:
         from core.audit import track
-        from reservations import signals  # noqa: F401
+        from reservations import checks, signals  # noqa: F401
         from reservations.models import (
             Booking,
             BookingChargeItem,

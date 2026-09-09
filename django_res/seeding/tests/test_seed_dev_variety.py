@@ -49,6 +49,7 @@ from reservations.models import (
     TermsVersion,
 )
 from reservations.models.concierge import BookingConciergeItem
+from reservations.services.booking_documents import _CONFIRMED_STATUSES
 
 
 @pytest.mark.django_db(transaction=True)
@@ -162,6 +163,13 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
     # ---- Booking status spread: pre-approval path is exercised ----
     booking_statuses = set(Booking.objects.values_list("status", flat=True))
     assert BookingStatus.PENDING_OWNER_APPROVAL.value in booking_statuses
+
+    # ---- House rules (GAP-094): the factory seed is opt-in, so every
+    # property-creating stage must opt in — otherwise seeded confirmed
+    # bookings silently render the no-rules contract branch. ----
+    assert not Booking.objects.filter(
+        status__in=_CONFIRMED_STATUSES, house_rules_snapshot=""
+    ).exists()
 
     # ---- Property status spread: at least one DRAFT or ARCHIVED ----
     property_statuses = set(Property.objects.values_list("status", flat=True))

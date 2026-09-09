@@ -225,8 +225,8 @@ def test_intake_response_never_carries_house_rules(wp_client: APIClient) -> None
     HOUSE_RULES body."""
     sentinel = f"HR-SENTINEL-{uuid.uuid4().hex}"
     villa = cast(Property, PropertyFactory(legacy_id="1042"))
-    PropertyDescription.objects.update_or_create(
-        property=villa, section=DescriptionSection.HOUSE_RULES, defaults={"body": sentinel}
+    PropertyDescription.objects.create(
+        property=villa, section=DescriptionSection.HOUSE_RULES, body=sentinel
     )
 
     response = wp_client.post(_URL, {**_PAYLOAD, "Properties": "1042"}, format="json")

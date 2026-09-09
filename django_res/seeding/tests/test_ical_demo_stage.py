@@ -7,6 +7,7 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 
+from properties.enums import DescriptionSection
 from properties.models import Property
 from seeding.stages.ical_demo import ICAL_DEMO_NAME, ICAL_DEMO_SLUG
 
@@ -41,6 +42,9 @@ def test_seed_creates_fixed_slug_demo_villa_with_pricing() -> None:
     plan = prop.rate_plans.get()
     assert {p.name for p in plan.periods.all()} == {"Low", "Mid", "Peak"}
     assert prop.finance.commission_calculation_type
+    # The factory's HOUSE_RULES seed is opt-in; the demo villa opts in so its
+    # confirmed bookings carry rules on the contract.
+    assert prop.descriptions.filter(section=DescriptionSection.HOUSE_RULES).exists()
 
 
 def test_seed_is_idempotent_on_the_demo_villa() -> None:

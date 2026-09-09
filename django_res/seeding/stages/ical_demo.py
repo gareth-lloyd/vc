@@ -39,7 +39,7 @@ ICAL_DEMO_NAME = "Demo iCal Villa"
 def _run(ctx: SeedContext) -> int:
     if Property.objects.filter(slug=ICAL_DEMO_SLUG).exists():
         return 0
-    prop = PropertyFactory(slug=ICAL_DEMO_SLUG, name=ICAL_DEMO_NAME)
+    prop = PropertyFactory(slug=ICAL_DEMO_SLUG, name=ICAL_DEMO_NAME, with_house_rules=True)
     currency = ctx.default_currency
     plan = RatePlanFactory(property=prop, currency=currency)
     seed_included_services(prop, 0)

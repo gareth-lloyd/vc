@@ -241,20 +241,14 @@ class PropertyFactory(DjangoModelFactory):
         # hardcoded policy floors; tests set concrete values explicitly.
         models.PropertySettings.objects.create(property=obj)
         models.PropertyFinance.objects.create(property=obj)
+        # The factory seeds exactly one description section, OVERVIEW: it is
+        # the villa's manifest-bound identity copy. Every other section is
+        # opt-in (`with_house_rules`) — `one_description_per_section` is
+        # unique, so a default seed collides with tests that write their own.
         models.PropertyDescription.objects.create(
             property=obj,
             section=DescriptionSection.OVERVIEW,
             body=villa["style_anchor"].strip() if villa else _faker.paragraph(),
-        )
-        # GAP-094: house rules are contract-only (never public); seeded so a
-        # confirmed booking's contract has something to render.
-        models.PropertyDescription.objects.create(
-            property=obj,
-            section=DescriptionSection.HOUSE_RULES,
-            body=(
-                "No parties or events. Quiet hours 23:00-08:00. No smoking "
-                "indoors. Check-out by 10:00."
-            ),
         )
         villa_slug = villa["slug"] if villa else None
         models.PropertyImage.objects.create(
@@ -262,6 +256,36 @@ class PropertyFactory(DjangoModelFactory):
             image=_villa_image_or_placeholder(villa_slug, ImageKind.HERO.value),
             kind=ImageKind.HERO,
             name="Hero",
+        )
+
+    @factory.post_generation
+    def with_house_rules(
+        obj: models.Property,
+        create: bool,
+        extracted: object,
+        **kwargs: object,
+    ) -> None:
+        """Opt-in: seed a HOUSE_RULES description (GAP-094).
+
+        Default off — house rules are semantic, contract-only content, and
+        `one_description_per_section` is unique, so a seeded row would
+        collide with any test that creates its own. Set to True via
+        ``PropertyFactory(with_house_rules=True)`` (the seed stages do) so a
+        confirmed dev/staging booking's contract has rules to render, or pass
+        the rules text itself: ``PropertyFactory(with_house_rules="No pets.")``.
+        """
+        if not create or not extracted:
+            return
+        body = (
+            extracted
+            if isinstance(extracted, str)
+            else (
+                "No parties or events. Quiet hours 23:00-08:00. No smoking "
+                "indoors. Check-out by 10:00."
+            )
+        )
+        models.PropertyDescription.objects.create(
+            property=obj, section=DescriptionSection.HOUSE_RULES, body=body
         )
 
     @factory.post_generation

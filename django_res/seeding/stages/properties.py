@@ -132,6 +132,7 @@ def _run(ctx: SeedContext) -> int:
             Any,
             PropertyFactory(
                 with_owner_contact=wants_owner,
+                with_house_rules=True,
                 **extra_kwargs,
             ),
         )

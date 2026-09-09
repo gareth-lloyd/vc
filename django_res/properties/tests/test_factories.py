@@ -58,10 +58,27 @@ def test_property_factory_builds_full_graph() -> None:
     assert prop.capacity.bedrooms >= 1
     assert prop.settings is not None
     assert prop.finance is not None
-    assert prop.descriptions.exists()
+    # Exactly one seeded section: OVERVIEW. Anything else is opt-in — a
+    # default seed collides with tests that create their own row.
+    assert list(prop.descriptions.values_list("section", flat=True)) == [
+        DescriptionSection.OVERVIEW
+    ]
     assert prop.hero_image() is not None
     # All-null settings row: consumers apply the hardcoded policy floors.
     assert prop.settings.bookings_require_pre_approval is None
+
+
+def test_property_factory_with_house_rules_seeds_a_rules_row() -> None:
+    prop = cast(models.Property, factories.PropertyFactory(with_house_rules=True))
+
+    rules = prop.descriptions.get(section=DescriptionSection.HOUSE_RULES)
+    assert rules.body.strip()
+
+
+def test_property_factory_with_house_rules_accepts_the_text() -> None:
+    prop = cast(models.Property, factories.PropertyFactory(with_house_rules="No pets."))
+
+    assert prop.descriptions.get(section=DescriptionSection.HOUSE_RULES).body == "No pets."
 
 
 def test_property_slug_unique_across_runs() -> None:

@@ -148,7 +148,9 @@ def _new_showcase_property(ctx: SeedContext) -> Any:
         extra_kwargs["children__villa"] = villa
     # Deliberately unconstrained (no changeover day / minimum stay): showcase
     # villas exist to host today-anchored short stays, which can't conform.
-    prop = cast(Any, PropertyFactory(with_owner_contact=False, **extra_kwargs))
+    prop = cast(
+        Any, PropertyFactory(with_owner_contact=False, with_house_rules=True, **extra_kwargs)
+    )
     check_out, check_in = ctx.knobs.changeover_times
     if check_out is not None and check_in is not None:
         prop.settings.check_out_time = _parse_hhmm(check_out)

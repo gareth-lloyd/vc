@@ -485,12 +485,8 @@ def test_payload_other_information_block_and_features_exclusion() -> None:
 def test_payload_other_information_block_present_when_empty() -> None:
     prop = _property()
     PropertyFeature.objects.create(property=prop, feature=_feature())
-    # `update_or_create`, not `create`: the property factory seeds a
-    # HOUSE_RULES row (GAP-094) and the section is unique per property.
-    PropertyDescription.objects.update_or_create(
-        property=prop,
-        section=DescriptionSection.HOUSE_RULES,
-        defaults={"body": "No parties"},
+    PropertyDescription.objects.create(
+        property=prop, section=DescriptionSection.HOUSE_RULES, body="No parties"
     )
 
     payload = build_property_payload(prop)
@@ -823,13 +819,6 @@ def test_other_description_sections_do_not_bump(delay_mock: mock.Mock) -> None:
     """Only the `other_information` section rides the villa payload; editing
     house rules (or any other copy block) must not re-push the villa."""
     prop = _property()
-    # The property factory seeds a HOUSE_RULES row (GAP-094) and the section
-    # is unique per property. Clear it *before* the sync baseline below, so
-    # the observed window still holds the original create/save/delete trio
-    # rather than losing the create path to an `update_or_create`.
-    PropertyDescription.objects.filter(
-        property=prop, section=DescriptionSection.HOUSE_RULES
-    ).delete()
     record = _record_for(prop)
     _mark_in_sync(record)
     delay_mock.reset_mock()
@@ -983,8 +972,8 @@ def test_payload_never_carries_house_rules() -> None:
     must not carry the HOUSE_RULES description body under any key."""
     sentinel = f"HR-SENTINEL-{uuid.uuid4().hex}"
     prop = _property()
-    PropertyDescription.objects.update_or_create(
-        property=prop, section=DescriptionSection.HOUSE_RULES, defaults={"body": sentinel}
+    PropertyDescription.objects.create(
+        property=prop, section=DescriptionSection.HOUSE_RULES, body=sentinel
     )
 
     payload = build_property_payload(prop)

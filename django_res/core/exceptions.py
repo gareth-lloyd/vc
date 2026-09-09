@@ -101,6 +101,51 @@ class BookingDocumentNotAvailable(DomainError):
     code = "document_not_available"
 
 
+class BookingDocumentFileMissing(DomainError):
+    """The document row exists but its bytes are gone from storage (GAP-094).
+
+    A 409 with its own code rather than a 404: the document *is* there — its
+    file is not — so the Documents tab can offer "regenerate" instead of
+    showing the same "no such document" wall an unknown id produces. Reachable
+    if an object is deleted out of the bucket, or a storage alias is
+    re-pointed at a different prefix between deploys.
+    """
+
+    code = "document_file_missing"
+
+
+class DocumentSendFailed(DomainError):
+    """A staff `:send` was accepted by the pipeline but never handed to mail.
+
+    The comms receiver degrades every delivery failure it cannot fix — an
+    unseeded or deactivated template, no active SMTP profile, a render error,
+    an allowlist block — to a logged skip or a non-delivering `EmailLog` row.
+    That is right for the automatic path (nothing else it could do without
+    rolling back a confirmed booking) and wrong for a staff member watching a
+    button: without this, the answer is `200` with an unchanged
+    `sent_to_guest_at` and a tab that renders success.
+
+    A 409 rather than a 5xx, like its two siblings above: nothing crashed, the
+    request simply cannot be satisfied in the system's current state, and the
+    `EmailLog` row behind it (reachable from the Comms tab via
+    `correlation.document_id`) says why.
+    """
+
+    code = "document_send_failed"
+
+
+class NoDocumentRecipient(DomainError):
+    """A document was asked to be emailed to a guest who has no address.
+
+    The automatic delivery path degrades this to a logged skip (nothing else
+    it could do), but a staff member who just pressed "send" has to be told
+    why nothing left — otherwise the answer is a 200 with a null
+    `sent_to_guest_at` and no explanation.
+    """
+
+    code = "no_recipient"
+
+
 class IdempotencyConflict(DomainError):
     """Two racing requests carried the same idempotency key.
 

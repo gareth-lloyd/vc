@@ -21,6 +21,11 @@ from reservations.views import (
     BookingArchiveViewSet,
     BookingChargeItemViewSet,
     BookingConciergeItemViewSet,
+    BookingDocumentDetailView,
+    BookingDocumentDownloadView,
+    BookingDocumentGenerateView,
+    BookingDocumentListView,
+    BookingDocumentSendView,
     BookingNoteViewSet,
     BookingViewSet,
     ClientListView,
@@ -340,6 +345,41 @@ _charge_routes: list[URLPattern | URLResolver] = [
 
 
 # ----------------------------------------------------------------------
+# Booking document nested routes (GAP-094)
+# ----------------------------------------------------------------------
+_document_routes: list[URLPattern | URLResolver] = [
+    # Colon verbs first, per the convention the rest of this module follows.
+    # (The `<int:...>` converters would not swallow `1:download` anyway, but
+    # the ordering is the rule readers of this file rely on.)
+    path(
+        "bookings/<int:booking_pk>/documents:generate",
+        BookingDocumentGenerateView.as_view(),
+        name="booking-documents-generate",
+    ),
+    path(
+        "bookings/<int:booking_pk>/documents/<int:document_id>:download",
+        BookingDocumentDownloadView.as_view(),
+        name="booking-document-download",
+    ),
+    path(
+        "bookings/<int:booking_pk>/documents/<int:document_id>:send",
+        BookingDocumentSendView.as_view(),
+        name="booking-document-send",
+    ),
+    path(
+        "bookings/<int:booking_pk>/documents",
+        BookingDocumentListView.as_view(),
+        name="booking-documents",
+    ),
+    path(
+        "bookings/<int:booking_pk>/documents/<int:document_id>",
+        BookingDocumentDetailView.as_view(),
+        name="booking-document-detail",
+    ),
+]
+
+
+# ----------------------------------------------------------------------
 # Damage-claim nested routes
 # ----------------------------------------------------------------------
 _damage_claim_routes: list[URLPattern | URLResolver] = [
@@ -580,6 +620,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     *_quotation_actions,
     *_booking_actions,
     *_charge_routes,
+    *_document_routes,
     *_damage_claim_routes,
     *_concierge_routes,
     *_concierge_overview_routes,

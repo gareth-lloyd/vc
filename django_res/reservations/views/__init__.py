@@ -17,6 +17,13 @@ from reservations.views.booking import (
     BookingNoteViewSet,
     BookingViewSet,
 )
+from reservations.views.booking_document import (
+    BookingDocumentDetailView,
+    BookingDocumentDownloadView,
+    BookingDocumentGenerateView,
+    BookingDocumentListView,
+    BookingDocumentSendView,
+)
 from reservations.views.charge_item import BookingChargeItemViewSet
 from reservations.views.client import ClientListView
 from reservations.views.concierge import BookingConciergeItemViewSet
@@ -54,6 +61,11 @@ __all__ = [
     "BookingArchiveViewSet",
     "BookingChargeItemViewSet",
     "BookingConciergeItemViewSet",
+    "BookingDocumentDetailView",
+    "BookingDocumentDownloadView",
+    "BookingDocumentGenerateView",
+    "BookingDocumentListView",
+    "BookingDocumentSendView",
     "BookingNoteViewSet",
     "BookingViewSet",
     "ClientListView",

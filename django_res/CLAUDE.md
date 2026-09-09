@@ -6,6 +6,14 @@
 2. `cp .env.example .env` (or export `DATABASE_URL` directly).
 3. `uv sync && uv run python manage.py migrate`
 4. `uv run pytest` (pytest-django creates the test DB automatically).
+5. **PDF rendering (WeasyPrint, GAP-094)** needs native Pango/HarfBuzz. macOS:
+   `brew install pango harfbuzz libffi` — `settings/dev.py` and
+   `settings/test.py` seed `DYLD_FALLBACK_LIBRARY_PATH` with `$HOMEBREW_PREFIX/lib`
+   (default `/opt/homebrew`) plus the loader's own defaults, so cffi finds the
+   libraries; export the var yourself to override. Debian/CI: `libpango-1.0-0
+   libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core` (see `Dockerfile` /
+   `.github/workflows/ci.yml`). Without them `core.pdf.html_to_pdf` raises
+   `OSError` and the PDF tests fail — it is a hard dependency of the suite.
 
 From the repo root, `make test-backend` runs the backend suite and `make test`
 runs backend + frontend together.
@@ -173,6 +181,9 @@ either go through a `.save()` loop or write an explicit audit row. The merge
 FK rewrites (`Contact.merge` / `Guest.merge`) use `.update()` by design and
 summarise what moved onto the deletion row via `core.audit.record_merge`
 (destination pk + per-relation counts, FG-016) rather than auditing each row.
+`RunPython` data migrations are the other sanctioned exception: historical
+models fire no signals, so a schema backfill is its own trail — say so in the
+migration docstring (reference: `reservations.0010`).
 If bulk paths on tracked models ever proliferate, the structural fix is
 trigger-based capture (`django-pghistory`), not more signal plumbing — don't
 build that now.

@@ -21,6 +21,13 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
 
+# WeasyPrint (booking contract PDFs, GAP-094) needs Pango + HarfBuzz at
+# runtime; fonts-dejavu-core gives it a real font to shape with.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir uv
 
 # Dependency layer (cached unless lockfile changes).

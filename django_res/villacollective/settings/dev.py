@@ -2,10 +2,28 @@
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
+
 from core.logging.config import configure_structlog
 
 from .base import *  # noqa: F403
 from .base import LOG_LEVEL
+
+# WeasyPrint's cffi loader can't find Homebrew's gobject/pango on macOS unless
+# the fallback library path points at the brew prefix (GAP-094). Only a hint —
+# an explicit env var wins, and non-darwin hosts are untouched. Setting the
+# var *replaces* the default search list `ctypes.macholib.dyld` would use, so
+# spell out that list too, or a host with its libraries under /usr/local/lib
+# (Intel brew, MacPorts) would stop finding them in-process.
+if sys.platform == "darwin":
+    _brew_lib = Path(os.environ.get("HOMEBREW_PREFIX", "/opt/homebrew")) / "lib"
+    if _brew_lib.is_dir():
+        os.environ.setdefault(
+            "DYLD_FALLBACK_LIBRARY_PATH",
+            f"{_brew_lib}:{Path.home() / 'lib'}:/usr/local/lib:/lib:/usr/lib",
+        )
 
 DEBUG = True
 ALLOWED_HOSTS = ["*"]

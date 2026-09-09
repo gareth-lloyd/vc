@@ -44,6 +44,14 @@ jobs:
           enable-cache: true
           cache-dependency-glob: django_res/uv.lock
 
+      # WeasyPrint native deps (booking contract PDFs, GAP-094). Same package
+      # list as the Dockerfile, and `update` first: the runner image's apt
+      # index is a snapshot, so a rolled point release 404s without it.
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core
+
       - run: uv sync --frozen
 
       # Ephemeral CI DB — disable durability so fsync-bound COMMITs in the

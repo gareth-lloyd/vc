@@ -96,6 +96,39 @@ parity break in the copy that sells the villas.
    `exterior_para`, `location_sub`, `location_para`.
    `house_rules` stays (see GAP-094); `villa_info` leaves for the Features
    surface (GAP-091); `further_info` becomes property internal notes (below).
+
+   ⚠️ **`house_rules` now has a runtime consumer** — GAP-094 shipped
+   2026-09-09, so this is no longer just "keep the value in the enum".
+   `reservations/models/booking.py::live_house_rules` filters
+   `PropertyDescription` by `section=DescriptionSection.HOUSE_RULES`, and
+   `Booking._house_rules_stamp` feeds the result into `_transition` on the
+   first entry to `AWAITING_DEPOSIT`, where it lands on
+   `Booking.house_rules_snapshot` — which is what every booking contract PDF
+   renders from. It is the only *Python* reader of the value (the loader at
+   `loaders/properties.py:221` is the only writer). If the rebuild renames the
+   value, remaps the rows, or moves a property's rules under a different
+   section, that filter silently returns nothing and confirmed bookings get a
+   **contract with no house rules** — no error, no failed test unless one is
+   written. Any migration that moves these rows must keep them reachable under
+   whatever the new value is, and `test_house_rules_snapshot.py` must be
+   re-run against it.
+
+   ⚠️ **Grep the lowercase slug too — `HOUSE_RULES` does not find the
+   frontend.** The value is spelled `"house_rules"` in
+   `frontend/src/features/properties/schemas.ts` (`WEBSITE_SECTIONS`, which
+   backs `isKnownSection` and the Zod parse) and keyed in
+   `frontend/src/i18n/locales/{en,el}/properties.json`. A backend-first rename
+   passes every Python test and then throws a ZodError in the descriptions
+   panel on the unknown section — which is exactly how that panel broke before
+   (a 4-value FE enum against a 6-value backend). Move both halves together,
+   or land the FE first so it tolerates the new value.
+
+   Note also that the FE files `house_rules` under a constant named
+   `WEBSITE_SECTIONS` ("guest-facing copy"). That predates GAP-094 and now
+   reads wrong — house rules are contract-only and never shown online; the
+   grouping is a staff-UI affordance, not a claim about publication. The whole
+   properties API is staff-gated so nothing leaks, but the naming is worth
+   correcting whenever this set is rebuilt.
 2. **Video Url needs no work** — `Property.video_url` already exists
    (`models/property.py:39`) and the loader already maps legacy `VodeoUrl`
    (sic) onto it. Render it on the same tab for parity with the legacy screen.

@@ -39,9 +39,9 @@ Five models carry the weight of the system:
   `PropertyImage`, `PropertyDescription`, `PropertyLocation`, plus M2M to
   `Person` (kind=CONTACT) via `PropertyContactAssignment`.
 - **`Booking`** — central to reservations. Has its own satellite cluster:
-  `BookingEvent`, `BookingNote`, `BookingHold`, `BookingConciergeItem`, and a
-  1:N to `Payment`. Its historic cousin **`PastStay`** (GAP-089) is a
-  Person-owned record of a stay imported from Nick's spreadsheets — villa
+  `BookingEvent`, `BookingNote`, `BookingHold`, `BookingConciergeItem`,
+  `BookingDocument`, and a 1:N to `Payment`. Its historic cousin
+  **`PastStay`** (GAP-089) is a Person-owned record of a stay imported from Nick's spreadsheets — villa
   name (+ optional resolved `Property`), year, legacy booking number, no
   dates or money — surfaced on Customer-360 and counted into the
   repeat-customer flag, never scheduled, invoiced or pushed to Zoho.
@@ -77,7 +77,8 @@ Enquiry ─1:N→ Quotation ─1:N→ QuotationLine ─1:N→ Booking
 Person  ─1:N→ Quotation, Booking            (customer; also User OneToOne)
 Person  ─1:N→ Quotation.agent, Booking.agent (agent; also User OneToOne)
 
-Booking ─1:N→ Payment, BookingHold, BookingEvent, BookingNote, BookingConciergeItem
+Booking ─1:N→ Payment, BookingHold, BookingEvent, BookingNote, BookingConciergeItem,
+              BookingDocument (GAP-094; CASCADE, private `documents` storage alias)
 Payment ─1:N→ PaymentEvent, PaymentLine, Refund, WebhookDelivery
 
 (any model) ─1:N→ SyncRecord  (GenericFK via ContentType + object_id)
@@ -145,6 +146,35 @@ unset*, not "inherit":
 are kept (payments / reservations / pricing / the settings serializer call
 them), but they now read own fields + `_POLICY_FALLBACKS` rather than merging a
 group.
+
+### Guest-facing documents (`BookingDocument`, GAP-094)
+`BookingDocument(booking CASCADE, kind, file, generated_at, generated_by,
+sent_to_guest_at)` — one row per generate, never overwritten, newest first;
+`BookingDocumentKind` names all five spec values but only `CONTRACT` renders
+today. The bytes are a WeasyPrint PDF (`core.pdf.html_to_pdf`) written to a
+dedicated **private** `STORAGES["documents"]` alias — the default bucket is
+world-readable and unsigned, and a contract carries guest PII — and served
+only by streaming through the staff-permissioned API; no URL to them exists.
+Confirmation auto-generates and emails the contract (`booking.contract`, the
+PDF attached, correlation `{booking_id, document_id}`); `sent_to_guest_at`
+means "handed to the mail pipeline" — stamped when the `EmailLog` comes back
+`QUEUED` **or** `SENT` (eager dispatch, which is what staging runs, never
+leaves a row `QUEUED`), never on `FAILED` or allowlist-`BLOCKED`.
+
+**Content is snapshotted, not referenced.** `Booking.house_rules_snapshot`
+(TextField, blank) is stamped on the first entry to `AWAITING_DEPOSIT`: the
+two confirming transitions (`auto_accept` / `owner_approve`) call
+`Booking._house_rules_stamp()`, which reads the property's `HOUSE_RULES`
+`PropertyDescription` via `live_house_rules()`, and pass it to `_transition`
+as `extra_updates` so the write lands on the same `save()` as the status
+change. (`_transition` is generic — the house-rules read is at the call site,
+not in it.) Every contract renders from that column, so editing a property's
+house rules cannot retroactively rewrite a contract a guest already agreed
+to. Same instinct as `snapshot_defaults` above and
+`Booking.pricing_snapshot`: a document that outlives its source copies the
+source. House rules reach no public payload, pinned by sentinel tests across
+the Zoho villa/booking payloads, the WordPress intake response, the
+quote-options serializer and the owner-portal serializer.
 
 ### Idempotency
 - ~~`IdempotencyRecord` table — used at the HTTP boundary~~ — dropped per

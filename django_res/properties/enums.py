@@ -110,8 +110,16 @@ class DescriptionSection(models.TextChoices):
     column — the whole properties API is staff-gated, so the split is a UI
     affordance, not access control.
 
-    The rest are guest-facing (house rules ride into the guest quotation —
-    legacy `QuotationArgs.HouseRules`), except `FURTHER_INFO`, which is on its
+    The rest are guest-facing, except `HOUSE_RULES` and `FURTHER_INFO`.
+    `HOUSE_RULES` is never shown online: it rides into the **booking
+    contract**, snapshotted onto `Booking.house_rules_snapshot` at
+    confirmation and rendered from there (GAP-094), so later edits here cannot
+    rewrite a contract a guest already holds. It reaches no public payload,
+    and five sentinel leak guards pin that (`test_zoho_villa.py` here, plus
+    reservations' `test_zoho_booking.py`, `test_api_wordpress_enquiries.py`,
+    `test_stay_options.py` and `test_owner_bookings.py`). Legacy did select
+    `QuotationArgs.HouseRules` for the quotation but never output it — the
+    quotation is not where these go. `FURTHER_INFO` is on its
     way out: it loads from legacy `VillaMaster.Notes`, and the 2026-07-20 Nick
     recording settles that as staff copy ("we can get rid of further info, just
     make it internal notes"). The remap of those rows, and the replacement of

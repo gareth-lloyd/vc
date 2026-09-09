@@ -130,6 +130,11 @@ def test_every_enum_transmitting_attribute_is_covered(
         r["beds"]["double_size"] for r in villa["rooms"] if r["beds"] and r["beds"]["double_size"]
     }
     assert bed_sizes, "no room bed size transmitted"
+    # GAP-102: the extras catalogue rides the villa push.
+    extra_categories = {e["category"] for e in villa["extras"]}
+    assert {"cleaning", "heating"} <= extra_categories, extra_categories
+    extra_calcs = {e["calc"] for e in villa["extras"]}
+    assert {"fixed_per_stay"} <= extra_calcs, extra_calcs
     service_types = {f["service_type"] for f in villa["features"]}
     assert {"amenity", "included_service", "paid_addon"} <= service_types, service_types
     # GAP-091: other-information tags ride their own block, never `features[]`.
@@ -157,6 +162,11 @@ def test_every_enum_transmitting_attribute_is_covered(
     assert booking["status"]
     assert booking["site_source"]
     assert booking["payment_method"]
+    # GAP-102: the only real-engine path — pins that the engine's snapshot
+    # `extra_id` key is what the payload reads as `RES_ID` (a hand-written
+    # snapshot literal in the unit tests can't catch a key rename).
+    engine_rows = [x for x in booking["extras"] if x["source"] == "extra"]
+    assert engine_rows and all(isinstance(x["RES_ID"], int) for x in engine_rows)
     categories = {x["category"] for x in booking["extras"] if x["category"]}
     # Charge-only values AND a snapshot-sourced ExtraKind must both appear.
     assert {"damage", "credit"} <= categories, categories
@@ -215,6 +225,11 @@ def test_dry_run_prints_payloads_without_posting(monkeypatch: pytest.MonkeyPatch
     assert not any(payloads.values())
     assert "payload:" in out
     assert '"RES_ID"' in out
+    # GAP-102: the printed envelope is what the wire would carry — `_meta`
+    # included, with no SyncRecord behind a dry run.
+    assert '"_meta"' in out
+    assert '"source": "res"' in out
+    assert '"sync_record_id": null' in out
     assert Booking.objects.count() == before
 
 

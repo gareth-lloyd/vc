@@ -94,6 +94,12 @@ region list (needs maintaining as we take on properties) vs a plain text
 field that accepts whatever we send. Currently unmapped either way, so
 nothing is lost while it's open.
 
+> *GAP-102 (2026-09-08):* whichever way this goes, key regions on `RES_ID`
+> (`slug` is now sent but is unique only **per country**) and countries on
+> `RES_ID` / `iso3`, and honour `is_active` (`false` = retired from new
+> selection, still readable on historic records). A seeded picklist needs
+> **GAP-103** to stay fresh — region edits do not re-push today.
+
 ## Acceptance
 
 - Each numbered item confirmed against the sandbox by push-and-read.

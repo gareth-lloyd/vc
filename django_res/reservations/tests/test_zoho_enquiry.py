@@ -21,6 +21,8 @@ from integrations import tasks
 from integrations.enums import SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from integrations.services.zoho_flow import get_zoho_spec
+from properties.factories import RegionFactory
+from properties.models.geo import Region
 from reservations.enums import EnquiryLostReason, EnquiryNoteKind, EnquiryStatus, LeadStatus
 from reservations.factories import EnquiryFactory
 from reservations.models import Enquiry
@@ -168,6 +170,39 @@ def test_payload_property_and_region_sub_objects() -> None:
     assert sub["name"] == prop.name
     assert sub["region"]["RES_ID"] == prop.region_id
     assert sub["region"]["country"]["iso2"] == prop.region.country.iso2
+
+
+@pytest.mark.django_db
+def test_payload_region_and_country_carry_join_keys() -> None:
+    """GAP-102: `_region_payload` here is a deliberate byte-identical copy of
+    the one in `properties.services.zoho_payload`; pin its shape separately so
+    neither copy drifts."""
+    region = cast(Region, RegionFactory(is_active=False))
+    # CountryFactory get_or_creates on iso2 (migration-seeded rows), so the
+    # flag has to be flipped on the row rather than passed as a kwarg.
+    region.country.is_active = False
+    region.country.save(update_fields=["is_active"])
+    enquiry = _enquiry(region=region, property__region=region)
+
+    payload = build_enquiry_payload(enquiry)
+
+    expected = {
+        "RES_ID": region.pk,
+        "id": region.pk,
+        "name": region.name,
+        "slug": region.slug,
+        "is_active": False,
+        "country": {
+            "RES_ID": region.country.pk,
+            "id": region.country.pk,
+            "name": region.country.name,
+            "iso2": region.country.iso2,
+            "iso3": region.country.iso3,
+            "is_active": False,
+        },
+    }
+    assert payload["region"] == expected
+    assert payload["property"]["region"] == expected
 
 
 @pytest.mark.django_db

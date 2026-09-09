@@ -111,22 +111,37 @@ _VILLA_CHILDREN: tuple[tuple[type[models.Model], Callable[[Any], Property]], ...
     (RoomAttributeAssignment, attrgetter("room.property")),
 )
 
-for _child, _getter in _VILLA_CHILDREN:
-    _bump = _villa_child_zoho_bump(_getter)
-    # weak=False: the closure has no module-level name, so the default weakref
-    # connection would be garbage-collected and silently disconnect.
+
+def connect_villa_child(
+    child: type[models.Model],
+    get_property: Callable[[Any], Property],
+    *,
+    uid_prefix: str = "properties.zoho_flow",
+) -> None:
+    """Wire `child`'s post_save + post_delete to re-push its villa.
+
+    The ONE connect ritual for villa-embedded children — apps ABOVE
+    `properties` on the import spine wire theirs through here too
+    (`pricing.signals` → `Extra`, GAP-102). weak=False: the closure has no
+    module-level name, so the default weakref connection would be
+    garbage-collected and silently disconnect."""
+    bump = _villa_child_zoho_bump(get_property)
     post_save.connect(
-        _bump,
-        sender=_child,
+        bump,
+        sender=child,
         weak=False,
-        dispatch_uid=f"properties.zoho_flow:{_child.__name__}:post_save",
+        dispatch_uid=f"{uid_prefix}:{child.__name__}:post_save",
     )
     post_delete.connect(
-        _bump,
-        sender=_child,
+        bump,
+        sender=child,
         weak=False,
-        dispatch_uid=f"properties.zoho_flow:{_child.__name__}:post_delete",
+        dispatch_uid=f"{uid_prefix}:{child.__name__}:post_delete",
     )
+
+
+for _child, _getter in _VILLA_CHILDREN:
+    connect_villa_child(_child, _getter)
 
 
 _description_zoho_bump = _villa_child_zoho_bump(attrgetter("property"))

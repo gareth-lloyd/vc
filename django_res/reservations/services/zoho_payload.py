@@ -89,6 +89,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from integrations.services.zoho_flow import is_anonymized_person
+from integrations.services.zoho_payloads import country_payload
 from reservations.enums import ChargeCategory
 
 if TYPE_CHECKING:
@@ -152,19 +153,18 @@ def _assigned_to_payload(user: Any) -> dict[str, Any] | None:
 
 
 def _region_payload(region: Region | None) -> dict[str, Any] | None:
+    """GAP-102 join keys: `RES_ID` is the identity; `slug` is unique only
+    per country (a matching aid, never the key) and `is_active=false` means
+    "retired from new selection" while staying readable on historic rows."""
     if region is None:
         return None
-    country = region.country
     return {
         "RES_ID": region.pk,
         "id": region.pk,
         "name": region.name,
-        "country": {
-            "RES_ID": country.pk,
-            "id": country.pk,
-            "name": country.name,
-            "iso2": country.iso2,
-        },
+        "slug": region.slug,
+        "is_active": region.is_active,
+        "country": country_payload(region.country),
     }
 
 
@@ -320,6 +320,14 @@ def _financials_payload(booking: Booking) -> dict[str, Any]:
     }
 
 
+def _snapshot_extra_res_id(extra: dict[str, Any]) -> int | None:
+    # `pricing_snapshot` is read-only in every serializer, so only hand-crafted
+    # snapshots can carry a missing or non-int `extra_id`; degrade to null
+    # rather than send a value Zoho can't join on. bool is an int subclass.
+    extra_id = extra.get("extra_id")
+    return extra_id if isinstance(extra_id, int) and not isinstance(extra_id, bool) else None
+
+
 def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
     """GAP-085: itemized extras with commissionable flags, per the call.
 
@@ -329,12 +337,28 @@ def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
     `total_gross` (snapshot total / charge overlay) — Zoho must not re-add
     them. `category` is the GAP-088 taxonomy: snapshot extras pass their
     stored `ExtraKind` through (every value is a `ChargeCategory` — pinned by
-    test), charge lines send `BookingChargeItem.category`, so Zoho sees ONE
+    `reservations/tests/test_charge_item.py::test_charge_category_embeds_extra_kind_verbatim`),
+    charge lines send `BookingChargeItem.category`, so Zoho sees ONE
     vocabulary.
+
+    GAP-102 identity: two id spaces feed one array, so the key is the PAIR
+    `(source, RES_ID)`, never `RES_ID` alone. On `source="extra"` rows
+    `RES_ID` is the catalogue product AS PRICED (`Extra.pk`, the villa
+    payload's `extras[].RES_ID`); nothing FKs the snapshot to the Extra, so
+    it may no longer resolve if the row was since hard-deleted. It shares an
+    id space with `line.pricing_snapshot.extras[].extra_id`, but that quote
+    snapshot is frozen at quote time while this list reads the BOOKING's
+    snapshot, which `modify_dates`/`modify_guests` re-run — the two can
+    legitimately differ on a modified booking. On `source="charge_item"` rows
+    `RES_ID` is the charge line's own pk. `currency` is the booking's on every
+    row (`BookingChargeItem.currency` is contractually equal).
     """
     snapshot = booking.pricing_snapshot or {}
+    currency = booking.currency.code
     entries = [
         {
+            "RES_ID": _snapshot_extra_res_id(extra),
+            "source": "extra",
             "label": extra.get("name"),
             # Degrade-to-null, not the string "None" — the engine writes
             # str(Decimal), but future manual-override snapshot writes are
@@ -342,6 +366,7 @@ def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
             "amount": (
                 str(extra["computed_amount"]) if extra.get("computed_amount") is not None else None
             ),
+            "currency": currency,
             "commissionable": extra.get("commissionable"),
             # Same unfenced-write caveat: a kind outside the vocabulary
             # degrades to null rather than leaking into Zoho's dropdown.
@@ -351,9 +376,12 @@ def _extras_payload(booking: Booking) -> list[dict[str, Any]]:
     ]
     entries.extend(
         {
+            "RES_ID": item.pk,
+            "source": "charge_item",
             # Signed amounts verbatim — a negative line is a credit.
             "label": item.label,
             "amount": str(item.amount),
+            "currency": currency,
             "commissionable": item.commissionable,
             "category": item.category,
         }

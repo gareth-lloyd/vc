@@ -17,6 +17,10 @@ domain event (e.g. Quotation on send) register `auto_push=False` and call
 `SyncRecord` row, no task dispatch) — `data_migration.BaseLoader` wraps its
 row processing in it so `loadlegacy` never avalanches pushes; loaded records
 reach Zoho only via the deliberate, throttled backfill.
+
+Wire shape (GAP-102): the POST body is the builder's dict plus ONE reserved
+sibling key, `_meta` (`with_provenance`), and the request carries the
+`X-Res-Env` header (`PROVENANCE_HEADER`). Builders must never emit `_meta`.
 """
 
 from __future__ import annotations
@@ -29,11 +33,48 @@ from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from django.db import models, transaction
+from django.utils import timezone
 
 if TYPE_CHECKING:
     from integrations.models import SyncRecord
 
 ZOHO_FLOW_KINDS = ("contact", "villa", "enquiry", "quote", "booking")
+
+# GAP-102 provenance: every POST carries a `_meta` SIBLING key (never a
+# wrapper — that would rename the root for every Flow mapping Limitless have
+# written) plus this header, so a Flow execution is attributable to an
+# environment and a dispatch. Anything without `_meta.source == "res"` is
+# provably not from the push path.
+PROVENANCE_HEADER = "X-Res-Env"
+
+
+def provenance_meta(kind: str, sync_record_id: int | None) -> dict[str, Any]:
+    """The `_meta` envelope for one push. `env` reads `settings.ENVIRONMENT`
+    at call time (never a module constant) so it follows the running
+    settings; `sync_record_id` is None for a dry run that has no record."""
+    return {
+        "source": "res",
+        "env": settings.ENVIRONMENT,
+        "pushed_at": timezone.now().isoformat(),
+        "sync_record_id": sync_record_id,
+        "kind": kind,
+    }
+
+
+def with_provenance(payload: Any, kind: str, sync_record_id: int | None) -> dict[str, Any]:
+    """The exact body that goes on the wire: `payload` + the `_meta` sibling.
+
+    The ONE place the envelope is applied — `push_sync_record` and the
+    `zoho_send_sample --dry-run` printer both go through here so what the
+    dry run shows is what the wire carries. Raises on a non-dict builder
+    return or a builder minting its own `_meta`: both are programming errors
+    that the caller's builder `try` must park ERROR (never escape the task
+    and leave the row PENDING for the sweep to re-dispatch forever)."""
+    if not isinstance(payload, dict):
+        raise TypeError(f"builder must return a dict, got {type(payload).__name__}")
+    if "_meta" in payload:
+        raise ValueError("builder payload must not carry the reserved `_meta` key")
+    return {**payload, "_meta": provenance_meta(kind, sync_record_id)}
 
 
 @dataclass(frozen=True)
@@ -78,6 +119,10 @@ def register_zoho_flow(
     `build_payload`'s output (an ignored-but-pushed field would go stale in
     Zoho until the next unrelated full save). Only affects the auto_push
     post_save path; explicit `enqueue_zoho_push` calls always push.
+
+    `build_payload` must return a plain dict of root keys and must NOT emit
+    `_meta`: the push path adds that reserved sibling itself
+    (`with_provenance`) and parks a colliding builder ERROR.
     """
     if kind not in ZOHO_FLOW_KINDS:
         raise ValueError(f"Unknown Zoho Flow kind {kind!r}; expected one of {ZOHO_FLOW_KINDS}")
@@ -179,6 +224,15 @@ def ensure_pending_record(instance: models.Model) -> tuple[SyncRecord, bool]:
     the `zoho_backfill` command (deliberate replay — deliberately unaffected
     by `suppress_zoho_push`). Returns `(record, was_already_pending)` — the
     flag lets `enqueue_zoho_push` skip a redundant dispatch.
+
+    An existing row is ALWAYS re-written PENDING + `updated_at`, even when it
+    is already PENDING. That stamp is what `push_sync_record`'s guarded
+    IN_SYNC write compares against: a push that read the row before this
+    bump misses its write, sees the row still PENDING and re-dispatches
+    itself, so the edit reaches Zoho instead of being stamped IN_SYNC under
+    a stale payload (BUG-027). Writing `status` too (not just the touch)
+    keeps the row PENDING even if the push's IN_SYNC write commits between
+    this function's SELECT and its UPDATE.
     """
     from django.contrib.contenttypes.models import ContentType
 
@@ -196,7 +250,7 @@ def ensure_pending_record(instance: models.Model) -> tuple[SyncRecord, bool]:
         },
     )
     already_pending = not was_created and record.status == SyncStatus.PENDING.value
-    if not was_created and not already_pending:
+    if not was_created:
         record.status = SyncStatus.PENDING.value
         record.save(update_fields=["status", "updated_at"])
     return record, already_pending
@@ -229,8 +283,10 @@ def enqueue_zoho_push(instance: models.Model) -> None:
     if already_pending:
         # A dispatch for this row is already in flight — a second .delay
         # would double-POST the same payload (e.g. `Person.merge` folding N
-        # relationship rows fires N child bumps). If the earlier dispatch
-        # was somehow lost, the `push_pending` sweep repairs PENDING rows.
+        # relationship rows fires N child bumps). The bump above moved
+        # `updated_at`, so the in-flight push re-dispatches itself on
+        # completion (see `ensure_pending_record`, BUG-027); the
+        # `push_pending` sweep repairs a lost dispatch.
         return
     transaction.on_commit(lambda: push_sync_record.delay(record.pk))
 

@@ -1,5 +1,53 @@
 # GAP-102 — Zoho payloads carry no join key for extras, no extras catalogue, no keyable geo, and no provenance
 
+> **✅ RESOLVED (2026-09-08, local `main` unpushed)** — shipped on `feat/gap-102`
+> in 5 code units + this close-out (36110cf8 geo keys, e925dc09 booking extras
+> identity, 821c76f4 villa extras catalogue, 56b2a655 Extra → villa bump, 44613624
+> provenance). **Four Limitless-facing wire changes, all additive:**
+>
+> 1. **Booking `extras[]` rows** gain `RES_ID`, `source` (`"extra"` |
+>    `"charge_item"`) and `currency`. The key is the **pair** `(source,
+>    RES_ID)`: on `source="extra"` rows `RES_ID` is the catalogue product as
+>    priced (`Extra.pk` = the villa payload's `extras[].RES_ID`; may no longer
+>    resolve if the Extra was since hard-deleted); on `source="charge_item"`
+>    rows it is the charge line's own pk. Shares an id space with
+>    `line.pricing_snapshot.extras[].extra_id`, which is frozen at quote time
+>    and can lag a modified booking.
+> 2. **Villa `extras[]` catalogue** — option **(a)**, embedded (user decision
+>    2026-09-08; (b) rejected). One row per `Extra`, ordered `(sort_order, pk)`,
+>    inactive rows included (`is_active: false`) so historic references
+>    resolve: `RES_ID`/`id`, `name`, `description`, `category` (= `Extra.kind`,
+>    same vocabulary as booking rows), `calc`, `amount`, `currency`,
+>    `is_mandatory`, `commissionable`, `is_active`, `applies_from`/`applies_to`,
+>    `min_party`/`max_party`, `sort_order`. Product key = **(villa `RES_ID`,
+>    extra `RES_ID`)**, never the name. An `Extra` save/delete re-pushes its
+>    villa exactly once (`pricing.signals` → `properties.signals.connect_villa_child`).
+> 3. **Geo join keys** on every region/country sub-object (villa region +
+>    location country, enquiry/quote/booking region, contact person/agency
+>    country — four sites, one shared `country_payload`): region `+slug`
+>    `+is_active`, country `+iso3` `+is_active`. `RES_ID` is the identity;
+>    `slug` is unique only **per country**; `iso3` is sent verbatim and can be
+>    synthetic on loader-minted rows (`UK_`, `XXX`); `is_active=false` means
+>    "not offered for new selection", never "record invalid".
+> 4. **Provenance** on every POST: sibling key `_meta = {source: "res", env,
+>    pushed_at, sync_record_id, kind}` (never a wrapper — the root does not
+>    move) plus header `X-Res-Env: <env>`. Anything without `_meta.source ==
+>    "res"` is provably not from the push path. `zoho_send_sample --dry-run`
+>    prints the same envelope with `sync_record_id: null`.
+>
+> **⚠️ User actions:** (i) after deploy, run `manage.py zoho_backfill --kinds
+> villa,contact` per environment (then enquiry/quote/booking if Limitless want
+> geo keys on historic records) — existing records only get the new shape
+> when they next push; (ii) tell Limitless the four changes above and the
+> mapping notes on CHECK-002/003/004/005; (iii) sandbox attribution check of
+> a `zoho_send_sample` run (every Flow execution it causes carries `_meta`) —
+> needs the sample env vars, not verifiable from `IN_SYNC` (GAP-097).
+> **Spun off:** **GAP-103** (Region/Country edits never re-push — retirement
+> only reaches Zoho when a parent re-saves) and **BUG-027** (pre-existing
+> `enqueue_zoho_push` already-PENDING race: an edit landing mid-flight can be
+> stamped `IN_SYNC` over a stale payload). Geo loader `DeletedBy` filtering
+> still needs its own ticket (unchanged from the ticket text).
+
 - **Severity:** 🟠 Gap (four un-keyable/unattributable surfaces in the
   outbound push; item 2 blocks Limitless' quoting model, items 1 and 3 make
   their dropdowns and product matching name-based, item 4 is why an

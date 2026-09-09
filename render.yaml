@@ -66,3 +66,7 @@ services:
         sync: false
       - key: AWS_SECRET_ACCESS_KEY
         sync: false
+      # Private bucket for generated booking documents (contracts, GAP-094).
+      # Must block public access; the same AWS keys need read/write on it.
+      - key: DOCUMENTS_S3_BUCKET
+        sync: false

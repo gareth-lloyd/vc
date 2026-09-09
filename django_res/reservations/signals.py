@@ -16,12 +16,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db import transaction
 from django.db.models import ProtectedError
 from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import Signal
 
 from reservations.enums import (
     BookingGuestRole,
+    BookingStatus,
     EnquiryEventKind,
     EventSource,
 )
@@ -96,6 +98,16 @@ the most recent `booking.confirmation` EmailLog, falling back to a fresh
 send when no prior log exists.
 
 kwargs: sender=Booking, booking, actor.
+"""
+booking_document_send_requested = Signal()
+"""Fired when a generated `BookingDocument` should be emailed to the guest.
+
+Auto-generation at confirmation fires it, and so does the staff `:send`
+action. comms listens and sends (or resends) the `booking.contract` email with
+the document attached — `reservations` cannot import `comms` (upward edge), so
+delivery is a receiver on the other side of this signal.
+
+kwargs: sender=BookingDocument, document, actor.
 """
 
 
@@ -303,6 +315,32 @@ def _quotation_line_pre_delete(sender: type, instance: Any, **_: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Booking confirmed → auto-generate the contract (GAP-094)
+# ---------------------------------------------------------------------------
+
+
+def _booking_confirmed_generate_contract(
+    sender: type,
+    booking: Any,
+    to_status: str,
+    **_: Any,
+) -> None:
+    """Schedule contract generation when a booking enters AWAITING_DEPOSIT.
+
+    Deferred to `on_commit` so the PDF render (and the email it triggers)
+    never happens against a transaction that might still roll back, and so a
+    slow render can't extend the transaction holding the booking's row lock.
+    """
+    if to_status != BookingStatus.AWAITING_DEPOSIT.value:
+        return
+
+    from reservations.services.booking_documents import auto_generate_contract
+
+    booking_pk = booking.pk
+    transaction.on_commit(lambda: auto_generate_contract(booking_pk))
+
+
+# ---------------------------------------------------------------------------
 # Registration — bound on import (apps.py ready() imports this module)
 # ---------------------------------------------------------------------------
 
@@ -353,6 +391,10 @@ def _connect() -> None:
         sender=QuotationLine,
         dispatch_uid="reservations.quotation_line_pre_delete",
     )
+    booking_transitioned.connect(
+        _booking_confirmed_generate_contract,
+        dispatch_uid="reservations.booking_confirmed_generate_contract",
+    )
 
 
 _connect()
@@ -360,6 +402,8 @@ _connect()
 
 __all__ = [
     "LeadGuestProtectedError",
+    "booking_confirmation_resend_requested",
+    "booking_document_send_requested",
     "booking_total_changed",
     "booking_transitioned",
     "hold_expired",

@@ -26,6 +26,7 @@ SEED_DEV_ALLOWED = True
 # Media goes to the shared S3 bucket (config inherited from production.py)
 # under the staging/ prefix, so the two envs never collide on a key.
 S3_STORAGE_OPTIONS["location"] = "staging"  # noqa: F405
+DOCUMENTS_S3_STORAGE_OPTIONS["location"] = "staging"  # noqa: F405
 
 # Email safety: staging opens the SMTP gates inherited from production but
 # requires an explicit recipient allowlist so a stray send can never reach a

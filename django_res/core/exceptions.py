@@ -89,6 +89,18 @@ class UnsupportedDocumentKind(DomainValidationError):
     code = "unsupported_kind"
 
 
+class BookingDocumentNotAvailable(DomainError):
+    """A booking has never been confirmed, so it has no document to issue (GAP-094).
+
+    A 409, not a 400: the request named a real booking and a real document
+    kind — the booking's state refused it. Generation opens at
+    AWAITING_DEPOSIT (when `house_rules_snapshot` is stamped) and stays open
+    afterwards, cancellation included.
+    """
+
+    code = "document_not_available"
+
+
 class IdempotencyConflict(DomainError):
     """Two racing requests carried the same idempotency key.
 

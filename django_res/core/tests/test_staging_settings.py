@@ -44,6 +44,9 @@ def import_staging(monkeypatch: pytest.MonkeyPatch) -> Callable[[], ModuleType]:
     monkeypatch.setenv("FERNET_KEYS", "wIZ6Ud8oONpJD0Q-uJ4UQAYBgr_xHsv_LBNw_xt4MhA=")
     monkeypatch.setenv("FLYWIRE_WEBHOOK_SECRET", "test-flywire-secret")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "test-stripe-secret")
+    # GAP-094: no default — a deploy that forgets the private documents bucket
+    # must fail at boot rather than silently deny every guest their contract.
+    monkeypatch.setenv("DOCUMENTS_S3_BUCKET", "test-documents-bucket")
     return _import
 
 

@@ -47,5 +47,7 @@ logs/
 
 # Generated media from local dev seeding (MEDIA_ROOT = django_res/media).
 django_res/media/
+# Generated booking documents (private storage alias, GAP-094).
+django_res/private_media/
 .playwright-mcp/
 data_imports/

@@ -58,6 +58,7 @@ def test_production_opens_both_gates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FERNET_KEYS", "wIZ6Ud8oONpJD0Q-uJ4UQAYBgr_xHsv_LBNw_xt4MhA=")
     monkeypatch.setenv("FLYWIRE_WEBHOOK_SECRET", "test-flywire-secret")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "test-stripe-secret")
+    monkeypatch.setenv("DOCUMENTS_S3_BUCKET", "test-documents-bucket")
     _fresh_import("villacollective.settings.base")
     prod = _fresh_import("villacollective.settings.production")
     assert prod.EMAIL_BACKEND == SMTP

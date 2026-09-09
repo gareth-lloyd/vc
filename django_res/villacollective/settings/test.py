@@ -30,6 +30,20 @@ if sys.platform == "darwin":
 # with the test transaction, so without this they accumulate in the source
 # tree. Park them in a throwaway temp dir instead.
 MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="villa-test-media-"))
+# Same for the private `documents` alias (booking contracts, GAP-094). The
+# storage OPTIONS are read when the alias is first opened, so rebinding the
+# location here (before any FileField touches it) is enough.
+STORAGES["documents"]["OPTIONS"]["location"] = tempfile.mkdtemp(  # noqa: F405
+    prefix="villa-test-documents-"
+)
+
+# GAP-094: contract auto-generation off by default. It rides every confirmation,
+# so leaving it on would make each `run_on_commit_immediately` module that
+# confirms a booking render a real PDF — and, once the comms receiver lands,
+# mint an unexpected `booking.contract` EmailLog that email-count assertions
+# elsewhere would break on. The module that means it opts in with the
+# `settings` fixture. Same reasoning as `seed_dev`'s override.
+BOOKING_CONTRACT_AUTO_GENERATE = False
 
 # Concurrent git worktrees share one Postgres instance (docker-compose `db`),
 # so a *linked* worktree must not share the default `test_villacollective`

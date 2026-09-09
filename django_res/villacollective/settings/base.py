@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import environ
 from celery.schedules import crontab
@@ -130,9 +131,21 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 # Upload size cap enforced by the image write serializers.
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
-STORAGES: dict[str, dict[str, object]] = {
+# GAP-094: auto-generate + email the booking contract when a booking is
+# confirmed (enters AWAITING_DEPOSIT). `seed_dev` switches it off for its run.
+BOOKING_CONTRACT_AUTO_GENERATE = True
+STORAGES: dict[str, dict[str, Any]] = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    # GAP-094: PII-bearing generated documents (booking contracts). Deliberately
+    # OUTSIDE MEDIA_ROOT — `MediaWhiteNoiseMiddleware` serves everything under
+    # MEDIA_ROOT unauthenticated at /media/, and the prod images bucket is
+    # world-readable. Nothing ever URL-serves this alias; downloads stream
+    # through the staff API. Staging/production point it at a private bucket.
+    "documents": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {"location": str(BASE_DIR / "private_media")},
+    },
 }
 
 # Single-origin SPA: the built Vite bundle is copied here by the Docker

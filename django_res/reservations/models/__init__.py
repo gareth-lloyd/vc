@@ -8,6 +8,7 @@ from reservations.models.booking import (
     BookingHold,
     BookingNote,
 )
+from reservations.models.booking_document import BookingDocument
 from reservations.models.booking_guest import BookingGuest
 from reservations.models.charge_item import BookingChargeItem
 from reservations.models.concierge import BookingConciergeItem
@@ -26,6 +27,7 @@ __all__ = [
     "Booking",
     "BookingChargeItem",
     "BookingConciergeItem",
+    "BookingDocument",
     "BookingEvent",
     "BookingGuest",
     "BookingHold",

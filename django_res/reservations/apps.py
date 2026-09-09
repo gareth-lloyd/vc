@@ -39,6 +39,7 @@ class ReservationsConfig(AppConfig):
         from reservations.models import (
             Booking,
             BookingChargeItem,
+            BookingDocument,
             BookingGuest,
             BookingHold,
             BookingServiceCoverage,
@@ -114,6 +115,22 @@ class ReservationsConfig(AppConfig):
             fields=[
                 "damage_claim_id",
                 "caption",
+            ],
+        )
+        # BookingDocument (GAP-094): a generated contract is a record of what
+        # a guest was sent. The PDF blob itself isn't a tracked field (same
+        # call as DamageClaimPhoto); the trail records which booking a
+        # document was issued for, of what kind, by whom, and when it went to
+        # the guest — the columns a "what were they actually sent?" dispute
+        # turns on. Rows are never overwritten, so there is no edit history
+        # beyond the send stamp.
+        track(
+            BookingDocument,
+            fields=[
+                "booking_id",
+                "kind",
+                "generated_by_id",
+                "sent_to_guest_at",
             ],
         )
         # Enquiry: the lead-capture surface carrying denormalised PII before a

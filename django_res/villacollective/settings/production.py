@@ -66,3 +66,25 @@ STORAGES["default"] = {  # noqa: F405
     "BACKEND": "storages.backends.s3.S3Storage",
     "OPTIONS": S3_STORAGE_OPTIONS,
 }
+
+# GAP-094: generated booking documents (contracts carry guest PII) live in a
+# separate PRIVATE bucket — never the world-readable images bucket. Objects
+# are only ever read server-side (the staff download endpoint streams them,
+# the email task attaches them), so signed URLs are on purely as a backstop.
+# Bucket name from env so staging/prod can split; block public access on it.
+DOCUMENTS_S3_STORAGE_OPTIONS: dict[str, object] = {
+    # No default: a deploy that forgets the var must break loudly. Falling
+    # back to a guessed bucket name would mean `auto_generate_contract`
+    # swallowing a ClientError per confirmation and every guest silently
+    # getting no contract (same call as FERNET_KEYS above).
+    "bucket_name": env.str("DOCUMENTS_S3_BUCKET"),
+    "region_name": "eu-central-1",
+    "location": "production",
+    "querystring_auth": True,
+    "default_acl": None,
+    "file_overwrite": False,
+}
+STORAGES["documents"] = {  # noqa: F405
+    "BACKEND": "storages.backends.s3.S3Storage",
+    "OPTIONS": DOCUMENTS_S3_STORAGE_OPTIONS,
+}

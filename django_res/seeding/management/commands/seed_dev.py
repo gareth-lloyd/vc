@@ -33,6 +33,7 @@ from typing import Any
 import factory.random
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.test import override_settings
 
 from core.console import render_table
 from core.factories import RUN_TOKEN
@@ -116,7 +117,11 @@ class Command(BaseCommand):
             dashboard_factor=scale["dashboard"] if options["dashboard_activity"] else 0,
         )
 
-        reports = run_stages(ctx, STAGES)
+        # GAP-094: seeded bookings ride the real auto-accept path, which would
+        # otherwise render a contract PDF + mint an EmailLog per booking. Seed
+        # data wants neither; staff can still generate one from the UI.
+        with override_settings(BOOKING_CONTRACT_AUTO_GENERATE=False):
+            reports = run_stages(ctx, STAGES)
         self._print_summary(reports, knobs.name)
 
     def _print_summary(self, reports: list[StageReport], profile_name: str) -> None:

@@ -348,3 +348,18 @@ class ChargeCategory(models.TextChoices):
     DAMAGE = "damage", "Damage"
     CREDIT = "credit", "Credit"
     OTHER = "other", "Other"
+
+
+class BookingDocumentKind(models.TextChoices):
+    """Guest-facing documents a booking can carry (GAP-094).
+
+    The full set the API spec names, so the vocabulary is stable from day one
+    — but only `CONTRACT` is generatable today; the render seam refuses the
+    rest with `UnsupportedDocumentKind`.
+    """
+
+    CONFIRMATION = "confirmation", "Confirmation"
+    CONTRACT = "contract", "Contract"
+    VOUCHER = "voucher", "Voucher"
+    INVOICE = "invoice", "Invoice"
+    RECEIPT = "receipt", "Receipt"

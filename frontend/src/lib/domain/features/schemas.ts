@@ -17,6 +17,11 @@ export const FEATURE_SERVICE_TYPES: FeatureServiceType[] = [
   "paid_addon",
 ];
 
+// GAP-091: "other information" tags are ordinary features filed under this
+// category. The property Features tab renders them in their own section and
+// the WordPress site facets on them; nothing else in the catalogue is special.
+export const OTHER_INFORMATION_CATEGORY_SLUG = "other-information";
+
 export const featureCategorySchema = z.object({
   id: z.number(),
   name: z.string(),

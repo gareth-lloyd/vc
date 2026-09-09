@@ -99,7 +99,6 @@ export const propertyListResponseSchema = paginated(propertyListItemSchema);
 export const WEBSITE_SECTIONS = [
   "overview",
   "web_description",
-  "villa_info",
   "further_info",
   "location",
   "house_rules",
@@ -108,14 +107,25 @@ export const WEBSITE_SECTIONS = [
 /** Staff-only; grouped apart from website copy in the UI. */
 export const INTERNAL_SECTION = "internal_notes";
 
+/**
+ * Sections the Descriptions tab renders. The backend enum also has
+ * `other_information` (edited on the Features tab, GAP-091) and `rooms`
+ * (no UI until GAP-092) — rows in those sections are ignored here.
+ */
 export const DESCRIPTION_SECTIONS = [...WEBSITE_SECTIONS, INTERNAL_SECTION] as const;
 export type DescriptionSection = (typeof DESCRIPTION_SECTIONS)[number];
+
+/** Free-text companion to the other-information tags; lives on the Features tab. */
+export const OTHER_INFORMATION_SECTION = "other_information";
+
+/** Every section the SPA writes through the descriptions endpoint. */
+export type WritableDescriptionSection = DescriptionSection | typeof OTHER_INFORMATION_SECTION;
 
 export function isKnownSection(section: string): section is DescriptionSection {
   return (DESCRIPTION_SECTIONS as readonly string[]).includes(section);
 }
 
-export function sectionToSlug(section: DescriptionSection): string {
+export function sectionToSlug(section: WritableDescriptionSection): string {
   return section.replace(/_/g, "-");
 }
 

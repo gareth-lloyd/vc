@@ -76,7 +76,7 @@ import {
 import type {
   AvailabilityBlockWriteInput,
   ChangeOverRuleWriteInput,
-  DescriptionSection,
+  WritableDescriptionSection,
   PropertyCapacityWriteInput,
   PropertyContactAssignmentWriteInput,
   PropertyCreateInput,
@@ -663,7 +663,7 @@ export function useUpdatePropertyCapacity(propertyId: number) {
 export function useUpsertPropertyDescription(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ section, body }: { section: DescriptionSection; body: string }) =>
+    mutationFn: ({ section, body }: { section: WritableDescriptionSection; body: string }) =>
       upsertPropertyDescription(propertyId, section, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.descriptions(propertyId) });
@@ -674,7 +674,7 @@ export function useUpsertPropertyDescription(propertyId: number) {
 export function useDeletePropertyDescription(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ section }: { section: DescriptionSection }) =>
+    mutationFn: ({ section }: { section: WritableDescriptionSection }) =>
       deletePropertyDescription(propertyId, section),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.descriptions(propertyId) });

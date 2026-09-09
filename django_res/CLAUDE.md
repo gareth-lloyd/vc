@@ -173,7 +173,10 @@ either go through a `.save()` loop or write an explicit audit row. The merge
 FK rewrites (`Contact.merge` / `Guest.merge`) use `.update()` by design and
 summarise what moved onto the deletion row via `core.audit.record_merge`
 (destination pk + per-relation counts, FG-016) rather than auditing each row.
-If bulk paths on tracked models ever proliferate, the structural fix is
+Schema-driven data migrations (an enum value rename, e.g. `properties/0007`)
+are the other sanctioned exception: historical models carry no signal
+receivers anyway, so `.update()` there is honest — say so in the migration
+header. If bulk paths on tracked models ever proliferate, the structural fix is
 trigger-based capture (`django-pghistory`), not more signal plumbing — don't
 build that now.
 

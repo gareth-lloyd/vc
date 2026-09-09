@@ -92,16 +92,29 @@ def test_delete_removes_section(api_client: APIClient, staff: User, property_: P
 
 
 @pytest.mark.django_db
-def test_internal_notes_section_round_trips(
-    api_client: APIClient, staff: User, property_: Property
+@pytest.mark.parametrize(
+    ("slug", "section"),
+    [
+        ("internal-notes", DescriptionSection.INTERNAL_NOTES),
+        # GAP-091: Features-tab prose + GAP-092's property-level rooms blurb.
+        ("other-information", DescriptionSection.OTHER_INFORMATION),
+        ("rooms", DescriptionSection.ROOMS),
+    ],
+)
+def test_hyphenated_sections_round_trip(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    slug: str,
+    section: DescriptionSection,
 ) -> None:
-    """`internal_notes` is a first-class section, reachable via its `-` slug."""
+    """Multi-word sections are first-class, reachable via their `-` slug."""
     api_client.force_login(staff)
-    url = f"/api/v1/properties/{property_.pk}/descriptions/internal-notes"
+    url = f"/api/v1/properties/{property_.pk}/descriptions/{slug}"
 
     created = api_client.put(url, data={"body": "Owner is difficult"}, format="json")
     assert created.status_code == 201, created.content
-    assert created.json()["section"] == "internal_notes"
+    assert created.json()["section"] == section.value
 
     fetched = api_client.get(url)
     assert fetched.status_code == 200
@@ -109,9 +122,7 @@ def test_internal_notes_section_round_trips(
 
     removed = api_client.delete(url)
     assert removed.status_code == 204
-    assert not PropertyDescription.objects.filter(
-        property=property_, section=DescriptionSection.INTERNAL_NOTES
-    ).exists()
+    assert not PropertyDescription.objects.filter(property=property_, section=section).exists()
 
 
 @pytest.mark.django_db
@@ -218,12 +229,14 @@ def test_delete_leaves_an_audit_tombstone(
 
 
 @pytest.mark.django_db
+# `villa-info` was retired by GAP-091 (migration 0007 renamed its rows).
+@pytest.mark.parametrize("slug", ["garbage-section", "villa-info"])
 def test_unknown_section_returns_404(
-    api_client: APIClient, staff: User, property_: Property
+    api_client: APIClient, staff: User, property_: Property, slug: str
 ) -> None:
     api_client.force_login(staff)
     response = api_client.put(
-        f"/api/v1/properties/{property_.pk}/descriptions/garbage-section",
+        f"/api/v1/properties/{property_.pk}/descriptions/{slug}",
         data={"body": "X"},
         format="json",
     )

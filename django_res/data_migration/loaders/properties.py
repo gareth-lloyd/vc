@@ -214,7 +214,7 @@ class PropertyLoader(BaseLoader):
     def _write_descriptions(self, prop: Property, row: dict[str, Any]) -> None:
         # Per 09-departures.md: WebsiteDescription/OverView->OVERVIEW;
         # HouseRules->HOUSE_RULES; FeatureDescription+RoomDescription
-        # concatenated->VILLA_INFO.
+        # concatenated->OTHER_INFORMATION (GAP-091 Unit 3 splits them).
         sections: dict[str, str] = {}
         if overview := (row.get("OverView") or "").strip():
             sections[DescriptionSection.OVERVIEW] = overview
@@ -224,7 +224,7 @@ class PropertyLoader(BaseLoader):
         rooms = (row.get("RoomDescription") or "").strip()
         if feat or rooms:
             joined = "\n\n".join(p for p in (feat, rooms) if p)
-            sections[DescriptionSection.VILLA_INFO] = joined
+            sections[DescriptionSection.OTHER_INFORMATION] = joined  # split in Unit 3
         if notes := (row.get("Notes") or "").strip():
             sections[DescriptionSection.FURTHER_INFO] = notes
         # Website copy from VillaPropertyImagesDescription (PRESERVE ALL,

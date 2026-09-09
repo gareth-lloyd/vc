@@ -224,6 +224,15 @@ def ensure_pending_record(instance: models.Model) -> tuple[SyncRecord, bool]:
     the `zoho_backfill` command (deliberate replay — deliberately unaffected
     by `suppress_zoho_push`). Returns `(record, was_already_pending)` — the
     flag lets `enqueue_zoho_push` skip a redundant dispatch.
+
+    An existing row is ALWAYS re-written PENDING + `updated_at`, even when it
+    is already PENDING. That stamp is what `push_sync_record`'s guarded
+    IN_SYNC write compares against: a push that read the row before this
+    bump misses its write, sees the row still PENDING and re-dispatches
+    itself, so the edit reaches Zoho instead of being stamped IN_SYNC under
+    a stale payload (BUG-027). Writing `status` too (not just the touch)
+    keeps the row PENDING even if the push's IN_SYNC write commits between
+    this function's SELECT and its UPDATE.
     """
     from django.contrib.contenttypes.models import ContentType
 
@@ -241,7 +250,7 @@ def ensure_pending_record(instance: models.Model) -> tuple[SyncRecord, bool]:
         },
     )
     already_pending = not was_created and record.status == SyncStatus.PENDING.value
-    if not was_created and not already_pending:
+    if not was_created:
         record.status = SyncStatus.PENDING.value
         record.save(update_fields=["status", "updated_at"])
     return record, already_pending
@@ -274,8 +283,10 @@ def enqueue_zoho_push(instance: models.Model) -> None:
     if already_pending:
         # A dispatch for this row is already in flight — a second .delay
         # would double-POST the same payload (e.g. `Person.merge` folding N
-        # relationship rows fires N child bumps). If the earlier dispatch
-        # was somehow lost, the `push_pending` sweep repairs PENDING rows.
+        # relationship rows fires N child bumps). The bump above moved
+        # `updated_at`, so the in-flight push re-dispatches itself on
+        # completion (see `ensure_pending_record`, BUG-027); the
+        # `push_pending` sweep repairs a lost dispatch.
         return
     transaction.on_commit(lambda: push_sync_record.delay(record.pk))
 

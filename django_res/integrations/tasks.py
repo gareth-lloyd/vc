@@ -52,7 +52,8 @@ def push_sync_record(sync_record_id: int) -> None:
 
     Payload is built at push time from the live target row. Outcomes:
     2xx → IN_SYNC + `last_pushed_at`, error cleared, `retry_count` reset (via
-    a guarded write — a concurrent PENDING bump wins); 4xx / builder error →
+    a guarded write — a concurrent PENDING bump wins and the row is
+    re-dispatched so the bump's edit is pushed); 4xx / builder error →
     permanent: ERROR + `error_message`, no retry; transport error / 5xx →
     bump `retry_count` and re-raise for autoretry (backoff+jitter, max 6);
     once `retry_count` exceeds the retry budget the row is parked ERROR so
@@ -118,9 +119,13 @@ def push_sync_record(sync_record_id: int) -> None:
 
     if response.is_success:
         # Guarded write: only stamp IN_SYNC if the row is untouched since this
-        # task read it. A concurrent edit's PENDING bump (whose own dispatch
-        # may have been lost) must win — the sweep only repairs PENDING rows,
-        # so blindly overwriting could strand that edit unsynced forever.
+        # task read it. A concurrent edit's PENDING bump must win — the
+        # payload just sent predates it. That bump deliberately did not
+        # dispatch (dedupe against this in-flight task), so on a miss THIS
+        # task re-dispatches — the bump's transaction has committed by the
+        # time the guarded UPDATE misses, so the next run builds the fresh
+        # payload (BUG-027). The status check keeps a miss caused by an
+        # IN_SYNC/ERROR/DISABLED stamp from re-POSTing.
         now = timezone.now()
         matched = SyncRecord.objects.filter(pk=record.pk, updated_at=record.updated_at).update(
             status=SyncStatus.IN_SYNC.value,
@@ -131,6 +136,8 @@ def push_sync_record(sync_record_id: int) -> None:
         )
         if not matched:
             logger.info("integrations.zoho_push_superseded", sync_record_id=record.pk)
+            if SyncRecord.objects.filter(pk=record.pk, status=SyncStatus.PENDING.value).exists():
+                push_sync_record.delay(record.pk)
         return
 
     detail = f"HTTP {response.status_code}: {response.text[:500]}"

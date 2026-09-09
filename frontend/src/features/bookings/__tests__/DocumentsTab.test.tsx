@@ -51,6 +51,7 @@ const bookingFixture = {
   payment_method: "card",
   cancel_reason: "",
   cancelled_at: null,
+  has_been_confirmed: true,
 };
 
 interface DocumentFixture {
@@ -168,12 +169,39 @@ describe("DocumentsTab", () => {
     // behind it — the tab has to say "the system did this", not blank.
     expect(screen.getByText(/system/i)).toBeInTheDocument();
     expect(screen.getByText(/not sent/i)).toBeInTheDocument();
+    // A contract is on file, so no missing-contract warning.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("renders an empty state when the booking has no documents", async () => {
-    server.use(listHandler([]));
+  it("renders a neutral empty state when a draft booking has no documents", async () => {
+    server.use(
+      http.get(`/api/v1/bookings/${BOOKING_ID}`, () =>
+        HttpResponse.json({ ...bookingFixture, status: "draft", has_been_confirmed: false }),
+      ),
+      listHandler([]),
+    );
     setup();
     expect(await screen.findByText(/no documents yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no contract on file/i)).not.toBeInTheDocument();
+    // Generating would only buy a 409 — the backend refuses a never-confirmed booking.
+    expect(screen.getByRole("button", { name: /generate contract/i })).toBeDisabled();
+  });
+
+  it("warns when a confirmed booking has no contract", async () => {
+    // The fixture has been confirmed, so the auto-generated contract should
+    // exist. Its absence is the one staff-visible sign that
+    // `auto_generate_contract` failed silently.
+    server.use(listHandler([]));
+    setup();
+    expect(await screen.findByRole("status")).toHaveTextContent(/no contract on file/i);
+    expect(screen.queryByText(/no documents yet/i)).not.toBeInTheDocument();
+  });
+
+  it("still warns when a confirmed booking's only document is not a contract", async () => {
+    server.use(listHandler([doc({ kind: "invoice", filename: "B-AAA-001-invoice-9.pdf" })]));
+    setup();
+    expect(await screen.findByText("B-AAA-001-invoice-9.pdf")).toBeInTheDocument();
+    expect(screen.getByText(/no contract on file/i)).toBeInTheDocument();
   });
 
   it("posts to :generate and refreshes the list", async () => {

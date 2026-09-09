@@ -14,6 +14,7 @@ from properties.enums import PriceBasis
 from properties.models import PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
 from reservations.serializers._contact_reads import contact_email, contact_name
+from reservations.services.booking_documents import has_been_confirmed
 from reservations.services.charges import (
     booking_total,
     charges_total_for,
@@ -140,6 +141,10 @@ class BookingDetailSerializer(BookingListSerializer):
     net_to_owner = serializers.SerializerMethodField()
     payment_splits = serializers.SerializerMethodField()
     charges_total = serializers.SerializerMethodField()
+    # GAP-094 retro: has this booking ever been confirmed (entered
+    # AWAITING_DEPOSIT)? Status alone cannot say for a cancelled booking, and
+    # the event trail lives here — so the API answers, not the client.
+    has_been_confirmed = serializers.SerializerMethodField()
 
     class Meta(BookingListSerializer.Meta):
         fields = [
@@ -153,6 +158,7 @@ class BookingDetailSerializer(BookingListSerializer):
             # `_at` is null when the body was backfilled, not agreed.
             "house_rules_snapshot",
             "house_rules_snapshot_at",
+            "has_been_confirmed",
             "payment_method",
             "cancel_reason",
             "cancelled_at",
@@ -218,6 +224,9 @@ class BookingDetailSerializer(BookingListSerializer):
 
     def get_charges_total(self, obj: Booking) -> str:
         return f"{self._charges_total(obj):.2f}"
+
+    def get_has_been_confirmed(self, obj: Booking) -> bool:
+        return has_been_confirmed(obj)
 
     @classmethod
     def _effective_commission(cls, obj: Booking) -> dict[str, Any] | None:

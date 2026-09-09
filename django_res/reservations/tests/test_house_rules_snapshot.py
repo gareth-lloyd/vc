@@ -159,6 +159,28 @@ def test_detail_serializer_exposes_snapshot_read_only(
 
 
 @pytest.mark.django_db
+def test_detail_serializer_says_whether_the_booking_was_ever_confirmed(
+    quotation_line: QuotationLine, terms: TermsVersion
+) -> None:
+    """The Documents tab's missing-contract warning and Generate gate read
+    this; status alone cannot answer it for a cancelled booking."""
+    property_ = quotation_line.property
+    PropertySettings.objects.create(property=property_, bookings_require_pre_approval=True)
+    booking = BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+    assert booking.status == BookingStatus.PENDING_OWNER_APPROVAL
+    assert BookingDetailSerializer(booking).data["has_been_confirmed"] is False
+
+    booking.owner_approve()
+    assert BookingDetailSerializer(booking).data["has_been_confirmed"] is True
+
+    booking.cancel("changed plans")
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.CANCELLED
+    # Cancelled after confirmation: only the event trail says so.
+    assert BookingDetailSerializer(booking).data["has_been_confirmed"] is True
+
+
+@pytest.mark.django_db
 def test_factory_booking_is_stamped_like_auto_accept(
     property_: Property, customer: Person, terms: TermsVersion, gbp: Currency
 ) -> None:

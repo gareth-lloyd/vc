@@ -56,8 +56,12 @@ _CONFIRMED_STATUSES = frozenset(
 )
 
 
-def _has_been_confirmed(booking: Booking) -> bool:
+def has_been_confirmed(booking: Booking) -> bool:
     """True when the booking has entered AWAITING_DEPOSIT at some point.
+
+    The one authority for "confirmed" — the generate guard below and the
+    detail serializer's `has_been_confirmed` (which the Documents tab reads
+    for its missing-contract warning and Generate gate) both call it.
 
     Currently-confirmed statuses answer without a query. Otherwise fall back
     to the transition trail — every `_transition` writes a `BookingEvent`, so
@@ -91,7 +95,7 @@ class BookingDocumentService:
         that has never been confirmed. Never overwrites an existing document:
         each call is a new row, so what a guest was sent stays retrievable.
         """
-        if not _has_been_confirmed(booking):
+        if not has_been_confirmed(booking):
             raise BookingDocumentNotAvailable(
                 f"A {kind} cannot be generated for a booking that has never been "
                 f"confirmed (status {booking.status!r})."

@@ -672,6 +672,8 @@
     "load_failed_body": "Try again.",
     "empty_title": "No documents yet",
     "empty_body": "Generate the booking contract to download it or send it to the guest.",
+    "missing_contract_title": "This confirmed booking has no contract on file",
+    "missing_contract_body": "A contract is normally generated automatically at confirmation. One can be generated from this tab and sent to the guest.",
     "kinds": {
       "confirmation": "Confirmation",
       "contract": "Contract",

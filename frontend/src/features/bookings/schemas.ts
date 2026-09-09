@@ -177,6 +177,9 @@ export const bookingDetailSchema = bookingListItemSchema.extend({
   house_rules_snapshot: z.string().optional(),
   // Null = body was backfilled, not agreed at confirmation (GAP-094 retro).
   house_rules_snapshot_at: z.string().nullable().optional(),
+  // Ever entered AWAITING_DEPOSIT — the API answers from status + the
+  // event trail, so a cancelled-after-confirmation booking reads true.
+  has_been_confirmed: z.boolean().optional(),
   payment_method: z.string().nullable().optional(),
   cancel_reason: z.string().nullable().optional(),
   cancelled_at: z.string().nullable().optional(),

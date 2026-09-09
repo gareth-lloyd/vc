@@ -101,6 +101,15 @@ export function DocumentsTab() {
   };
 
   const rows = documents.data?.results ?? [];
+  // Confirmation auto-generates (and emails) the contract, and that path
+  // swallows every failure into a log line nobody watches. A confirmed
+  // booking with no contract on file is therefore the one staff-visible
+  // sign that it failed — say so instead of the neutral "no documents yet".
+  // `has_been_confirmed` comes from the API (status + event trail), so a
+  // booking cancelled after confirmation is covered too.
+  const confirmed = booking.has_been_confirmed === true;
+  const missingContract =
+    documents.isSuccess && confirmed && !rows.some((row) => row.kind === "contract");
   // The backend refuses a recipient-less send with a 409 `no_recipient`
   // (anonymised guests, agency bookings with no guest address). Nothing on
   // this screen can fix that, so don't offer the button — and don't render a
@@ -118,11 +127,25 @@ export function DocumentsTab() {
           <Button type="button" variant="outline" onClick={() => setPreviewOpen(true)}>
             {t("documents.preview")}
           </Button>
-          <Button type="button" onClick={handleGenerate} disabled={!canWrite || generate.isPending}>
+          <Button
+            type="button"
+            onClick={handleGenerate}
+            disabled={!canWrite || !confirmed || generate.isPending}
+          >
             {t("documents.generate")}
           </Button>
         </div>
       </div>
+
+      {missingContract ? (
+        <div
+          role="status"
+          className="border-warning/40 bg-warning/10 text-warning space-y-1 rounded-md border px-3 py-2 text-sm"
+        >
+          <p className="font-medium">{t("documents.missing_contract_title")}</p>
+          <p>{t("documents.missing_contract_body")}</p>
+        </div>
+      ) : null}
 
       {documents.isLoading ? (
         <Skeleton className="h-32 w-full" />
@@ -133,7 +156,9 @@ export function DocumentsTab() {
           onRetry={() => documents.refetch()}
         />
       ) : rows.length === 0 ? (
-        <EmptyState title={t("documents.empty_title")} description={t("documents.empty_body")} />
+        missingContract ? null : (
+          <EmptyState title={t("documents.empty_title")} description={t("documents.empty_body")} />
+        )
       ) : (
         <ActivityList as="ol">
           {rows.map((row) => {

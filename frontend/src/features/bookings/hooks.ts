@@ -157,11 +157,15 @@ export function useGenerateBookingDocument(bookingId: BookingId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (kind: BookingDocumentKind) => generateBookingDocument(bookingId, kind),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.documents(bookingId) });
-      // Generating writes an AuditLog row.
-      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
-    },
+    // Returned so `mutateAsync` resolves only once the list is refetched:
+    // the tab's missing-contract warning reads the list, and must not
+    // outlive the "Contract generated" toast.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bookings.documents(bookingId) }),
+        // Generating writes an AuditLog row.
+        queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) }),
+      ]),
   });
 }
 
@@ -226,6 +230,10 @@ interface ToggleNotePinContext {
 function onActionSuccess(queryClient: QueryClient, bookingId: BookingId, updated: BookingDetail) {
   queryClient.setQueryData(queryKeys.bookings.detail(bookingId), updated);
   queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+  // Confirming auto-generates the contract (GAP-094) before the response
+  // lands; a Documents tab holding the pre-confirm empty list would
+  // otherwise pair a confirmed booking with "no contract on file".
+  queryClient.invalidateQueries({ queryKey: queryKeys.bookings.documents(bookingId) });
   // Lists, status-count badges, dashboard, the property's availability
   // calendars and contact sub-tabs (BUG-018).
   invalidateBookingDependents(queryClient, updated);

@@ -1,11 +1,61 @@
 # GAP-091 — Villa info becomes structured "Other information" tags + a free-text box (WP-searchable)
 
+> **✅ RESOLVED (2026-09-09, local `main` unpushed)** — shipped on
+> `feat/gap-091` in 5 units (efaabddf enum + migration, 75f95dd4 tag catalog
+> + seed_dev, bb99e66e loader split, b989fb3d Zoho block, 791061db frontend).
+> **What shipped:** `DescriptionSection` loses `villa_info` and gains
+> `other_information` + `rooms` (`section` widened to 32, migration
+> `properties/0007` renames existing rows in place). Tags are `Feature` rows
+> in the `other-information` `FeatureCategory` assigned via `PropertyFeature`
+> — no new model, `service_type` untouched, classification is by category
+> (legacy never discriminated tags by ServiceType either). The Features tab
+> renders an "Other information" section: the ordered tag list (a filtered
+> view over the tab's single `order`, saved by the same Save button; `order`
+> is rebuilt `[...main, ...tags]` only on a mutation, never on mount) plus the
+> free-text box with its own Save/Clear. The Zoho villa payload gains
+> `other_information: {tags, description}`; tag links are excluded from
+> `features[]` (facet on `tags[].slug`). The loader writes
+> `FeatureDescription → other_information` and `RoomDescription → rooms`
+> (GAP-092's blurb, no UI yet) and unfuses a pre-split DB on re-run
+> (`CUTOVER.md` §6e).
+>
+> **The blocker resolved itself in the legacy schema:** there is no `Tags`
+> table. "Other Information" is legacy feature category **Code 60 /
+> `VillaFeaturesCategory.Id=8`** of the single `VillaFeatures` catalogue;
+> live vocabulary mapped to it (Dec-2024 snapshot, legacy id): Wheelchair
+> access 96, No pets 124, No smoking indoors 125, Children not allowed 126,
+> Weddings and events 127, Pets allowed 128, Resident pets 129, Fenced pool
+> 130, Service kitchen 131, Staff accommodation 132, No large parties 271.
+> Excluded on purpose: `152 Wheelchair accessible` (soft-deleted 2024-07),
+> `298 Sea View` (mapped to eight categories; `FeatureLoader` files it under
+> Included Features and seeding owns `sea-view` under `outdoor`). **No seed
+> migration:** prod/staging get the vocabulary from `FeatureCategoryLoader` +
+> `FeatureLoader` (legacy_id `8` / per-row ids, slug `slugify(name)`); dev
+> DBs get it from `properties/other_information_catalog.py` via `seed_dev`
+> with the same `legacy_id`s stamped so a later loader run adopts the rows
+> (a migration-seeded vocabulary would break the exact-count feature tests).
+>
+> **Ops / partner notes:** (1) tell Limitless — tags moved out of
+> `features[]` into `other_information.tags`, facet on `slug`; run
+> `zoho_backfill --kinds villa` after deploy (GAP-082 amendment). (2)
+> `304 Dev Feature` is live junk under Code 60 and WILL surface as a tag after
+> cutover — deactivate it in the Tags admin (GAP-067 drops it). (3) A DB
+> loaded before this ships needs the §6e `loadlegacy property` re-run
+> immediately post-deploy, no `--since`, before staff edit. **Accepted
+> limitations:** per-assignment category + per-villa tag `Description`
+> override from `VillaFeaturesMappings` still dropped (GAP-067); links to a
+> deactivated feature keep pushing; Feature edits don't re-push villas;
+> `duplicate()` clones `other_information` + `rooms` with the tags (public
+> copy travels with its tags). GAP-090 keeps the block-set rebuild; GAP-092
+> renders `rooms`.
+
+
 - **Severity:** 🟢 Gap (customer-facing parity + WordPress search). Backend +
   frontend + data-migration.
 - **Source:** 2026-07-20 Nick screen-recording (`Recording-20260720_134424`,
   reviewed 2026-08-11). Transcript `[02:35–03:46]`, recap `[04:16–04:22]`;
   legacy Features screen captured at `[03:10]`, public rendering at `[02:46]`.
-- **⛔ Blocked on:** the preloaded tag vocabulary. Nick hovers the `Add +`
+- **~~⛔ Blocked on:~~ resolved (see banner):** the preloaded tag vocabulary. Nick hovers the `Add +`
   button under *Other Information Tags* at `[03:10]–[03:15]` but never opens
   it, so the full list is not on screen. Only the two assignments on the
   example villa are visible. Pull from the legacy snapshot, or confirm the

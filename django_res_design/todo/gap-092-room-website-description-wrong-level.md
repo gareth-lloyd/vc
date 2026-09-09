@@ -11,8 +11,10 @@
   - `django_res/properties/serializers/room.py:82`.
   - `django_res/data_migration/loaders/property_children.py:54` — maps legacy
     per-room `WebsiteDescription` onto the room.
-  - `django_res/data_migration/loaders/properties.py:237–241` — property-level
-    legacy `RoomDescription`, currently fused into `VILLA_INFO`.
+  - `django_res/data_migration/loaders/properties.py` `_write_descriptions` —
+    property-level legacy `RoomDescription`. *Since GAP-091 (2026-09-09) it
+    loads to its own `DescriptionSection.ROOMS` row* (API
+    `/properties/{id}/descriptions/rooms`); step 1 below is done, no UI yet.
   - `django_res/data_migration/management/commands/backfill_room_attrs.py:121,128`
     — **reads `website_description` as a keyword source** (see trap below).
   - `frontend/src/features/properties/components/RoomFormDialog.tsx:76, 90,
@@ -50,7 +52,10 @@ internal notes, no problem."*
    (`loaders/properties.py:237–241`). That is very likely this exact box.
    Confirm against the snapshot, then give it its own home — a
    `DescriptionSection` member (`rooms`) is the cheapest, rendering under the
-   bedrooms.
+   bedrooms. **Done by GAP-091 (2026-09-09):** `DescriptionSection.ROOMS`
+   exists and the loader writes `RoomDescription` into it (a DB loaded before
+   then needs the CUTOVER §6e re-run). What remains here is rendering it and
+   retiring the per-room field.
 2. **Retire `Room.website_description`** from the room dialog and the room
    serializer.
 3. ⚠️ **Do not drop the column blind — two traps:**

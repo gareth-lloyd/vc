@@ -165,6 +165,13 @@ parity break in the copy that sells the villas.
   is marked ⏸ superseded-pending and drops when this lands.
 - **GAP-091** (villa info → tags) removes `villa_info` from this enum;
   the two want sequencing together to avoid a double enum migration.
+  *Landed 2026-09-09 (GAP-091 shipped first):* the enum is now `overview /
+  house_rules / further_info / location / web_description / internal_notes /
+  other_information / rooms` (`section` widened to 32 chars, migration
+  `properties/0007`). `other_information` and `rooms` are **not**
+  Descriptions-tab sections (Features tab / GAP-092), so this ticket's block
+  set replaces the first six only; the `further_info` → internal-notes data
+  remap is still open here.
 - **GAP-092** (room website description → property level) adds one more
   property-level prose block; fold into this tab's layout if both are live.
 - Related: GAP-010 (spec areas reverse-engineered from the wrong codebase —

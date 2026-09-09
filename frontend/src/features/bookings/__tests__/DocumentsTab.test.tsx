@@ -250,6 +250,74 @@ describe("DocumentsTab", () => {
     expect(vi.mocked(toast.success)).toHaveBeenCalled();
   });
 
+  it("confirms before deleting an unsent document, then sends DELETE", async () => {
+    let deleteCalled = false;
+    let listCalls = 0;
+    server.use(
+      http.get(DOCUMENTS_URL, () => {
+        listCalls += 1;
+        return HttpResponse.json(documentsResponse(listCalls === 1 ? [doc()] : []));
+      }),
+      http.delete(`${DOCUMENTS_URL}/9`, () => {
+        deleteCalled = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /delete/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/has not been sent to the guest/i)).toBeInTheDocument();
+    expect(deleteCalled).toBe(false);
+
+    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }));
+
+    await waitFor(() => expect(deleteCalled).toBe(true));
+    await waitFor(() =>
+      expect(screen.queryByText("B-AAA-001-contract-9.pdf")).not.toBeInTheDocument(),
+    );
+    expect(vi.mocked(toast.success)).toHaveBeenCalled();
+  });
+
+  it("disables delete for a document that has been sent", async () => {
+    // The EmailLog that carried it references the blob; the backend answers
+    // 409, so the affordance is off rather than a guaranteed failure.
+    server.use(listHandler([doc({ sent_to_guest_at: "2026-05-02T10:00:00Z" })]));
+    setup();
+
+    expect(await screen.findByRole("button", { name: /delete/i })).toBeDisabled();
+    expect(
+      screen.getByText(/has been sent to the guest and cannot be deleted/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the server's reason when a delete is refused", async () => {
+    server.use(
+      listHandler([doc()]),
+      http.delete(`${DOCUMENTS_URL}/9`, () =>
+        HttpResponse.json(
+          {
+            code: "document_sent",
+            detail: "This document has been sent to the guest and cannot be deleted.",
+            field_errors: {},
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /delete/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }));
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringContaining("cannot be deleted"),
+      ),
+    );
+  });
+
   it("shows the server's reason when a send never reaches the mail pipeline", async () => {
     server.use(
       listHandler([doc()]),
@@ -402,6 +470,7 @@ describe("DocumentsTab", () => {
     expect(await screen.findByRole("button", { name: /download/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /generate contract/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /send to guest/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /delete/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /preview/i })).toBeEnabled();
   });
 });

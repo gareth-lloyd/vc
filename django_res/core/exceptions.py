@@ -101,6 +101,18 @@ class BookingDocumentNotAvailable(DomainError):
     code = "document_not_available"
 
 
+class BookingDocumentSent(DomainError):
+    """A `DELETE` on a document that has been sent to the guest (GAP-094 retro).
+
+    The `EmailLog` that carried it references the blob by storage key and a
+    resend re-reads it, so a sent document is a historical record: the row
+    and its bytes stay. The double-submitted duplicate that `DELETE` exists
+    to remove is by construction the unsent one.
+    """
+
+    code = "document_sent"
+
+
 class BookingDocumentFileMissing(DomainError):
     """The document row exists but its bytes are gone from storage (GAP-094).
 

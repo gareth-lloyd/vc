@@ -116,6 +116,15 @@ ACTIVE_BOOKING_STATUSES: tuple[str, ...] = (
     BookingStatus.CHECKED_IN.value,
 )
 
+# Statuses a booking can only hold after entering AWAITING_DEPOSIT — i.e.
+# after confirmation, when the contract is issued and the house rules are
+# snapshotted (GAP-094). `Booking.has_been_confirmed()` is the predicate:
+# these answer without a query; CANCELLED / EXPIRED / DECLINED need the
+# event trail.
+CONFIRMED_BOOKING_STATUSES: frozenset[str] = frozenset(
+    (*ACTIVE_BOOKING_STATUSES, BookingStatus.CHECKED_OUT.value)
+)
+
 # States that occupy the date range and must not overlap on the same
 # property. Includes PENDING_OWNER_APPROVAL so two owners can't race on
 # overlapping approvals (see `booking_no_overlap_blocking` constraint).

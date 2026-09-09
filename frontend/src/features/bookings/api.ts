@@ -147,6 +147,16 @@ export async function sendBookingDocument(
   return bookingDocumentSchema.parse(data);
 }
 
+/** Only an unsent document may be deleted — the API answers 409
+ * `document_sent` otherwise (the EmailLog that carried it references the
+ * blob). */
+export async function deleteBookingDocument(
+  bookingId: BookingId,
+  documentId: number,
+): Promise<void> {
+  await apiSend<unknown>("DELETE", `/bookings/${bookingId}/documents/${documentId}`);
+}
+
 /**
  * The bytes, streamed through the API behind the staff permission — the
  * `documents` storage alias is private, so there is no URL to link to.

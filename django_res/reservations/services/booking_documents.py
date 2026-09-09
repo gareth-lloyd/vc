@@ -21,9 +21,9 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 
-from core.exceptions import BookingDocumentNotAvailable
+from core.exceptions import BookingDocumentNotAvailable, BookingDocumentSent
 from core.logging.operations import log_operation
-from reservations.enums import BookingDocumentKind, BookingStatus
+from reservations.enums import BookingDocumentKind
 from reservations.models.booking_document import BookingDocument
 from reservations.services.booking_contract_render import (
     render_contract_pdf,
@@ -35,47 +35,6 @@ if TYPE_CHECKING:
     from reservations.models.booking import Booking
 
 logger = structlog.get_logger(__name__)
-
-# A contract can only say something true once the booking has been confirmed —
-# that is also when `house_rules_snapshot` is stamped. The question is
-# *historical* ("did this booking ever reach AWAITING_DEPOSIT?"), which the
-# current status alone cannot answer: `Booking.cancel()` accepts DRAFT and
-# PENDING_OWNER_APPROVAL, so a status denylist would let a booking no owner
-# ever approved through on its way to CANCELLED, and would refuse EXPIRED —
-# which is reachable only from AWAITING_DEPOSIT, i.e. a booking whose guest
-# already had a contract emailed to them.
-_CONFIRMED_STATUSES = frozenset(
-    {
-        BookingStatus.AWAITING_DEPOSIT.value,
-        BookingStatus.DEPOSIT_PAID.value,
-        BookingStatus.AWAITING_BALANCE.value,
-        BookingStatus.BALANCE_PAID.value,
-        BookingStatus.CHECKED_IN.value,
-        BookingStatus.CHECKED_OUT.value,
-    }
-)
-
-
-def has_been_confirmed(booking: Booking) -> bool:
-    """True when the booking has entered AWAITING_DEPOSIT at some point.
-
-    The one authority for "confirmed" — the generate guard below and the
-    detail serializer's `has_been_confirmed` (which the Documents tab reads
-    for its missing-contract warning and Generate gate) both call it.
-
-    Currently-confirmed statuses answer without a query. Otherwise fall back
-    to the transition trail — every `_transition` writes a `BookingEvent`, so
-    a CANCELLED or EXPIRED booking carries proof of the confirmation it came
-    through. (The status check also covers rows imported before that trail
-    existed, which `reservations.0010` backfilled on the same two legs.)
-    """
-    from reservations.models.booking import BookingEvent
-
-    if booking.status in _CONFIRMED_STATUSES:
-        return True
-    return BookingEvent.objects.filter(
-        booking=booking, to_status=BookingStatus.AWAITING_DEPOSIT.value
-    ).exists()
 
 
 class BookingDocumentService:
@@ -95,7 +54,7 @@ class BookingDocumentService:
         that has never been confirmed. Never overwrites an existing document:
         each call is a new row, so what a guest was sent stays retrievable.
         """
-        if not has_been_confirmed(booking):
+        if not booking.has_been_confirmed():
             raise BookingDocumentNotAvailable(
                 f"A {kind} cannot be generated for a booking that has never been "
                 f"confirmed (status {booking.status!r})."
@@ -130,6 +89,44 @@ class BookingDocumentService:
             size_bytes=len(pdf),
         )
         return document
+
+    @staticmethod
+    def delete(document: BookingDocument, *, actor: User | None = None) -> None:
+        """Hard-delete an *unsent* document.
+
+        Raises `BookingDocumentSent` (409) once `sent_to_guest_at` is set:
+        `EmailLog.attachments` references the blob by storage key and a
+        resend re-reads it, so a sent document is a record, not a draft.
+
+        The guard runs on a row re-read under `select_for_update`, not on
+        the instance the view loaded: a `:send` racing this call stamps the
+        row between load and delete, and the whole point of the 409 is to
+        keep exactly that row. A row already gone by then is a no-op — the
+        other DELETE won and wrote the audit tombstone.
+
+        `document.delete()` does the rest through signals: `core.audit.track`
+        writes the `__deleted__` tombstone from `post_delete`, and
+        `reservations.signals` releases the blob `on_commit` (a storage fault
+        there is logged as `reservations.booking_document_blob_orphaned`,
+        never raised). Nothing else points at `BookingDocument`.
+        """
+        with transaction.atomic():
+            locked = BookingDocument.objects.select_for_update().filter(pk=document.pk).first()
+            if locked is None:
+                return
+            if locked.sent_to_guest_at is not None:
+                raise BookingDocumentSent(
+                    "This document has been sent to the guest and cannot be deleted."
+                )
+            storage_key = locked.file.name or ""
+            locked.delete()
+        logger.info(
+            "reservations.booking_document_deleted",
+            booking_id=document.booking_id,
+            document_id=document.pk,
+            storage_key=storage_key,
+            actor_id=getattr(actor, "pk", None),
+        )
 
 
 def auto_generate_contract(booking_pk: int) -> None:

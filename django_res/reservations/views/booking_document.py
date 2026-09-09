@@ -108,8 +108,13 @@ class BookingDocumentListView(generics.ListAPIView):
         return _scoped_documents(self.kwargs["booking_pk"])
 
 
-class BookingDocumentDetailView(generics.RetrieveAPIView):
-    """`GET …/documents/{id}` — one document's metadata."""
+class BookingDocumentDetailView(generics.RetrieveDestroyAPIView):
+    """`GET …/documents/{id}` — one document's metadata.
+
+    `DELETE …/documents/{id}` — remove an *unsent* document (the remedy for a
+    double-submitted `:generate`). A sent document answers 409
+    `document_sent`: it is the record of what the guest received.
+    """
 
     serializer_class = BookingDocumentSerializer
     permission_classes = [IsAuthenticated, IsReservationsWriter]
@@ -117,6 +122,9 @@ class BookingDocumentDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self) -> QuerySet[BookingDocument]:
         return _scoped_documents(self.kwargs["booking_pk"])
+
+    def perform_destroy(self, instance: BookingDocument) -> None:
+        BookingDocumentService.delete(instance, actor=cast("User", self.request.user))
 
 
 class BookingDocumentGenerateView(APIView):

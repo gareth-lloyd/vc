@@ -28,6 +28,7 @@ from properties.enums import DescriptionSection
 from properties.models import PropertyDescription
 from reservations.enums import (
     ACTIVE_BOOKING_STATUSES,
+    CONFIRMED_BOOKING_STATUSES,
     OVERLAP_BLOCKING_BOOKING_STATUSES,
     TERMINAL_BOOKING_STATUSES,
     BookingHoldReason,
@@ -444,6 +445,24 @@ class Booking(AuditedModel):
         if self.house_rules_snapshot:
             return {}
         return house_rules_stamp(self.property_id)
+
+    def has_been_confirmed(self) -> bool:
+        """True when the booking has entered AWAITING_DEPOSIT at some point.
+
+        The one authority for "confirmed" (GAP-094): the document generate
+        guard and the detail serializer both call it. Currently-confirmed
+        statuses answer without a query; otherwise the transition trail
+        decides — every `_transition` writes a `BookingEvent`, so a
+        CANCELLED or EXPIRED booking carries proof of the confirmation it
+        came through. (The status leg also covers rows imported before that
+        trail existed, which `reservations.0010` backfilled on the same two
+        legs.)
+        """
+        if self.status in CONFIRMED_BOOKING_STATUSES:
+            return True
+        return BookingEvent.objects.filter(
+            booking=self, to_status=BookingStatus.AWAITING_DEPOSIT.value
+        ).exists()
 
     # `builtins.property`: the `property` FK shadows the decorator in the
     # class body (same workaround as `Enquiry`).

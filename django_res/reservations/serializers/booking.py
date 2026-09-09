@@ -14,7 +14,6 @@ from properties.enums import PriceBasis
 from properties.models import PropertyFinance, PropertySettings
 from reservations.models import Booking, BookingEvent, BookingNote
 from reservations.serializers._contact_reads import contact_email, contact_name
-from reservations.services.booking_documents import has_been_confirmed
 from reservations.services.charges import (
     booking_total,
     charges_total_for,
@@ -226,7 +225,7 @@ class BookingDetailSerializer(BookingListSerializer):
         return f"{self._charges_total(obj):.2f}"
 
     def get_has_been_confirmed(self, obj: Booking) -> bool:
-        return has_been_confirmed(obj)
+        return obj.has_been_confirmed()
 
     @classmethod
     def _effective_commission(cls, obj: Booking) -> dict[str, Any] | None:

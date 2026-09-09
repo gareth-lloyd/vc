@@ -55,6 +55,7 @@ import {
   resendBookingConfirmation,
   generateBookingDocument,
   resendBookingEmail,
+  deleteBookingDocument,
   sendBookingDocument,
   setDepositOverride,
   restoreBooking,
@@ -180,6 +181,23 @@ export function useSendBookingDocument(bookingId: BookingId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.bookings.emails(bookingId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
     },
+  });
+}
+
+export function useDeleteBookingDocument(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: number) => deleteBookingDocument(bookingId, documentId),
+    // `onSettled`, not `onSuccess`: the one refusal this route gives (409,
+    // sent elsewhere after this tab loaded) must refresh the row into its
+    // true disabled state, or every retry repeats the 409. Returned so
+    // `mutateAsync` resolves once the list is current.
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bookings.documents(bookingId) }),
+        // A hard delete writes an AuditLog tombstone the timeline shows.
+        queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) }),
+      ]),
   });
 }
 

@@ -40,7 +40,7 @@ from properties.models import (
     Room,
 )
 from properties.models.rooms import RoomBeds
-from reservations.enums import BookingStatus
+from reservations.enums import CONFIRMED_BOOKING_STATUSES, BookingStatus
 from reservations.models import (
     Booking,
     BookingNote,
@@ -49,7 +49,6 @@ from reservations.models import (
     TermsVersion,
 )
 from reservations.models.concierge import BookingConciergeItem
-from reservations.services.booking_documents import _CONFIRMED_STATUSES
 
 
 @pytest.mark.django_db(transaction=True)
@@ -168,7 +167,7 @@ def test_seed_dev_mixed_closes_audit_gaps() -> None:
     # property-creating stage must opt in — otherwise seeded confirmed
     # bookings silently render the no-rules contract branch. ----
     assert not Booking.objects.filter(
-        status__in=_CONFIRMED_STATUSES, house_rules_snapshot=""
+        status__in=CONFIRMED_BOOKING_STATUSES, house_rules_snapshot=""
     ).exists()
 
     # ---- Property status spread: at least one DRAFT or ARCHIVED ----

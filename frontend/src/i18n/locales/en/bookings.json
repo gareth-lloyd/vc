@@ -668,6 +668,7 @@
     "preview": "Preview",
     "download": "Download",
     "send": "Send to guest",
+    "delete": "Delete",
     "load_failed_title": "Couldn't load documents",
     "load_failed_body": "Try again.",
     "empty_title": "No documents yet",
@@ -687,10 +688,16 @@
     "not_sent": "Not sent",
     "file_missing": "File unavailable — generate the contract again.",
     "no_recipient": "No guest email on this booking — the contract can't be sent.",
+    "sent_cannot_delete": "This document has been sent to the guest and cannot be deleted.",
     "confirm_send": {
       "title": "Send this contract to the guest?",
       "body": "{{filename}} will be emailed to {{email}}.",
       "button": "Send"
+    },
+    "confirm_delete": {
+      "title": "Delete this document?",
+      "body": "{{filename}} has not been sent to the guest. This cannot be undone.",
+      "button": "Delete"
     },
     "preview_dialog": {
       "title": "Contract preview",
@@ -703,7 +710,9 @@
       "generate_failed": "Couldn't generate the contract.",
       "sent": "Contract sent to the guest",
       "send_failed": "Couldn't send the contract.",
-      "download_failed": "Couldn't download this document."
+      "download_failed": "Couldn't download this document.",
+      "deleted": "Document deleted",
+      "delete_failed": "Couldn't delete this document."
     }
   },
   "schema_errors": {

@@ -112,15 +112,34 @@
 > document would have been a silent no-op; the receiver resends the existing
 > log instead, mirroring `booking_confirmation_resend_requested_handler`.
 >
-> **⚠️ A document cannot be deleted.** There is no `DELETE` route
-> (`BookingDocumentDetailView` is a `RetrieveAPIView`), no admin registration
-> and no FE affordance — by design, since these are historical records staff
-> must be able to fetch. But it means a double-submitted `:generate` leaves
-> two identical contracts on the booking with no supported way to remove one;
-> today that needs a direct DB delete. Acceptable while nobody has reported it
-> (the row is inert unless someone sends it), and it is the other half of the
-> "no idempotency key" decision above — if operators do report duplicates,
-> revisit both together.
+> **Deleting a document (gap-094-retro).** `DELETE …/documents/{id}`
+> removes an **unsent** document — the remedy for a double-submitted
+> `:generate`, whose duplicate is by construction the unsent one (manual
+> `:generate` never sends; auto-generate sends its own row at once). A sent
+> document answers **409 `document_sent`** and nothing is removed:
+> `EmailLog.attachments` references the blob by storage key and both the
+> queued send and every later resend re-read it, so a sent document is the
+> record of what the guest received. The row is deleted inside the
+> transaction (`core.audit.track` writes the `__deleted__` tombstone; nothing
+> else points at `BookingDocument`); the blob is deleted `on_commit` by the
+> key captured beforehand, and a storage fault there is logged as
+> `reservations.booking_document_blob_orphaned` rather than raised — an
+> orphaned blob beats a dangling row (the receiver covers every hard
+> delete — API, booking cascade, admin, shell — not just the route).
+> What "sent" means here is `sent_to_guest_at`, stamped when the `EmailLog`
+> comes back QUEUED **or** SENT (see the overview): in production (non-eager
+> Celery) a send that later fails at the worker is *stamped*, so that
+> document is not deletable and staff regenerate and send a fresh one; the
+> un-stamped, still-deletable cases are an eager-dispatch FAILED (staging,
+> tests) and an allowlist-BLOCKED row. Both of those `EmailLog`s reference
+> the blob, so a Comms-tab or admin resend after the delete cannot read the
+> attachment and retries as a transient storage error — regenerate and send
+> instead. The FE shows Delete per row, disabled with the reason inline once
+> sent, disabled for viewers, behind a destructive confirm. Deploy
+> checklist: the documents-bucket credentials need `s3:DeleteObject`
+> alongside Get/Put, or every delete 204s while the PDF stays behind (logged
+> as `reservations.booking_document_blob_orphaned` with the key).
+> Still no idempotency key on `:generate` — the delete route is the remedy.
 >
 > **Deferred, deliberately:** the other four `BookingDocumentKind` values
 > (enum only — the API answers `unsupported_kind`); a `/jobs` surface and a

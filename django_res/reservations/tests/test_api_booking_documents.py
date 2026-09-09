@@ -19,13 +19,18 @@ from datetime import date
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+import structlog
 from botocore.exceptions import ClientError
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
+from django.db.models import QuerySet
 from django.http import StreamingHttpResponse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
+from core.models import AuditLog
 from properties.enums import DescriptionSection
 from properties.models import PropertyDescription, PropertySettings
 from reservations.enums import BookingDocumentKind, BookingStatus
@@ -633,3 +638,144 @@ def test_generate_is_recorded_against_the_acting_user(
     document = BookingDocument.objects.get(pk=resp.data["id"])
     assert document.generated_by == staff
     assert document.created_by == staff
+
+
+# ----------------------------------------------------------------------
+# DELETE — only an unsent document (GAP-094 retro)
+# ----------------------------------------------------------------------
+def _audit_rows_for(document_pk: int) -> QuerySet[AuditLog]:
+    ct = ContentType.objects.get_for_model(BookingDocument)
+    return AuditLog.objects.filter(content_type=ct, object_id=str(document_pk))
+
+
+@pytest.mark.django_db
+def test_delete_removes_an_unsent_document_its_file_and_leaves_an_audit_trail(
+    api_client: APIClient,
+    staff: User,
+    booking: Booking,
+    django_capture_on_commit_callbacks: Any,
+) -> None:
+    """The remedy for a double-submitted `:generate`: the duplicate is the
+    unsent one. Row goes inside the transaction (the audit tombstone comes
+    from `track`), the blob goes after commit."""
+    document = _make_document(booking)
+    stored_key = document.file.name
+    assert stored_key
+    storage = document.file.storage
+    assert storage.exists(stored_key)
+    api_client.force_login(staff)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.delete(f"{_documents_url(booking)}/{document.pk}")
+
+    assert resp.status_code == 204, resp.data
+    assert not BookingDocument.objects.filter(pk=document.pk).exists()
+    assert _audit_rows_for(document.pk).latest("created_at").field_diffs["__deleted__"] is True
+    assert not storage.exists(stored_key)
+
+
+@pytest.mark.django_db
+def test_delete_still_succeeds_when_the_blob_cannot_be_removed(
+    api_client: APIClient,
+    staff: User,
+    booking: Booking,
+    monkeypatch: pytest.MonkeyPatch,
+    django_capture_on_commit_callbacks: Any,
+) -> None:
+    """An orphaned blob beats a dangling row: the row is gone by the time the
+    storage call runs, so a storage fault is logged, not raised."""
+    document = _make_document(booking)
+    stored_key = document.file.name
+    storage = document.file.storage
+
+    def _refuse(*_args: object, **_kwargs: object) -> None:
+        raise OSError("storage refused the delete")
+
+    monkeypatch.setattr(type(storage), "delete", _refuse)
+    api_client.force_login(staff)
+
+    with structlog.testing.capture_logs() as logs, django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.delete(f"{_documents_url(booking)}/{document.pk}")
+
+    assert resp.status_code == 204
+    assert not BookingDocument.objects.filter(pk=document.pk).exists()
+    orphaned = [
+        entry for entry in logs if entry["event"] == "reservations.booking_document_blob_orphaned"
+    ]
+    assert orphaned and orphaned[0]["storage_key"] == stored_key
+
+
+@pytest.mark.django_db
+def test_delete_of_a_sent_document_is_409_and_removes_nothing(
+    api_client: APIClient, staff: User, booking: Booking
+) -> None:
+    """The EmailLog that sent it references the blob by storage key and a
+    resend re-reads it, so a sent document is a historical record."""
+    document = _make_document(booking)
+    document.sent_to_guest_at = timezone.now()
+    document.save(update_fields=["sent_to_guest_at"])
+    stored_key = document.file.name
+    assert stored_key
+    api_client.force_login(staff)
+
+    resp = api_client.delete(f"{_documents_url(booking)}/{document.pk}")
+
+    assert resp.status_code == 409, resp.data
+    assert resp.data["code"] == "document_sent"
+    assert resp.data["detail"] == "This document has been sent to the guest and cannot be deleted."
+    assert BookingDocument.objects.filter(pk=document.pk).exists()
+    assert document.file.storage.exists(stored_key)
+    assert not _audit_rows_for(document.pk).filter(field_diffs__has_key="__deleted__").exists()
+
+
+@pytest.mark.django_db
+def test_delete_guard_reads_the_row_under_lock_not_the_loaded_instance(
+    api_client: APIClient, staff: User, booking: Booking, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `:send` racing the DELETE stamps the row after the view loaded it.
+    The guard must see the stamp — the 409 exists to keep exactly that row."""
+    from reservations.services import booking_documents as svc
+
+    document = _make_document(booking)
+    real_delete = svc.BookingDocumentService.delete
+
+    def _stamp_then_delete(doc: BookingDocument, **kwargs: Any) -> None:
+        # The race, made deterministic: the send lands between the view's
+        # load and the service's locked re-read.
+        BookingDocument.objects.filter(pk=doc.pk).update(sent_to_guest_at=timezone.now())
+        real_delete(doc, **kwargs)
+
+    monkeypatch.setattr(svc.BookingDocumentService, "delete", staticmethod(_stamp_then_delete))
+    api_client.force_login(staff)
+
+    resp = api_client.delete(f"{_documents_url(booking)}/{document.pk}")
+
+    assert resp.status_code == 409, resp.data
+    assert BookingDocument.objects.filter(pk=document.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_is_404_under_another_bookings_url(
+    api_client: APIClient, staff: User, booking: Booking, other_booking: Booking
+) -> None:
+    document = _make_document(booking)
+    api_client.force_login(staff)
+
+    resp = api_client.delete(f"{_documents_url(other_booking)}/{document.pk}")
+
+    assert resp.status_code == 404
+    assert BookingDocument.objects.filter(pk=document.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_is_refused_for_viewers_and_anonymous_callers(
+    api_client: APIClient, viewer: User, booking: Booking
+) -> None:
+    document = _make_document(booking)
+    url = f"{_documents_url(booking)}/{document.pk}"
+
+    assert api_client.delete(url).status_code == 403
+
+    api_client.force_login(viewer)
+    assert api_client.delete(url).status_code == 403
+    assert BookingDocument.objects.filter(pk=document.pk).exists()

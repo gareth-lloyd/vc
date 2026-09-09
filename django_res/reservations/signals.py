@@ -21,6 +21,7 @@ from django.db.models import ProtectedError
 from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import Signal
 
+from core.storage import release_stored_file_after_commit
 from reservations.enums import (
     BookingGuestRole,
     BookingStatus,
@@ -345,7 +346,24 @@ def _booking_confirmed_generate_contract(
 # ---------------------------------------------------------------------------
 
 
+def _release_booking_document_blob(sender: Any, instance: Any, **kwargs: Any) -> None:
+    """Release a deleted `BookingDocument`'s PDF once the delete commits.
+
+    Registered on `post_delete` rather than done in the service so every
+    hard delete releases the bytes — the API `DELETE`, a booking cascade (the
+    demo seeder hard-deletes bookings), admin, shell — and guest-PII PDFs do
+    not accumulate in the private bucket with nothing pointing at them.
+    """
+    release_stored_file_after_commit(
+        instance.file,
+        log_event="reservations.booking_document_blob_orphaned",
+        booking_id=instance.booking_id,
+        document_id=instance.pk,
+    )
+
+
 def _connect() -> None:
+    from reservations.models.booking_document import BookingDocument
     from reservations.models.booking_guest import BookingGuest
     from reservations.models.charge_item import BookingChargeItem
     from reservations.models.enquiry import EnquiryNote
@@ -365,6 +383,11 @@ def _connect() -> None:
         _enquiry_note_zoho_bump,
         sender=EnquiryNote,
         dispatch_uid="reservations.enquiry_note_zoho_bump_post_delete",
+    )
+    post_delete.connect(
+        _release_booking_document_blob,
+        sender=BookingDocument,
+        dispatch_uid="reservations.booking_document_release_blob",
     )
     post_save.connect(
         _charge_item_changed,

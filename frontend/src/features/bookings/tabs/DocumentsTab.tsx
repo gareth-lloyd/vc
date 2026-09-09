@@ -13,7 +13,12 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import { formatDate } from "@/lib/format/date";
 import { downloadBookingDocument } from "../api";
 import { ContractPreviewDialog } from "../components/ContractPreviewDialog";
-import { useBookingDocuments, useGenerateBookingDocument, useSendBookingDocument } from "../hooks";
+import {
+  useBookingDocuments,
+  useDeleteBookingDocument,
+  useGenerateBookingDocument,
+  useSendBookingDocument,
+} from "../hooks";
 import { bookingDocumentKindLabel, type BookingDocument } from "../schemas";
 import type { BookingOutletContext } from "../BookingDetailLayout";
 
@@ -53,8 +58,10 @@ export function DocumentsTab() {
   const documents = useBookingDocuments(booking.id);
   const generate = useGenerateBookingDocument(booking.id);
   const send = useSendBookingDocument(booking.id);
+  const remove = useDeleteBookingDocument(booking.id);
 
   const [pendingSend, setPendingSend] = useState<BookingDocument | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<BookingDocument | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [downloading, setDownloading] = useState<ReadonlySet<number>>(new Set());
 
@@ -76,6 +83,18 @@ export function DocumentsTab() {
       toast.error(errorMessage(error, t("documents.toasts.send_failed")));
     } finally {
       setPendingSend(null);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+    try {
+      await remove.mutateAsync(pendingDelete.id);
+      toast.success(t("documents.toasts.deleted"));
+    } catch (error) {
+      toast.error(errorMessage(error, t("documents.toasts.delete_failed")));
+    } finally {
+      setPendingDelete(null);
     }
   };
 
@@ -190,6 +209,11 @@ export function DocumentsTab() {
                     {!recipient ? (
                       <p className="text-muted-foreground text-xs">{t("documents.no_recipient")}</p>
                     ) : null}
+                    {row.sent_to_guest_at != null && canWrite ? (
+                      <p className="text-muted-foreground text-xs">
+                        {t("documents.sent_cannot_delete")}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <span className="text-muted-foreground text-xs">
@@ -221,6 +245,24 @@ export function DocumentsTab() {
                       >
                         {t("documents.send")}
                       </Button>
+                      {/* Disabled, not hidden, once sent: the EmailLog that
+                          carried it references the blob, so the backend
+                          refuses (409). The reason is inline text above,
+                          like file_missing / no_recipient — a `title` on a
+                          disabled button never shows to keyboard or touch. */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setPendingDelete(row)}
+                        disabled={
+                          !canWrite ||
+                          row.sent_to_guest_at != null ||
+                          (remove.isPending && remove.variables === row.id)
+                        }
+                      >
+                        {t("documents.delete")}
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -247,6 +289,19 @@ export function DocumentsTab() {
         })}
         confirmLabel={t("documents.confirm_send.button")}
         busy={send.isPending}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete != null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title={t("documents.confirm_delete.title")}
+        description={t("documents.confirm_delete.body", {
+          filename: pendingDelete?.filename ?? "",
+        })}
+        confirmLabel={t("documents.confirm_delete.button")}
+        destructive
+        busy={remove.isPending}
       />
     </div>
   );

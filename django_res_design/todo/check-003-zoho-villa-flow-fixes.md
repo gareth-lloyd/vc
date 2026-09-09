@@ -25,6 +25,9 @@ no push of its own) and the relative hero-image URL, which is a note on
    GAP-067 derived ones — never reaches the CRM, and it is the most useful
    segmentation axis on a Product. Each entry carries `name`, `slug`,
    `category`, `service_type`, `is_derived`.
+   *GAP-091 (2026-09-09)* moved the "Other Information" tags out of
+   `features[]` into a sibling `other_information` block — see the GAP-082
+   amendment for the shape and what Limitless maps.
 
 2. **The management company picked can be the wrong one.** `contacts[]` is
    ordered by role then pk (`properties/services/zoho_payload.py:214`), so

@@ -32,6 +32,11 @@ from properties.enums import FeatureServiceType
 from properties.models import Feature, FeatureCategory
 
 _CATEGORY_NAME = "Other Information"  # exactly the legacy name — the loader slugifies it
+# The read side keys on this slug everywhere — Zoho payload partition, seeding
+# stage, the SPA's Features tab (`lib/domain/features/schemas.ts`). Renaming
+# the category's slug silently empties the tag block on all three; the
+# legacy_id-first resolution below is for loader ADOPTION of the row, not a
+# runtime fallback. Keep the slug fixed.
 OTHER_INFORMATION_CATEGORY_SLUG = slugify(_CATEGORY_NAME)  # "other-information"
 _CATEGORY_LEGACY_ID = "8"  # VillaFeaturesCategory.Id
 _CATEGORY_SORT_ORDER = 60  # VillaFeaturesCategory.Code, which the loader maps to sort_order

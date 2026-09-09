@@ -25,6 +25,29 @@
 > is enough). The key is dropped outright, not nulled. Limitless should be
 > told at the next touchpoint so any Deluge mapping reading `category.*`
 > is retired; a missing key parses as null, so nothing breaks meanwhile.
+>
+> **Amendment 2026-09-09 (GAP-091):** new top-level block
+> `other_information: {"tags": [...], "description": "<body or ''>"}` — the
+> legacy Features screen's "Other Information" pair. `tags[]` are the villa's
+> `PropertyFeature` links whose feature sits in the `other-information`
+> category (same row shape as `features[]`, per-villa `sort_order`), and they
+> are **excluded from `features[]`** — WordPress facets on the block, and a
+> tag in both would double-render on the villa page. `description` is the
+> `other_information` description section, `""` when absent. Saving/deleting
+> that section bumps the villa push; other sections do not. Tell Limitless:
+> facet on `other_information.tags[].slug`; anything mapping tags out of
+> `features[]` moves to the new block. `Note` stays omitted.
+> **After deploy run `zoho_backfill --kinds villa`** — nothing re-pushes
+> villas already IN_SYNC, and their last record still carries tags inside
+> `features[]` and no `other_information` key.
+> Two decisions recorded here: (1) links to a **deactivated** feature keep
+> riding both arrays — retiring a tag via `is_active=false` stops new
+> assignments only; staff still see the chip and remove it per villa;
+> (2) editing a `Feature` itself (rename, re-categorise into/out of Other
+> Information) does **not** re-push the villas linking it — `Feature` is not
+> a villa child, so a re-categorised tag flips block on each villa's next
+> unrelated push. Accepted staleness: run `zoho_backfill --kinds villa`
+> after curating the catalogue (GAP-067).
 
 - **Severity:** Gap
 - **Source:** Descoped from [GAP-081](done/gap-081-zoho-flow-outbound-push.md)

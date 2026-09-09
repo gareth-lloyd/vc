@@ -28,8 +28,9 @@ from integrations import tasks
 from integrations.enums import SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from integrations.services.zoho_flow import get_zoho_spec, suppress_zoho_push
-from properties.enums import BedSize, PropertyStatus
+from properties.enums import BedSize, DescriptionSection, PropertyStatus
 from properties.factories import (
+    FeatureCategoryFactory,
     FeatureFactory,
     PropertyContactAssignmentFactory,
     PropertyFactory,
@@ -38,11 +39,13 @@ from properties.factories import (
     RoomFactory,
 )
 from properties.models.contacts import PropertyContactAssignment
+from properties.models.descriptions import PropertyDescription
 from properties.models.features import Feature, PropertyFeature
 from properties.models.geo import Region
 from properties.models.location import PropertyLocation
 from properties.models.property import Property
 from properties.models.rooms import Room, RoomAttribute, RoomAttributeAssignment
+from properties.other_information_catalog import OTHER_INFORMATION_CATEGORY_SLUG
 from properties.services.availability import PropertyAvailabilityService
 from properties.services.zoho_payload import build_property_payload
 
@@ -381,6 +384,80 @@ def test_payload_features_per_villa_order_and_is_derived() -> None:
     ]
 
 
+def _other_information_category() -> Any:
+    return FeatureCategoryFactory(slug=OTHER_INFORMATION_CATEGORY_SLUG, name="Other Information")
+
+
+def test_payload_other_information_block_and_features_exclusion() -> None:
+    """GAP-091: other-information tags ride their own block (ordered, same row
+    shape as `features[]`) and are EXCLUDED from `features[]` — WordPress
+    facets on the block, and a tag in both would double-render."""
+    prop = _property()
+    tags_category = _other_information_category()
+    pets = _feature(name="Pets allowed", category=tags_category)
+    no_smoking = _feature(name="No smoking indoors", category=tags_category)
+    pool = _feature(name="Pool")
+    # Legacy MappingOrder is per-category, so loaded villas interleave.
+    pool_link = PropertyFeature.objects.create(property=prop, feature=pool, sort_order=2)
+    smoking_link = PropertyFeature.objects.create(
+        property=prop, feature=no_smoking, sort_order=3, is_derived=True
+    )
+    pets_link = PropertyFeature.objects.create(property=prop, feature=pets, sort_order=1)
+    PropertyDescription.objects.create(
+        property=prop,
+        section=DescriptionSection.OTHER_INFORMATION,
+        body="Licence 0829K. The pool cannot be heated.",
+    )
+
+    payload = build_property_payload(prop)
+
+    assert payload["other_information"] == {
+        "tags": [
+            {
+                "RES_ID": pets_link.pk,
+                "id": pets_link.pk,
+                "feature_id": pets.pk,
+                "name": "Pets allowed",
+                "slug": pets.slug,
+                "category": "Other Information",
+                "service_type": pets.service_type,
+                "sort_order": 1,
+                "is_derived": False,
+            },
+            {
+                "RES_ID": smoking_link.pk,
+                "id": smoking_link.pk,
+                "feature_id": no_smoking.pk,
+                "name": "No smoking indoors",
+                "slug": no_smoking.slug,
+                "category": "Other Information",
+                "service_type": no_smoking.service_type,
+                "sort_order": 3,
+                "is_derived": True,
+            },
+        ],
+        "description": "Licence 0829K. The pool cannot be heated.",
+    }
+    assert [f["RES_ID"] for f in payload["features"]] == [pool_link.pk]
+    all_link_ids = [f["RES_ID"] for f in payload["features"]] + [
+        t["RES_ID"] for t in payload["other_information"]["tags"]
+    ]
+    assert len(all_link_ids) == len(set(all_link_ids)) == 3
+
+
+def test_payload_other_information_block_present_when_empty() -> None:
+    prop = _property()
+    PropertyFeature.objects.create(property=prop, feature=_feature())
+    PropertyDescription.objects.create(
+        property=prop, section=DescriptionSection.HOUSE_RULES, body="No parties"
+    )
+
+    payload = build_property_payload(prop)
+
+    assert payload["other_information"] == {"tags": [], "description": ""}
+    assert len(payload["features"]) == 1
+
+
 # --- payload: hero image / JSON safety / omissions ------------------------
 
 
@@ -525,6 +602,12 @@ def _get_image(prop: Property) -> Any:
     return prop.images.get()
 
 
+def _make_other_information_description(prop: Property) -> Any:
+    return PropertyDescription.objects.create(
+        property=prop, section=DescriptionSection.OTHER_INFORMATION, body="Licence 0829K"
+    )
+
+
 @pytest.mark.usefixtures("run_on_commit_immediately", "villa_webhook")
 @pytest.mark.parametrize(
     "make_child",
@@ -537,6 +620,7 @@ def _get_image(prop: Property) -> Any:
         _make_beds,
         _make_room_attribute_link,
         _get_image,
+        _make_other_information_description,
     ],
     ids=[
         "PropertyFeature",
@@ -547,6 +631,7 @@ def _get_image(prop: Property) -> Any:
         "RoomBeds",
         "RoomAttributeAssignment",
         "PropertyImage",
+        "PropertyDescription(other_information)",
     ],
 )
 def test_child_save_and_delete_bump_parent(make_child: Any, delay_mock: mock.Mock) -> None:
@@ -570,6 +655,27 @@ def test_child_save_and_delete_bump_parent(make_child: Any, delay_mock: mock.Moc
     assert record.status == SyncStatus.PENDING
     delay_mock.assert_called_once()
     assert SyncRecord.objects.filter(content_type=_property_ct()).count() == 1
+
+
+@pytest.mark.usefixtures("run_on_commit_immediately", "villa_webhook")
+def test_other_description_sections_do_not_bump(delay_mock: mock.Mock) -> None:
+    """Only the `other_information` section rides the villa payload; editing
+    house rules (or any other copy block) must not re-push the villa."""
+    prop = _property()
+    record = _record_for(prop)
+    _mark_in_sync(record)
+    delay_mock.reset_mock()
+
+    row = PropertyDescription.objects.create(
+        property=prop, section=DescriptionSection.HOUSE_RULES, body="No parties"
+    )
+    row.body = "No loud parties"
+    row.save()
+    row.delete()
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.IN_SYNC
+    delay_mock.assert_not_called()
 
 
 @pytest.mark.usefixtures("run_on_commit_immediately", "villa_webhook")

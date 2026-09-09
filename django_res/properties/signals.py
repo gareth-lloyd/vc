@@ -10,8 +10,10 @@ from django.db.models.fields.files import FieldFile
 from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.dispatch import receiver
 
+from properties.enums import DescriptionSection
 from properties.models.capacity import PropertyCapacity
 from properties.models.contacts import PropertyContactAssignment
+from properties.models.descriptions import PropertyDescription
 from properties.models.features import Collection, PropertyFeature
 from properties.models.images import PropertyImage
 from properties.models.location import PropertyLocation
@@ -125,6 +127,21 @@ for _child, _getter in _VILLA_CHILDREN:
         weak=False,
         dispatch_uid=f"properties.zoho_flow:{_child.__name__}:post_delete",
     )
+
+
+_description_zoho_bump = _villa_child_zoho_bump(attrgetter("property"))
+
+
+@receiver(
+    [post_save, post_delete],
+    sender=PropertyDescription,
+    dispatch_uid="properties.zoho_flow:PropertyDescription",
+)
+def property_description_zoho_bump(sender: type, instance: Any, **kwargs: Any) -> None:
+    """Only the `other_information` section rides the villa payload (GAP-091);
+    house rules and the rest must not re-push the villa."""
+    if instance.section == DescriptionSection.OTHER_INFORMATION:
+        _description_zoho_bump(sender, instance, **kwargs)
 
 
 def _property_features_m2m_zoho_bump(

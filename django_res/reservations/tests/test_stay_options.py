@@ -7,6 +7,8 @@ fixture pricing graph (Summer 2026 plan, £200/night rule covering
 
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -18,8 +20,8 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from core.enums import StaffRole
 from core.tests import assert_max_queries
-from properties.enums import PrefilledChangeOverDay
-from properties.models import ChangeOverRule
+from properties.enums import DescriptionSection, PrefilledChangeOverDay
+from properties.models import ChangeOverRule, PropertyDescription
 from reservations.factories import make_occupying_booking
 from reservations.models import BookingHold
 from reservations.services.stay_options import (
@@ -693,6 +695,28 @@ class TestSearchOptionsEndpoint:
         # Enrichment flows through from the engine breakdown untouched.
         assert quote["changeover_day"] == "sat"
         assert quote["inclusion"] == ""
+
+    def test_response_never_carries_house_rules(
+        self,
+        api_client: APIClient,
+        staff: User,
+        property_: Property,
+        rate_rule: RateBand,
+    ) -> None:
+        """GAP-094: house rules are contract-only; never public. The
+        quote-options payload enriches each quote from the villa's descriptions
+        (e.g. `inclusion`) but must never carry the HOUSE_RULES body."""
+        sentinel = f"HR-SENTINEL-{uuid.uuid4().hex}"
+        PropertyDescription.objects.create(
+            property=property_, section=DescriptionSection.HOUSE_RULES, body=sentinel
+        )
+        api_client.force_authenticate(staff)
+
+        response = api_client.post(self.URL, self._body(property_), format="json")
+
+        assert response.status_code == 200
+        assert response.data["quotes"][0]["available"] is True
+        assert sentinel not in json.dumps(response.data, default=str)
 
     def test_multi_week_flex_accepted(
         self,

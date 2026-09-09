@@ -10,6 +10,7 @@ in tests (xdist worker leak); behaviour toggled via
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
@@ -27,6 +28,8 @@ from integrations import tasks
 from integrations.enums import SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from integrations.services.zoho_flow import enqueue_zoho_push, get_zoho_spec
+from properties.enums import DescriptionSection
+from properties.models import PropertyDescription
 from reservations.enums import BookingGuestRole, BookingStatus
 from reservations.models import (
     Booking,
@@ -1054,3 +1057,22 @@ def test_deposit_failed_bumps(booking: Booking, delay_mock: mock.Mock) -> None:
 
     record.refresh_from_db()
     assert record.status == SyncStatus.PENDING
+
+
+# --- GAP-094 leak guard ---------------------------------------------------
+
+
+def test_payload_never_carries_house_rules(booking: Booking, property_: Property) -> None:
+    """GAP-094: house rules are contract-only; never public. Neither the
+    booking's `house_rules_snapshot` nor the villa's live HOUSE_RULES body may
+    reach the Zoho booking push under any key."""
+    sentinel = f"HR-SENTINEL-{uuid.uuid4().hex}"
+    PropertyDescription.objects.create(
+        property=property_, section=DescriptionSection.HOUSE_RULES, body=sentinel
+    )
+    booking.house_rules_snapshot = sentinel
+    booking.save(update_fields=["house_rules_snapshot"])
+
+    payload = build_booking_payload(booking)
+
+    assert sentinel not in json.dumps(payload, default=str)

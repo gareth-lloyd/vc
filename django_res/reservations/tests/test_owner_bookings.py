@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, cast
@@ -21,9 +23,9 @@ from owners.factories import (
 )
 from owners.models import OwnerOrganisation
 from pricing.models import Currency
-from properties.enums import CommissionCalcType
+from properties.enums import CommissionCalcType, DescriptionSection
 from properties.factories import PropertyFactory
-from properties.models import Country, Property
+from properties.models import Country, Property, PropertyDescription
 from properties.models.finance import PropertyFinance
 from reservations.enums import BookingStatus, PaymentMethod
 from reservations.models import (
@@ -708,3 +710,31 @@ def test_detail_query_budget_with_splits(
     with assert_max_queries(12):
         detail = _detail(api_client, booking)
     assert len(detail["payment_splits"]) == 2
+
+
+def test_owner_list_and_detail_never_carry_house_rules(
+    api_client: APIClient, gbp: Currency, terms: TermsVersion, customer: Person, property_: Property
+) -> None:
+    """GAP-094: house rules are contract-only; never public. Even with every
+    grant on, the owner portal's booking list and detail must not carry the
+    booking's `house_rules_snapshot` nor the villa's live HOUSE_RULES body."""
+    sentinel = f"HR-SENTINEL-{uuid.uuid4().hex}"
+    PropertyDescription.objects.create(
+        property=property_, section=DescriptionSection.HOUSE_RULES, body=sentinel
+    )
+    org = cast(OwnerOrganisation, OwnerOrganisationFactory())
+    user = _owner(org)
+    _grant(org, property_, view_full_money=True, view_guest_details=True)
+    booking = _make_booking(
+        property_=property_, gbp=gbp, terms=terms, person=customer, snapshot=_SNAPSHOT
+    )
+    booking.house_rules_snapshot = sentinel
+    booking.save(update_fields=["house_rules_snapshot"])
+
+    api_client.force_authenticate(user)
+    listing = api_client.get(LIST_URL).json()
+    detail = _detail(api_client, booking)
+
+    assert [row["id"] for row in listing["results"]] == [booking.id]
+    assert sentinel not in json.dumps(listing, default=str)
+    assert sentinel not in json.dumps(detail, default=str)

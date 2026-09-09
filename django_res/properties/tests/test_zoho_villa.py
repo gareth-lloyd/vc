@@ -32,7 +32,7 @@ from integrations.services.zoho_flow import get_zoho_spec, suppress_zoho_push
 from pricing.enums import ExtraCalc, ExtraKind
 from pricing.factories import CurrencyFactory, ExtraFactory
 from pricing.models import Extra
-from properties.enums import BedSize, PropertyStatus
+from properties.enums import BedSize, DescriptionSection, PropertyStatus
 from properties.factories import (
     FeatureFactory,
     PropertyContactAssignmentFactory,
@@ -42,6 +42,7 @@ from properties.factories import (
     RoomFactory,
 )
 from properties.models.contacts import PropertyContactAssignment
+from properties.models.descriptions import PropertyDescription
 from properties.models.features import Feature, PropertyFeature
 from properties.models.geo import Region
 from properties.models.location import PropertyLocation
@@ -855,3 +856,20 @@ def test_unset_url_child_bump_is_noop_without_parent_select(delay_mock: mock.Moc
     assert not [q for q in ctx.captured_queries if '"properties_property"' in q["sql"]]
     assert SyncRecord.objects.count() == 0
     delay_mock.assert_not_called()
+
+
+# --- GAP-094 leak guard ---------------------------------------------------
+
+
+def test_payload_never_carries_house_rules() -> None:
+    """GAP-094: house rules are contract-only; never public. The villa push
+    must not carry the HOUSE_RULES description body under any key."""
+    sentinel = f"HR-SENTINEL-{uuid.uuid4().hex}"
+    prop = _property()
+    PropertyDescription.objects.update_or_create(
+        property=prop, section=DescriptionSection.HOUSE_RULES, defaults={"body": sentinel}
+    )
+
+    payload = build_property_payload(prop)
+
+    assert sentinel not in json.dumps(payload, default=str)

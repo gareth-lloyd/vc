@@ -8,6 +8,7 @@ payload hash. Clean 201 `{"reference": "E…"}` envelope.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, cast
 
 import pytest
@@ -25,6 +26,9 @@ from integrations.management.commands.bootstrap_wordpress_user import (
     ensure_wordpress_service_user,
 )
 from integrations.models import IntegrationInboundCall, SyncRecord
+from properties.enums import DescriptionSection
+from properties.factories import PropertyFactory
+from properties.models import Property, PropertyDescription
 from reservations.models import Enquiry
 
 pytestmark = pytest.mark.django_db
@@ -213,3 +217,20 @@ def test_scoped_throttle_kicks_in(wp_client: APIClient, monkeypatch: pytest.Monk
 
     assert codes[:2] == [201, 201]
     assert codes[2] == 429
+
+
+def test_intake_response_never_carries_house_rules(wp_client: APIClient) -> None:
+    """GAP-094: house rules are contract-only; never public. The WP intake
+    reply for an enquiry that resolves to a villa must not echo that villa's
+    HOUSE_RULES body."""
+    sentinel = f"HR-SENTINEL-{uuid.uuid4().hex}"
+    villa = cast(Property, PropertyFactory(legacy_id="1042"))
+    PropertyDescription.objects.update_or_create(
+        property=villa, section=DescriptionSection.HOUSE_RULES, defaults={"body": sentinel}
+    )
+
+    response = wp_client.post(_URL, {**_PAYLOAD, "Properties": "1042"}, format="json")
+
+    assert response.status_code == 201
+    assert Enquiry.objects.get().property == villa
+    assert sentinel not in response.content.decode()

@@ -116,12 +116,15 @@ parity break in the copy that sells the villas.
    ⚠️ **Grep the lowercase slug too — `HOUSE_RULES` does not find the
    frontend.** The value is spelled `"house_rules"` in
    `frontend/src/features/properties/schemas.ts` (`WEBSITE_SECTIONS`, which
-   backs `isKnownSection` and the Zod parse) and keyed in
-   `frontend/src/i18n/locales/{en,el}/properties.json`. A backend-first rename
-   passes every Python test and then throws a ZodError in the descriptions
-   panel on the unknown section — which is exactly how that panel broke before
-   (a 4-value FE enum against a 6-value backend). Move both halves together,
-   or land the FE first so it tolerates the new value.
+   backs `isKnownSection`) and keyed in
+   `frontend/src/i18n/locales/{en,el}/properties.json`. Since GAP-091,
+   `propertyDescriptionSchema.section` is a deliberate `z.string()` and
+   callers filter with `isKnownSection`, so an unrecognised section no longer
+   throws — it is **silently not rendered**. That is the safer failure but the
+   quieter one: a backend-first rename passes every Python test, raises
+   nothing in the browser, and simply makes the house-rules editor vanish from
+   the Descriptions tab. Move both halves together, and check the panel
+   visually rather than trusting a green suite.
 
    Note also that the FE files `house_rules` under a constant named
    `WEBSITE_SECTIONS` ("guest-facing copy"). That predates GAP-094 and now
@@ -198,6 +201,13 @@ parity break in the copy that sells the villas.
   is marked ⏸ superseded-pending and drops when this lands.
 - **GAP-091** (villa info → tags) removes `villa_info` from this enum;
   the two want sequencing together to avoid a double enum migration.
+  *Landed 2026-09-09 (GAP-091 shipped first):* the enum is now `overview /
+  house_rules / further_info / location / web_description / internal_notes /
+  other_information / rooms` (`section` widened to 32 chars, migration
+  `properties/0007`). `other_information` and `rooms` are **not**
+  Descriptions-tab sections (Features tab / GAP-092), so this ticket's block
+  set replaces the first six only; the `further_info` → internal-notes data
+  remap is still open here.
 - **GAP-092** (room website description → property level) adds one more
   property-level prose block; fold into this tab's layout if both are live.
 - Related: GAP-010 (spec areas reverse-engineered from the wrong codebase —

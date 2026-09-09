@@ -154,7 +154,7 @@ Core CRUD plus heavy sub-resource surface. Property is the most-edited entity in
 
 #### Descriptions (rich text blocks)
 
-Backed by `properties.PropertyDescription` (per-property × per-section child rows; see `02-properties.md`). Sections are a fixed enum: `overview`, `house-rules`, `villa-info`, `further-info`. Sections are sparse — a property may have zero, one, or all four rows. `PUT` upserts (creates or replaces); `DELETE` removes the row (server returns empty body for the section). The flat columns the legacy `VillaMaster` carried (`WebsiteDescription`, `HouseRules`, `FeatureDescription`, `RoomDescription`) are migrated into rows of this child table — see reconciliation issue #28.
+Backed by `properties.PropertyDescription` (per-property × per-section child rows; see `02-properties.md`). Sections are a fixed enum: `overview`, `house-rules`, `villa-info`, `further-info`. Sections are sparse — a property may have zero, one, or all four rows. *As built (2026-09-09):* `overview`, `house-rules`, `further-info`, `location`, `web-description`, `internal-notes`, `other-information`, `rooms` — `villa-info` is gone (GAP-091; `other-information` is the prose half, edited on the Features tab next to the tags; `rooms` has no UI until GAP-092). `PUT` upserts (creates or replaces); `DELETE` removes the row (server returns empty body for the section). The flat columns the legacy `VillaMaster` carried (`WebsiteDescription`, `HouseRules`, `FeatureDescription`, `RoomDescription`) are migrated into rows of this child table — see reconciliation issue #28.
 
 | Method | Path | Purpose |
 |---|---|---|

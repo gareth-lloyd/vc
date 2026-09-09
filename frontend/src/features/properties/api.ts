@@ -41,7 +41,7 @@ import {
   type AvailabilityHold,
   type ChangeOverRule,
   type ChangeOverRuleWriteInput,
-  type DescriptionSection,
+  type WritableDescriptionSection,
   type Discount,
   type Extra,
   type NearbyPlaceType,
@@ -124,7 +124,7 @@ export async function fetchPropertyDescriptions(
 
 export async function upsertPropertyDescription(
   propertyId: PropertyId,
-  section: DescriptionSection,
+  section: WritableDescriptionSection,
   body: string,
 ): Promise<PropertyDescription> {
   const data = await apiSend<unknown>(
@@ -137,7 +137,7 @@ export async function upsertPropertyDescription(
 
 export async function deletePropertyDescription(
   propertyId: PropertyId,
-  section: DescriptionSection,
+  section: WritableDescriptionSection,
 ): Promise<void> {
   await apiSend<void>("DELETE", `/properties/${propertyId}/descriptions/${sectionToSlug(section)}`);
 }

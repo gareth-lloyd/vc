@@ -20,6 +20,12 @@ Pulls the integration/sync metadata (`ZohoId`, `SyncId`, `IsSync`, `OldVillaId`,
 > IDs" (the Zoho half is likely mooted — live CRM data is wiped at go-live
 > and re-keyed on res PKs; confirm in GAP-081 before deleting the loader
 > spec).
+>
+> Per-kind payload shapes live on their tickets and are amended there, in
+> place (one home each — do not restate the shape here):
+> villa — [`todo/done/gap-082-zoho-villa-push.md`](../../todo/done/gap-082-zoho-villa-push.md);
+> booking — [`todo/done/gap-085-zoho-booking-financials-block.md`](../../todo/done/gap-085-zoho-booking-financials-block.md);
+> the `_meta` provenance sibling on every kind — GAP-102.
 
 ## File layout
 

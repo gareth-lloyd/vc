@@ -15,7 +15,7 @@ class PropertyDescription(AuditedModel):
         related_name="descriptions",
     )
     section = models.CharField(
-        max_length=16,
+        max_length=32,
         choices=DescriptionSection.choices,
     )
     body = models.TextField(blank=True)

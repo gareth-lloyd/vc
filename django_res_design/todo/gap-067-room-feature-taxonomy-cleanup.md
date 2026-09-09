@@ -132,6 +132,19 @@ recompute, not incremental diffing (KISS).
 
 ## Next steps
 
+*GAP-091 note (2026-09-09):* the `Other Information` category is now load-
+bearing — its features are the WordPress-searchable tags on the Features tab
+and ride the Zoho villa payload as `other_information.tags`. Curation inputs
+from that work: `304 Dev Feature` is **live** junk under that category and
+surfaces as an assignable tag after cutover (ops deactivates it until this
+ticket drops it); `298 Sea View` is mapped to eight legacy categories and
+`FeatureLoader`'s `TOP 1` files it under `Included Features` — the per-
+assignment `VillaFeaturesMappings.CategoryId` / `.Description` override is
+still dropped by `property_feature` (`COVERAGE.md`). The dev vocabulary
+(11 tags, legacy ids stamped) lives in
+`properties/other_information_catalog.py` — merge decisions must keep those
+`legacy_id`s adoptable.
+
 1. Land GAP-064 first (derivation needs the room attributes).
 2. Build a curation script: duplicate-merge (link remap) + junk-drop (zero-link
    gated), decisions recorded in `10-decisions.md`.

@@ -137,6 +137,11 @@ def test_every_enum_transmitting_attribute_is_covered(
     assert {"fixed_per_stay"} <= extra_calcs, extra_calcs
     service_types = {f["service_type"] for f in villa["features"]}
     assert {"amenity", "included_service", "paid_addon"} <= service_types, service_types
+    # GAP-091: other-information tags ride their own block, never `features[]`.
+    other = villa["other_information"]
+    assert [t["slug"] for t in other["tags"]] == ["pets-allowed"], other
+    assert other["description"], other
+    assert "pets-allowed" not in {f["slug"] for f in villa["features"]}
 
     # --- enquiry --------------------------------------------------------
     enquiries = payloads["enquiry"]

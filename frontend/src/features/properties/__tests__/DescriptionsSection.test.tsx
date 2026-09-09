@@ -73,6 +73,38 @@ describe("DescriptionsSection", () => {
     useAuthStore.getState().clear();
   });
 
+  it("renders no villa_info tab and ignores other_information / rooms rows (GAP-091)", async () => {
+    // `villa_info` left the backend enum; `other_information` moved to the
+    // Features tab and `rooms` has no UI yet (GAP-092). Neither is a
+    // Descriptions-tab section, and neither may take the panel down.
+    setReservationsUser();
+    server.use(
+      http.get("/api/v1/properties/7/descriptions", () =>
+        HttpResponse.json(
+          drfPage([
+            overviewRecord,
+            { id: 5, property: 7, section: "other_information", body: "Pets on request." },
+            { id: 6, property: 7, section: "rooms", body: "Five en-suite bedrooms." },
+          ]),
+        ),
+      ),
+    );
+    renderWithProviders(<DescriptionsSection propertyId={7} />);
+    const textarea = (await screen.findByPlaceholderText(
+      /Write the section content here/i,
+    )) as HTMLTextAreaElement;
+    await waitFor(() => expect(textarea.value).toBe("Welcome to Casa Sur."));
+
+    // Exact name: "Further villa information" is a different, still-present tab.
+    expect(screen.queryByRole("tab", { name: "Villa information" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Further villa information" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(5);
+    expect(screen.queryByDisplayValue("Pets on request.")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Five en-suite bedrooms.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load descriptions/i)).not.toBeInTheDocument();
+    useAuthStore.getState().clear();
+  });
+
   it("keeps internal notes out of the website copy tabs and saves them separately", async () => {
     setReservationsUser();
     server.use(

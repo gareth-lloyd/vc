@@ -123,17 +123,26 @@ class DescriptionSection(models.TextChoices):
     way out: it loads from legacy `VillaMaster.Notes`, and the 2026-07-20 Nick
     recording settles that as staff copy ("we can get rid of further info, just
     make it internal notes"). The remap of those rows, and the replacement of
-    this whole set with the legacy sub/para block set, belong to GAP-090 —
-    don't extend this enum piecemeal ahead of it.
+    the website set with the legacy sub/para block set, belong to GAP-090.
+
+    `OTHER_INFORMATION` (GAP-091) is the prose half of the legacy Features
+    screen's "Other information" — it lives on the Features tab beside the
+    other-information tags (legacy `VillaMaster.FeatureDescription`), not on
+    the Descriptions panel. `ROOMS` is the single property-level blurb legacy
+    shows under the bedrooms (`VillaMaster.RoomDescription`); the enum member
+    landed with GAP-091, rendering it (and retiring the per-room field) is
+    GAP-092. The retired `villa_info` fused both; migration 0007 renamed its
+    rows to `other_information`.
     """
 
     OVERVIEW = "overview", "Overview"
     HOUSE_RULES = "house_rules", "House rules"
-    VILLA_INFO = "villa_info", "Villa info"
     FURTHER_INFO = "further_info", "Further info"
     LOCATION = "location", "Location"
     WEB_DESCRIPTION = "web_description", "Web description"
     INTERNAL_NOTES = "internal_notes", "Internal notes"
+    OTHER_INFORMATION = "other_information", "Other information"
+    ROOMS = "rooms", "Rooms"
 
 
 class FeatureServiceType(models.TextChoices):

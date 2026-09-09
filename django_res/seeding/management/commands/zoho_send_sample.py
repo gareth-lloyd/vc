@@ -528,6 +528,7 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
     )
     from properties.enums import (
         BedSize,
+        DescriptionSection,
         EnsuiteType,
         FeatureServiceType,
         PropertyChannel,
@@ -543,9 +544,15 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
         RoomAttributeFactory,
         RoomFactory,
     )
+    from properties.models.descriptions import PropertyDescription
     from properties.models.features import Feature, PropertyFeature
     from properties.models.property import Property
     from properties.models.rooms import Room, RoomAttribute, RoomAttributeAssignment
+    from properties.other_information_catalog import (
+        OTHER_INFORMATION_CATEGORY_SLUG,
+        sync_other_information_tags,
+        tag_slug,
+    )
     from reservations.enums import (
         ChargeCategory,
         ContactMethod,
@@ -719,6 +726,30 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
             ),
         )
         PropertyFeature.objects.create(property=villa, feature=feature, sort_order=i)
+
+    # GAP-091 "Other information": one catalog tag (rides `other_information.tags`,
+    # NOT `features[]`) plus the free-text description. The catalog sync is
+    # idempotent and rolls back with everything else.
+    sync_other_information_tags()
+    # Resolve the way the catalog does (legacy_id first, then slug): the sync
+    # skips a row that exists under either key without rewriting it, so a
+    # slug/category lookup could raise on a curated staging DB.
+    pets_allowed = (
+        Feature.objects.filter(legacy_id="128").first()
+        or Feature.objects.filter(slug=tag_slug("Pets allowed")).first()
+    )
+    assert pets_allowed is not None, "sync_other_information_tags() guarantees this row"
+    if pets_allowed.category.slug != OTHER_INFORMATION_CATEGORY_SLUG:
+        raise CommandError(
+            "the 'Pets allowed' tag has been moved out of the other-information "
+            "category on this DB; the baseline scenario cannot exercise the block"
+        )
+    PropertyFeature.objects.create(property=villa, feature=pets_allowed, sort_order=3)
+    PropertyDescription.objects.create(
+        property=villa,
+        section=DescriptionSection.OTHER_INFORMATION,
+        body=f"{_TAG}: small dogs welcome by prior arrangement; no smoking indoors.",
+    )
 
     # ── pricing (so the quote/booking price + snapshot extras) ─────────
     plan = RatePlanFactory(property=villa, currency=currency, name=f"{_TAG} rates")

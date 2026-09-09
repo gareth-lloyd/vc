@@ -98,7 +98,11 @@ class PropertyLifecycleService:
         if features:
             clone.features.set(features)
         # Website copy carries over; staff-only notes do not — they are specific
-        # to the original property and would read as fact on the clone.
+        # to the original property and would read as fact on the clone. That
+        # includes `other_information` (the Features-tab prose, GAP-091) and
+        # `rooms` (GAP-092's blurb): both are public copy, and the tags they sit
+        # beside are cloned via `features` above, so cloning the text keeps the
+        # pair together.
         for desc in PropertyDescription.objects.filter(property_id=original_pk).exclude(
             section=DescriptionSection.INTERNAL_NOTES
         ):

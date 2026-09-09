@@ -143,7 +143,7 @@ Operator-exposed at `GET/PATCH /property-defaults` (`IsReservationsWriter`; no `
 Normalised rich-text content blocks for the marketing-copy sections of a property. Replaces the legacy flat columns `VillaMaster.WebsiteDescription`, `HouseRules`, `FeatureDescription`, `RoomDescription`, and the unmapped Blazor "Further information" textarea. The API surface (`/properties/{id}/descriptions/{section}`) is a 1:1 mirror of this child table — one row per section per property.
 
 - `property` — FK Property CASCADE
-- `section` — TextChoices (`OVERVIEW`, `HOUSE_RULES`, `VILLA_INFO`, `FURTHER_INFO`) — exactly four fixed sections; the API path segments (`overview`, `house-rules`, `villa-info`, `further-info`) are the kebab-cased serialisation of these enum values
+- `section` — TextChoices (`OVERVIEW`, `HOUSE_RULES`, `VILLA_INFO`, `FURTHER_INFO`) — exactly four fixed sections; the API path segments (`overview`, `house-rules`, `villa-info`, `further-info`) are the kebab-cased serialisation of these enum values. *As built (2026-09-09):* `OVERVIEW / HOUSE_RULES / FURTHER_INFO / LOCATION / WEB_DESCRIPTION / INTERNAL_NOTES / OTHER_INFORMATION / ROOMS` (`max_length=32`); `VILLA_INFO` was removed by GAP-091 (migration `properties/0007` renamed its rows to `other_information`)
 - `body` — TextField(blank=True) — markdown / rich text; renderer determined client-side
 - `legacy_id` — nullable, indexed
 
@@ -152,7 +152,7 @@ Constraint: `UniqueConstraint(property, section, name="one_description_per_secti
 Section mapping for migration:
 - `VillaMaster.WebsiteDescription` → `section=OVERVIEW`
 - `VillaMaster.HouseRules` → `section=HOUSE_RULES`
-- `VillaMaster.FeatureDescription` + `VillaMaster.RoomDescription` → concatenated into `section=VILLA_INFO` (with a paragraph break — the legacy two-column split was a UX artefact, not a semantic distinction; the new UI renders one editor for villa info)
+- ~~`VillaMaster.FeatureDescription` + `VillaMaster.RoomDescription` → concatenated into `section=VILLA_INFO`~~ — **superseded by GAP-091 (2026-09-09):** the two columns are unrelated (Features-page prose vs the bedrooms blurb). `FeatureDescription` → `section=OTHER_INFORMATION`, `RoomDescription` → `section=ROOMS`; the legacy "Other Information" *tags* are `Feature` rows in the `other-information` `FeatureCategory` (legacy category Code 60), assigned via `PropertyFeature`. DBs loaded before the split need one loader re-run (`data_migration/CUTOVER.md` §6e)
 - legacy "Further information" textarea (Blazor-only, unmapped to a column) → `section=FURTHER_INFO` if any content survives the migration audit; otherwise the row is omitted (sections are sparse — a property may have zero, one, or all four)
 
 See reconciliation issue #28.

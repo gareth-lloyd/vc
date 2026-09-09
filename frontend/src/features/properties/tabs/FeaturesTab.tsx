@@ -1,17 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import { toast } from "sonner";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { Badge } from "@/components/ui/badge";
+import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,76 +18,18 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { FeatureIcon } from "@/components/data/FeatureIcon";
 import { FEATURE_CATALOGUE_PAGE_SIZE } from "@/lib/domain/features/api";
 import { useFeatureCategories, useFeatures } from "@/lib/domain/features/hooks";
-import type { Feature } from "@/lib/domain/features/schemas";
+import { OTHER_INFORMATION_CATEGORY_SLUG, type Feature } from "@/lib/domain/features/schemas";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
-import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api/errors";
-import { useUpdatePropertyFeatures } from "../hooks";
+import { usePropertyDescriptions, useUpdatePropertyFeatures } from "../hooks";
 import type { PropertyDetail } from "../schemas";
+import { OtherInformationSection } from "../components/OtherInformationSection";
+import { DerivedFeatureChip } from "../components/DerivedFeatureChip";
+import { SelectedFeatureRow } from "../components/SelectedFeatureRow";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 
 interface FeaturesContext {
   property: PropertyDetail;
-}
-
-interface SelectedFeatureRowProps {
-  id: number;
-  feature: Feature | undefined;
-  categoryName: string | undefined;
-  canWrite: boolean;
-  onRemove: (id: number) => void;
-  t: TFunction<"properties">;
-}
-
-function SelectedFeatureRow({
-  id,
-  feature,
-  categoryName,
-  canWrite,
-  onRemove,
-  t,
-}: SelectedFeatureRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-    disabled: !canWrite,
-  });
-  const style = { transform: CSS.Transform.toString(transform), transition };
-  const name = feature?.name ?? t("features.row.unknown_feature");
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "border-border bg-card flex items-center justify-between gap-3 rounded-md border p-2",
-        isDragging && "opacity-60",
-      )}
-      data-testid={`property-feature-row-${id}`}
-    >
-      <div
-        className="flex min-w-0 flex-1 items-center gap-2"
-        {...(canWrite ? { ...attributes, ...listeners } : {})}
-        aria-label={canWrite ? t("features.row.drag_handle_label") : undefined}
-        role={canWrite ? "button" : undefined}
-      >
-        <span className="text-muted-foreground px-1 select-none">⋮⋮</span>
-        <FeatureIcon name={feature?.icon ?? ""} className="text-muted-foreground size-4 shrink-0" />
-        <span className="truncate text-sm font-medium">{name}</span>
-        {categoryName ? <Badge variant="outline">{categoryName}</Badge> : null}
-      </div>
-      {canWrite ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2"
-          aria-label={t("features.row.remove_label", { name })}
-          onClick={() => onRemove(id)}
-        >
-          ✕
-        </Button>
-      ) : null}
-    </li>
-  );
 }
 
 export function FeaturesTab() {
@@ -127,6 +61,9 @@ export function FeaturesTab() {
   );
   const [order, setOrder] = useState<number[]>(initialOrder);
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
+  // Start the descriptions fetch now rather than after the catalogue gate
+  // below; the Other-information section's own hook dedupes onto this key.
+  usePropertyDescriptions(property.id);
 
   // Reset only when navigating between properties — refetches of the same
   // property (e.g. after Save invalidates the detail query) must not clobber
@@ -149,6 +86,34 @@ export function FeaturesTab() {
     return map;
   }, [categories.data?.results]);
 
+  // GAP-091: "other information" tags are the features in the
+  // `other-information` category. They render in their own section below the
+  // main list but share `order` — the Save payload is still one ordered list.
+  const otherInformationCategoryId = useMemo(
+    () =>
+      (categories.data?.results ?? []).find((c) => c.slug === OTHER_INFORMATION_CATEGORY_SLUG)?.id,
+    [categories.data?.results],
+  );
+  const isTag = useCallback(
+    (id: number) =>
+      otherInformationCategoryId !== undefined &&
+      featuresById.get(id)?.category === otherInformationCategoryId,
+    [otherInformationCategoryId, featuresById],
+  );
+
+  // Filtered VIEWS of `order`, which is never re-canonicalised: a loaded
+  // property can have tag and main ids interleaved (legacy MappingOrder is
+  // per-category) and nothing downstream needs them partitioned — the Zoho
+  // block and both lists order within their own kind. So add appends, remove
+  // filters, and a drag permutes ids within the slots its kind already holds;
+  // only genuinely moved links change sort_order (audit rows per link).
+  const mainOrder = useMemo(() => order.filter((id) => !isTag(id)), [order, isTag]);
+  const tagOrder = useMemo(() => order.filter(isTag), [order, isTag]);
+  const placeView = (ofKind: (id: number) => boolean, nextView: number[]) => {
+    let i = 0;
+    return order.map((id) => (ofKind(id) ? nextView[i++]! : id));
+  };
+
   const selectedSet = useMemo(() => new Set(order), [order]);
 
   const isDirty = useMemo(() => {
@@ -156,9 +121,9 @@ export function FeaturesTab() {
     return order.some((id, i) => id !== initialOrder[i]);
   }, [order, initialOrder]);
 
-  // Unselected, active features offered by the add control, sorted by category
+  // Unselected, active features offered by the add controls, sorted by category
   // then per-category rank — grouping the dropdown without a grouped data shape.
-  const availableToAdd = useMemo(() => {
+  const availableFeatures = useMemo(() => {
     const catSort = new Map(
       (categories.data?.results ?? []).map((c) => [c.id, c.sort_order] as const),
     );
@@ -171,27 +136,30 @@ export function FeaturesTab() {
           a.name.localeCompare(b.name),
       );
   }, [features.data?.results, categories.data?.results, selectedSet, derivedSet]);
+  const availableToAdd = availableFeatures.filter((f) => !isTag(f.id));
+  const availableTags = availableFeatures.filter((f) => isTag(f.id));
 
-  // Read-only derived features, preserving the API's order.
+  // Read-only derived features, preserving the API's order; tags go to the
+  // other-information section's chips, the rest to the main "From rooms" block.
   const derivedFeatures = useMemo(
     () => (property.derived_feature_ids ?? []).map((id) => ({ id, feature: featuresById.get(id) })),
     [property.derived_feature_ids, featuresById],
   );
+  const derivedMain = derivedFeatures.filter(({ id }) => !isTag(id));
+  const derivedTags = derivedFeatures.filter(({ id }) => isTag(id));
 
-  const hasCatalogue = useMemo(
-    () => (features.data?.results ?? []).some((f) => f.is_active),
-    [features.data?.results],
-  );
+  const hasCatalogue = (features.data?.results ?? []).some((f) => f.is_active && !isTag(f.id));
+  // Presence, not activity: a selected tag whose feature was deactivated must
+  // stay visible and removable, so the empty state only means "no tag rows".
+  const hasTagVocabulary = (features.data?.results ?? []).some((f) => isTag(f.id));
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    setOrder((prev) => {
-      const oldIndex = prev.indexOf(Number(active.id));
-      const newIndex = prev.indexOf(Number(over.id));
-      if (oldIndex < 0 || newIndex < 0) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
+    const oldIndex = mainOrder.indexOf(Number(active.id));
+    const newIndex = mainOrder.indexOf(Number(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    setOrder(placeView((id) => !isTag(id), arrayMove(mainOrder, oldIndex, newIndex)));
   };
 
   const handleAdd = (id: number) => {
@@ -200,6 +168,10 @@ export function FeaturesTab() {
 
   const handleRemove = (id: number) => {
     setOrder((prev) => prev.filter((x) => x !== id));
+  };
+
+  const handleReorderTags = (nextTagOrder: number[]) => {
+    setOrder(placeView(isTag, nextTagOrder));
   };
 
   const handleSave = async () => {
@@ -307,16 +279,16 @@ export function FeaturesTab() {
           title={t("features.empty.title")}
           description={t("features.empty.description")}
         />
-      ) : order.length === 0 ? (
+      ) : mainOrder.length === 0 ? (
         <EmptyState
           title={t("features.none_selected.title")}
           description={t("features.none_selected.description")}
         />
       ) : (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <SortableContext items={order} strategy={verticalListSortingStrategy}>
+          <SortableContext items={mainOrder} strategy={verticalListSortingStrategy}>
             <ul className="space-y-2">
-              {order.map((id) => {
+              {mainOrder.map((id) => {
                 const feature = featuresById.get(id);
                 return (
                   <SelectedFeatureRow
@@ -326,7 +298,6 @@ export function FeaturesTab() {
                     categoryName={feature ? categoryNameById.get(feature.category) : undefined}
                     canWrite={canWrite}
                     onRemove={handleRemove}
-                    t={t}
                   />
                 );
               })}
@@ -335,7 +306,7 @@ export function FeaturesTab() {
         </DndContext>
       )}
 
-      {derivedSet.size > 0 ? (
+      {derivedMain.length > 0 ? (
         <section className="space-y-2">
           <div className="flex items-center gap-2">
             <h3 className="text-muted-foreground text-sm font-medium">
@@ -354,27 +325,27 @@ export function FeaturesTab() {
             </Tooltip>
           </div>
           <ul className="flex flex-wrap gap-2">
-            {derivedFeatures.map(({ id, feature }) => (
-              <li
-                key={id}
-                data-testid={`property-derived-feature-${id}`}
-                className="border-border bg-muted/40 flex items-center gap-2 rounded-md border px-2 py-1"
-              >
-                <FeatureIcon
-                  name={feature?.icon ?? ""}
-                  className="text-muted-foreground size-4 shrink-0"
-                />
-                <span className="truncate text-sm">
-                  {feature?.name ?? t("features.row.unknown_feature")}
-                </span>
-                <Badge variant="outline">{t("features.derived.badge")}</Badge>
-              </li>
+            {derivedMain.map(({ id, feature }) => (
+              <DerivedFeatureChip key={id} id={id} feature={feature} />
             ))}
           </ul>
         </section>
       ) : null}
 
       <FormErrorAlert message={topLevelError} />
+
+      <OtherInformationSection
+        propertyId={property.id}
+        canWrite={canWrite}
+        tagOrder={tagOrder}
+        featuresById={featuresById}
+        availableTags={availableTags}
+        derivedTags={derivedTags}
+        hasVocabulary={hasTagVocabulary}
+        onAdd={handleAdd}
+        onRemove={handleRemove}
+        onReorder={handleReorderTags}
+      />
     </div>
   );
 }

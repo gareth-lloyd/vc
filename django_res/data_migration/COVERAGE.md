@@ -150,6 +150,17 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 
 ## Notes
 
+- **GAP-091 (2026-09-09)** — `VillaMaster.FeatureDescription` and
+  `VillaMaster.RoomDescription` now load to their own `PropertyDescription`
+  sections (`other_information`, `rooms`); they were fused into `villa_info`
+  before (CUTOVER §6e). Legacy's "Other Information" tags are `VillaFeatures`
+  rows under category Code 60 / Id 8 — loaded by `feature` like any other
+  feature, no dedicated table (`Tags`/`VillaTags` still do not exist). Two
+  caveats stand: `VillaFeaturesMappings.CategoryId` (per-assignment category)
+  and `.Description` (per-villa tag override) are still dropped by
+  `property_feature` (GAP-067 follow-up), and a feature mapped to several
+  categories (`298 Sea View`, eight of them) lands under its first mapping
+  only.
 - Booking-side volume is tiny (3 bookings / 19 quotations / 1 payment / 2
   charge items): the pre-BUG-016 dry-run counters and any money-parity checks
   exercise almost nothing. **Property/rates/images/availability are where the

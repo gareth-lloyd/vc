@@ -16,6 +16,17 @@ Last_Activity_Time→`created_at`/`updated_at`.
 **Omitted, no placeholders**: `Villa_URL` (no public site URL exists) and
 `Note` (no single note field; descriptions are guest-facing copy).
 
+`other_information` (GAP-091) is the legacy Features screen's "Other
+Information" pair: `tags` = the villa's `PropertyFeature` links whose feature
+sits in the `other-information` category (per-villa order, same row shape as
+`features[]`) and `description` = the `other_information` description body
+(`""` when absent). Those links are **excluded from `features[]`**: WordPress
+facets on `tags[].slug`, and a tag present in both blocks would double-render
+on the villa page. Links to a deactivated feature still ride (staff can see
+and remove the chip; nothing unlinks on deactivation); editing a `Feature`
+itself (name, category) does not re-push its villas — run
+`zoho_backfill --kinds villa` after curating the catalogue.
+
 Deliberately NO availability or rate data — res stays the sole source of
 truth for both; the Zoho record is for segmentation/reporting only. The ONE
 carve-out is the GAP-102 extras catalogue (`extras[]`, option (a), user
@@ -47,6 +58,8 @@ from django.db.models import Prefetch
 
 from integrations.services.zoho_flow import is_anonymized_person
 from integrations.services.zoho_payloads import country_payload
+from properties.enums import DescriptionSection
+from properties.other_information_catalog import OTHER_INFORMATION_CATEGORY_SLUG
 
 if TYPE_CHECKING:
     from accounts.models import Organisation, Person
@@ -235,7 +248,19 @@ def build_property_payload(prop: Property) -> dict[str, Any]:
             queryset=RoomAttributeAssignment.objects.select_related("attribute"),
         )
     )
-    feature_links = prop.feature_links.select_related("feature__category")
+    # GAP-091: other-information tags ride their own block and are EXCLUDED
+    # from `features[]` — WordPress facets on the block, and a tag in both
+    # would double-render on the villa page (module docstring).
+    features: list[dict[str, Any]] = []
+    tags: list[dict[str, Any]] = []
+    for link in prop.feature_links.select_related("feature__category"):
+        target = tags if link.feature.category.slug == OTHER_INFORMATION_CATEGORY_SLUG else features
+        target.append(_feature_payload(link))
+    other_information = (
+        prop.descriptions.filter(section=DescriptionSection.OTHER_INFORMATION)
+        .values_list("body", flat=True)
+        .first()
+    )
     # `pricing.Extra` reached only through the reverse FK: `pricing` sits ABOVE
     # `properties` on the import spine, so the model is never imported here —
     # building the rows inline keeps them type-checked (mypy infers the
@@ -283,7 +308,8 @@ def build_property_payload(prop: Property) -> dict[str, Any]:
         "capacity": _capacity_payload(getattr(prop, "capacity", None)),
         "contacts": [_contact_payload(assignment) for assignment in assignments],
         "rooms": [_room_payload(room) for room in rooms],
-        "features": [_feature_payload(link) for link in feature_links],
+        "features": features,
+        "other_information": {"tags": tags, "description": other_information or ""},
         "extras": extras,
         "hero_image_url": prop.hero_image_url(),
         "created_at": _iso(prop.created_at),

@@ -10,6 +10,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+import structlog
 from django.db import transaction
 from django.utils.text import slugify
 
@@ -35,6 +36,8 @@ from properties.models.location import PropertyLocation
 from properties.models.property import Property
 from properties.models.settings import PropertySettings
 from properties.services.location import location_defaults
+
+logger = structlog.get_logger(__name__)
 
 _PROPERTY_STATUS_MAP = {
     # VillaStatus.Id → PropertyStatus
@@ -213,18 +216,19 @@ class PropertyLoader(BaseLoader):
 
     def _write_descriptions(self, prop: Property, row: dict[str, Any]) -> None:
         # Per 09-departures.md: WebsiteDescription/OverView->OVERVIEW;
-        # HouseRules->HOUSE_RULES; FeatureDescription+RoomDescription
-        # concatenated->VILLA_INFO.
+        # HouseRules->HOUSE_RULES. GAP-091: FeatureDescription (the legacy
+        # Features page's "Other information description") -> OTHER_INFORMATION
+        # and RoomDescription (the bedrooms blurb, GAP-092) -> ROOMS. They were
+        # fused into `villa_info` before 2026-09; see `_drop_fused_row` below.
         sections: dict[str, str] = {}
         if overview := (row.get("OverView") or "").strip():
             sections[DescriptionSection.OVERVIEW] = overview
         if rules := (row.get("HouseRules") or "").strip():
             sections[DescriptionSection.HOUSE_RULES] = rules
-        feat = (row.get("FeatureDescription") or "").strip()
-        rooms = (row.get("RoomDescription") or "").strip()
-        if feat or rooms:
-            joined = "\n\n".join(p for p in (feat, rooms) if p)
-            sections[DescriptionSection.VILLA_INFO] = joined
+        if feat := (row.get("FeatureDescription") or "").strip():
+            sections[DescriptionSection.OTHER_INFORMATION] = feat
+        if rooms := (row.get("RoomDescription") or "").strip():
+            sections[DescriptionSection.ROOMS] = rooms
         if notes := (row.get("Notes") or "").strip():
             sections[DescriptionSection.FURTHER_INFO] = notes
         # Website copy from VillaPropertyImagesDescription (PRESERVE ALL,
@@ -248,6 +252,48 @@ class PropertyLoader(BaseLoader):
                     "legacy_id": f"{row['Id']}-{section}",
                 },
             )
+        self._drop_fused_row(prop, row, feat, rooms)
+
+    @staticmethod
+    def _drop_fused_row(prop: Property, row: dict[str, Any], feat: str, rooms: str) -> None:
+        """One-off for DBs loaded before GAP-091 (CUTOVER §6e).
+
+        Migration `properties.0007` renamed the fused `villa_info` row to
+        `other_information` with its `<Id>-villa_info` provenance intact. When
+        `FeatureDescription` is non-blank the `update_or_create` above has just
+        rewritten that row in place (body + `legacy_id`), so there is nothing
+        left to do. When it is blank the fused text would survive as
+        `other_information` for every rooms-only villa, so drop it — but only
+        while its body still equals what the old join would produce from the
+        current legacy columns. Anything else (staff rewrote it after the
+        rename, or legacy changed since) is kept and logged; deleting copy we
+        cannot prove is ours is worse than a stale row someone can clear.
+
+        Deliberately not a general stale-row sweep: the loader has never
+        removed a description whose legacy source went blank (any section),
+        and that policy is unchanged. Per-instance `.delete()` so the
+        `PropertyDescription` audit tombstone is written.
+        """
+        fused = "\n\n".join(p for p in (feat, rooms) if p)
+        for desc in PropertyDescription.objects.filter(
+            property=prop,
+            section=DescriptionSection.OTHER_INFORMATION,
+            legacy_id=f"{row['Id']}-villa_info",
+        ):
+            if desc.body == fused:
+                logger.info(
+                    "data_migration.fused_description_dropped",
+                    property_id=prop.pk,
+                    legacy_id=desc.legacy_id,
+                )
+                desc.delete()
+            else:
+                logger.warning(
+                    "data_migration.fused_description_kept",
+                    property_id=prop.pk,
+                    legacy_id=desc.legacy_id,
+                    reason="body_differs_from_legacy_join",
+                )
 
 
 class CollectionLoader(BaseLoader):

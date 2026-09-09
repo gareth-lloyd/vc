@@ -396,6 +396,7 @@ def test_enqueue_skips_redundant_dispatch_while_already_pending(delay_mock: mock
     the `push_pending` sweep repairs a lost one."""
     person = _person()
     assert delay_mock.call_count == 1
+    before = SyncRecord.objects.get().updated_at
 
     enqueue_zoho_push(person)
     enqueue_zoho_push(person)
@@ -403,6 +404,9 @@ def test_enqueue_skips_redundant_dispatch_while_already_pending(delay_mock: mock
     assert delay_mock.call_count == 1
     record = SyncRecord.objects.get()
     assert record.status == SyncStatus.PENDING
+    # The dedupe branch still moves `updated_at` — that stamp is what makes
+    # the in-flight push's guarded IN_SYNC write miss (BUG-027).
+    assert record.updated_at > before
 
 
 @pytest.mark.django_db
@@ -647,10 +651,12 @@ def test_push_success_marks_in_sync(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.django_db
 @pytest.mark.usefixtures("contact_webhook")
-def test_push_success_yields_to_concurrent_bump(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_push_success_yields_to_concurrent_bump(
+    delay_mock: mock.Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A PENDING bump written between the task's read and its success write
-    must win — stamping IN_SYNC over it could strand an edit whose own
-    dispatch was lost (the sweep only repairs PENDING rows)."""
+    must win — the payload just sent predates it — and the task re-dispatches
+    so the bump's edit is pushed (BUG-027)."""
     person = _person()
     record = _make_record(person.pk)
 
@@ -665,6 +671,63 @@ def test_push_success_yields_to_concurrent_bump(monkeypatch: pytest.MonkeyPatch)
     record.refresh_from_db()
     assert record.status == SyncStatus.PENDING
     assert record.last_pushed_at is None
+    delay_mock.assert_called_once_with(record.pk)
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("contact_webhook")
+def test_push_success_superseded_by_non_pending_stamp_does_not_redispatch(
+    delay_mock: mock.Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A guard miss caused by something other than a PENDING bump (here the
+    anonymize path parking the row DISABLED) must not re-POST."""
+    person = _person()
+    record = _make_record(person.pk)
+
+    def _disable_then_ok(url: str, **kwargs: Any) -> httpx.Response:
+        SyncRecord.objects.filter(pk=record.pk).update(
+            status=SyncStatus.DISABLED.value, updated_at=timezone.now()
+        )
+        return _response(200)
+
+    monkeypatch.setattr(tasks.httpx, "post", mock.Mock(side_effect=_disable_then_ok))
+
+    push_sync_record(record.pk)
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.DISABLED
+    delay_mock.assert_not_called()
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately", "contact_webhook")
+def test_push_success_yields_to_bump_of_already_pending_row(
+    delay_mock: mock.Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-027: a real bump (`enqueue_zoho_push`) landing while the row is
+    ALREADY PENDING takes the dedupe branch (no dispatch of its own), so the
+    in-flight push must leave the row PENDING and re-dispatch it — not stamp
+    IN_SYNC over the stale payload it just sent."""
+    person = _person()
+    assert delay_mock.call_count == 1  # the create's own dispatch
+    record = SyncRecord.objects.get()
+
+    def _bump_then_ok(url: str, **kwargs: Any) -> httpx.Response:
+        enqueue_zoho_push(person)
+        return _response(200)
+
+    monkeypatch.setattr(tasks.httpx, "post", mock.Mock(side_effect=_bump_then_ok))
+
+    push_sync_record(record.pk)
+
+    record.refresh_from_db()
+    assert record.status == SyncStatus.PENDING
+    assert record.last_pushed_at is None
+    # Exactly one extra dispatch, from the superseded task — the bump itself
+    # stayed deduped.
+    assert delay_mock.call_count == 2
+    assert delay_mock.call_args == mock.call(record.pk)
+    assert SyncRecord.objects.count() == 1
 
 
 @pytest.mark.django_db

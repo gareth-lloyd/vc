@@ -737,7 +737,6 @@
     "sections": {
       "overview": "Overview",
       "web_description": "Web description",
-      "villa_info": "Villa information",
       "further_info": "Further villa information",
       "location": "Location",
       "house_rules": "House rules",
@@ -853,6 +852,44 @@
     "toasts": {
       "saved": "Features saved",
       "save_failed": "Couldn't save features"
+    },
+    "otherInformation": {
+      "title": "Other information",
+      "hint": "Tags the website can filter on, plus villa-specific notes. Tags save with the feature list above.",
+      "actions": {
+        "add": "Add tag"
+      },
+      "empty": {
+        "title": "No other-information tags available",
+        "description": "Tags are managed in the Tags admin."
+      },
+      "none_selected": "No tags selected. Use Add tag to build this property's list, then drag to reorder.",
+      "row": {
+        "drag_handle_label": "Drag to reorder tag"
+      },
+      "description": {
+        "label": "Other information description",
+        "placeholder": "Villa-specific notes shown under Other information on the website.",
+        "actions": {
+          "save": "Save description",
+          "saving": "Saving description…",
+          "clear": "Clear description"
+        },
+        "clear_confirm": {
+          "title": "Clear the other information description?",
+          "description": "The text is removed from the website. This cannot be undone.",
+          "confirm": "Clear"
+        },
+        "errors": {
+          "load_failed": "Couldn't load the other information description."
+        },
+        "toasts": {
+          "saved": "Description saved",
+          "save_failed": "Couldn't save the description",
+          "cleared": "Description cleared",
+          "clear_failed": "Couldn't clear the description"
+        }
+      }
     }
   },
   "settings": {

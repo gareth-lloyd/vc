@@ -1,4 +1,4 @@
-import { apiGet, apiSend } from "@/lib/api/client";
+import { apiGet, apiGetBlob, apiSend, type BlobResponse } from "@/lib/api/client";
 import type { QueryParams } from "@/lib/api/url";
 import type { Paginated } from "@/types/api";
 import type { BookingId } from "@/lib/query/keys";
@@ -12,6 +12,9 @@ import {
   damageClaimPhotoSchema,
   damageClaimSchema,
   damageClaimsResponseSchema,
+  bookingDocumentSchema,
+  bookingDocumentsResponseSchema,
+  bookingDocumentPreviewSchema,
   bookingEmailSchema,
   bookingEmailsResponseSchema,
   bookingListResponseSchema,
@@ -25,6 +28,9 @@ import {
   type BookingChargeItem,
   type BookingConciergeItem,
   type BookingDetail,
+  type BookingDocument,
+  type BookingDocumentKind,
+  type BookingDocumentPreview,
   type BookingEmail,
   type BookingEvent,
   type BookingFilters,
@@ -113,6 +119,53 @@ export async function resendBookingEmail(
     idempotency_key: idempotencyKey,
   });
   return bookingEmailSchema.parse(data);
+}
+
+export async function fetchBookingDocuments(id: BookingId): Promise<Paginated<BookingDocument>> {
+  const data = await apiGet<unknown>(`/bookings/${id}/documents`);
+  return bookingDocumentsResponseSchema.parse(data);
+}
+
+export async function generateBookingDocument(
+  bookingId: BookingId,
+  kind: BookingDocumentKind,
+): Promise<BookingDocument> {
+  const data = await apiSend<unknown>("POST", `/bookings/${bookingId}/documents:generate`, {
+    kind,
+  });
+  return bookingDocumentSchema.parse(data);
+}
+
+export async function sendBookingDocument(
+  bookingId: BookingId,
+  documentId: number,
+): Promise<BookingDocument> {
+  const data = await apiSend<unknown>(
+    "POST",
+    `/bookings/${bookingId}/documents/${documentId}:send`,
+  );
+  return bookingDocumentSchema.parse(data);
+}
+
+/**
+ * The bytes, streamed through the API behind the staff permission — the
+ * `documents` storage alias is private, so there is no URL to link to.
+ */
+export function downloadBookingDocument(
+  bookingId: BookingId,
+  documentId: number,
+): Promise<BlobResponse> {
+  return apiGetBlob(`/bookings/${bookingId}/documents/${documentId}:download`);
+}
+
+export async function fetchBookingDocumentPreview(
+  bookingId: BookingId,
+  kind: BookingDocumentKind,
+): Promise<BookingDocumentPreview> {
+  const data = await apiGet<unknown>(`/bookings/${bookingId}/documents:preview`, {
+    query: { kind },
+  });
+  return bookingDocumentPreviewSchema.parse(data);
 }
 
 export async function fetchBookingConciergeItems(

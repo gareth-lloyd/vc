@@ -796,3 +796,45 @@ export const bookingEmailSchema = z.object({
 export type BookingEmail = z.infer<typeof bookingEmailSchema>;
 
 export const bookingEmailsResponseSchema = paginated(bookingEmailSchema);
+
+// ----------------------------------------------------------------------
+// Generated documents (booking Documents tab) — GAP-094.
+// ----------------------------------------------------------------------
+
+// The full vocabulary the API spells, not just what it can produce today:
+// only `contract` has a render behind it, and the server answers
+// `unsupported_kind` for the rest. Parsing the whole enum means an older tab
+// doesn't ZodError the moment a second kind ships.
+export const bookingDocumentKindSchema = z.enum([
+  "confirmation",
+  "contract",
+  "voucher",
+  "invoice",
+  "receipt",
+]);
+export type BookingDocumentKind = z.infer<typeof bookingDocumentKindSchema>;
+
+export function bookingDocumentKindLabel(kind: BookingDocumentKind): string {
+  return i18n.t(`bookings:documents.kinds.${kind}`);
+}
+
+export const bookingDocumentSchema = z.object({
+  id: z.number(),
+  kind: bookingDocumentKindSchema,
+  filename: z.string(),
+  // `null` is the list endpoint's one signal that the stored object could not
+  // be read — the row stays visible so staff can regenerate it, but download
+  // and send would only answer 409.
+  size: z.number().nullable(),
+  generated_at: z.string(),
+  generated_by: z.object({ id: z.number(), name: z.string() }).nullable(),
+  sent_to_guest_at: z.string().nullable(),
+});
+export type BookingDocument = z.infer<typeof bookingDocumentSchema>;
+
+export const bookingDocumentsResponseSchema = paginated(bookingDocumentSchema);
+
+// GET /bookings/{id}/documents:preview — the same render seam the stored PDF
+// is printed from, as a self-contained HTML document for an iframe.
+export const bookingDocumentPreviewSchema = z.object({ html: z.string() });
+export type BookingDocumentPreview = z.infer<typeof bookingDocumentPreviewSchema>;

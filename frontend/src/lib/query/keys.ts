@@ -124,6 +124,11 @@ export const queryKeys = {
     securityDeposit: (id: BookingId) => ["bookings", "detail", k(id), "security-deposit"] as const,
     refunds: (id: BookingId) => ["bookings", "detail", k(id), "refunds"] as const,
     emails: (id: BookingId) => ["bookings", "detail", k(id), "emails"] as const,
+    documents: (id: BookingId) => ["bookings", "detail", k(id), "documents"] as const,
+    // Keyed by kind as well: the preview renders one document type, and a
+    // second kind must not read the contract's cached HTML.
+    documentPreview: (id: BookingId, kind: string) =>
+      ["bookings", "detail", k(id), "document-preview", kind] as const,
   },
   enquiries: {
     all: () => ["enquiries"] as const,

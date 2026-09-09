@@ -47,6 +47,7 @@ const REAL_BOOKING_TABS = new Set<string>([
   "finance",
   "owner",
   "comms",
+  "documents",
   "history",
 ]);
 const bookingPlaceholderRoutes = BOOKING_TABS.filter((t) => !REAL_BOOKING_TABS.has(t.slug)).map(
@@ -616,6 +617,13 @@ export const router = createBrowserRouter([
                             lazy: async () => {
                               const m = await import("@/features/bookings/tabs/CommsTab");
                               return { Component: m.CommsTab };
+                            },
+                          },
+                          {
+                            path: "documents",
+                            lazy: async () => {
+                              const m = await import("@/features/bookings/tabs/DocumentsTab");
+                              return { Component: m.DocumentsTab };
                             },
                           },
                           {

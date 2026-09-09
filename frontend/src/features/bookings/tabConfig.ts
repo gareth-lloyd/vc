@@ -6,6 +6,7 @@ export const BOOKING_TABS = [
   { slug: "payments", labelKey: "tabs.payments" },
   { slug: "concierge", labelKey: "tabs.concierge" },
   { slug: "comms", labelKey: "tabs.comms" },
+  { slug: "documents", labelKey: "tabs.documents" },
   { slug: "owner", labelKey: "tabs.owner" },
   { slug: "history", labelKey: "tabs.history" },
 ] as const;

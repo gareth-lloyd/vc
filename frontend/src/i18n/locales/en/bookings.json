@@ -36,7 +36,8 @@
     "concierge": "Concierge",
     "comms": "Comms",
     "owner": "Owner",
-    "history": "History"
+    "history": "History",
+    "documents": "Documents"
   },
   "labels": {
     "status": {
@@ -659,6 +660,48 @@
       "confirm_button": "Resend",
       "toast_success": "Email re-queued",
       "toast_failed": "Couldn't resend this email."
+    }
+  },
+  "documents": {
+    "heading": "Documents",
+    "generate": "Generate contract",
+    "preview": "Preview",
+    "download": "Download",
+    "send": "Send to guest",
+    "load_failed_title": "Couldn't load documents",
+    "load_failed_body": "Try again.",
+    "empty_title": "No documents yet",
+    "empty_body": "Generate the booking contract to download it or send it to the guest.",
+    "kinds": {
+      "confirmation": "Confirmation",
+      "contract": "Contract",
+      "voucher": "Voucher",
+      "invoice": "Invoice",
+      "receipt": "Receipt"
+    },
+    "generated_by": "Generated {{date}} by {{name}}",
+    "generated_by_system": "Generated {{date}} by the system",
+    "sent_at": "Sent {{date}}",
+    "not_sent": "Not sent",
+    "file_missing": "File unavailable — generate the contract again.",
+    "no_recipient": "No guest email on this booking — the contract can't be sent.",
+    "confirm_send": {
+      "title": "Send this contract to the guest?",
+      "body": "{{filename}} will be emailed to {{email}}.",
+      "button": "Send"
+    },
+    "preview_dialog": {
+      "title": "Contract preview",
+      "description": "The same render the stored PDF is printed from.",
+      "iframe_title": "Contract preview",
+      "load_failed": "Couldn't render the preview."
+    },
+    "toasts": {
+      "generated": "Contract generated",
+      "generate_failed": "Couldn't generate the contract.",
+      "sent": "Contract sent to the guest",
+      "send_failed": "Couldn't send the contract.",
+      "download_failed": "Couldn't download this document."
     }
   },
   "schema_errors": {

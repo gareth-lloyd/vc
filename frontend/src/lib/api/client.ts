@@ -67,7 +67,13 @@ function isCsrfReject(response: Response): boolean {
   return response.status === 403 && !(response.headers.get("content-type") ?? "").includes("json");
 }
 
-async function handleResponse<T>(response: Response): Promise<T> {
+/**
+ * Turn a non-2xx into the shaped `ApiError` every call site handles, and fire
+ * the auth-channel side effects. Split out of `handleResponse` so the blob
+ * reader below shares one definition of "this request failed" — a download
+ * that 401s must log the tab out exactly like a JSON call does.
+ */
+async function throwIfNotOk(response: Response): Promise<void> {
   if (response.status === 401) {
     authChannel.emitUnauthorized();
     throw new ApiError(401, await parseErrorBody(response));
@@ -82,6 +88,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
     }
     throw new ApiError(response.status, body);
   }
+}
+
+async function handleResponse<T>(response: Response): Promise<T> {
+  await throwIfNotOk(response);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
@@ -116,6 +126,59 @@ async function request<T>(
 
 export function apiGet<T>(path: string, options: RequestOptions = {}): Promise<T> {
   return request<T>("GET", path, undefined, options);
+}
+
+export interface BlobResponse {
+  blob: Blob;
+  /** From `Content-Disposition`; null when the server didn't name the file. */
+  filename: string | null;
+}
+
+// RFC 6266. Django's `FileResponse` emits exactly one of the two — the plain
+// parameter for an ASCII name, the extended one when that raises
+// `UnicodeEncodeError` — but the extended form is checked first anyway,
+// because it is the one that survives a non-ASCII name from any server that
+// does send both.
+function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const extended = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (extended) {
+    try {
+      return decodeURIComponent(extended[1]);
+    } catch {
+      // A malformed percent-escape isn't worth failing a download over —
+      // fall through to the plain parameter.
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain ? plain[1].trim() : null;
+}
+
+/**
+ * `GET` a binary body — a stored document streamed through the API (GAP-094).
+ *
+ * Deliberately not routed through `request`/`handleResponse`, which always
+ * `.json()` the body. It still shares `throwIfNotOk`, so a 403/404/409 on a
+ * blob route raises the same `ApiError` as everywhere else, and `Accept`
+ * stays `application/json` so DRF's negotiation picks the JSON renderer for
+ * those error bodies rather than 406-ing.
+ */
+export async function apiGetBlob(
+  path: string,
+  options: RequestOptions = {},
+): Promise<BlobResponse> {
+  const url = joinUrl(apiBase(), `${API_PREFIX}${path}${buildQuery(options.query)}`);
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: buildHeaders("GET", false),
+    signal: options.signal,
+  });
+  await throwIfNotOk(response);
+  return {
+    blob: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get("content-disposition")),
+  };
 }
 
 export function apiSend<T = void>(

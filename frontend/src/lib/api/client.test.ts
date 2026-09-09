@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { ApiError } from "./errors";
 import { authChannel } from "./authChannel";
-import { apiGet, apiSend, primeCsrfCookie } from "./client";
+import { apiGet, apiGetBlob, apiSend, primeCsrfCookie } from "./client";
 
 const setCookie = (value: string) => {
   document.cookie = value;
@@ -67,6 +67,75 @@ describe("apiGet", () => {
     const unsubscribe = authChannel.onUnauthorized(handler);
     try {
       await expect(apiGet("/foo")).rejects.toBeInstanceOf(ApiError);
+      expect(handler).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
+describe("apiGetBlob", () => {
+  const pdf = () => new TextEncoder().encode("%PDF-1.7\n").buffer as ArrayBuffer;
+
+  function blobRoute(disposition?: string) {
+    return http.get("/api/v1/things/1:download", () =>
+      HttpResponse.arrayBuffer(pdf(), {
+        headers: {
+          "content-type": "application/pdf",
+          ...(disposition ? { "content-disposition": disposition } : {}),
+        },
+      }),
+    );
+  }
+
+  it("returns the bytes and the filename from Content-Disposition", async () => {
+    server.use(blobRoute('attachment; filename="B-AAA-001-contract-9.pdf"'));
+    const { blob, filename } = await apiGetBlob("/things/1:download");
+    expect(filename).toBe("B-AAA-001-contract-9.pdf");
+    expect(blob.type).toBe("application/pdf");
+    expect(blob.size).toBe(9);
+  });
+
+  it("prefers the RFC 6266 extended parameter and decodes it", async () => {
+    // Django emits both when the name isn't ASCII; the extended one is the
+    // only one that survives the round trip.
+    server.use(
+      blobRoute("attachment; filename=\"contract.pdf\"; filename*=UTF-8''%CE%A3%CF%85%CE%BC.pdf"),
+    );
+    const { filename } = await apiGetBlob("/things/1:download");
+    expect(filename).toBe("Συμ.pdf");
+  });
+
+  it("returns a null filename when the server didn't name the file", async () => {
+    server.use(blobRoute());
+    const { filename } = await apiGetBlob("/things/1:download");
+    expect(filename).toBeNull();
+  });
+
+  it("raises the same shaped ApiError as a JSON call on a 409", async () => {
+    // The error body is JSON even on a blob route — `Accept` stays
+    // application/json so DRF renders it rather than 406-ing.
+    server.use(
+      http.get("/api/v1/things/1:download", () =>
+        HttpResponse.json(
+          { code: "document_file_missing", detail: "Regenerate it.", field_errors: {} },
+          { status: 409 },
+        ),
+      ),
+    );
+    await expect(apiGetBlob("/things/1:download")).rejects.toMatchObject({
+      status: 409,
+      code: "document_file_missing",
+      detail: "Regenerate it.",
+    });
+  });
+
+  it("emits unauthorized on 401 like every other call", async () => {
+    server.use(http.get("/api/v1/things/1:download", () => HttpResponse.json({}, { status: 401 })));
+    const handler = vi.fn();
+    const unsubscribe = authChannel.onUnauthorized(handler);
+    try {
+      await expect(apiGetBlob("/things/1:download")).rejects.toBeInstanceOf(ApiError);
       expect(handler).toHaveBeenCalledOnce();
     } finally {
       unsubscribe();

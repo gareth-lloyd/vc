@@ -37,6 +37,8 @@ import {
   fetchBookingChargeItems,
   fetchBookingConciergeItems,
   fetchBookingDamageClaims,
+  fetchBookingDocumentPreview,
+  fetchBookingDocuments,
   fetchBookingEmails,
   fetchBookingNotes,
   fetchBookingRefunds,
@@ -51,7 +53,9 @@ import {
   modifyBookingGuests,
   requestPayment,
   resendBookingConfirmation,
+  generateBookingDocument,
   resendBookingEmail,
+  sendBookingDocument,
   setDepositOverride,
   restoreBooking,
   updateBookingNote,
@@ -64,6 +68,7 @@ import {
 } from "./api";
 import type {
   BookingDetail,
+  BookingDocumentKind,
   BookingFilters,
   BookingNote,
   BookingNoteWriteInput,
@@ -122,6 +127,53 @@ export function useResendBookingEmail(bookingId: BookingId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.bookings.emails(bookingId) });
       // Resend writes an AuditLog row; refresh the activity timeline so the
       // operator sees their action without a manual reload.
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+    },
+  });
+}
+
+export function useBookingDocuments(id: BookingId | undefined) {
+  return useQuery(enabledQuery(id, queryKeys.bookings.documents, fetchBookingDocuments));
+}
+
+/**
+ * Mounted only while the preview dialog is open, so it fetches on open and
+ * nothing polls the render seam behind a closed dialog.
+ */
+export function useBookingDocumentPreview(bookingId: BookingId, kind: BookingDocumentKind) {
+  return useQuery({
+    queryKey: queryKeys.bookings.documentPreview(bookingId, kind),
+    queryFn: () => fetchBookingDocumentPreview(bookingId, kind),
+    // Opting out of the global 30s staleTime: the point of the preview is to
+    // show the contract as it stands *now*, and a charge added on the Finance
+    // tab thirty seconds ago would otherwise render from cache with nothing
+    // on screen saying so.
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+}
+
+export function useGenerateBookingDocument(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (kind: BookingDocumentKind) => generateBookingDocument(bookingId, kind),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.documents(bookingId) });
+      // Generating writes an AuditLog row.
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
+    },
+  });
+}
+
+export function useSendBookingDocument(bookingId: BookingId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: number) => sendBookingDocument(bookingId, documentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.documents(bookingId) });
+      // A send mints an EmailLog row the Comms tab shows, and an AuditLog row
+      // the timeline shows — both are stale the moment this resolves.
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.emails(bookingId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.bookings.activity(bookingId) });
     },
   });

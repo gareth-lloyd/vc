@@ -507,7 +507,8 @@ class RateBandLoader(BaseLoader):
     """VillaSeasonRate -> RatePeriod + RateBand (period-native, GAP-056).
 
     Notes:
-    - Skip `IsExTra=1` rows (extras, not base rates).
+    - Skip `IsExTra=1` rows (extras, not base rates) — `ExtraLoader`
+      (`loaders/extras.py`, GAP-107) ports those into `pricing.Extra`.
     - `VillaOccupencyPrice` bands are recovered here (BUG-013): the query LEFT
       JOINs the child table and `_prepare_occupancy_rows` expands a banded
       parent into one rule per band plus base-weekly gap fallbacks, keyed on a

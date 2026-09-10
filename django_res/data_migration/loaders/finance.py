@@ -26,9 +26,12 @@ from accounts.models import Person
 from core.refs import quotation_reference
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
-from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no, person_for_client
-from pricing.models.currency import Currency
-from pricing.services.currency import resolve_property_currency
+from data_migration.loaders._util import (
+    ensure_enquiry,
+    legacy_currency_for,
+    legacy_quotation_no,
+    person_for_client,
+)
 from properties.enums import (
     CommissionCalcType,
     DepositCalcType,
@@ -426,13 +429,8 @@ class QuotationLineLoader(BaseLoader):
             date_to = date_to.date()
         if date_from >= date_to:
             return None
-        # Per-line currency (GAP-014, legacy VillaQuotationDetails.CurrencyId):
-        # row value, else the villa's canonical chain — never `.first()`.
-        currency: Currency | None = None
-        if row.get("CurrencyId"):
-            currency = Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
-        if currency is None:
-            currency = resolve_property_currency(prop)
+        # Per-line currency (GAP-014, legacy VillaQuotationDetails.CurrencyId).
+        currency = legacy_currency_for(row, prop)
         if currency is None:
             return None
         return {

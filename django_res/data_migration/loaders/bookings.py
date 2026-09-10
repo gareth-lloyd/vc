@@ -28,12 +28,17 @@ from django.utils import timezone
 from core.exceptions import NoRateAvailable
 from core.refs import booking_reference
 from data_migration.base import BaseLoader, LoadReport
-from data_migration.loaders._util import ensure_enquiry, legacy_quotation_no, person_for_client
+from data_migration.loaders._util import (
+    ensure_enquiry,
+    legacy_currency_for,
+    legacy_quotation_no,
+    person_for_client,
+)
 from data_migration.loaders.finance import _ensure_default_terms
 from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
-from pricing.services.currency import FxConverter, quantise_money, resolve_property_currency
+from pricing.services.currency import FxConverter, quantise_money
 from properties.models.property import Property
 from reservations.enums import BookingGuestRole, BookingStatus, QuotationStatus
 from reservations.models.booking import Booking
@@ -75,13 +80,7 @@ class BookingLoader(BaseLoader):
         if prop is None or person is None:
             report.skipped += 1
             return
-        currency = None
-        if row.get("CurrencyId"):
-            currency = Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
-        if currency is None:
-            # Canonical chain: the villa's rate plans → settings → EUR —
-            # never the ordering-dependent `.first()` (GAP-014 step 0).
-            currency = resolve_property_currency(prop)
+        currency = legacy_currency_for(row, prop)
         if currency is None:
             report.skipped += 1
             return

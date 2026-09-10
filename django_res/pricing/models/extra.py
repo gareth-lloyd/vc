@@ -41,6 +41,9 @@ class Extra(AuditedModel):
     # Retry dedupe for `:duplicate` (SMELL-009). Blank = "no idempotency
     # requested" — only client-supplied keys enter the partial unique below.
     idempotency_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    # Legacy `VillaSeasonRate.ID` for rows ported by `ExtraLoader` (GAP-107).
+    # Migration metadata only.
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["property", "sort_order", "name"]

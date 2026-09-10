@@ -15,6 +15,7 @@ from data_migration.loaders.bookings import (
 )
 from data_migration.loaders.country import CountryLoader
 from data_migration.loaders.defaults import PropertyDefaultsLoader
+from data_migration.loaders.extras import ExtraLoader
 from data_migration.loaders.finance import (
     PropertyFinanceLoader,
     QuotationLineLoader,
@@ -79,6 +80,9 @@ LOADERS: dict[str, type[Loader]] = {
     PropertyFeatureMappingLoader.name: PropertyFeatureMappingLoader,
     RatePlanLoader.name: RatePlanLoader,
     RateBandLoader.name: RateBandLoader,
+    # Extras catalogue (GAP-107) resolves its currency through the villa's
+    # live rate plans, so it follows the rate loaders.
+    ExtraLoader.name: ExtraLoader,
     PropertyContactAssignmentLoader.name: PropertyContactAssignmentLoader,
     # ClientLoader (VillaClientDetails → Person, keyed `client-{id}`) MUST stay
     # ahead of preferences / finance / booking: those loaders resolve the

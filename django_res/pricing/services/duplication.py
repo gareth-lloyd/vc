@@ -39,8 +39,9 @@ def duplicate_extra(
     operation and clones again (pinned by test). A retry with the same key
     and target returns the original clone; a racing loser past the pre-check
     trips `extra_idempotency_key_unique_per_property` with `IntegrityError`
-    for the view to map to 409. (Extra has no `legacy_id`, so there is
-    nothing to null here.)
+    for the view to map to 409. `legacy_id` is nulled on the clone: the
+    active `ExtraLoader` upserts on it (GAP-107), and a copied one would
+    make the next legacy load hit two rows.
     """
     destination = target_property or extra.property
     existing = find_by_key(Extra.objects.filter(property=destination), idempotency_key)
@@ -53,6 +54,7 @@ def duplicate_extra(
         clone.property = destination
         clone.name = f"{extra.name} (copy)"
         clone.idempotency_key = idempotency_key or ""
+        clone.legacy_id = None
         clone.save()
     return clone
 

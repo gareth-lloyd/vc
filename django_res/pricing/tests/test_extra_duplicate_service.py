@@ -28,6 +28,15 @@ def extra() -> Extra:
     return cast(Extra, ExtraFactory())
 
 
+def test_clone_never_copies_legacy_id() -> None:
+    # GAP-107: ExtraLoader upserts on legacy_id; a copied one would make the
+    # next legacy load find two rows for one legacy extra.
+    ported = cast(Extra, ExtraFactory(legacy_id="7"))
+    clone = duplicate_extra(ported)
+    assert clone.legacy_id is None
+    assert Extra.objects.filter(legacy_id="7").count() == 1
+
+
 def test_clone_lands_on_source_property_by_default(extra: Extra) -> None:
     clone = duplicate_extra(extra)
     assert clone.pk != extra.pk

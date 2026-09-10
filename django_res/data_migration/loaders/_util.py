@@ -42,6 +42,24 @@ def legacy_changed_since_sql(since: datetime) -> str:
     return f"(UpdateAt > '{literal}' OR DeletedAt > '{literal}' OR CreatedAt > '{literal}')"
 
 
+def legacy_currency_for(row: dict[str, Any], prop: Any) -> Any:
+    """The GAP-014 currency chain shared by every loader that carries a
+    legacy `CurrencyId`: the row's currency when set and known, else the
+    villa's canonical chain (`resolve_property_currency`: preferred live
+    plan → settings → EUR) — never the ordering-dependent `.first()`.
+    Returns `None` when nothing resolves; each caller decides how to skip.
+    """
+    from pricing.models.currency import Currency
+    from pricing.services.currency import resolve_property_currency
+
+    currency = None
+    if row.get("CurrencyId"):
+        currency = Currency.objects.filter(legacy_id=str(row["CurrencyId"])).first()
+    if currency is None:
+        currency = resolve_property_currency(prop)
+    return currency
+
+
 def person_for_client(legacy_client_id: Any) -> Any:
     """Resolve the unified `Person` for a legacy VillaClientDetails id.
 

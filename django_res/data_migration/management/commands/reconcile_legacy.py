@@ -392,19 +392,25 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaFinance WHERE VillaId IS NOT NULL",
         PropertyFinance,
         "PropertyFinance",
-        # 1236 is a PLACEHOLDER to recalibrate at the first post-GAP-070
-        # dry-run (BUG-013 precedent). It was exact while the loaded side
-        # matched the legacy `VillaId IS NOT NULL` universe 1:1: the 1236 =
-        # 413 contact-default template rows (VillaId NULL, no per-villa
-        # equivalent) + 676 parent-child override rows (no schema home) +
-        # skips. The owner-contact fallback now ALSO creates a PropertyFinance
-        # row for each financeless villa with a live OWNER assignment, so the
-        # true gap is 1236 minus that fallback count — only derivable against
-        # the live dump. `loaded_count` scopes to migrated properties so
-        # rows snapshotted onto organically-created properties can't skew
-        # the gap between dry-runs.
+        # 1236 = legacy rows the per-villa pass does not port. Baseline
+        # itemisation (pre-GAP-070): 413 contact-default template rows
+        # (`VillaId = 0` — the column is NOT NULL, so `VillaId IS NOT NULL`
+        # counts them) + 676 parent-child override rows + skips. Populations
+        # to itemise at the GAP-107 dry-run (DRYRUN_LOG.md): `VillaId = 0`,
+        # `ParentId IS NOT NULL` (NB some override rows carry `VillaId > 0`
+        # and ARE ported as the villa's only row), and `VillaId > 0` on
+        # villas the property loader skipped.
+        # Loaded side (GAP-107): only rows the per-villa pass stamped with
+        # `legacy_id` = `VillaFinance.Id`. The GAP-070 owner-contact fallback
+        # rows and `snapshot_defaults` rows carry NULL, so neither moves the
+        # gap between dry-runs (GAP-073 measured 1235 while fallback rows
+        # were counted). `loaded = 0` means a DB loaded before migration
+        # properties.0008 — re-run `loadlegacy property_finance` (CUTOVER.md
+        # §6f). Stale caveat: a stamped row whose legacy twin was later
+        # hard-deleted keeps its legacy_id (no sweep, `VillaFinance` has no
+        # `DeletedAt`) — recalibrate on a fresh load of a newer dump.
         expected_gap=1236,
-        loaded_count=lambda m: m._default_manager.filter(property__legacy_id__isnull=False).count(),
+        loaded_count=lambda m: m._default_manager.filter(legacy_id__isnull=False).count(),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaQuotationMaster WHERE DeletedAt IS NULL",

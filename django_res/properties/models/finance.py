@@ -192,6 +192,11 @@ class PropertyFinance(AuditedModel):
     cancellation_window_days = models.PositiveSmallIntegerField(null=True, blank=True)
     cancellation_notes = models.TextField(blank=True)
 
+    # Legacy `VillaFinance.Id`, stamped only by the loader's per-villa pass
+    # (GAP-107; rationale on reconcile_legacy's PropertyFinance check).
+    # Migration metadata only; the lookup key stays `property`.
+    legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+
     def __str__(self) -> str:
         return f"Finance for property #{self.property_id}"
 

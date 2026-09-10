@@ -674,6 +674,30 @@ def test_booking_charge_item_check_counts_only_the_legacy_slice(booking: Booking
     assert check.loaded_count(check.model) == 1
 
 
+@pytest.mark.django_db
+def test_property_finance_check_counts_only_rows_with_a_legacy_twin() -> None:
+    """GAP-107: the GAP-070 owner-contact fallback mints `PropertyFinance`
+    rows with no `VillaFinance` twin (legacy_id NULL), and `snapshot_defaults`
+    mints one per organically-created property. Neither may move the
+    documented 1236 gap, so the loaded side counts only stamped rows."""
+    from properties.models.finance import PropertyFinance
+
+    # PropertyFactory snapshots a finance row per property (the real
+    # `snapshot_defaults` shape, legacy_id NULL); stamp only the per-villa one.
+    PropertyFactory(legacy_id="900")
+    PropertyFactory(legacy_id="901")  # fallback villa: row stays NULL
+    PropertyFactory()  # organic: snapshot row stays NULL
+    assert PropertyFinance.objects.filter(legacy_id__isnull=True).count() == 3
+    PropertyFinance.objects.filter(property__legacy_id="900").update(legacy_id="10")
+
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "PropertyFinance")
+    assert check.model is PropertyFinance
+    assert "VillaFinance" in check.legacy_query
+    assert check.expected_gap == 1236
+    assert check.loaded_count is not None
+    assert check.loaded_count(check.model) == 1
+
+
 def test_documented_expected_gaps_are_encoded() -> None:
     # The six documented carve-outs from CUTOVER.md must live in code (this
     # module is their single source of truth).

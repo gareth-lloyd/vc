@@ -199,9 +199,10 @@ class PropertyFinanceLoader(BaseLoader):
 
         Only creates rows where none exist, so the per-villa pass is never
         overwritten and re-runs are idempotent (create-only: a template edit
-        in legacy after the row is written does NOT propagate — the rows
-        carry no origin marker to refresh by). Non-migrated properties (no
-        legacy_id) are out of scope — they get rows via `snapshot_defaults`.
+        in legacy after the row is written does NOT propagate — fallback
+        rows carry `legacy_id=NULL`, nothing that identifies their
+        template). Non-migrated properties (no legacy_id) are out of scope —
+        they get rows via `snapshot_defaults`.
         """
         villas = (
             Property.objects.filter(legacy_id__isnull=False, finance__isnull=True)
@@ -265,7 +266,14 @@ class PropertyFinanceLoader(BaseLoader):
         return "applied"
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
-        prop = Property.objects.filter(legacy_id=str(row.get("VillaId") or "")).first()
+        # `VillaId` is `int NOT NULL`; the contact-default template rows carry
+        # 0. Skip them explicitly — `legacy_id=""` would otherwise match any
+        # Property saved with a blank (not NULL) legacy_id and stamp a
+        # template Id onto it.
+        if not row.get("VillaId"):
+            report.skipped += 1
+            return
+        prop = Property.objects.filter(legacy_id=str(row["VillaId"])).first()
         if prop is None:
             report.skipped += 1
             return
@@ -287,6 +295,10 @@ class PropertyFinanceLoader(BaseLoader):
                 if (own is None or own == "") and fallback not in (None, ""):
                     defaults[field] = fallback
         defaults["contact"] = contact
+        # Stamped here, not in `_finance_defaults`: that helper also feeds
+        # the fallback path, whose rows must stay NULL (see reconcile_legacy's
+        # PropertyFinance check, GAP-107).
+        defaults["legacy_id"] = str(row["Id"])
 
         _, created = PropertyFinance.objects.update_or_create(
             property=prop,

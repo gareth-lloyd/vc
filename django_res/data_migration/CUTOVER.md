@@ -457,7 +457,7 @@ is where the dry-run calibration happens), not just here.
 | Source table              | Expected gap | Reason |
 |---------------------------|--------------|--------|
 | `VillaCollectionsMappings`| 308          | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
-| `VillaFinance`            | 1236 *(placeholder)* | **Recalibrate at the first post-GAP-070 dry-run.** 1236 was exact while loaded matched the `VillaId IS NOT NULL` universe 1:1 (413 contact-default template rows + 676 parent-child override rows, neither with a per-villa home). The GAP-070 owner-contact fallback now also *creates* a `PropertyFinance` row for each financeless villa with a live OWNER assignment, so the true gap is 1236 minus that fallback count — only derivable against the live dump. |
+| `VillaFinance`            | 1236 *(confirm at the GAP-107 dry-run)* | Legacy rows the per-villa pass does not port. Baseline itemisation: 413 contact-default template rows (`VillaId = 0` — the column is `NOT NULL`, so the `VillaId IS NOT NULL` query counts them) + 676 parent-child override rows + skips; populations to itemise at the GAP-107 dry-run (`DRYRUN_LOG.md`): `VillaId = 0`, `ParentId IS NOT NULL` (some override rows carry `VillaId > 0` and *are* ported as the villa's only row), `VillaId > 0` on villas the property loader skipped. **GAP-107**: the loaded side counts only rows the per-villa pass stamped with `legacy_id` (= `VillaFinance.Id`); the GAP-070 owner-contact fallback rows and `snapshot_defaults` rows carry `NULL`, so the gap no longer moves with the fallback count (GAP-073 measured 1235 while those rows were still counted). `loaded = 0` means a DB loaded before `properties.0008` — see [§6f](#6f-re-stamp-propertyfinancelegacy_id-after-gap-107-only-for-dbs-loaded-before-2026-09). |
 | `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
 | `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 3805 *(calibrated 2026-07-05)* | **BUG-013**: the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents. Fully itemised in `reconcile_legacy.py` (balances to zero residual): dominated by 2477 priceless non-POA rows and 985 rows on seasons with no RatePlan; occupancy expansion and flattener fragments net off. Recalibrate on a newer dump — the mix moves with the data. |
 | `VillaMaster`             | 1            | One row with empty `Name`. |
@@ -748,6 +748,24 @@ Two related one-offs after the feature loaders run:
   Deactivate it in the Tags admin (`is_active=false`); nothing in code filters it.
 - `298 Sea View` is mapped to eight legacy categories; `FeatureLoader` files it
   under the first (`Included Features`), not under other-information. Expected.
+
+## 6f. Re-stamp `PropertyFinance.legacy_id` after GAP-107 (only for DBs loaded before 2026-09)
+
+Migration `properties.0008` adds `PropertyFinance.legacy_id` as schema only:
+on a DB loaded earlier (staging) every row stays `NULL`, so the §5
+`VillaFinance` check reads `loaded = 0` and BLOCKERs until the per-villa
+pass re-stamps its rows. A fresh cutover load (§4) never sees this. Run once,
+**without `--since`** (the stamp is not a legacy change):
+
+```bash
+uv run python manage.py loadlegacy property_finance
+```
+
+**Blast radius.** `property_finance` upserts every migrated villa's own
+finance row from the dump (staff edits since the earlier load are
+overwritten — the same contract as any delta load) and leaves the GAP-070
+fallback rows alone (`create-only`, so they keep their `NULL` marker).
+Idempotent.
 
 ## 7. England → GB merge
 

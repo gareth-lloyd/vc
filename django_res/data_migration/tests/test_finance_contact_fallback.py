@@ -134,6 +134,24 @@ def test_fallback_applies_owner_template_to_financeless_villa(
     assert finance.deposit_required is True
     assert finance.security_deposit_amount == Decimal("500")
     assert report.created == 1
+    # GAP-107: a fallback row has no legacy VillaFinance twin — the NULL
+    # legacy_id is what lets `reconcile_legacy` leave it out of the count.
+    assert finance.legacy_id is None
+
+
+def test_process_row_skips_contact_default_template_rows(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    # `VillaFinance.VillaId` is `int NOT NULL`; template rows carry 0. They
+    # must be skipped outright — never resolved via `legacy_id=""`.
+    prop, _contact = villa_with_owner
+    prop.legacy_id = ""
+    prop.save(update_fields=["legacy_id"])
+    loader = _loader_with_templates({})
+    report = LoadReport(loader=loader.name)
+    loader._process_row({"Id": 3, "VillaId": 0, "ContactId": 55, "ParentId": None}, report)
+    assert report.skipped == 1
+    assert not PropertyFinance.objects.filter(property=prop).exists()
 
 
 def test_fallback_never_touches_a_villa_with_its_own_row(
@@ -297,6 +315,8 @@ def test_process_row_merges_template_under_null_own_fields(
     assert finance.commission_amount == Decimal("12.50")
     assert finance.bank_iban == "GB29NWBK60161331926819"
     assert finance.contact_id == contact.pk
+    # GAP-107: the per-villa pass stamps the legacy VillaFinance.Id.
+    assert finance.legacy_id == "10"
 
 
 def test_process_row_own_values_beat_the_template(

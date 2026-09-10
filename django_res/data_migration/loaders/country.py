@@ -7,7 +7,12 @@ Legacy columns of interest (per ResSystem/Database/Data/VillaCountry.cs):
 - ShortName2      → iso3  (legacy stored ISO-3 here)
 - TaxRate         → default_tax_rate
 - CountryOrder    → sort_order
-- IsActive        → is_active
+- IsActive        → is_active (AND NOT deleted — GAP-107: `DeletedAt` /
+                    `DeletedBy` retire the row rather than skipping it, so
+                    FKs onto it still resolve; the one exception is a deleted
+                    row whose iso2 a live legacy row also claims — that
+                    duplicate is skipped and its `CountryId` consumers fall
+                    to `unknown_country()`)
 
 The 0009 migration pre-seeds the 249 canonical iso2 rows with no
 legacy_id, so this loader merges legacy rows onto them by iso2 (or by
@@ -22,6 +27,7 @@ from decimal import Decimal
 from typing import Any
 
 from data_migration.base import BaseLoader, LoadReport
+from data_migration.loaders._util import legacy_changed_since_sql, legacy_row_deleted
 from data_migration.loaders.sentinels import unknown_country
 from properties.models.geo import Country
 
@@ -46,9 +52,32 @@ class CountryLoader(BaseLoader):
     target_model = Country
     legacy_query = (
         "SELECT Id, Name, ShortName1, ShortName2, "
-        "Code, CountryOrder, IsActive, TaxRate "
+        "Code, CountryOrder, IsActive, TaxRate, DeletedAt, DeletedBy "
         "FROM VillaCountry"
     )
+
+    def __init__(self, since: str | None = None) -> None:
+        super().__init__(since)
+        # legacy ids of the soft-deleted rows in the current run — lets a
+        # live row displace an iso2 claim a deleted twin made on an earlier
+        # run (see `_process_row`).
+        self._deleted_legacy_ids: set[str] = set()
+
+    def _apply_since(self, query: str) -> str:
+        if not self.since:
+            return query
+        return f"{query} WHERE {legacy_changed_since_sql(self.since)}"
+
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        # Live rows claim an iso2 before deleted duplicates (stable sort, so
+        # cursor order is otherwise preserved), so a deleted twin can never
+        # stamp its legacy_id onto the ISO seed ahead of the live row.
+        # Sorted here rather than in SQL: `_apply_since` appends a WHERE to
+        # the end of the query, so an ORDER BY there would break `--since`.
+        self._deleted_legacy_ids = {
+            str(r.get(self.legacy_pk_column)) for r in rows if legacy_row_deleted(r)
+        }
+        super()._load_rows(sorted(rows, key=legacy_row_deleted), report)
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
         legacy_id = row.get(self.legacy_pk_column)
@@ -65,7 +94,8 @@ class CountryLoader(BaseLoader):
         dial_code = f"+{dial_raw}" if dial_raw else ""
         tax_rate = row.get("TaxRate") or Decimal("0")
         sort_order = row.get("CountryOrder") or 0
-        is_active = bool(row.get("IsActive"))
+        deleted = legacy_row_deleted(row)
+        is_active = bool(row.get("IsActive")) and not deleted
 
         if iso2 is None:
             # Map this legacy id onto the unknown sentinel. Multiple legacy
@@ -102,10 +132,16 @@ class CountryLoader(BaseLoader):
             report.created += 1
             return
 
-        # If another legacy id already claims this iso2, leave it alone.
+        # If another legacy id already claims this iso2, leave it alone —
+        # unless the claimant is a soft-deleted twin (stamped by a run that
+        # predates GAP-107, or a legacy delete-and-recreate) and this row is
+        # live: then the live row takes the seed over. A deleted row never
+        # displaces anyone.
         if existing.legacy_id and existing.legacy_id != legacy_id_str:
-            report.skipped += 1
-            return
+            stale_claim = existing.legacy_id in self._deleted_legacy_ids
+            if deleted or not stale_claim:
+                report.skipped += 1
+                return
 
         for k, v in defaults.items():
             setattr(existing, k, v)

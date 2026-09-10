@@ -14,6 +14,7 @@ from django.utils.text import slugify
 
 from data_migration.base import BaseLoader
 from data_migration.declarative import DeclarativeLoader
+from data_migration.loaders._util import legacy_changed_since_sql, legacy_row_deleted
 from data_migration.loaders.sentinels import unknown_country
 from pricing.models.currency import Currency
 from properties.models.features import Feature, FeatureCategory
@@ -34,10 +35,19 @@ class RegionLoader(DeclarativeLoader):
 
     @property
     def legacy_query(self) -> str:  # type: ignore[override]
-        return "SELECT Id, Name, Slug, CountryId FROM VillaRegion"
+        # GAP-107: deleted regions still load (villas, enquiries and people
+        # may point at them) but as `is_active=False` — GAP-102's "retired:
+        # readable, not selectable".
+        return "SELECT Id, Name, Slug, CountryId, DeletedAt, DeletedBy FROM VillaRegion"
+
+    def _apply_since(self, query: str) -> str:
+        if not self.since:
+            return query
+        return f"{query} WHERE {legacy_changed_since_sql(self.since)}"
 
     def transform_extra(self, row: dict[str, Any], kwargs: dict[str, Any]) -> dict[str, Any] | None:
-        kwargs["name"] = (kwargs.get("name") or "").strip()
+        # `Region.name` is 128 wide; legacy `Name` is nvarchar(500).
+        kwargs["name"] = (kwargs.get("name") or "").strip()[:128]
         if not kwargs["name"]:
             return None
         legacy_country_id = row.get("CountryId")
@@ -51,7 +61,12 @@ class RegionLoader(DeclarativeLoader):
         kwargs["country"] = country
         base_slug = (kwargs.get("slug") or "").strip() or slugify(kwargs["name"])
         kwargs["slug"] = (base_slug[:120] + f"-{row['Id']}") if base_slug else f"region-{row['Id']}"
-        kwargs["is_active"] = True
+        # Inactive when the region's own row is deleted OR its country is not
+        # selectable: CountryLoader (registered first) retires deleted and
+        # `IsActive = 0` countries, and an unresolvable `CountryId` lands on
+        # the (inactive) unknown sentinel. One source of truth for the
+        # country's state — the loaded row — rather than re-deriving it here.
+        kwargs["is_active"] = not legacy_row_deleted(row) and country.is_active
         return kwargs
 
 

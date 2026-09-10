@@ -630,6 +630,15 @@ full row set to detect deletions. `property_defaults` **skips entirely** on
 `VillaConfigPropertyDefault` singleton onto `PropertyDefaults` (pk=1 — it
 deliberately has no `legacy_id`), and a delta run must not clobber edits
 staff made through `PATCH /property-defaults` during the cutover window.
+`country` and `region` (GAP-107) filter on `UpdateAt OR DeletedAt OR
+CreatedAt` — legacy's `sp_countries` / `sp_regions` stamp a different column
+per action (INSERT / UPDATE / soft-DELETE), so `UpdateAt` alone would miss
+the inserts and the deletions a delta exists to catch. Before GAP-107 a
+delta load on either raised a SQL error (`UpdatedAt` does not exist there).
+A region is only re-evaluated when its *own* row changed: if its parent
+country was deleted after the freeze timestamp, the region keeps the
+`is_active` it loaded with. Re-run `region` without `--since` if that
+window matters.
 
 ## 6b. (Optional) Room-attribute backfill from prose (GAP-064/GAP-065/GAP-066)
 

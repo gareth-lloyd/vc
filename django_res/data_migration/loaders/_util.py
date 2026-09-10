@@ -2,7 +2,44 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+
+from data_migration.base import legacy_datetime_literal
+
+
+def legacy_row_deleted(row: dict[str, Any]) -> bool:
+    """True when a legacy row is soft-deleted under EITHER convention.
+
+    Legacy's own views (`vw_regions`, `vw_getRates`) key deletion on
+    `ISNULL(DeletedBy,'') <> ''`; most Django loaders filter on
+    `DeletedAt IS NULL`; the `sp_*` DELETE paths write both. OR-combining is
+    a superset of both, so a row deleted through any path counts (GAP-107).
+    Python twin of `legacy_deleted_sql` — keep the two in step.
+    """
+    if row.get("DeletedAt") is not None:
+        return True
+    return bool((row.get("DeletedBy") or "").strip())
+
+
+def legacy_deleted_sql(alias: str = "") -> str:
+    """SQL twin of `legacy_row_deleted`, for `reconcile_legacy` queries.
+
+    `alias` is the table alias including its dot (`"r."`), or empty.
+    """
+    return f"({alias}DeletedAt IS NOT NULL OR ISNULL({alias}DeletedBy, '') <> '')"
+
+
+def legacy_changed_since_sql(since: datetime) -> str:
+    """`--since` predicate for legacy tables whose `sp_*` write paths stamp
+    a DIFFERENT column per action: INSERT sets `CreatedAt`, UPDATE sets
+    `UpdateAt` (no "d"), soft-DELETE sets only `DeletedAt`. Filtering on
+    `UpdateAt` alone would miss exactly the rows a delta load exists to
+    catch — the inserts and the deletions (GAP-107; `VillaRegion` /
+    `VillaCountry`).
+    """
+    literal = legacy_datetime_literal(since)
+    return f"(UpdateAt > '{literal}' OR DeletedAt > '{literal}' OR CreatedAt > '{literal}')"
 
 
 def person_for_client(legacy_client_id: Any) -> Any:

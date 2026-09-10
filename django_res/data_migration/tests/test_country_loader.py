@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
 from data_migration.base import LoadReport
@@ -37,6 +39,108 @@ def test_upsert_merges_onto_existing_iso2_row(villa_country_row: dict[str, objec
     seeded.refresh_from_db()
     assert seeded.legacy_id == "42"
     assert report.updated == 1 and report.created == 0
+
+
+@pytest.mark.django_db
+def test_deleted_country_loads_inactive_even_when_is_active_set(
+    villa_country_row: dict[str, object],
+) -> None:
+    # GAP-107: legacy soft-delete beats the IsActive flag. The row still
+    # loads (villas/regions may point at it) but is retired.
+    row = {
+        **villa_country_row,
+        "IsActive": True,
+        "DeletedAt": datetime(2024, 3, 1),
+        "DeletedBy": "x",
+    }
+    loader = CountryLoader()
+    loader._process_row(row, LoadReport(loader=loader.name))
+    fr = Country.objects.get(iso2="FR")
+    assert fr.legacy_id == "42"
+    assert fr.is_active is False
+
+
+@pytest.mark.django_db
+def test_live_row_claims_iso2_before_deleted_duplicate(
+    villa_country_row: dict[str, object],
+) -> None:
+    """Two legacy rows share an iso2 (one deleted). Whatever order the cursor
+    yields them, the live row must own the ISO seed's legacy_id, and the
+    deleted duplicate must not overwrite it."""
+    deleted_dup = {
+        **villa_country_row,
+        "Id": 7,
+        "Name": "France (old)",
+        "DeletedAt": datetime(2020, 1, 1),
+    }
+    loader = CountryLoader()
+    report = LoadReport(loader=loader.name)
+    loader._load_rows([deleted_dup, villa_country_row], report)
+    fr = Country.objects.get(iso2="FR")
+    assert fr.legacy_id == "42"
+    assert fr.is_active is True
+    assert fr.name == "France"
+    assert report.skipped == 1
+
+
+@pytest.mark.django_db
+def test_live_row_displaces_a_deleted_twins_earlier_claim(
+    villa_country_row: dict[str, object],
+) -> None:
+    """A DB loaded before GAP-107 (or a legacy delete-and-recreate) can
+    already carry the deleted twin's legacy_id on the ISO seed. The live row
+    must take the seed over, or re-runs never converge and the live legacy
+    id resolves nowhere."""
+    fr = Country.objects.get(iso2="FR")
+    fr.legacy_id = "7"
+    fr.is_active = False
+    fr.save(update_fields=["legacy_id", "is_active"])
+    deleted_dup = {
+        **villa_country_row,
+        "Id": 7,
+        "Name": "France (old)",
+        "DeletedAt": datetime(2020, 1, 1),
+    }
+    loader = CountryLoader()
+    report = LoadReport(loader=loader.name)
+    loader._load_rows([deleted_dup, villa_country_row], report)
+    fr.refresh_from_db()
+    assert fr.legacy_id == "42"
+    assert fr.is_active is True
+    assert fr.name == "France"
+    # The deleted twin is skipped, not written over the live row's claim.
+    assert report.skipped == 1
+
+
+@pytest.mark.django_db
+def test_live_claim_is_never_displaced_by_a_different_live_row(
+    villa_country_row: dict[str, object],
+) -> None:
+    fr = Country.objects.get(iso2="FR")
+    fr.legacy_id = "7"
+    fr.save(update_fields=["legacy_id"])
+    loader = CountryLoader()
+    report = LoadReport(loader=loader.name)
+    loader._load_rows([villa_country_row], report)
+    fr.refresh_from_db()
+    assert fr.legacy_id == "7"
+    assert report.skipped == 1
+
+
+def test_legacy_query_selects_deletion_columns() -> None:
+    assert "DeletedAt" in CountryLoader.legacy_query
+    assert "DeletedBy" in CountryLoader.legacy_query
+
+
+def test_apply_since_sees_inserts_updates_and_deletes() -> None:
+    # Legacy `sp_countries` stamps `CreatedAt` on INSERT, `UpdateAt` (no
+    # "d") on UPDATE and only `DeletedAt` on DELETE.
+    loader = CountryLoader(since="2026-01-01T00:00:00")
+    query = loader._apply_since(loader.legacy_query)
+    assert query.endswith(
+        "FROM VillaCountry WHERE (UpdateAt > '2026-01-01T00:00:00' "
+        "OR DeletedAt > '2026-01-01T00:00:00' OR CreatedAt > '2026-01-01T00:00:00')"
+    )
 
 
 @pytest.mark.django_db

@@ -215,6 +215,7 @@ even across a year boundary. Not worth it.
   discount columns, so the new `Extra`/`Discount` tables start **empty** for migrated
   villas. Inclusions *are* ported (GAP-037). Confirm whether the drop is intentional
   or an un-ported surface; if intentional, record it in `CUTOVER.md` expected-losses.
+  → **Filed as GAP-107 §1 (2026-09-10).**
 - **Workbench carry-forward affordance** already filed as **GAP-069** — since
   resolved (2026-07-03): the `…:carry-forward` endpoint has its SPA caller
   (`CarryForwardDialog`).

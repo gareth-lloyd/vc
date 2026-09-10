@@ -42,8 +42,9 @@ Limitless on the GAP-096 coordination pattern, and a `region` stage at the
 villa in it) is the wrong shape: one region edit → N villa pushes.
 
 Sequence the geo loader `DeletedBy`/orphan filtering (71 vs 57 legacy
-regions, GAP-102 ticket text) **before** the first backfill of this kind, or
-the retired rows get pushed once and then have to be retired again in Zoho.
+regions, GAP-102 ticket text; now **GAP-107** §2) **before** the first
+backfill of this kind, or the retired rows get pushed once and then have to be
+retired again in Zoho.
 
 ## Acceptance
 

@@ -39,12 +39,14 @@ from accounts.models import Organisation, Person, User
 from accounts.models.person import PersonEmail, PersonPhone
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
+from data_migration.loaders._util import legacy_deleted_sql
 from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
 from data_migration.loaders.integrations import SyncRecordZohoLoader, zoho_id_column_exists
 from data_migration.loaders.sentinels import (
     CLIENT_LEGACY_PREFIX,
     SHEET_LEGACY_PREFIX,
     UNKNOWN_CLIENT_LEGACY_ID,
+    UNKNOWN_LEGACY_ID,
 )
 from integrations.enums import SyncProvider
 from integrations.models import SyncRecord
@@ -97,7 +99,60 @@ _CHECKS: list[_Check] = [
         # dwarfs the 23 legacy rows, so the gap is structurally negative.
         expected_gap=-228,
     ),
+    _Check(
+        # GAP-107: legacy `IsActive = 1` countries that are not soft-deleted
+        # vs migrated countries loaded active. Parity, not a strict
+        # invariant: a live legacy row CountryLoader cannot seed-match (an
+        # iso-less row absorbed by the `XX` sentinel, or a second live row on
+        # an already-claimed iso2, which is skipped) counts here but loads
+        # nowhere / inactive. 0 is a PLACEHOLDER — recalibrate at the GAP-107
+        # dry-run, itemising those rows in CUTOVER.md §5. Run before the
+        # §7 England → GB merge, which hard-deletes the `UK` row.
+        f"SELECT COUNT(*) FROM VillaCountry WHERE IsActive = 1 AND NOT {legacy_deleted_sql()}",
+        Country,
+        "Country (active)",
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__isnull=False, is_active=True)
+            .exclude(iso2="XX")
+            .count()
+        ),
+    ),
+    # GAP-107 adds no shift to the bare total: deleted regions still load
+    # (retired in place, never skipped). Its pre-existing shifters remain —
+    # blank-name rows are skipped by the loader, and the loaded side counts
+    # the `unknown-xx` sentinel and staff-created rows.
     _Check("SELECT COUNT(*) FROM VillaRegion", Region, "Region"),
+    # The two slices below say WHICH imported rows came in active. Together
+    # they pin the retired count too (retired = imported - active on both
+    # sides), so a single misclassification cannot hide inside the total;
+    # an equal-and-opposite swap still can — these are counts, not row
+    # diffs. A region is live iff its own row is not deleted AND it sits
+    # under a live, `IsActive = 1` country (RegionLoader derives `is_active`
+    # from the loaded Country row). Same seed-match caveat as
+    # `Country (active)` above: 0 is a PLACEHOLDER — recalibrate at the
+    # GAP-107 dry-run.
+    _Check(
+        "SELECT COUNT(*) FROM VillaRegion r WHERE LTRIM(RTRIM(ISNULL(r.Name, ''))) <> ''",
+        Region,
+        "Region (imported)",
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__isnull=False)
+            .exclude(legacy_id=UNKNOWN_LEGACY_ID)
+            .count()
+        ),
+    ),
+    _Check(
+        "SELECT COUNT(*) FROM VillaRegion r JOIN VillaCountry c ON c.Id = r.CountryId "
+        f"WHERE LTRIM(RTRIM(ISNULL(r.Name, ''))) <> '' AND NOT {legacy_deleted_sql('r.')} "
+        f"AND NOT {legacy_deleted_sql('c.')} AND c.IsActive = 1",
+        Region,
+        "Region (active)",
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__isnull=False, is_active=True)
+            .exclude(legacy_id=UNKNOWN_LEGACY_ID)
+            .count()
+        ),
+    ),
     _Check(
         "SELECT COUNT(*) FROM VillaCurrency",
         Currency,

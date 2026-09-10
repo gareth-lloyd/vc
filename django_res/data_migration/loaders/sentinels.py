@@ -10,7 +10,11 @@ from accounts.enums import PersonKind, PersonStatus
 from accounts.models import Person
 from properties.models.geo import Country, Region
 
-_UNKNOWN = "__unknown__"
+# `legacy_id` minted on the sentinel rows. Note `CountryLoader` re-points the
+# `unknown_country()` row's legacy_id to whichever iso-less legacy row it
+# absorbed last, so only `unknown_region()` reliably carries this value —
+# identify the country sentinel by `iso2="XX"` instead.
+UNKNOWN_LEGACY_ID = "__unknown__"
 
 # Canonical `legacy_id` prefix for the customer Persons `ClientLoader` writes
 # (`client-{VillaClientDetailsId}`). Single source of truth so the loader write,
@@ -28,7 +32,7 @@ SHEET_LEGACY_PREFIX = "sheet-"
 # `client-` prefix so it sorts with the customer rows, but reconcile_legacy
 # excludes it from BOTH Person count slices (owner/agent AND client) so the
 # documented VillaClientDetails gap stays stable whether or not it's minted.
-UNKNOWN_CLIENT_LEGACY_ID = f"{CLIENT_LEGACY_PREFIX}{_UNKNOWN}"
+UNKNOWN_CLIENT_LEGACY_ID = f"{CLIENT_LEGACY_PREFIX}{UNKNOWN_LEGACY_ID}"
 
 
 def unknown_country() -> Country:
@@ -38,7 +42,7 @@ def unknown_country() -> Country:
             "name": "Unknown",
             "iso3": "XXX",
             "is_active": False,
-            "legacy_id": _UNKNOWN,
+            "legacy_id": UNKNOWN_LEGACY_ID,
         },
     )
     return country
@@ -51,7 +55,7 @@ def unknown_region(country: Country) -> Region:
         defaults={
             "name": "Unknown",
             "is_active": False,
-            "legacy_id": _UNKNOWN,
+            "legacy_id": UNKNOWN_LEGACY_ID,
         },
     )
     return region

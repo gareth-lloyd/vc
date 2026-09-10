@@ -44,6 +44,11 @@ class _FakeCursor:
         self._last: object = None
 
     def execute(self, query: str) -> None:
+        # Exact match first, so a check can be keyed on its full
+        # `legacy_query` when a shorter needle is a substring of it.
+        if query in self._responses:
+            self._last = self._responses[query]
+            return
         for needle, value in self._responses.items():
             if needle in query:
                 self._last = value
@@ -284,6 +289,82 @@ def test_rate_plan_basis_check_counts_only_legacy_non_gross() -> None:
     assert basis_check.loaded_count is not None
     assert basis_check.loaded_count(basis_check.model) == 1
     assert basis_check.expected_gap == 0
+
+
+@pytest.mark.django_db
+def test_geo_parity_checks_split_active_from_retired(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GAP-107: legacy-deleted regions/countries load `is_active=False`, so
+    the bare `Region` total says nothing about *which* rows are active. The
+    imported / active slices (both `legacy_id IS NOT NULL` only, sentinels
+    excluded) pin the split — retired = imported - active on both sides —
+    so a single misclassification cannot hide inside the total (an
+    equal-and-opposite swap still can; these are counts, not row diffs).
+    The legacy side carries the same OR deletion predicate as the loaders
+    (`legacy_deleted_sql`).
+    """
+    from data_migration.loaders._util import legacy_deleted_sql
+    from data_migration.loaders.sentinels import unknown_country, unknown_region
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+    from properties.factories import CountryFactory, RegionFactory
+    from properties.models.geo import Country
+
+    def _country(iso2: str, **fields: object) -> Country:
+        # CountryFactory is get-or-create on iso2 (the ISO seed already holds
+        # the row), so stamp the legacy state explicitly.
+        CountryFactory(iso2=iso2)
+        Country.objects.filter(iso2=iso2).update(**fields)
+        return Country.objects.get(iso2=iso2)
+
+    live_country = _country("FR", legacy_id="1", is_active=True)
+    retired_country = _country("IN", legacy_id="2", is_active=False)
+    _country("DE", is_active=True)  # seeded ISO row, no legacy twin
+    RegionFactory(country=live_country, name="Provence", legacy_id="10", is_active=True)
+    RegionFactory(country=live_country, name="Old Riviera", legacy_id="11", is_active=False)
+    RegionFactory(country=retired_country, name="Goa", legacy_id="12", is_active=False)
+    RegionFactory(country=live_country, name="Staff-made")  # no legacy twin
+    unknown_region(unknown_country())  # sentinel — in neither slice
+
+    # The XX country sentinel: inactive, and its legacy_id is re-pointed by
+    # CountryLoader to a real legacy id — must stay out by identity.
+    Country.objects.filter(iso2="XX").update(legacy_id="99", is_active=True)
+
+    by_label = {c.label: c for c in _CHECKS}
+    imported = by_label["Region (imported)"]
+    active = by_label["Region (active)"]
+    country_active = by_label["Country (active)"]
+    counts = {}
+    for check in (imported, active, country_active):
+        assert check.loaded_count is not None, check.label
+        counts[check.label] = check.loaded_count(check.model)
+    assert counts == {"Region (imported)": 3, "Region (active)": 1, "Country (active)": 1}
+
+    # Legacy side mirrors the loader: deletion is the OR predicate, a region
+    # is live only under a live, `IsActive = 1` country.
+    assert legacy_deleted_sql("r.") in active.legacy_query
+    assert legacy_deleted_sql("c.") in active.legacy_query
+    assert "c.IsActive = 1" in active.legacy_query
+    assert legacy_deleted_sql() in country_active.legacy_query
+    assert "IsActive = 1" in country_active.legacy_query
+
+    geo_checks = [c for c in _CHECKS if c.model.__name__ in ("Region", "Country")]
+    _patch(
+        monkeypatch,
+        geo_checks,
+        responses={
+            # Keyed on the full query where a shorter needle is a substring.
+            imported.legacy_query: 3 + imported.expected_gap,
+            active.legacy_query: 1 + active.expected_gap,
+            country_active.legacy_query: 1 + country_active.expected_gap,
+            # Bare totals: every loaded Region (5 incl. staff-made + sentinel)
+            # and every Country (the ISO seed + sentinel).
+            "COUNT(*) FROM VillaRegion": 5 + by_label["Region"].expected_gap,
+            "COUNT(*) FROM VillaCountry": (
+                Country.objects.count() + by_label["Country (legacy)"].expected_gap
+            ),
+        },
+    )
+    output = _run()
+    assert "BLOCKER" not in output
 
 
 @pytest.mark.django_db

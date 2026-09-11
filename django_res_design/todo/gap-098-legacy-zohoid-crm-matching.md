@@ -4,6 +4,13 @@
   legacy-synced estate; no round-trip identity).
 - **Source:** 2026-09-01 review of Limitless' parse functions against our
   payload builders.
+- **2026-09-11 loader audit (dump facts):** `VillaContact.ZohoId` is **blank
+  on all 233 rows** — there is no legacy contact continuity to preserve, and
+  every contact push will INSERT on first sync regardless of this ticket.
+  Real coverage is `VillaMaster` 75 loaded (112 raw, 36 on deleted villas, 1
+  Temenos duplicate) and `VillaEnquire` 44; `VillaQuotationMaster` /
+  `VillaBooking` have no column. GAP-108 trims `SPECS` and CUTOVER §4b to
+  match.
 - **Files touched:**
   - `django_res/data_migration/loaders/integrations.py:100–120, 165` — the
     `SyncRecordZohoLoader` and its `_ZohoSpec` table list; legacy `ZohoId` →

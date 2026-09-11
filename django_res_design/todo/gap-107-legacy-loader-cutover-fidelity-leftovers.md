@@ -1,5 +1,22 @@
 # GAP-107 — Legacy loader: extras never loaded, deleted regions imported, a reconcile count still guessed
 
+> **2026-09-11 audit update (see BUG-028/029/030, GAP-108/109, Q-028).**
+> - **§1 extras** — still open; restated as Q-028 item 4 so it rides the next
+>   Nick call. The `OldId_ExtraRate` disagreement stands.
+> - **§2 geo** — the 71/57 numbers do not match the 24-Apr dump: `VillaRegion`
+>   has **64** rows, **12** with `DeletedAt`, **10** live under deleted
+>   countries, 42 clean; `VillaCountry` 23 rows, 17 deleted, 10 of those still
+>   `IsActive=1`. Recount before pinning the invariant. Two refinements land
+>   with BUG-030: a deleted legacy country must not attach its `legacy_id` to
+>   a live ISO seed row (today 6→GB, 10→NZ, 11→IN do, so regions 42/44/45/46
+>   resolve onto live countries), and the six live villas under deleted
+>   regions with live twins are **remapped** (25→61, 27→60; user decision
+>   2026-09-11), not left in an inactive region. The invariant "zero active
+>   Region/Country whose legacy twin is deleted" is added by GAP-108.
+> - **§3 finance** — explained and pinned by GAP-108: the gap is **1235** =
+>   one owner-contact fallback row (villa 463); fallback rows carry no marker,
+>   so the constant is pinned with its derivation. Closed here.
+
 - **Severity:** 🟠 Gap (cutover fidelity). Backend `data_migration/` only.
 - **Source:** 2026-09-10 sweep of `todo/` for loader follow-ups. Pulls together
   three items that each said "needs its own ticket" and never got one:

@@ -216,6 +216,16 @@ even across a year boundary. Not worth it.
   villas. Inclusions *are* ported (GAP-037). Confirm whether the drop is intentional
   or an un-ported surface; if intentional, record it in `CUTOVER.md` expected-losses.
   → **Filed as GAP-107 §1 (2026-09-10).**
+- **Season-envelope parity gap (2026-09-11 loader audit, BUG-028 §5):**
+  `RatePlanLoader` sets `effective_from/to` from `VillaSeasonDates`, the engine
+  only picks plans whose window covers the whole stay, and legacy ignored
+  `VillaSeasonDates` for pricing — so **268 priced live rows (89 future)** sit
+  outside their plan's window and 64 loaded plans have periods outside their
+  own envelope. Two options: widen the window in the loader (min/max over
+  both sources; interim) or make this ticket's period-as-date-authority the
+  fix. **Parked** (user, 2026-09-11) to explore after the other loader
+  questions land; whichever way it goes, this is the first concrete data
+  that the "regime bucket" model would have avoided.
 - **Workbench carry-forward affordance** already filed as **GAP-069** — since
   resolved (2026-07-03): the `…:carry-forward` endpoint has its SPA caller
   (`CarryForwardDialog`).

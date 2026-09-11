@@ -459,7 +459,9 @@ is where the dry-run calibration happens), not just here.
 | `VillaCollectionsMappings`| 308          | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
 | `VillaFinance`            | 1236 *(placeholder)* | **Recalibrate at the first post-GAP-070 dry-run.** 1236 was exact while loaded matched the `VillaId IS NOT NULL` universe 1:1 (413 contact-default template rows + 676 parent-child override rows, neither with a per-villa home). The GAP-070 owner-contact fallback now also *creates* a `PropertyFinance` row for each financeless villa with a live OWNER assignment, so the true gap is 1236 minus that fallback count — only derivable against the live dump. |
 | `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
-| `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 3805 *(calibrated 2026-07-05)* | **BUG-013**: the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents. Fully itemised in `reconcile_legacy.py` (balances to zero residual): dominated by 2477 priceless non-POA rows and 985 rows on seasons with no RatePlan; occupancy expansion and flattener fragments net off. Recalibrate on a newer dump — the mix moves with the data. |
+| `VillaSeason` → `RatePlan` (villas with a loaded regime) | 0 *(placeholder)* | **GAP-110**: a `RatePlan` is one `(villa, currency)` regime, not a season — `RatePlanLoader` merges every live, priced season of a villa that resolves to the same currency onto one plan keyed `villa:<VillaId>:<CODE>`. Both sides count **villas**: legacy = distinct live villas with ≥1 live priced rate row (the loaders' shared `PRICED_ROW_PREDICATE`); loaded = distinct villas owning a `villa:`-keyed plan that carries ≥1 legacy period (a minted plan the band loader couldn't populate does not count; staff plans never do). Gap = villas the loader can't resolve (no `Property`, no currency), structurally ≥ 0. **Recalibrate at the first post-GAP-110 dry-run** — the pre-regroup numbers (710 seasons → 521 plans, gap 67) no longer apply. Expected losses that no longer count as a gap: the 17 rate-less seasons (no regime — skipped) and the 25 seasons without a live `VillaSeasonDates` window (no plan envelope / no inclusion service); season names survive only as `notes` on a merged plan. |
+| `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 3805 *(calibrated 2026-07-05, pre-GAP-110)* | **BUG-013**: the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents. Fully itemised in `reconcile_legacy.py` (balances to zero residual): dominated by 2477 priceless non-POA rows and 985 rows on seasons with no RatePlan; occupancy expansion and flattener fragments net off. **Recalibrate at the first post-GAP-110 dry-run**: conflicts now resolve *across* a villa's seasons (see below), so the shadowed / `#seg` fragment mix moves, and rows on seasons the regroup skips move too. |
+| *(section)* `RatePeriod` night parity | 0 villas | **GAP-110**: printed as its own table after the row counts. Per villa, the set of nights legacy priced (the coalesced union of its live, priced, non-extra `VillaSeasonRate` spans, `ToDate` inclusive — same predicate as the loaders, including occupancy parents priced only through their child bands) must equal the nights the villa's loaded legacy periods cover. Boundary trims and conflict splits never change that set, so a villa with a mismatch lost or invented priced nights in the regroup. Every mismatched villa is listed with its legacy vs loaded night counts and is one blocker. A non-zero residue on the dump must be **itemised per villa** (villas with no `Property`; negative-price junk rows), not waved through. |
 | `VillaMaster`             | 1            | One row with empty `Name`. |
 | `VillaContactMapping`     | 1            | Composite legacy_id collapse. |
 | `VillaClientDetails`      | 1            | One row with neither `FirstName` nor `LastName` (no identity to import). Loads to the `client-` slice of `Person` (GAP-045). |
@@ -480,8 +482,20 @@ clustered index). The new schema forbids within-plan overlap outright
 constraints), so `RateBandLoader` resolves overlaps at load time in two
 stages (BUG-016):
 
-**Stage 1 — pre-normalisation** (`resolve_rate_band_overlaps`, per season,
-pure on the row dicts):
+Since **GAP-110** the unit of resolution is the **regime plan** — one
+`(villa, currency)` bucket, `villa:<VillaId>:<CODE>` — not the legacy season:
+rows from every season of a villa that resolves to the same currency trim and
+resolve *together* (a season boundary is just another shared boundary; a
+cross-season overlap is a conflict like any other, same precedence), while
+different villas and different currencies never touch. Each row resolves to
+its plan through the **season's** currency (the same `CurrencyId` →
+`VillaCurrencyId` → settings → EUR chain `RatePlanLoader` grouped by), never
+the row's own `CurrencyId`, so a NULL-currency row lands where its season's
+plan went. Rows on soft-deleted seasons or villas have no regime and are
+excluded by the query.
+
+**Stage 1 — pre-normalisation** (`resolve_rate_band_overlaps`, per regime
+plan, pure on the row dicts):
 
 - **Junk pre-filter** — rows `transform()` would skip (junk dates, no price
   and not POA) are excluded up front so they can neither trim nor be trimmed;
@@ -537,7 +551,7 @@ one legacy row now maps to **one or more** bands (was: at most one).
 Consequences:
 
 - The loader **ignores `--since`** (and logs a warning if passed) —
-  resolution is a function of a season's whole row set, so every pass is a
+  resolution is a function of a regime's whole row set, so every pass is a
   full reload (the table is small).
 - Each run is a **full replace**: all legacy-loaded bands + periods are
   purged, then the flattened grid is inserted. Inserting into an empty legacy

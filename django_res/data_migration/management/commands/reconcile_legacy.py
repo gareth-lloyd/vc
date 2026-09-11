@@ -27,8 +27,10 @@ against live counts.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 from django.contrib.contenttypes.models import ContentType
@@ -41,6 +43,7 @@ from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
 from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
 from data_migration.loaders.integrations import SyncRecordZohoLoader, zoho_id_column_exists
+from data_migration.loaders.pricing import PLAN_LEGACY_PREFIX, PRICED_ROW_PREDICATE
 from data_migration.loaders.sentinels import (
     CLIENT_LEGACY_PREFIX,
     SHEET_LEGACY_PREFIX,
@@ -50,7 +53,7 @@ from integrations.enums import SyncProvider
 from integrations.models import SyncRecord
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
-from pricing.models.rate import RateBand, RatePlan
+from pricing.models.rate import RateBand, RatePeriod, RatePlan
 from properties.enums import PriceBasis
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.features import (
@@ -69,6 +72,64 @@ from reservations.models.charge_item import BookingChargeItem
 from reservations.models.enquiry import Enquiry
 from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.models.quotation import Quotation, QuotationLine
+
+# GAP-110 U0b night parity — per villa, the nights legacy priced (the union of
+# its live, priced, non-extra rate-row spans; legacy `ToDate` is inclusive)
+# must equal the nights the villa's loaded legacy periods cover. Boundary
+# trims and conflict splits never change that set, so a villa with a
+# mismatch lost or invented priced nights in the regroup. Same row universe
+# as the loaders (`PRICED_ROW_PREDICATE`).
+NIGHT_PARITY_QUERY = (
+    "SELECT s.VillaId, r.FromDate, r.ToDate FROM VillaSeasonRate r "
+    "JOIN VillaSeason s ON s.ID = r.SeasonId AND s.DeletedAt IS NULL "
+    "JOIN VillaMaster m ON m.Id = s.VillaId AND m.DeletedAt IS NULL "
+    f"WHERE {PRICED_ROW_PREDICATE}"
+)
+
+Span = tuple[date, date]
+
+
+def _coalesce(spans: list[Span]) -> list[Span]:
+    """Sorted, merged inclusive spans (touching or overlapping spans fuse), so
+    two night sets compare as lists without materialising a `date` per night
+    (an open-ended sentinel row would otherwise expand to millions)."""
+    out: list[Span] = []
+    for start, end in sorted(spans):
+        if out and start <= out[-1][1] + timedelta(days=1):
+            out[-1] = (out[-1][0], max(out[-1][1], end))
+        else:
+            out.append((start, end))
+    return out
+
+
+def _night_count(spans: list[Span]) -> int:
+    return sum((end - start).days + 1 for start, end in spans)
+
+
+def _as_date(value: Any) -> date:
+    return value.date() if hasattr(value, "date") else value
+
+
+def night_parity_mismatches(legacy_rows: list[tuple[Any, ...]]) -> list[tuple[str, int, int]]:
+    """`(villa legacy_id, legacy nights, loaded nights)` for every villa whose
+    legacy priced-night set differs from its loaded legacy periods.
+    `legacy_rows` are `(VillaId, FromDate, ToDate)`; UI-created periods
+    (legacy_id NULL) are not part of the loaded footprint being reconciled."""
+    legacy: dict[str, list[Span]] = defaultdict(list)
+    for villa_id, date_from, date_to in legacy_rows:
+        legacy[str(villa_id)].append((_as_date(date_from), _as_date(date_to)))
+    loaded: dict[str, list[Span]] = defaultdict(list)
+    periods = RatePeriod.objects.filter(legacy_id__isnull=False).values_list(
+        "plan__property__legacy_id", "date_from", "date_to"
+    )
+    for villa_id, date_from, date_to in periods:
+        loaded[str(villa_id)].append((date_from, date_to))
+    mismatches: list[tuple[str, int, int]] = []
+    for villa_id in sorted(legacy.keys() | loaded.keys(), key=lambda v: (len(v), v)):
+        want, have = _coalesce(legacy[villa_id]), _coalesce(loaded[villa_id])
+        if want != have:
+            mismatches.append((villa_id, _night_count(want), _night_count(have)))
+    return mismatches
 
 
 @dataclass
@@ -237,12 +298,31 @@ _CHECKS: list[_Check] = [
         expected_gap=77,
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaSeason WHERE DeletedAt IS NULL",
+        # GAP-110: a RatePlan is one (villa, currency) regime, not a season,
+        # so both sides count VILLAS. Legacy = live villas with ≥1 live priced
+        # rate row (the loaders' shared predicate, so rate-less seasons drop
+        # out of both sides). Loaded = distinct villas owning a `villa:`-keyed
+        # regime plan that actually carries ≥1 legacy period (a plan the band
+        # loader couldn't populate is not a loaded villa; staff-created plans
+        # never count). Gap = villas the loader couldn't resolve (no Property,
+        # no currency) — structurally ≥ 0. PLACEHOLDER 0: recalibrate at the
+        # first post-GAP-110 dry-run (see CUTOVER.md); the pre-regroup numbers
+        # (710 seasons → 521 plans, gap 67) no longer apply.
+        "SELECT COUNT(DISTINCT s.VillaId) FROM VillaSeason s "
+        "JOIN VillaMaster m ON m.Id = s.VillaId AND m.DeletedAt IS NULL "
+        "WHERE s.DeletedAt IS NULL AND EXISTS ("
+        f" SELECT 1 FROM VillaSeasonRate r WHERE r.SeasonId = s.ID AND {PRICED_ROW_PREDICATE})",
         RatePlan,
-        "RatePlan",
-        # Seasons whose VillaId doesn't resolve, or with no resolvable currency
-        # (none on the season's rates and none configured on the property).
-        expected_gap=67,
+        "RatePlan (villas with a loaded regime)",
+        expected_gap=0,
+        loaded_count=lambda m: (
+            m._default_manager.filter(
+                legacy_id__startswith=PLAN_LEGACY_PREFIX, periods__legacy_id__isnull=False
+            )
+            .values("property_id")
+            .distinct()
+            .count()
+        ),
     ),
     _Check(
         # SMELL-021: legacy cannot express a NET basis (no such column;
@@ -462,6 +542,7 @@ class Command(BaseCommand):
         blockers: list[str] = []
         with legacy_cursor() as cursor:
             blockers += self._row_count_section(cursor)
+            blockers += self._night_parity_section(cursor)
             if options["integrations"]:
                 blockers += self._zoho_continuity_section(cursor)
                 self._wordpress_info_section(cursor)
@@ -502,6 +583,26 @@ class Command(BaseCommand):
         header = ("table", "legacy", "loaded", "gap", "expected", "status")
         self.stdout.write(render_table(header, rows))
         return blockers
+
+    def _night_parity_section(self, cursor: Any) -> list[str]:
+        """GAP-110 U0b: per-villa priced-night parity between legacy rate rows
+        and loaded legacy periods. Lists every mismatched villa (so a residue
+        can be itemised on the dump, never waved through as a number) and
+        returns one blocker per villa; expected residue is zero."""
+        cursor.execute(NIGHT_PARITY_QUERY)
+        mismatches = night_parity_mismatches(cursor.fetchall())
+        self.stdout.write("\nRatePeriod night parity (villas whose priced nights differ):")
+        if not mismatches:
+            self.stdout.write("  OK — every villa's loaded periods cover exactly its legacy nights")
+            return []
+        header = ("villa legacy_id", "legacy nights", "loaded nights", "status")
+        self.stdout.write(
+            render_table(header, [(v, want, have, "BLOCKER") for v, want, have in mismatches])
+        )
+        return [
+            f"RatePeriod night parity: villa {v} legacy {want} nights, loaded {have}"
+            for v, want, have in mismatches
+        ]
 
     def _zoho_continuity_section(self, cursor: Any) -> list[str]:
         """Per Zoho source: backfilled SyncRecord vs the legacy rows that need one.

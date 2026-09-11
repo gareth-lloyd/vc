@@ -36,6 +36,9 @@ def _row(id: int, frm: date | None, to: date | None, **overrides: Any) -> dict[s
         "IsApprove": True,
         "IsAvailable": True,
         "Description": "",
+        # The regime-plan stamp `RateBandLoader._load_rows` puts on every row
+        # before calling the resolver (GAP-110) — the grouping key.
+        "_plan_key": "villa:7:EUR",
     }
     base.update(overrides)
     return base
@@ -91,15 +94,23 @@ def test_boundary_trim_chain() -> None:
     assert res.trimmed == 2
 
 
-def test_boundary_trim_to_empty_drops_row() -> None:
+def test_boundary_trim_to_single_day_keeps_row() -> None:
+    """A two-night legacy row whose successor starts on its end date trims to
+    a one-day span — legitimate under inclusive dates. Dropping it (the
+    pre-GAP-110 rule) silently unpriced that night; with seasons of one villa
+    now trimming against each other the case is common at year boundaries."""
     res = resolve_rate_band_overlaps(
         [
             _row(1, date(2025, 6, 1), date(2025, 6, 2)),
             _row(2, date(2025, 6, 2), date(2025, 6, 9)),
         ]
     )
-    assert _spans(res.rows) == [(2, date(2025, 6, 2), date(2025, 6, 9))]
-    assert res.dropped == 1
+    assert _spans(res.rows) == [
+        (1, date(2025, 6, 1), date(2025, 6, 1)),
+        (2, date(2025, 6, 2), date(2025, 6, 9)),
+    ]
+    assert res.trimmed == 1
+    assert res.dropped == 0
 
 
 def test_identical_rows_drop_duplicate() -> None:
@@ -149,13 +160,14 @@ def test_junk_dates_excluded_without_counting() -> None:
     assert res.dropped == 0
 
 
-def test_seasons_trim_independently() -> None:
-    """The boundary trim is scoped per season: a contiguous boundary against a
-    row in a *different* season never trims."""
+def test_plans_trim_independently() -> None:
+    """The boundary trim is scoped by the stamped regime plan: a contiguous
+    boundary against a row on a *different* plan — another villa, or another
+    currency — never trims."""
     res = resolve_rate_band_overlaps(
         [
-            _row(1, date(2025, 6, 1), date(2025, 6, 8), SeasonId=42),
-            _row(2, date(2025, 6, 8), date(2025, 6, 15), SeasonId=43),
+            _row(1, date(2025, 6, 1), date(2025, 6, 8), _plan_key="villa:7:EUR"),
+            _row(2, date(2025, 6, 8), date(2025, 6, 15), _plan_key="villa:8:EUR"),
         ]
     )
     assert _spans(res.rows) == [
@@ -163,6 +175,22 @@ def test_seasons_trim_independently() -> None:
         (2, date(2025, 6, 8), date(2025, 6, 15)),
     ]
     assert res.trimmed == 0
+
+
+def test_seasons_of_one_plan_trim_together() -> None:
+    """GAP-110: seasons are not a grouping boundary any more — two seasons of
+    one villa + currency land on one plan, so their contiguous rows trim."""
+    res = resolve_rate_band_overlaps(
+        [
+            _row(1, date(2025, 6, 1), date(2025, 6, 8), SeasonId=42),
+            _row(2, date(2025, 6, 8), date(2025, 6, 15), SeasonId=43),
+        ]
+    )
+    assert _spans(res.rows) == [
+        (1, date(2025, 6, 1), date(2025, 6, 7)),
+        (2, date(2025, 6, 8), date(2025, 6, 15)),
+    ]
+    assert res.trimmed == 1
 
 
 def test_occupancy_bands_disjoint_both_survive() -> None:

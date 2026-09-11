@@ -34,18 +34,21 @@ def prop(db: None) -> Property:
     )
 
 
-def _plan(prop: Property, currency: Currency, legacy_id: str = "42") -> RatePlan:
+def _plan(prop: Property, currency: Currency, legacy_id: str | None = None) -> RatePlan:
+    """The regime plan `RatePlanLoader` mints for villa 900 in `currency`."""
     return RatePlan.objects.create(
         property=prop,
-        name="Season",
+        name=f"{currency.code} rates",
         currency=currency,
         effective_from=date(2026, 1, 1),
-        legacy_id=legacy_id,
+        legacy_id=legacy_id or f"villa:900:{currency.code}",
     )
 
 
-def _row(season_id: int = 42, villa_currency_id: object = None) -> dict[str, object]:
-    return {"ID": season_id, "VillaId": 900, "VillaCurrencyId": villa_currency_id}
+def _row(
+    season_id: int = 42, villa_id: int = 900, villa_currency_id: object = None
+) -> dict[str, object]:
+    return {"ID": season_id, "VillaId": villa_id, "VillaCurrencyId": villa_currency_id}
 
 
 @pytest.mark.django_db
@@ -60,12 +63,16 @@ def test_villa_rate_resolution_matching_plan_is_ok(prop: Property) -> None:
 
 @pytest.mark.django_db
 def test_mismatched_plan_currency_is_a_blocker(prop: Property) -> None:
+    """GAP-110: the villa's regime plans are keyed by currency, so "loaded under
+    the wrong currency" means no `villa:900:GBP` plan exists while the villa
+    has a plan in another currency."""
     Currency.objects.create(code="GBP", name="Pound", symbol="£", legacy_id="1")
     eur = Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
     _plan(prop, eur)  # loaded EUR, but the villa's rows say GBP
     result = audit_null_currency_seasons([_row(villa_currency_id=1)])
     assert len(result.blockers) == 1
     assert "loaded EUR" in result.blockers[0]
+    assert result.rows[0][2:] == ("villa-rates", "EUR", "BLOCKER")
 
 
 @pytest.mark.django_db
@@ -91,7 +98,9 @@ def test_eur_default_remainder_is_listed_for_sign_off(prop: Property) -> None:
 
 @pytest.mark.django_db
 def test_unloaded_season_counts_without_blocking(prop: Property) -> None:
-    result = audit_null_currency_seasons([_row(season_id=999)])
+    """A villa with no regime plan at all (unresolvable villa, rate-less
+    seasons) is reported, not blocked."""
+    result = audit_null_currency_seasons([_row(villa_id=999)])
     assert result.unloaded == 1
     assert result.blockers == []
 
@@ -99,7 +108,7 @@ def test_unloaded_season_counts_without_blocking(prop: Property) -> None:
 @pytest.mark.django_db
 def test_bookable_currency_mix_counts_distinct_properties(prop: Property) -> None:
     gbp = Currency.objects.create(code="GBP", name="Pound", symbol="£", legacy_id="1")
-    _plan(prop, gbp, legacy_id="1")
+    _plan(prop, gbp)
     RatePlan.objects.create(
         property=prop,
         name="Open-ended",

@@ -36,8 +36,8 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 | `VillaPropertyImages` | 13089 | property_image | `properties.PropertyImage` |
 | `VillaNearBy` | 176 | nearby_place | `properties.PropertyNearbyPlace` |
 | `VillaFeaturesMappings` | 11955 | property_feature | `Property.features` through |
-| `VillaSeason` | 710 | rate_plan | `pricing.RatePlan` (+`PropertyService`) |
-| `VillaSeasonRate` | 8665 | rate_rule | `pricing.RateBand` + `RatePeriod` (full replace) |
+| `VillaSeason` | 710 | rate_plan | `pricing.RatePlan` — one per (villa, currency) regime, GAP-110 (+`PropertyService` per inclusion season) |
+| `VillaSeasonRate` | 8665 | rate_rule | `pricing.RateBand` + `RatePeriod` on the villa's regime plan (full replace) |
 | `VillaContactMapping` | 335 | property_contact_assignment | `properties.PropertyContactAssignment` |
 | `VillaClientDetails` | 31 | client | `accounts.Person` (`client-` slice) |
 | `VillaClientPrefMaster` | 13 | guest_preference_type | `reservations.GuestPreferenceType` |
@@ -58,7 +58,7 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 | Table | Rows | Read by |
 |---|---|---|
 | `VillaFeaturesCategoryMappings` | 392 | feature (first category subquery) |
-| `VillaSeasonDates` | 736 | rate_plan (min/max effective dates); 96% single-range, vestigial |
+| `VillaSeasonDates` | 736 | rate_plan (live window per season → `PropertyService` dates; interim plan envelope until GAP-110 U6a); never a pricing input |
 | `VillaOccupencyPrice` | 263 | rate_rule (occupancy-band expansion, BUG-013) |
 | `VillaContactRoleMapping` | 335 | property_contact_assignment (role source) |
 | `VillaPayment` | 1 | payment (header join for BookingId) |

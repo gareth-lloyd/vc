@@ -354,3 +354,79 @@ GAP-073's 36 new tests are all rollback-isolated (they don't contaminate); they
 only shift the scheduler so the latent collision surfaces. **→ test-infra
 follow-up: harden the dashboard tests (serialized_rollback / re-seed reference
 data) or pin them to `loadscope`.**
+
+## Run 3 — 2026-09-10 (GAP-107 cutover-fidelity leftovers, feat/gap-107)
+
+Same 24-Apr-2025 dump (`res-db`), fresh `villacollective_legacy_dryrun`
+migrated to the branch leaves (`pricing/0008_extra_legacy_id`,
+`properties/0008_propertyfinance_legacy_id`). `loadlegacy --all` run twice
+(idempotence), then `reconcile_legacy`.
+
+### Census (legacy dump, `sqlcmd` one-liners; corrects the ticket's numbers)
+
+The ticket quoted **137 extras / 71 regions / 57 active** — those came from the
+git-tracked `DbScript.sql`, not the prod dump. Measured on the dump:
+
+- **Extras** (`VillaSeasonRate WHERE DeletedAt IS NULL AND IsExTra = 1`):
+  **96** across 18 villas. `CurrencyId = 0` on all, blank `Name` 0, `Price`
+  NULL 0 (`= 0` on 3). `Commission` is the villa's commission-% snapshot (20 on
+  86, 15 on 5, 0 on 5), `TaxAmount` 0 on all. `PriceType` 20 (gross) on 87,
+  10 (net) on 9 — 7 of the net rows sit on deleted villas; the 2 live net rows
+  (5238, 5341) have `Price = 0`, so **porting `Price` verbatim under-quotes no
+  live extra**. `DeletedBy`-only deletions: 0.
+- **Regions**: **64** total, 0 blank names, 0 orphans; 12 own-deleted
+  (`DeletedBy`-only 0), 13 under deleted countries, 0 under live
+  `IsActive = 0` countries → **42 active / 22 retired**.
+- **Countries**: 23 rows; **6 live + active** (GR, IT, FR, MA, ES, KE — only
+  GR carries `ShortName1`, the rest resolve by name); 17 deleted, 10 of them
+  still `IsActive = 1`, including **United Kingdom (6)**, New Zealand (10),
+  Australia and India (11 + 20). iso2 duplicates only involve deleted rows
+  (France 3 live / 13 deleted; India 11 / 20 both deleted). England (24,
+  iso2 `UK`, deleted) lands as a retired `UK` row for the §7 GB merge.
+- **VillaFinance**: 1526 rows (`VillaId` is NOT NULL, so `VillaId IS NOT
+  NULL` = every row). `VillaId = 0`: 1089 (413 `ParentId NULL` templates +
+  676 parent-child overrides); `VillaId > 0`: 437 on 437 distinct villas — 146
+  on deleted villas, 1 on villa 249 (the blank-name row PropertyLoader
+  skips), **290 portable**. 311 override rows carry `VillaId > 0` and ARE the
+  villa's only row — do not exclude on `ParentId`.
+
+### Results
+
+- **`loadlegacy --all` (first run) → exit 0, zero errors.** `country` 1
+  created / 20 updated / 2 skipped (the France + India duplicate claims),
+  `region` **64** created, `extra` **84** created / **12** skipped (11 on
+  deleted villas + 1 on villa 249), `property_finance` **291** created (290
+  stamped with `legacy_id` + the GAP-070 owner-contact fallback row:
+  `finance_contact_defaults_applied applied=1 contact_only=0 skipped=2`).
+- **Second `loadlegacy --all` → exit 0, idempotent.** `region` 0/64 updated,
+  `extra` 0 created / 84 updated / 12 skipped, `property_finance` 0 created /
+  290 updated, fallback `applied=0`; **no `extras_retired` event** (every
+  ported extra re-appeared, so the full-run retirement pass touched nothing).
+  Only `rate_rule` re-creates (3501) — its documented full-replace pattern.
+- **`reconcile_legacy` — every GAP-107 check passes on live data:**
+  `Country (active)` 6/6 gap 0; `Region` 64/64, `Region (imported)` 64/64,
+  `Region (active)` 42/42 — all gap 0; `Extra` 96/84 gap 12 as first
+  calibrated (11 on deleted villas — 97 Kapari bay ×4, 218 Villa K&K ×4, 108,
+  411 ×2 — + 1 on villa 249), then re-shaped after review to mirror
+  PropertyLoader's villa filter (`JOIN VillaMaster`, `DeletedAt IS NULL`,
+  non-blank name) and count only active ported rows: **84/84 gap 0**,
+  data-independent (re-run confirmed); `PropertyFinance` 1526/290 gap
+  **1236 = expected** (1089 + 146 + 1, now itemised in the `_Check` comment —
+  the run-2 "1235" was the fallback row inflating `loaded`, which the
+  `legacy_id__isnull=False` scope removes). `RateBand` 7333/3528 gap 3805
+  unchanged (the `IsExTra <> 1` split is disjoint from the new check).
+- **Exit 1 on one PRE-EXISTING blocker:** `Room placement (GAP-065)` 1823/1774
+  gap 49 != 0 — the run-2 Q-025 placeholder, unchanged and not touched by this
+  branch (still needs the owner conversation).
+
+### Side effects to surface at cutover (product-visible)
+
+- Legacy deleted the United Kingdom row, so **GB loads retired**
+  (`is_active=False`: readable, not offered in pickers), together with its
+  region Orana; **IN, NZ and AU** retire the same way. **6 migrated properties
+  sit in retired regions**, 0 in retired countries — they stay reachable, but
+  the region no longer appears in the quote-builder geo pickers.
+- The 84 ported extras are **opt-in** (`is_mandatory=False`); until GAP-108
+  wires `opt_in_extras` into the quote builder they are catalogue + Zoho
+  `extras[]` visibility only. Run `zoho_backfill --kinds villa` after the load
+  so the villa payloads carry them.

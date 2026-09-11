@@ -1,5 +1,50 @@
 # GAP-107 — Legacy loader: extras never loaded, deleted regions imported, a reconcile count still guessed
 
+> **✅ RESOLVED (2026-09-10, local `main` unpushed)** — shipped on `feat/gap-107`
+> in 4 code units (bd4a7659 geo loaders honour legacy deletion, 3f75ed36 geo
+> reconcile parity checks, f8d06eea `PropertyFinance.legacy_id`, b6bddbda
+> `Extra.legacy_id` + `ExtraLoader`) plus the extras reconcile check + docs,
+> a live dry-run (`DRYRUN_LOG.md` run 3) and this close-out.
+>
+> **Decision (user, 2026-09-10): extras are PORTED as opt-in.** A new
+> `ExtraLoader` over `VillaSeasonRate WHERE DeletedAt IS NULL AND IsExTra = 1`
+> writes property-scoped `pricing.Extra` rows: `legacy_id = ID`, kind `OTHER`,
+> `FIXED_PER_STAY`, `amount = Price` verbatim, `is_mandatory=False`,
+> `commissionable=True`, **no date window** (the `FromDate`/`ToDate` this
+> ticket proposed are the 2022 fold-in timestamps — porting them would hide
+> every extra from the engine), currency via `resolve_property_currency`.
+> Updates touch only name/description/amount; a full run retires ported
+> extras that vanished from legacy. Discount columns dropped (GAP-009),
+> recorded in `CUTOVER.md` §4i. GAP-056's `OldId_ExtraRate` claim corrected.
+>
+> **Geo.** `RegionLoader` / `CountryLoader` select `DeletedAt` + `DeletedBy`
+> and load a deleted row as `is_active=False` (OR-predicate — either
+> convention counts); a region is retired if its own row or its country is.
+> Live rows claim an iso2 before deleted duplicates. `--since` now filters on
+> legacy's real `CreatedAt` / `UpdateAt` / `DeletedAt` columns.
+>
+> **Finance.** `PropertyFinance.legacy_id` (migration `properties/0008`) is
+> stamped by the per-villa pass; the reconcile `loaded_count` scopes to it,
+> so the gap is **1236 = 1089 `VillaId = 0` + 146 on deleted villas + 1 on the
+> blank-name villa**, stable regardless of the GAP-070 fallback count. No
+> PLACEHOLDER left.
+>
+> **Live dry-run corrects this ticket's numbers** (they came from the git
+> `DbScript.sql`, not the prod dump): **96** live extras (84 load, 12 on
+> deleted / blank-name villas), **64** regions with **42** live (not 71/57),
+> 6 live countries. Every GAP-107 check passes; the only remaining
+> `reconcile_legacy` BLOCKER is the pre-existing Q-025 `Room placement` 49.
+>
+> ⚠️ **Product-visible at cutover:** legacy deleted the United Kingdom row,
+> so **GB retires on load** (readable, not offered in pickers), as do IN, NZ
+> and AU; 6 migrated villas sit in retired regions. The 84 ported extras are
+> opt-in and **not quotable from the quote builder until GAP-108** wires
+> `opt_in_extras`. Run `zoho_backfill --kinds villa` after the load.
+>
+> Spun off: GAP-108 (builder opt-in extras), GAP-109 (`CurrencyLoader`
+> ignores `DeletedAt`), GAP-110 (`loadlegacy --since` raises on tables with
+> no `UpdatedAt`). GAP-103 is unblocked.
+
 - **Severity:** 🟠 Gap (cutover fidelity). Backend `data_migration/` only.
 - **Source:** 2026-09-10 sweep of `todo/` for loader follow-ups. Pulls together
   three items that each said "needs its own ticket" and never got one:
@@ -31,7 +76,8 @@
 ### 1. Legacy extras are never loaded, and nothing records the drop
 
 Legacy extras share the rate table: 137 live `VillaSeasonRate` rows carry
-`IsExTra = 1` (GAP-056's count). `RateBandLoader` correctly keeps them out of
+`IsExTra = 1` (GAP-056's count — *corrected at close-out: **96** on the
+24-Apr-2025 prod dump; 137 was a parse of the git-tracked `DbScript.sql`*). `RateBandLoader` correctly keeps them out of
 the rate grid, but nothing else reads them. So every migrated villa starts with
 an empty `Extra` table. Staff have nothing to quote, and the GAP-102 villa
 `extras[]` catalogue pushes empty for every migrated villa.
@@ -56,7 +102,9 @@ tell a deliberate loss from an oversight.
 ### 2. The geo loaders import deleted legacy regions as active
 
 `RegionLoader` has no deletion filter, so a cutover run loads **71** legacy
-regions instead of **57**. Every one of them lands with `is_active = True`,
+regions instead of **57** (*corrected at close-out: the dump has **64**
+regions, **42** live under live countries; 71/57 were the git script's
+counts*). Every one of them lands with `is_active = True`,
 including ten live-but-orphaned rows hanging off deleted countries ("Villa
 Villa Region", "Test Regions", London/England, three Indian regions). The
 orphans don't fail to load. They fall back to `unknown_country()` and become
@@ -132,7 +180,7 @@ which the comment says is "only derivable against the live dump". A gap of
   orphans under a deleted country. (transform tests)
 - A new `reconcile_legacy` invariant: zero active `Region` / `Country` rows
   whose legacy twin is deleted. A live dry-run shows 57 active legacy
-  regions.
+  regions (*measured: 42 — see the banner*).
 - The `PropertyFinance` gap is explained and pinned, with no PLACEHOLDER left.
   (live dry-run)
 - `loadlegacy --all` + `reconcile_legacy` green on the dump; quality gate

@@ -52,6 +52,7 @@ from integrations.enums import SyncProvider
 from integrations.models import SyncRecord
 from payments.models.payment import Payment
 from pricing.models.currency import Currency
+from pricing.models.extra import Extra
 from pricing.models.rate import RateBand, RatePlan
 from properties.enums import PriceBasis
 from properties.models.contacts import PropertyContactAssignment
@@ -105,9 +106,11 @@ _CHECKS: list[_Check] = [
         # invariant: a live legacy row CountryLoader cannot seed-match (an
         # iso-less row absorbed by the `XX` sentinel, or a second live row on
         # an already-claimed iso2, which is skipped) counts here but loads
-        # nowhere / inactive. 0 is a PLACEHOLDER — recalibrate at the GAP-107
-        # dry-run, itemising those rows in CUTOVER.md §5. Run before the
-        # §7 England → GB merge, which hard-deletes the `UK` row.
+        # nowhere / inactive. Calibrated 2026-09-10 (24-Apr-2025 dump): 6/6,
+        # gap 0 — all six live rows (GR, IT, FR, MA, ES, KE) seed-match; the
+        # only iso2 duplicates (France 3/13, India 11/20) involve deleted
+        # rows. Run before the §7 England → GB merge, which hard-deletes the
+        # `UK` row.
         f"SELECT COUNT(*) FROM VillaCountry WHERE IsActive = 1 AND NOT {legacy_deleted_sql()}",
         Country,
         "Country (active)",
@@ -129,8 +132,9 @@ _CHECKS: list[_Check] = [
     # diffs. A region is live iff its own row is not deleted AND it sits
     # under a live, `IsActive = 1` country (RegionLoader derives `is_active`
     # from the loaded Country row). Same seed-match caveat as
-    # `Country (active)` above: 0 is a PLACEHOLDER — recalibrate at the
-    # GAP-107 dry-run.
+    # `Country (active)` above. Calibrated 2026-09-10 (24-Apr-2025 dump):
+    # imported 64/64, active 42/42 (22 retired: 9 own-deleted under live
+    # countries + 13 under deleted countries), both gap 0.
     _Check(
         "SELECT COUNT(*) FROM VillaRegion r WHERE LTRIM(RTRIM(ISNULL(r.Name, ''))) <> ''",
         Region,
@@ -351,6 +355,29 @@ _CHECKS: list[_Check] = [
         expected_gap=3805,
     ),
     _Check(
+        # GAP-107: the extras catalogue — the `IsExTra = 1` rows the RateBand
+        # check above excludes, ported by ExtraLoader (CUTOVER.md §4i). The
+        # legacy side mirrors the loader's `DeletedAt IS NULL` AND
+        # PropertyLoader's villa filter (`m.DeletedAt IS NULL` + non-blank
+        # name), so extras on villas that never load do not count: on the
+        # 24-Apr-2025 dump that is 12 of 96 (11 on soft-deleted villas + 1 on
+        # villa 249, the blank-name row) -> 84/84, gap 0, data-independent.
+        # Loaded side counts ported rows still active — a full run retires
+        # (keeps `legacy_id`, flips `is_active`) exactly the rows the legacy
+        # filter drops. Shifters: a no-currency skip, or staff deactivating a
+        # ported extra in the SPA (widens the gap by one each).
+        "SELECT COUNT(*) FROM VillaSeasonRate r "
+        "JOIN VillaMaster m ON m.Id = r.VillaId "
+        "WHERE r.DeletedAt IS NULL AND r.IsExTra = 1 "
+        "AND m.DeletedAt IS NULL AND LTRIM(RTRIM(ISNULL(m.Name, ''))) <> ''",
+        Extra,
+        "Extra",
+        expected_gap=0,
+        loaded_count=lambda m: m._default_manager.filter(
+            legacy_id__isnull=False, is_active=True
+        ).count(),
+    ),
+    _Check(
         "SELECT COUNT(*) FROM VillaContactMapping",
         PropertyContactAssignment,
         "PropertyContactAssignment",
@@ -392,14 +419,16 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaFinance WHERE VillaId IS NOT NULL",
         PropertyFinance,
         "PropertyFinance",
-        # 1236 = legacy rows the per-villa pass does not port. Baseline
-        # itemisation (pre-GAP-070): 413 contact-default template rows
-        # (`VillaId = 0` — the column is NOT NULL, so `VillaId IS NOT NULL`
-        # counts them) + 676 parent-child override rows + skips. Populations
-        # to itemise at the GAP-107 dry-run (DRYRUN_LOG.md): `VillaId = 0`,
-        # `ParentId IS NOT NULL` (NB some override rows carry `VillaId > 0`
-        # and ARE ported as the villa's only row), and `VillaId > 0` on
-        # villas the property loader skipped.
+        # 1236 = legacy rows the per-villa pass does not port, itemised at
+        # the GAP-107 dry-run (2026-09-10, 24-Apr-2025 dump; DRYRUN_LOG.md):
+        #   1526  `VillaId IS NOT NULL` (= every row; the column is NOT NULL)
+        #  -1089  `VillaId = 0`: 413 contact-default templates (`ParentId`
+        #         NULL) + 676 parent-child overrides with no villa
+        #  - 146  `VillaId > 0` on soft-deleted villas
+        #  -   1  `VillaId > 0` on villa 249, the blank-name row the
+        #         property loader skips (the `Property` gap of 1)
+        #  = 290  stamped per-villa rows (311 override rows with `VillaId > 0`
+        #         ARE ported as the villa's own row — do not exclude ParentId)
         # Loaded side (GAP-107): only rows the per-villa pass stamped with
         # `legacy_id` = `VillaFinance.Id`. The GAP-070 owner-contact fallback
         # rows and `snapshot_defaults` rows carry NULL, so neither moves the

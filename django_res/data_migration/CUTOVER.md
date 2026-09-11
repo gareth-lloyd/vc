@@ -439,6 +439,54 @@ on whether to add a `Property.is_poa` flag.
   (MAX(Id) per `VillaId`), and have the guest-side price surface honour it.
   Then move this from "deferred" to "loaded" in COVERAGE item 4.
 
+## 4i. Extras catalogue → `pricing.Extra` (GAP-107)
+
+`ExtraLoader` (`extra`, registered after `rate_rule`) ports the villa
+**menu** of extras — the `VillaSeasonRate` rows flagged `IsExTra = 1` that
+`RateBandLoader` keeps out of the rate grid (96 live rows on the 24-Apr-2025
+dump, 84 of them on villas that load — the 137 older docs quote was a parse
+of the git-tracked `DbScript.sql`; census in `DRYRUN_LOG.md` run 3). Booked extras are a different thing and were already ported by
+[4g](#4g-chargeable-extras--bookingchargeitem-gap-017). Legacy folded these
+rows in from the pre-2022 `tblPropertyExtra` with junk `FromDate`/`ToDate`
+(the 2022 migration run date), `CurrencyId = 0` and `SeasonId = 0`, and its
+Extras UI only ever edited `Name` / `Description` / `Price`, so a ported
+extra is deliberately minimal and **opt-in**:
+
+| `Extra` field | Value | Why |
+|---|---|---|
+| `legacy_id` | `ID` (the rate-table pk, same as `rate_rule`) | `OldId_ExtraRate` is the pre-2022 `tblPropertyExtra.Id` (0 for UI-created rows) and is not read. |
+| `name` | `Name`, else `Description`, else `Extra <ID>`; truncated to 128 | `Name` is `nvarchar(max)`. |
+| `description` | `Description` | |
+| `kind` / `calc` | `other` / `fixed_per_stay` | Legacy has no unit; staff refine in the SPA (no name-based inference). |
+| `amount` | `Price` as entered (`NULL → 0`) | `RatesModel.Calculate()` is not reproduced. Dry-run census (24-Apr-2025): `PriceType` is gross (20) on 87 of 96 rows and net (10) on 9; `Commission` carries the villa's commission % (20 on 86, 15 on 5) and `TaxAmount` is 0 throughout. Porting `Price` verbatim is exact for gross rows; it would under-quote a **net** row by its commission, and the only live net rows (5238, 5341) are `Price = 0`. **Recalibrating on a newer dump: re-run the net-rows census** (`PriceType = 10 AND Price > 0` on live villas) before trusting `amount`. |
+| `currency` | legacy `CurrencyId` if non-zero, else `resolve_property_currency` (preferred live plan → settings → EUR) | The engine filters extras by exact currency match, so the extra must land in the currency quotes are built in. No resolvable currency → skipped. Snapshotted at load: a villa with a *scheduled* currency switch (future-dated plan in another currency) needs its extras re-currencied in the SPA when the switch lands — the engine will not see them until then. |
+| `is_mandatory` | `False` | Legacy extras were a menu, never auto-charged. **Consequence:** the SPA quote builder never sends `opt_in_extras`, so ported extras are catalogue + Zoho `extras[]` visibility until the FE follow-up ticket wires opt-in selection. |
+| `commissionable` | `True` | GAP-076 default. |
+| `applies_from` / `applies_to` | `NULL` | The legacy dates are the 2022 fold timestamp; porting them would make the engine drop every extra. |
+| `min_party` / `max_party` | `NULL` | |
+| `is_active` | `True` | Only `DeletedAt IS NULL` rows load; a **full** run retires ported extras absent from the result set (see below). |
+| `sort_order` | dense `0..n` per villa in `ID` order, **on the first full load** | Keeps legacy creation order (Zoho orders `extras[]` by it) without the thousands-wide gap that would put every staff-created extra (default `0`) ahead of the ported catalogue. Create-only and ranked over the current result set, so an extra first seen by a later `--since` delta lands at `0` (ties with the oldest); reorder in the SPA. |
+
+**Re-runs never clobber staff refinements.** Only `name`, `description` and
+`amount` — the fields legacy can actually change — are refreshed on an
+existing row; `kind`, `calc`, `is_mandatory`, the window, the party bounds,
+`sort_order`, `is_active` and `currency` are create-only, so staff can
+classify and window a ported extra in the SPA and a later delta load keeps
+it. Unlike `rate_rule` this is an upsert, not a full replace.
+
+**Dropped: the legacy discount columns** (`IsDiscount` / `DiscountRate` /
+`DiscountType` / `DiscountApply` / `DiscountNight` on the same table). GAP-009
+established legacy stored them but never applied them (`RatesModel.Calculate()`
+reads `DiscountType` into an enum and stops), so there is nothing to port.
+`pricing.Discount` starts empty for migrated villas.
+
+**Retirement:** the loader filters `DeletedAt IS NULL`, so a legacy-deleted
+extra never appears in the result set. A **full** run (no `--since`) sets
+`is_active=False` on every ported extra missing from the set
+(`data_migration.extras_retired` log event); a `--since` delta sees only
+changed rows, so absence there means "unchanged" and it retires nothing.
+Re-run `extra` without `--since` to pick up deletions after the freeze.
+
 ## 5. Verify with `reconcile_legacy`
 
 ```bash
@@ -457,7 +505,7 @@ is where the dry-run calibration happens), not just here.
 | Source table              | Expected gap | Reason |
 |---------------------------|--------------|--------|
 | `VillaCollectionsMappings`| 308          | Legacy has duplicate mapping rows for the same (collection, property); collapsed. |
-| `VillaFinance`            | 1236 *(confirm at the GAP-107 dry-run)* | Legacy rows the per-villa pass does not port. Baseline itemisation: 413 contact-default template rows (`VillaId = 0` — the column is `NOT NULL`, so the `VillaId IS NOT NULL` query counts them) + 676 parent-child override rows + skips; populations to itemise at the GAP-107 dry-run (`DRYRUN_LOG.md`): `VillaId = 0`, `ParentId IS NOT NULL` (some override rows carry `VillaId > 0` and *are* ported as the villa's only row), `VillaId > 0` on villas the property loader skipped. **GAP-107**: the loaded side counts only rows the per-villa pass stamped with `legacy_id` (= `VillaFinance.Id`); the GAP-070 owner-contact fallback rows and `snapshot_defaults` rows carry `NULL`, so the gap no longer moves with the fallback count (GAP-073 measured 1235 while those rows were still counted). `loaded = 0` means a DB loaded before `properties.0008` — see [§6f](#6f-re-stamp-propertyfinancelegacy_id-after-gap-107-only-for-dbs-loaded-before-2026-09). |
+| `VillaFinance`            | 1236 *(itemised at the GAP-107 dry-run, 2026-09-10)* | Legacy rows the per-villa pass does not port: 1526 total (`VillaId` is `NOT NULL`, so the `VillaId IS NOT NULL` query counts every row) − 1089 `VillaId = 0` (413 contact-default templates + 676 parent-child overrides with no villa) − 146 on soft-deleted villas − 1 on the blank-name villa the property loader skips = 290 ported. 311 override rows carry `VillaId > 0` and *are* ported as the villa's only row — never exclude on `ParentId`. **GAP-107**: the loaded side counts only rows the per-villa pass stamped with `legacy_id` (= `VillaFinance.Id`); the GAP-070 owner-contact fallback rows and `snapshot_defaults` rows carry `NULL`, so the gap no longer moves with the fallback count (GAP-073 measured 1235 while those rows were still counted). `loaded = 0` means a DB loaded before `properties.0008` — see [§6f](#6f-re-stamp-propertyfinancelegacy_id-after-gap-107-only-for-dbs-loaded-before-2026-09). |
 | `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
 | `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 3805 *(calibrated 2026-07-05)* | **BUG-013**: the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents. Fully itemised in `reconcile_legacy.py` (balances to zero residual): dominated by 2477 priceless non-POA rows and 985 rows on seasons with no RatePlan; occupancy expansion and flattener fragments net off. Recalibrate on a newer dump — the mix moves with the data. |
 | `VillaMaster`             | 1            | One row with empty `Name`. |
@@ -465,9 +513,10 @@ is where the dry-run calibration happens), not just here.
 | `VillaClientDetails`      | 1            | One row with neither `FirstName` nor `LastName` (no identity to import). Loads to the `client-` slice of `Person` (GAP-045). |
 | `VillaBookingDetails`     | 0 *(confirmed at 2026-07-05 dry-run)* | **GAP-017**: the legacy side already excludes zero-price rows and rows on deleted bookings; the loaded side counts only imported rows (`legacy_id IS NOT NULL`), so staff-created charge lines never skew it. Error/skip rows widen the gap until fixed: no-rate FX rows, unresolvable non-zero `CurrencyId`, conversions quantising to zero, unresolvable bookings — see [4g](#4g-chargeable-extras--bookingchargeitem-gap-017). |
 | `VillaAvailability` (future days) | 0 | New `availability_block` loader (2026-07-05): future non-available day rows (statuses 30/40/50/60, `AvailableDate >= today`) coalesce into `BookingHold(reason=MANUAL)` rows; the check compares future day counts to the summed day-span of loaded `avail-*` holds. Both sides move with "today" — run load and reconcile the same day. Skips (unloaded property / range occupied by an imported booking or staff hold) widen the gap; recalibrate against the final dump if non-zero and explained. |
-| `VillaCountry` (active) | 0 *(placeholder)* | **GAP-107**: legacy `IsActive = 1`, not soft-deleted (`DeletedAt IS NOT NULL OR ISNULL(DeletedBy,'') <> ''` — both legacy conventions) vs migrated countries loaded active (`XX` sentinel excluded by iso2). Deleted countries load **retired** (`is_active=False`), never skipped, so FKs still resolve. Shifters to itemise at the GAP-107 dry-run: a live legacy row `CountryLoader` cannot seed-match (iso-less → absorbed by the `XX` sentinel; a second live row on an already-claimed iso2 → skipped). Run **before** [§7](#7-england--gb-merge), which hard-deletes the `UK` row. |
-| `VillaRegion` (imported) | 0 *(placeholder)* | **GAP-107**: non-blank-name legacy regions vs every loaded region with a `legacy_id` (sentinel excluded). Deleted regions load retired, never skipped. With the active slice below this pins the retired count too (retired = imported − active). The bare `VillaRegion` total above it is unchanged by GAP-107 and keeps its pre-existing shifters (blank-name rows skipped; sentinel + staff-created rows on the loaded side). |
-| `VillaRegion` (active) | 0 *(placeholder)* | **GAP-107**: legacy not-deleted regions under a not-deleted, `IsActive = 1` country vs loaded regions with `is_active=True` (a region is also retired when its country is deleted, `IsActive = 0`, or unresolvable → unknown sentinel). Same seed-match shifters as `VillaCountry (active)`. **Ops:** a reload that retires rows does not reach Zoho (loader pushes are suppressed and nothing downstream changes) — run `zoho_backfill --kinds villa,enquiry,contact` afterwards so Limitless stops offering retired regions. |
+| `VillaCountry` (active) | 0 *(calibrated 2026-09-10: 6/6)* | **GAP-107**: legacy `IsActive = 1`, not soft-deleted (`DeletedAt IS NOT NULL OR ISNULL(DeletedBy,'') <> ''` — both legacy conventions) vs migrated countries loaded active (`XX` sentinel excluded by iso2). Deleted countries load **retired** (`is_active=False`), never skipped, so FKs still resolve. Standing shifters (0 on the 24-Apr-2025 dump): a live legacy row `CountryLoader` cannot seed-match (iso-less → absorbed by the `XX` sentinel; a second live row on an already-claimed iso2 → skipped). Run **before** [§7](#7-england--gb-merge), which hard-deletes the `UK` row. |
+| `VillaRegion` (imported) | 0 *(calibrated 2026-09-10: 64/64)* | **GAP-107**: non-blank-name legacy regions vs every loaded region with a `legacy_id` (sentinel excluded). Deleted regions load retired, never skipped. With the active slice below this pins the retired count too (retired = imported − active). The bare `VillaRegion` total above it is unchanged by GAP-107 and keeps its pre-existing shifters (blank-name rows skipped; sentinel + staff-created rows on the loaded side). |
+| `VillaRegion` (active) | 0 *(calibrated 2026-09-10: 42/42; 22 retired = 9 own-deleted + 13 under deleted countries)* | **GAP-107**: legacy not-deleted regions under a not-deleted, `IsActive = 1` country vs loaded regions with `is_active=True` (a region is also retired when its country is deleted, `IsActive = 0`, or unresolvable → unknown sentinel). Same seed-match shifters as `VillaCountry (active)`. **Ops:** a reload that retires rows does not reach Zoho (loader pushes are suppressed and nothing downstream changes) — run `zoho_backfill --kinds villa,enquiry,contact` afterwards so Limitless stops offering retired regions. |
+| `VillaSeasonRate` (extras, `IsExTra = 1`) | 0 *(calibrated 2026-09-10: 84/84)* | **GAP-107**: live legacy extras **on villas the property loader loads** (`JOIN VillaMaster`, `DeletedAt IS NULL` on both, non-blank villa name — so the 12 extras on deleted / blank-name villas never enter the gap) vs `pricing.Extra` rows with a `legacy_id` **and `is_active=True`** (a full run retires legacy-deleted extras by flag, mirroring the legacy filter; staff-created extras excluded). Shifters: a no-currency skip, or staff deactivating a ported extra in the SPA. Mapping in [4i](#4i-extras-catalogue--pricingextra-gap-107). |
 | *(invariant)* RatePlan non-GROSS basis | 0 | **SMELL-021**: legacy cannot express a NET price basis — no such column exists, and `RatesModel.Calculate()` treats every entered rate as the guest-facing gross (net derived by subtracting tax + commission) — so `RatePlanLoader` stamps `price_basis=GROSS` explicitly on every imported plan. Legacy side is a constant `SELECT 0`; any imported (`legacy_id IS NOT NULL`) plan carrying NET means the stamp regressed to the model default. Staff-created NET plans are excluded and legitimate. |
 
 Any other gap is a **blocker**. Track it down before proceeding.

@@ -20,7 +20,7 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 | Table | Rows | Loader | Target |
 |---|---|---|---|
 | `VillaCountry` | 23 | country | `properties.Country` (onto ISO seed) |
-| `VillaRegion` | 64 | region | `properties.Region` |
+| `VillaRegion` | 64 | region | `properties.Region` (legacy-deleted / orphaned rows load `is_active=False`, GAP-107) |
 | `VillaCurrency` | 7 | currency | `pricing.Currency` |
 | `VillaNearByLocationType` | 8 | nearby_place_type | `properties.NearbyPlaceType` |
 | `VillaFeaturesCategory` | 8 | feature_category | `properties.FeatureCategory` |
@@ -37,7 +37,7 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 | `VillaNearBy` | 176 | nearby_place | `properties.PropertyNearbyPlace` |
 | `VillaFeaturesMappings` | 11955 | property_feature | `Property.features` through |
 | `VillaSeason` | 710 | rate_plan | `pricing.RatePlan` (+`PropertyService`) |
-| `VillaSeasonRate` | 8665 | rate_rule | `pricing.RateBand` + `RatePeriod` (full replace) |
+| `VillaSeasonRate` | 8665 | rate_rule + extra | `IsExTra <> 1` → `pricing.RateBand` + `RatePeriod` (full replace); `IsExTra = 1` → `pricing.Extra` (GAP-107, CUTOVER §4i; discount columns dropped) |
 | `VillaContactMapping` | 335 | property_contact_assignment | `properties.PropertyContactAssignment` |
 | `VillaClientDetails` | 31 | client | `accounts.Person` (`client-` slice) |
 | `VillaClientPrefMaster` | 13 | guest_preference_type | `reservations.GuestPreferenceType` |

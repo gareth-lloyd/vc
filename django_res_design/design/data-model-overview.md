@@ -63,6 +63,8 @@ anchors, a lookup/config row, or a cross-cutting audit/sync record.
 
 ```
 Property ─1:N→ RatePlan ─1:N→ RatePeriod ─1:N→ RateBand
+         ─1:N→ Extra (priced add-on catalogue; legacy extras port as opt-in
+               rows, GAP-107), Discount
          ─1:1→ PropertySettings, PropertyFinance, PropertyCapacity
          ─1:N→ Room, PropertyImage, PropertyDescription, PropertyLocation
          ─M:M→ Person (via PropertyContactAssignment)
@@ -101,7 +103,11 @@ Every importable domain model carries a `legacy_id` field
 (`CharField`, `db_index=True`). Loaders in `django_res/data_migration/` use
 `update_or_create(legacy_id=…)` to stay idempotent. `legacy_id` is metadata,
 never the primary key. Sentinel fallbacks (`unknown_country`,
-`unknown_region`) absorb unresolvable FKs.
+`unknown_region`) absorb unresolvable FKs. Legacy soft-deleted lookup rows
+(`Country`, `Region`) load as `is_active=False` rather than being skipped,
+so FKs still resolve but the row is not selectable (GAP-107); `Extra` and
+`PropertyFinance` carry `legacy_id` since GAP-107 (the latter only on
+per-villa rows — the owner-contact fallback rows stay `NULL`).
 
 ### State machines
 Each lifecycle model (`Booking`, `Payment`, `Quotation`, …) has:

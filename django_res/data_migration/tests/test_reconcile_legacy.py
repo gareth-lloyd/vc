@@ -675,6 +675,37 @@ def test_booking_charge_item_check_counts_only_the_legacy_slice(booking: Booking
 
 
 @pytest.mark.django_db
+def test_extra_check_counts_only_ported_live_catalogue_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GAP-107: legacy live extras on villas PropertyLoader loads (`IsExTra
+    = 1`, `DeletedAt IS NULL` on the rate row AND the villa, non-blank villa
+    name) reconcile gap-0 against `pricing.Extra` rows ExtraLoader stamped
+    with a legacy_id and left active; a retired ported extra (the full-run
+    sweep) and staff-created extras never move the gap."""
+    from pricing.factories import ExtraFactory
+    from pricing.models.extra import Extra
+
+    ExtraFactory(legacy_id="7")
+    ExtraFactory(legacy_id="8", is_active=False)  # retired — legacy side drops it too
+    ExtraFactory()  # staff-created — excluded
+
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "Extra")
+    assert check.model is Extra
+    assert check.expected_gap == 0
+    assert "r.IsExTra = 1" in check.legacy_query
+    assert "r.DeletedAt IS NULL" in check.legacy_query
+    assert "JOIN VillaMaster m" in check.legacy_query
+    assert "m.DeletedAt IS NULL" in check.legacy_query
+    assert check.loaded_count is not None
+    assert check.loaded_count(check.model) == 1
+
+    # Keyed on the full query: the RateBand check shares its shorter needles.
+    _patch(monkeypatch, [check], responses={check.legacy_query: 1})
+    assert "BLOCKER" not in _run()
+
+
+@pytest.mark.django_db
 def test_property_finance_check_counts_only_rows_with_a_legacy_twin() -> None:
     """GAP-107: the GAP-070 owner-contact fallback mints `PropertyFinance`
     rows with no `VillaFinance` twin (legacy_id NULL), and `snapshot_defaults`
@@ -699,7 +730,7 @@ def test_property_finance_check_counts_only_rows_with_a_legacy_twin() -> None:
 
 
 def test_documented_expected_gaps_are_encoded() -> None:
-    # The six documented carve-outs from CUTOVER.md must live in code (this
+    # The documented carve-outs from CUTOVER.md §5 must live in code (this
     # module is their single source of truth).
     by_label = {c.label: c.expected_gap for c in reconcile_legacy._CHECKS}
     assert by_label["CollectionMembership"] == 308
@@ -710,3 +741,6 @@ def test_documented_expected_gaps_are_encoded() -> None:
     assert by_label["RateBand"] == 3805
     assert by_label["Property"] == 1
     assert by_label["PropertyContactAssignment"] == 1
+    # GAP-107: the legacy side mirrors PropertyLoader's villa filter, so the
+    # 12 extras on unloaded villas (24-Apr-2025 dump) never enter the gap.
+    assert by_label["Extra"] == 0

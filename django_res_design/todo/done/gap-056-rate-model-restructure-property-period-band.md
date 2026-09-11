@@ -121,8 +121,11 @@ parser at `scratchpad/parse_rates.py`, 0 rows mis-tokenised) breaks down as:
  3,668  live TRUE rates (DeletedAt NULL, IsExTra=0)  across 279 villas
 ```
 
-The loader **must** filter `DeletedAt IS NULL` and split `IsExTra=1`
-(extras route via `OldId_ExtraRate`, already handled in `pricing.py`). The
+The loader **must** filter `DeletedAt IS NULL` and split `IsExTra=1`.
+*(Corrected by GAP-107, 2026-09-10: the extras were never routed anywhere —
+`OldId_ExtraRate` is the pre-2022 `tblPropertyExtra.Id` and nothing in
+`data_migration/` read it. `ExtraLoader` now ports the `IsExTra = 1` rows
+into `pricing.Extra`, keyed on `ID`; see CUTOVER §4i.)* The
 "3,773" figure in earlier drafts sat between the 3,805-live and 3,668-true-rate
 counts and is superseded by this census.
 

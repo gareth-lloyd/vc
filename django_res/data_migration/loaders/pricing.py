@@ -13,14 +13,17 @@ New structure (GAP-056):
           └── RateBand (period, min_party, max_party, nightly, weekly, is_poa)
 
 Strategy:
-- One RatePlan per VillaSeason. Currency comes from the season's own
+- One RatePlan per (villa, currency) — GAP-110: every live, priced season of a
+  villa that resolves to the same currency merges onto one regime plan keyed
+  `villa:<VillaId>:<CODE>`. Currency comes from the season's own
   non-NULL VillaSeasonRate rows (most recent first); a season with only
   NULL/0 CurrencyId rows falls back to the villa's other non-NULL rate rows,
   then settings → EUR — never `Currency.objects.first()` (GAP-014 step 0),
   and never `resolve_property_currency`, whose plans-first step reads the
   very table this loader populates (load-order dependent, and a wrong stamp
   would re-resolve from itself forever on idempotent re-runs).
-- effective_from/to from min/max of VillaSeasonDates rows.
+- effective_from/to (interim, dropped in U6a) from min/max of the seasons'
+  live VillaSeasonDates rows.
 - The RatePlan owns no rate rows directly: `RateBandLoader` builds the plan's
   disjoint `RatePeriod` date axis (via the shared `segment_card_rules`
   segmentation) and hangs each party band off its covering period.
@@ -222,13 +225,60 @@ def resolve_rate_band_overlaps(rows: list[dict[str, Any]]) -> OverlapResolution:
     return OverlapResolution(rows=out_rows, trimmed=trimmed, dropped=dropped)
 
 
-class RatePlanLoader(BaseLoader):
-    """VillaSeason -> RatePlan.
+def plan_legacy_id(villa_id: int | str | None, currency_code: str) -> str:
+    """The `legacy_id` of the regime plan carrying a legacy villa's seasons in
+    one currency (GAP-110): `villa:<VillaId>:<CODE>`. Shared with
+    `RateBandLoader` so both loaders agree on the key without a lookup table."""
+    return f"villa:{villa_id}:{currency_code}"
 
-    Picks currency + dates from related VillaSeasonRate / VillaSeasonDates.
-    The plan owns no rate rows here — `RateBandLoader` builds its `RatePeriod`
-    date axis and party bands. `_process_row` additionally materialises the
-    season's free-text Inclusion as a `PropertyService` (GAP-037).
+
+def _season_label(row: dict[str, Any]) -> str:
+    return str(row.get("Name") or f"Season {row['ID']}")
+
+
+def _live_window(row: dict[str, Any]) -> tuple[date, date] | None:
+    """A season's live `VillaSeasonDates` envelope, or None when it has no
+    live rows or the stored window is inverted (junk — it would trip the
+    `PropertyService` from<=to CHECK and roll back the whole plan)."""
+    date_from = _as_date(row.get("DateFrom"))
+    date_to = _as_date(row.get("DateTo"))
+    if date_from is None or date_to is None or date_from > date_to:
+        return None
+    return date_from, date_to
+
+
+def resolve_season_currency(row: dict[str, Any], prop: Property) -> Currency | None:
+    """GAP-014 step 0: a season's currency from its own non-NULL rate rows
+    (`CurrencyId`), else the villa's other rows (`VillaCurrencyId`), else the
+    canonical settings → EUR chain.
+
+    Never `Currency.objects.first()` (ordering-dependent) and never
+    `resolve_property_currency`, whose plans-first step reads the very table
+    `RatePlanLoader` populates — a mis-stamped currency could never
+    self-correct on an idempotent re-run.
+    """
+    currency = Currency.objects.filter(legacy_id=str(row.get("CurrencyId") or "")).first()
+    if currency is None:
+        currency = Currency.objects.filter(legacy_id=str(row.get("VillaCurrencyId") or "")).first()
+    if currency is None:
+        currency = settings_currency(prop) or default_currency()
+    return currency
+
+
+class RatePlanLoader(BaseLoader):
+    """VillaSeason -> RatePlan, one plan per (villa, resolved currency).
+
+    GAP-110: legacy seasons are year/era buckets whose `VillaSeasonDates` were
+    a data-entry helper, never a pricing input. A RatePlan is a dateless
+    regime bucket (property, currency, price basis), so every live, priced
+    season of a villa that resolves to the same currency is merged onto one
+    plan keyed `villa:<VillaId>:<CODE>`; the seasons' rate rows become that
+    plan's `RatePeriod` axis in `RateBandLoader`. Merged seasons stay
+    traceable in `notes`. The plan owns no rate rows here.
+
+    `_load_rows` additionally materialises each season's free-text Inclusion
+    as a date-banded `PropertyService` (GAP-037), keyed `season:<ID>:svc` and
+    dated by that season's live window.
     """
 
     name = "rate_plan"
@@ -238,6 +288,10 @@ class RatePlanLoader(BaseLoader):
     # VillaCurrencyId: same, but across ALL the villa's seasons — the GAP-014
     # rule-1 inference for the 2023-era seasons whose rows are all NULL but
     # whose villa later got real currencies.
+    # RateCount: live, priced, non-extra rate rows — a season with none is not
+    # a regime and mints no plan (the loader records a skip).
+    # DateFrom/DateTo: the season's LIVE window (soft-deleted date rows are a
+    # legacy "delete the season" side effect and must not band a service).
     legacy_query = (
         "SELECT s.ID, s.Name, s.VillaId, s.Notes, s.Inclusion, "
         "(SELECT TOP 1 r.CurrencyId FROM VillaSeasonRate r "
@@ -246,73 +300,150 @@ class RatePlanLoader(BaseLoader):
         "(SELECT TOP 1 r2.CurrencyId FROM VillaSeasonRate r2 "
         " WHERE r2.VillaId = s.VillaId AND r2.CurrencyId IS NOT NULL AND r2.CurrencyId <> 0 "
         " AND r2.DeletedAt IS NULL ORDER BY r2.ID DESC) AS VillaCurrencyId, "
-        "(SELECT MIN(d.FromDate) FROM VillaSeasonDates d WHERE d.SeasonId = s.ID) AS DateFrom, "
-        "(SELECT MAX(d.ToDate) FROM VillaSeasonDates d WHERE d.SeasonId = s.ID) AS DateTo "
-        "FROM VillaSeason s WHERE s.DeletedAt IS NULL"
+        "(SELECT COUNT(*) FROM VillaSeasonRate r3 "
+        " WHERE r3.SeasonId = s.ID AND r3.DeletedAt IS NULL AND r3.IsExTra <> 1 "
+        " AND r3.FromDate < r3.ToDate"
+        " AND (r3.NightlyPrice > 0 OR r3.WeeklyPrice > 0 OR r3.Price > 0 OR r3.IsPOA = 1)"
+        ") AS RateCount, "
+        "(SELECT MIN(d.FromDate) FROM VillaSeasonDates d "
+        " WHERE d.SeasonId = s.ID AND d.DeletedAt IS NULL) AS DateFrom, "
+        "(SELECT MAX(d.ToDate) FROM VillaSeasonDates d "
+        " WHERE d.SeasonId = s.ID AND d.DeletedAt IS NULL) AS DateTo "
+        "FROM VillaSeason s "
+        "JOIN VillaMaster m ON m.Id = s.VillaId AND m.DeletedAt IS NULL "
+        "WHERE s.DeletedAt IS NULL"
     )
 
-    def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        prop = Property.objects.filter(legacy_id=str(row.get("VillaId") or "")).first()
-        if prop is None:
-            return None
-        currency = Currency.objects.filter(legacy_id=str(row.get("CurrencyId") or "")).first()
-        if currency is None:
-            # Season has only NULL/0 currency rows — infer from the villa's
-            # other rate rows, then the canonical settings → EUR chain.
-            currency = Currency.objects.filter(
-                legacy_id=str(row.get("VillaCurrencyId") or "")
-            ).first()
-        if currency is None:
-            # Settings → EUR only: `resolve_property_currency`'s plans-first
-            # step would read the RatePlan rows this loader writes, so a
-            # mis-stamped currency could never self-correct on a re-run.
-            currency = settings_currency(prop) or default_currency()
-            if currency is None:
-                return None
-        effective_from = _as_date(row.get("DateFrom")) or date(2020, 1, 1)
-        effective_to = _as_date(row.get("DateTo"))
-        return {
-            "property": prop,
-            "name": (row.get("Name") or f"Season {row['ID']}")[:128],
-            "currency": currency,
-            "effective_from": effective_from,
-            "effective_to": effective_to,
-            "is_active": True,
-            "notes": (row.get("Notes") or "").strip(),
-            # GAP-037: `Inclusion` no longer lands on RatePlan — it materialises a
-            # PropertyService in `_process_row` (keyed `<season>:svc`).
-            # SMELL-021: stamped explicitly, not left to the model default.
-            # Legacy has no per-villa NET/GROSS signal — `RatesModel.Calculate()`
-            # always treats the entered rate as the guest-facing gross
-            # (`GrossPrice = getWeeklyPrice`, net derived by subtracting
-            # tax + commission) — so every imported plan is GROSS by rule.
-            # `reconcile_legacy` pins the invariant (zero non-GROSS legacy plans).
-            "price_basis": PriceBasis.GROSS,
-        }
+    def _apply_since(self, query: str) -> str:
+        # Deliberate no-op: the regroup is a function of the villa's whole
+        # season set, so a `--since` delta would merge against seasons it
+        # can't see. The table is small; every pass is a full reload.
+        if self.since:
+            logger.warning(
+                "data_migration.rate_plan_since_ignored",
+                since=str(self.since),
+                reason="season regroup needs the full row set; full reload",
+            )
+        return query
 
-    def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
-        super()._process_row(row, report)
-        legacy_id = row.get(self.legacy_pk_column)
-        if legacy_id is None:
-            return
-        plan = RatePlan.objects.filter(legacy_id=str(legacy_id)).first()
-        if plan is None:
-            return
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        """Group the season rows by (villa, resolved currency), then upsert one
+        plan per group inside its own savepoint — one bad group can't abort
+        the rest, the same isolation `BaseLoader._load_rows` gives a row."""
+        groups: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
+        keys: dict[tuple[int, int], tuple[Property, Currency]] = {}
+        prop_cache: dict[str, Property | None] = {}
+        for row in rows:
+            if row.get(self.legacy_pk_column) is None:
+                report.skipped += 1
+                continue
+            villa_id = str(row.get("VillaId") or "")
+            if villa_id not in prop_cache:
+                prop_cache[villa_id] = Property.objects.filter(legacy_id=villa_id).first()
+            prop = prop_cache[villa_id]
+            if prop is None or not (row.get("RateCount") or 0):
+                report.skipped += 1
+                continue
+            currency = resolve_season_currency(row, prop)
+            if currency is None:
+                report.skipped += 1
+                continue
+            key = (prop.pk, currency.pk)
+            keys[key] = (prop, currency)
+            groups[key].append(row)
+
+        with transaction.atomic():
+            # Own the legacy footprint: plans (and their inclusion services)
+            # written under the pre-GAP-110 season-keyed ids would otherwise
+            # survive an in-place re-run as a second active plan per regime.
+            # Cascades the stale plans' legacy periods/bands; `RateBandLoader`
+            # rebuilds those on the regime plans anyway.
+            RatePlan.objects.filter(legacy_id__isnull=False).exclude(
+                legacy_id__startswith="villa:"
+            ).delete()
+            PropertyService.objects.filter(
+                legacy_id__isnull=False, legacy_id__endswith=":svc"
+            ).exclude(legacy_id__startswith="season:").delete()
+            for key, season_rows in groups.items():
+                prop, currency = keys[key]
+                try:
+                    with transaction.atomic():
+                        created = self._load_group(prop, currency, season_rows)
+                except Exception as exc:  # isolate one bad group from the rest
+                    report.errors.append((plan_legacy_id(prop.legacy_id, currency.code), repr(exc)))
+                    continue
+                # Counted only once the savepoint has committed — a rolled-back
+                # group is an error, not a created plan.
+                if created:
+                    report.created += 1
+                else:
+                    report.updated += 1
+
+    def _load_group(
+        self,
+        prop: Property,
+        currency: Currency,
+        season_rows: list[dict[str, Any]],
+    ) -> bool:
+        """Upsert the group's regime plan + inclusion services; True if the
+        plan was created (False when updated in place)."""
+        season_rows = sorted(season_rows, key=lambda r: int(r["ID"]))
+        windows = [w for w in (_live_window(r) for r in season_rows) if w]
+        froms = [w[0] for w in windows]
+        tos = [w[1] for w in windows]
+        if len(season_rows) == 1:
+            name = _season_label(season_rows[0])
+            notes = str(season_rows[0].get("Notes") or "").strip()
+        else:
+            name = f"{currency.code} rates"
+            lines = ["Merged legacy seasons:"]
+            lines += [f"- {r['ID']} — {_season_label(r)}" for r in season_rows]
+            for r in season_rows:
+                blurb = str(r.get("Notes") or "").strip()
+                if blurb:
+                    lines.append(f"{_season_label(r)}: {blurb}")
+            notes = "\n".join(lines)
+        _, created = RatePlan.objects.update_or_create(
+            legacy_id=plan_legacy_id(prop.legacy_id, currency.code),
+            defaults={
+                "property": prop,
+                "name": name[:128],
+                "currency": currency,
+                # Interim envelope until U6a drops the fields: merged min/max of
+                # the seasons' live windows.
+                "effective_from": min(froms) if froms else date(2020, 1, 1),
+                "effective_to": max(tos) if tos else None,
+                "is_active": True,
+                "notes": notes,
+                # SMELL-021: stamped explicitly, not left to the model default.
+                # Legacy has no per-villa NET/GROSS signal — `RatesModel.Calculate()`
+                # always treats the entered rate as the guest-facing gross
+                # (`GrossPrice = getWeeklyPrice`, net derived by subtracting
+                # tax + commission) — so every imported plan is GROSS by rule.
+                # `reconcile_legacy` pins the invariant (zero non-GROSS legacy plans).
+                "price_basis": PriceBasis.GROSS,
+            },
+        )
         # GAP-037: a season's free-text Inclusion becomes one date-banded
-        # PropertyService on the villa, sharing the plan's effective dates.
-        inclusion = (row.get("Inclusion") or "").strip()
-        if inclusion:
+        # PropertyService on the villa, dated by the season's live window
+        # (the plan no longer has one). No live window → nothing to band it on.
+        for r in season_rows:
+            inclusion = str(r.get("Inclusion") or "").strip()
+            window = _live_window(r)
+            if not inclusion or window is None:
+                continue
             PropertyService.objects.update_or_create(
-                legacy_id=f"{legacy_id}:svc",
+                legacy_id=f"season:{r['ID']}:svc",
                 defaults={
-                    "property": plan.property,
+                    "property": prop,
                     "name": "Included services",
                     "copy": inclusion,
-                    "applies_from": plan.effective_from,
-                    "applies_to": plan.effective_to,
-                    "is_active": plan.is_active,
+                    "applies_from": window[0],
+                    "applies_to": window[1],
+                    "is_active": True,
                 },
             )
+        return bool(created)
 
 
 def _party_gaps(bands: list[Interval]) -> list[Interval]:

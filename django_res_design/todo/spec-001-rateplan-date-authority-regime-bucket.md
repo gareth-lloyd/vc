@@ -3,6 +3,14 @@
 - **Severity:** 🔵 Speculative (design exploration — no committed decision; captures
   an investigation so the reasoning isn't lost. Demand-driven: adopt only if the
   drift bug below actually bites, or when the rate model is next opened.)
+  **2026-09-11: it bit, and the recommended direction is adopted as
+  [GAP-110](gap-110-rateplan-regime-bucket-period-date-authority.md)**, the
+  build ticket — with one addition this exploration could not see: legacy
+  seasons were never a pricing concept (`VillaSeasonDates` was a data-entry
+  assignment key), every legacy villa is one regime, so the loader stops
+  minting a plan per `VillaSeason` and the "empty plan loses its year" cost
+  disappears. Open decisions 1, 2, 3 and 5 are answered there; 4 stays with
+  Q-022. This file remains the record of alternatives considered.
 - **Source:** 2026-07-03 far-future-rates investigation (owner-feedback pass).
   Grew out of a question about how far-future enquiries are priced and turned
   into a rate-model critique.

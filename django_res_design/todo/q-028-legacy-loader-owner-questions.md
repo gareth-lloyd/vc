@@ -48,8 +48,19 @@
    extras with their date windows. *(Alternative: drop and re-enter by hand
    post-cutover.)*
 
+5. **Do we ever run two price lists for one villa at once — a gross public
+   one and a net agent one — on the same dates?** (GAP-110.) The 2026-06-22
+   net/gross decision text says yes in principle; no legacy villa does it
+   (all 521 loaded plans are gross) and the quote path has no way to pick
+   one. GAP-110 forbids two plans pricing the same night in one currency.
+   **Suggested answer:** no — one list per villa per currency; a switch
+   from gross to net happens at a season boundary. *(If yes: the plan
+   gains a segment, the invariant becomes per villa + currency + segment,
+   and the quote path must let staff choose the segment. Small, but must
+   be known before GAP-110 U2.)*
+
 ## Disposition
 
 Record each answer in `design/decisions.md` and on the owning ticket
-(1 → BUG-030 §36; 2, 3 → GAP-109 rows 10/11; 4 → GAP-107 §1); retire this
-file to `reviews/` when all four are answered.
+(1 → BUG-030 §36; 2, 3 → GAP-109 rows 10/11; 4 → GAP-107 §1; 5 → GAP-110
+U2); retire this file to `reviews/` when all five are answered.

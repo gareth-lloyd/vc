@@ -139,7 +139,11 @@ The loader:
   landed; the two options are widen-the-window-in-the-loader (min/max over
   both sources) or leave it to SPEC-001. Either way, filter
   `VillaSeasonDates.DeletedAt` in the MIN/MAX subselects (95 deleted rows; 0
-  envelope changes on this dump).
+  envelope changes on this dump). **Superseded 2026-09-11 by GAP-110:** the
+  envelope is dropped and the loader regroups to one plan per villa +
+  currency, so there is no window to widen; the `DeletedAt` filter moves to
+  the `PropertyService` band derivation there. The acceptance line "zero
+  imported plans with a period outside their own window" drops with it.
 
 ## Proposed fix
 

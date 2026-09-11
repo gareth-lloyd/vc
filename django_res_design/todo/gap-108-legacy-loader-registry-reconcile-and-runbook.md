@@ -154,6 +154,8 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
 
 - Sequence after **BUG-028 / BUG-029 / BUG-030** — they move most of the
   constants this ticket pins; do the pinning last on one dry-run.
+- **GAP-110** U0 regroups `RatePlan` (521 → ~276) and adds the night-parity
+  invariant; if it lands before cutover, pin the plan constant after it.
 - **GAP-107**: §3 closes here; §1 (extras) and §2 (deleted geo as inactive)
   stay there. **Q-025**: its reconcile residual closes here. **GAP-098**:
   Zoho contact note. **GAP-103**: still blocked on GAP-107 §2, not on this.

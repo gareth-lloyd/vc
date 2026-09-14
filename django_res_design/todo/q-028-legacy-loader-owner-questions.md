@@ -58,6 +58,16 @@
    gains a segment, the invariant becomes per villa + currency + segment,
    and the quote path must let staff choose the segment. Small, but must
    be known before GAP-110 U2.)*
+   **Recorded 2026-09-14 (GAP-110 shipped, U2 landed):** the partition is
+   `(property, currency)` with **no `segment`** — `rateperiod_no_overlap` is
+   per villa + currency, and at most one *active* plan exists per villa +
+   currency + price basis. A GROSS and a NET plan can therefore coexist only
+   on **different dates**; a stay touching both is a loud `MultiRegimeStay`
+   error, never a silent pick. Agent-vs-direct pricing on the *same* dates
+   would need a `segment` on the plan, the invariant widened to
+   `(property, currency, segment)`, and a segment selector on the quote
+   path — a small extension, but it is **still open for the owner**: the
+   question stands as asked.
 
 ## Disposition
 

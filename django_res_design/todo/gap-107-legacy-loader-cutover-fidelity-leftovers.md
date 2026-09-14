@@ -21,7 +21,8 @@
 - **Source:** 2026-09-10 sweep of `todo/` for loader follow-ups. Pulls together
   three items that each said "needs its own ticket" and never got one:
   - SPEC-001's "Cutover parity gap" bullet
-    (`spec-001-rateplan-date-authority-regime-bucket.md:212–217`).
+    (`done/spec-001-rateplan-date-authority-regime-bucket.md:235–241` — SPEC-001
+    closed 2026-09-14 with GAP-110; the bullet still reads the same).
   - GAP-102's geo-loader note (`done/gap-102-…md:122–127`).
   - GAP-073 live dry-run follow-up #2 (`done/gap-073-…md:22–23`).
 - **Files touched (best-guess):**

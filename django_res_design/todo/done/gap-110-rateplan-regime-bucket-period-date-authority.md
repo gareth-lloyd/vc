@@ -1,5 +1,89 @@
 # GAP-110 — `RatePlan` becomes a dateless regime bucket; `RatePeriod` is the sole date authority; legacy seasons load as one plan per villa + currency
 
+> **✅ RESOLVED (2026-09-14)** — shipped on `feat/gap-110`; fast-forwarded into
+> local `main` (unpushed) at close-out. 8 code units + this close-out, expand →
+> migrate → contract as planned:
+> f55486df U0a `RatePlanLoader` groups seasons into one plan per (villa,
+> resolved currency); b936f09a U0b `RateBandLoader` builds periods on the
+> regime plan + reconcile villa-level plan check and night-parity section;
+> 4436e7b0 U1 `RatePeriod.property/currency` stamped from the plan (mig
+> 0008/0009), plan property/currency locked once periods exist; 6d8cc9d1 U2a
+> `rateperiod_no_overlap` on `(property, currency)` (mig 0010) + `RatePlan:duplicate`
+> removed; e7e01ebe U3 engine selects periods first, then infers the plan,
+> `MultiRegimeStay`; ad0c86f8 U4 anchor on a period year, carry-forward writes
+> into the regime plan, `rateplan_one_active_per_regime` (mig 0011); 463b220e
+> U5a + U6a API/seeding/factories drop the envelope, mig 0012 removes
+> `effective_from/effective_to` + the orphaned `idempotency_key`, ordering
+> `(property, pk)`, `PropertyFinance.season` dropped (properties/0008);
+> b3b829bf U5b the rate workbench follows the date-less plan.
+>
+> **What exists now.** A `RatePlan` is a date-less regime bucket — at most one
+> *active* plan per `(property, currency, price_basis)`; retired plans may pile
+> up and their periods still own their dates. `RatePeriod` carries denormalised
+> `property` + `currency` (stamped from the plan on save, never from input) and
+> `rateperiod_no_overlap` partitions on them, ungated by `is_active`. The
+> engine fetches the active periods (of active plans) touching the stay and
+> infers the plan: none → projection; one → that plan; two in one currency →
+> `MultiRegimeStay` (a `NoRateAvailable` subclass, same `code`, detail names the
+> villa and both plans). Projection anchors on a **period** year
+> (`find_anchor(property, currency, target_year) → Anchor(plan, source_year)`)
+> and projects only that year's periods; carry-forward writes into the anchor
+> plan (never creates one), is idempotent on the target year, refuses a year
+> owned only by withdrawn rows as 409 `RegimeConflict`, clips around
+> neighbouring-year rows, and logs `pricing.carryover.materialised` as its
+> provenance; the admin action year is `next_target_year` (latest live period
+> + 1). Serializer pre-checks give 400s with guidance (cross-plan overlap keyed
+> `date_from` naming the other plan; second active plan → non-field error naming
+> the occupant; currency change on a plan with periods); a raced constraint hit
+> is a 409 `regime_conflict`. The loader mints one plan per (villa, resolved
+> currency), `legacy_id="villa:<VillaId>:<CODE>"`, season names → `notes`,
+> overlaps resolved per regime. The workbench plan form has no dates, the
+> coverage lane shows unpriced days across the visible year, the picker reads
+> `EUR · Gross` (+ inactive marker), and carry-forward follows the returned plan.
+>
+> **Deviations from the ticket / plan, all deliberate (review findings):**
+> (a) the pricing context carries only the chosen plan's periods *touching* the
+> stay, not all of them — plans are multi-year buckets and `stay_length_bounds`
+> must not see another year; `load_context()` returns a context only when
+> those periods cover every night (its sub-stay reuse contract), while
+> `quote()` still fallback-fills a partly covered stay. (b) With `currency=None`
+> the currency whose periods cover the **most** nights wins, then the settings
+> currency, then lowest plan pk (the ticket said "settings currency, then pk").
+> (c) `resolve_property_currency` = covering-today plan, else latest elapsed
+> period's plan, else settings, **else the earliest upcoming period's plan**,
+> else EUR. (d) The changeover shift runs before plan selection, so the
+> *shifted* nights pick the regime. (e) `PoaRate(NoRateAvailable)` was added so
+> stay options can branch on type. (f) `find_anchor` needs no approved band
+> (keeps the fallback-only projection); the projected context carries the real
+> regime plan, no synthetic envelope copy. (g) `materialise` refuses — rather
+> than clips around — a target year owned only by withdrawn rows; `map_range`
+> keeps a mapped start inside its target year. (h) No plan-level provenance
+> note (no plan is created); the log event is the record. (i) The FE keeps
+> following the carry-forward response id: the carry target is resolved by
+> (property, currency), so from a periodless EUR·Net plan the carry lands on —
+> and returns — the EUR·Gross plan; "same plan" is only the common case. (j)
+> A periodless plan with `fallback_nightly` no longer prices (gap policy: no
+> real nights → project). (k) `RatePlan.idempotency_key` went with `duplicate`;
+> migration 0011 first retires pre-regroup season-keyed loader plans. (l) U6a
+> (mig 0012) was folded into U5a — the API could not stop writing a NOT NULL
+> column without a throwaway default. Q-022's tier is not carried (no field
+> exists). Manual `/demo-worktree` browser check was not run.
+>
+> **Open follow-ups — NOT ticked (dump-dependent; no `LEGACY_DATABASE_URL`
+> here), recorded in `CUTOVER.md` §5 items 3–5:**
+> - ⬜ Loader: ~276 plans on the 24-Apr dump; zero cross-plan period
+>   collisions; **reconcile expected-gap calibration** for the villa-level
+>   `RatePlan` check (placeholder `0`) and the `VillaSeasonRate` row count.
+> - ⬜ **Night-parity invariant** gap 0 with any residue itemised per villa.
+> - ⬜ **Legacy-quote sample** reproduces on the 37 cross-season overlap villas.
+>
+> **Deferred (out of scope, own tickets):** BUG-028 §3 currency-resolution fix
+> (loader uses today's chain); `segment` on `RatePlan` for agent-vs-direct
+> pricing (Q-028 item 5, still open for the owner); Q-022 season tier on
+> `RatePeriod`; a distinct API error code for `MultiRegimeStay` + FE branch;
+> `IntegrityError` → DRF mapping in the global exception handler;
+> trigger-based audit capture for bulk writes.
+
 - **Severity:** 🟠 Gap (build). Adopts SPEC-001's recommended direction as
   a committed change, with the loader half that the exploration did not
   have data for. Behaviour changes at the plan-selection boundary only; the
@@ -229,6 +313,11 @@ stay's nights; group by plan.
   `settings_currency(property)`, then lowest pk. `resolve_property_currency`
   becomes "currency of the plan with an active period covering today, else
   the plan with the most recent period before today".
+  *As landed (e7e01ebe):* with `currency=None` the engine first ranks the
+  currencies touching the stay by nights covered (most wins), then the
+  settings currency, then lowest pk; `resolve_property_currency` adds
+  "else the property's settings currency, else the plan owning the earliest
+  upcoming period, else EUR" after the two steps above.
 - `stay_options.py:150-155`: the one-load-per-property fast path now holds
   whenever one regime spans the window, which is almost always; update the
   comment.
@@ -285,32 +374,63 @@ stay's nights; group by plan.
 
 ## Acceptance
 
-- Cross-producer equivalence tests pass unchanged for every stay that has
-  real coverage under one plan: quotes are identical before and after.
-  (test)
-- A stay checking out on the last day of a priced period prices. (test)
-- A stay touching periods of two plans in one currency raises
+- ⬜ **Not proven as written.** Cross-producer equivalence tests pass unchanged
+  for every stay that has real coverage under one plan: quotes are identical
+  before and after. — `test_cross_producer_equivalence.py` was *edited* on the
+  branch (fixtures moved to the regime shape) and it pins **projected ==
+  materialised** parity, not pre-/post-GAP-110 quote identity; there is no
+  dedicated before/after regression guard for one-plan stays. What covers the
+  one-plan path is the U3 engine suite: `pricing/tests/test_engine.py` (e.g.
+  `test_quote_happy_path_single_card_no_extras`, the fallback/reduction/
+  breakdown cases — unchanged assertions on a single-plan fixture) and
+  `pricing/tests/test_engine_regime.py`
+  (`test_context_carries_only_the_plans_periods_touching_the_stay`,
+  `test_plan_currency_drifted_from_its_periods_still_quotes`).
+- ✅ A stay checking out on the last day of a priced period prices. (test —
+  `test_engine_regime.py::test_new_years_day_checkout_prices_on_the_period_ending_31_dec`)
+- ✅ A stay touching periods of two plans in one currency raises
   `MultiRegimeStay` with the villa and both plan names in the message.
-  (test)
-- Creating a second active plan for the same villa, currency and basis is
-  rejected at the API with the guidance message. (test)
-- Two periods in different plans of the same villa + currency cannot
-  overlap (DB-level). (test)
-- A stay in a partly priced year on unpriced dates projects with
+  (test — `test_gross_and_net_plans_touching_one_stay_raise_multi_regime_stay`,
+  `test_multi_regime_stay_is_a_409_no_rate_available`)
+- ✅ Creating a second active plan for the same villa, currency and basis is
+  rejected at the API with the guidance message. (test —
+  `test_api_rate_plans.py::test_create_plan_into_an_occupied_regime_rejected_with_guidance`,
+  `test_rate_plan_regime.py`)
+- ✅ Two periods in different plans of the same villa + currency cannot
+  overlap (DB-level). (test —
+  `test_rate_period.py::test_rateperiod_overlap_blocked_across_plans_in_one_regime`)
+- ✅ A stay in a partly priced year on unpriced dates projects with
   `is_projected=True`; a stay with one real night and one unpriced night
-  uses fallback or fails. (test)
-- Projection from a villa whose only prior periods sit in one year shifts
+  uses fallback or fails. (test —
+  `test_unpriced_dates_of_a_partly_priced_year_project_from_the_prior_year`,
+  `test_engine.py::test_fallback_nightly_fills_gap_night` /
+  `test_gap_night_without_fallback_still_raises`)
+- ✅ Projection from a villa whose only prior periods sit in one year shifts
   by exactly one year; a two-year period set anchors on the later year
-  only. (test)
-- Carry-forward adds periods to the existing plan, is idempotent on the
-  target year, and never creates a plan. (test)
-- Loader: ~276 plans on the 24-Apr dump; zero cross-plan period
+  only. (test — `test_projection.py::test_find_anchor_returns_latest_period_year_before_target`,
+  `test_project_carries_only_the_source_year_periods`)
+- ✅ Carry-forward adds periods to the existing plan, is idempotent on the
+  target year, and never creates a plan. (test —
+  `test_carryover.py::test_materialise_writes_real_rows_for_target_year`
+  asserts one plan in the regime, `test_materialise_is_idempotent*`,
+  `test_api_rate_plans.py::test_carry_forward_creates_editable_plan_for_future_year`)
+- ⬜ **OPEN — dump-dependent, not run (no `LEGACY_DATABASE_URL`):** Loader:
+  ~276 plans on the 24-Apr dump; zero cross-plan period
   collisions; night-parity invariant gap 0 with any residue explained;
-  legacy-quote sample reproduces on the 37 overlap villas. (`reconcile_legacy`)
-- Workbench: plan form has no date fields; coverage lane shows unpriced
+  legacy-quote sample reproduces on the 37 overlap villas. (`reconcile_legacy`
+  — the checks exist and are unit-tested against fake cursors; their
+  `expected_gap` values are placeholders until the first post-GAP-110
+  dry-run. See `CUTOVER.md` §5 items 3–5.)
+- ✅ Workbench: plan form has no date fields; coverage lane shows unpriced
   days across the visible year; carry-forward leaves the user on the same
-  plan. (vitest)
-- `04-pricing.md`, `decisions.md`, `CUTOVER.md` updated; SPEC-001 closed.
+  plan. (vitest — `RatePlanFormDialog.test.tsx` "… and no dates",
+  `coverageGaps.test.ts` "surrounds a mid-year period with a leading and a
+  trailing gap", `RateWorkbenchPage.test.tsx` "carries earlier rates forward
+  into the SAME plan …" — *and* "follows the response plan when the carry
+  lands on the other-basis plan in the same currency", the one deliberate
+  exception, deviation (i) above.) Manual browser check not run.
+- ✅ `04-pricing.md`, `decisions.md`, `CUTOVER.md` updated; SPEC-001 closed
+  (this close-out, 2026-09-14).
 
 ## Decisions taken / assumed (2026-09-11 design pass)
 

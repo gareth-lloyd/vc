@@ -48,6 +48,28 @@ properties.
 
 ## 4. Run every loader
 
+> **Pre-step for any DB that already holds rate plans (GAP-110, `pricing/0011`).**
+> `0011` adds `rateplan_one_active_per_regime` (one *active* `RatePlan` per
+> `(property, currency, price_basis)`). Its `RunPython` step retires only
+> **loader** rows (pre-regroup season-keyed `legacy_id`s); the `AddConstraint`
+> then **hard-fails** on any two hand-built active plans in one regime, and
+> `migrate` stops there. Check first:
+>
+> ```python
+> # uv run python manage.py shell
+> from django.db.models import Count
+> from pricing.models import RatePlan
+> RatePlan.objects.filter(is_active=True).values(
+>     "property_id", "currency_id", "price_basis"
+> ).annotate(n=Count("id")).filter(n__gt=1)
+> ```
+>
+> (SQL: `SELECT property_id, currency_id, price_basis, count(*) FROM
+> pricing_rateplan WHERE is_active GROUP BY 1, 2, 3 HAVING count(*) > 1;`.)
+> Remedy: deactivate the extras by hand (keep the one whose periods should
+> price; a retired plan's periods still own their dates — see §5 item 6),
+> then run `migrate`. A fresh DB has nothing to check.
+
 ```bash
 uv run python manage.py migrate           # applies pending schema migrations
 uv run python manage.py loadlegacy --all
@@ -623,6 +645,52 @@ must be made jointly overlap-free under the one EXCLUDE constraint):
    here too, so there is no single parity answer — but if a spot-check shows
    real bands being lost this way, give band rows explicit precedence (an
    `is_occ` sort key ahead of `id`).
+3. **Recalibrate the villa-level `RatePlan` check** (GAP-110, `expected_gap`
+   placeholder `0`): the legacy side is distinct live villas with ≥1 live
+   priced rate row, the loaded side villas owning a `villa:`-keyed plan with
+   ≥1 legacy period. Any gap is a villa the loader could not resolve (no
+   `Property`, no currency) — itemise before pinning.
+4. **Night-parity residue** (GAP-110): the per-villa night-set section is
+   expected at `0` villas. A non-zero residue must be itemised per villa
+   (villas with no `Property`; negative-price junk rows) and either fixed in
+   the loader or pinned as an explained loss — never waved through.
+5. **Legacy-quote sample on the overlap villas** (GAP-110): 37 villas had
+   cross-season same-party overlaps in the 24-Apr-2025 dump (298 pairs), which
+   the regroup now resolves *across* seasons by `(not approved, id, disc)`.
+   Spot-check that the resolved winner reproduces the legacy quote on a
+   sample of `VillaQuotationMaster` rows for those villas; a systematic miss
+   means the cross-season precedence needs an `is_occ`/season sort key, not
+   a per-villa patch.
+6. **A staff-made plan in a loader regime blocks the villa's re-load.** Two
+   invariants bite, and they need different remedies:
+   - `rateplan_one_active_per_regime` — at most one *active* `RatePlan` per
+     `(property, currency, price_basis)`. A staff-made **active GROSS** plan
+     in a currency the loader mints for that villa makes `rate_plan` fail
+     that villa's `(villa, currency)` group (its own savepoint; the other
+     villas still load; loaded plans are always GROSS — SMELL-021).
+     Remedy: **deactivate** the staff plan first.
+   - `rateperiod_no_overlap` — ungated by `is_active`, so deactivating is
+     **not** enough if the staff plan's periods overlap the legacy dates:
+     `RateBandLoader` writes every villa inside **one outer
+     `transaction.atomic()` with no per-plan savepoint**, so a single
+     overlapping staff period rolls back the **entire** `rate_rule` load and
+     `loadlegacy` exits non-zero. "Merging" the staff periods onto the loaded
+     plan is equally unsafe — merged periods keep `legacy_id NULL`, survive
+     the full-replace purge, and collide on the next run. Remedy: **delete**
+     the staff plan's overlapping periods (or the whole staff plan) before
+     the re-run.
+   Nothing in the loader retires or deletes staff rows. Migration
+   `pricing/0011` handles the one loader-made case: it **deactivates
+   pre-regroup season-keyed loader plans** (`legacy_id` set but not
+   `villa:…`) so the unique-active constraint can land on a DB loaded before
+   the regroup; the `rate_plan` loader's own targeted sweep
+   (`RatePlan.objects.filter(legacy_id__isnull=False).exclude(legacy_id__startswith="villa:").delete()`,
+   cascading their legacy periods/bands) then removes them on the next run —
+   the bands/periods full-replace purge never deletes plans. **Known
+   leftover:** a stale `villa:<id>:<CODE>` plan whose villa re-resolved to
+   another currency, or lost all its priced rows, is *not* swept — it
+   survives as an active, periodless plan (harmless to pricing, visible in
+   the workbench picker); deactivate or delete it by hand.
 
 ## 6. (Optional) Delta load for late writes
 
@@ -635,8 +703,10 @@ uv run python manage.py loadlegacy --all --since '2026-05-13T17:00:00'
 
 Loaders use the legacy `UpdatedAt` column for this filter — a few lookups
 without that column will silently ignore the flag. `rate_rule` also ignores
-it by design: overlap resolution needs the whole season's row set, so it
-always does a full reload (see "Rate rule overlap resolution" above).
+it by design: overlap resolution needs the whole regime's (villa + currency)
+row set, so it always does a full reload — as does `rate_plan`, whose
+regroup needs every season of a villa (see "Rate rule overlap resolution"
+above).
 `booking_charge_item` likewise ignores it (with a warning) —
 `VillaBookingDetails` has no `UpdatedAt`, and the removal sweep needs the
 full row set to detect deletions. `property_defaults` **skips entirely** on

@@ -144,6 +144,12 @@ The loader:
   currency, so there is no window to widen; the `DeletedAt` filter moves to
   the `PropertyService` band derivation there. The acceptance line "zero
   imported plans with a period outside their own window" drops with it.
+  **Landed 2026-09-14:** GAP-110 shipped — `RatePlanLoader` now groups one
+  plan per `(villa, resolved currency)` (`villa:<VillaId>:<CODE>`) and
+  `RateBandLoader` resolves overlaps per regime; the envelope no longer
+  exists. The regroup uses **today's** currency chain, so §3 above is still
+  deferred — when it lands, a season whose currency resolution changes
+  moves to a different regime plan (a full-replace re-run, no migration).
 
 ## Proposed fix
 

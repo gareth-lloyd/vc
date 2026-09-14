@@ -63,6 +63,10 @@ anchors, a lookup/config row, or a cross-cutting audit/sync record.
 
 ```
 Property ─1:N→ RatePlan ─1:N→ RatePeriod ─1:N→ RateBand
+           RatePlan = date-less regime bucket, one *active* per (property,
+           currency, price_basis); RatePeriod = the sole date axis, carrying
+           property + currency stamped from its plan, no-overlap per
+           (property, currency) whatever the plan (GAP-110)
          ─1:1→ PropertySettings, PropertyFinance, PropertyCapacity
          ─1:N→ Room, PropertyImage, PropertyDescription, PropertyLocation
          ─M:M→ Person (via PropertyContactAssignment)

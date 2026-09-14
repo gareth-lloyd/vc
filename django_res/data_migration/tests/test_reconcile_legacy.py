@@ -914,3 +914,73 @@ def test_currency_eur_check_reports_the_claiming_legacy_id(
     assert check.loaded_count(check.model) == expected
     assert check.expected_gap == 0
     assert "Code = 'EUR'" in check.legacy_query
+
+
+def _check(label: str) -> _Check:
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == label)
+    assert check.legacy_query == "SELECT 0"
+    assert check.expected_gap == 0
+    assert check.loaded_count is not None
+    return check
+
+
+@pytest.mark.django_db
+def test_finance_null_calculation_type_check_counts_stamped_rows_only() -> None:
+    """BUG-028: any of the four calculation types NULL on a stamped row is a
+    type-map regression; unstamped (fallback / organic) rows are not counted."""
+    from properties.enums import CommissionCalcType, DepositCalcType
+    from properties.models.finance import PropertyFinance
+
+    full = {
+        "commission_calculation_type": CommissionCalcType.PERCENT,
+        "deposit_calculation_type": DepositCalcType.PERCENT,
+        "interim_calculation_type": DepositCalcType.PERCENT,
+        "security_deposit_calculation_type": DepositCalcType.PERCENT,
+    }
+    PropertyFactory(legacy_id="900")
+    PropertyFactory(legacy_id="901")
+    PropertyFactory()  # organic: all-NULL snapshot row, legacy_id NULL
+    PropertyFinance.objects.filter(property__legacy_id="900").update(legacy_id="10", **full)
+    PropertyFinance.objects.filter(property__legacy_id="901").update(
+        legacy_id="11", **{**full, "interim_calculation_type": None}
+    )
+
+    check = _check("PropertyFinance NULL calculation type (must be 0)")
+    assert check.model is PropertyFinance
+    assert check.loaded_count(check.model) == 1  # type: ignore[misc]
+
+
+@pytest.mark.django_db
+def test_settings_without_currency_check_counts_imported_villas_only() -> None:
+    from properties.models.settings import PropertySettings
+
+    eur = Currency.objects.create(code="EUR", name="Euro", symbol="E", legacy_id="3")
+    PropertyFactory(legacy_id="900")
+    PropertyFactory(legacy_id="901")  # imported, currency unset → counted
+    PropertyFactory()  # organic, currency unset → not counted
+    PropertySettings.objects.filter(property__legacy_id="900").update(currency=eur)
+
+    check = _check("PropertySettings without currency (must be 0)")
+    assert check.model is PropertySettings
+    assert check.loaded_count(check.model) == 1  # type: ignore[misc]
+
+
+@pytest.mark.django_db
+def test_rate_band_value_checks_count_imported_bands_only() -> None:
+    """BUG-028: an imported non-POA band priced at 0.00 would quote a free
+    stay, and an imported unapproved band would never price."""
+    from decimal import Decimal
+
+    from pricing.factories import RateBandFactory
+
+    RateBandFactory(legacy_id="1", nightly=Decimal("250.00"))  # fine
+    RateBandFactory(legacy_id="2", nightly=Decimal("0.00"))  # counted (price)
+    RateBandFactory(legacy_id="3", nightly=Decimal("250.00"), weekly=Decimal("0"))  # counted
+    RateBandFactory(legacy_id="4", nightly=None, is_poa=True)  # POA: not counted
+    RateBandFactory(legacy_id="5", is_approved=False)  # counted (approval)
+    RateBandFactory(nightly=Decimal("0.00"), is_approved=False)  # staff: neither
+
+    priced = _check("RateBand non-POA priced <= 0 (must be 0)")
+    assert priced.loaded_count(priced.model) == 2  # type: ignore[misc]
+    unapproved = _check("RateBand unapproved imported (must be 0)")
+    assert unapproved.loaded_count(unapproved.model) == 1  # type: ignore[misc]

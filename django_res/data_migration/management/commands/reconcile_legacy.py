@@ -35,6 +35,7 @@ from typing import Any
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 
 from accounts.enums import OrgType
 from accounts.models import Organisation, Person, User
@@ -70,6 +71,7 @@ from properties.models.geo import Country, NearbyPlaceType, PropertyNearbyPlace,
 from properties.models.images import PropertyImage
 from properties.models.property import Property
 from properties.models.rooms import Room
+from properties.models.settings import PropertySettings
 from reservations.models.booking import Booking, BookingHold
 from reservations.models.charge_item import BookingChargeItem
 from reservations.models.enquiry import Enquiry
@@ -464,6 +466,31 @@ _CHECKS: list[_Check] = [
         expected_gap=3805,
     ),
     _Check(
+        # BUG-028: legacy quotes treat a 0.00 (or negative) price as absent, so
+        # an imported non-POA band carrying one would quote a free stay. The
+        # `rateband_has_price_or_poa` constraint already rules out both-NULL;
+        # staff-created bands (no legacy_id) are out of scope.
+        "SELECT 0",
+        RateBand,
+        "RateBand non-POA priced <= 0 (must be 0)",
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__isnull=False, is_poa=False)
+            .filter(Q(nightly__lte=0) | Q(weekly__lte=0))
+            .count()
+        ),
+    ),
+    _Check(
+        # BUG-028 §5 decision: legacy quotes ignore `IsApprove`, so every
+        # imported band loads approved (the legacy flag survives in notes and
+        # in overlap precedence). The engine prices only approved bands.
+        "SELECT 0",
+        RateBand,
+        "RateBand unapproved imported (must be 0)",
+        loaded_count=lambda m: m._default_manager.filter(
+            legacy_id__isnull=False, is_approved=False
+        ).count(),
+    ),
+    _Check(
         # GAP-107: the extras catalogue — the `IsExTra = 1` rows the RateBand
         # check above excludes, ported by ExtraLoader (CUTOVER.md §4i). The
         # legacy side mirrors the loader's `DeletedAt IS NULL` AND
@@ -549,6 +576,38 @@ _CHECKS: list[_Check] = [
         # `DeletedAt`) — recalibrate on a fresh load of a newer dump.
         expected_gap=1236,
         loaded_count=lambda m: m._default_manager.filter(legacy_id__isnull=False).count(),
+    ),
+    _Check(
+        # BUG-028: the type-code maps once keyed 1/2 while legacy stores 10/20,
+        # so every calculation type loaded NULL — and NULL silently falls
+        # through to `_POLICY_FALLBACKS` (sec-dep FIXED), turning "10 %" into
+        # EUR 10. Every legacy block resolves a type (own, or the CPD
+        # substitution), so a stamped row with any NULL type is a regression.
+        "SELECT 0",
+        PropertyFinance,
+        "PropertyFinance NULL calculation type (must be 0)",
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__isnull=False)
+            .filter(
+                Q(commission_calculation_type__isnull=True)
+                | Q(deposit_calculation_type__isnull=True)
+                | Q(interim_calculation_type__isnull=True)
+                | Q(security_deposit_calculation_type__isnull=True)
+            )
+            .count()
+        ),
+    ),
+    _Check(
+        # BUG-028: a flagged `IsDefaultSettingCurrencyId` stores 0 (or the
+        # deleted EUR twin, Id 2) and must take the CPD currency; with the live
+        # EUR claimed by `CurrencyLoader` every imported villa resolves one.
+        # Organic properties (no legacy_id) may legitimately be unset.
+        "SELECT 0",
+        PropertySettings,
+        "PropertySettings without currency (must be 0)",
+        loaded_count=lambda m: m._default_manager.filter(
+            property__legacy_id__isnull=False, currency__isnull=True
+        ).count(),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaQuotationMaster WHERE DeletedAt IS NULL",

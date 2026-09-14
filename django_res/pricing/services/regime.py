@@ -8,12 +8,83 @@ pre-check gets a 409 `RegimeConflict` rather than a 500.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager
+from datetime import date, timedelta
+from typing import Any
 
 from django.db import IntegrityError, transaction
 
-from core.exceptions import RegimeConflict
+from core.exceptions import MultiRegimeStay, RegimeConflict
+from pricing.models import RatePeriod, RatePlan
+from pricing.services.currency import pick_preferred_plan
+
+
+def _covered_nights(periods: Sequence[RatePeriod], date_from: date, date_to: date) -> int:
+    """How many nights of `[date_from, date_to)` `periods` cover (one regime —
+    pairwise disjoint by the EXCLUDE, so the clipped spans simply add up)."""
+    last_night = date_to - timedelta(days=1)
+    return sum(
+        (min(period.date_to, last_night) - max(period.date_from, date_from)).days + 1
+        for period in periods
+    )
+
+
+def select_regime_plan(
+    property: Any,
+    touching: Sequence[RatePeriod],
+    date_from: date,
+    date_to: date,
+) -> RatePlan:
+    """The one plan that prices `[date_from, date_to)`, inferred from the
+    active periods `touching` the stay (each with `plan` loaded).
+
+    Across currencies (a currency-less quote): the currency whose periods
+    cover the **most** nights is preferred (so a stay straddling a currency
+    switch prices in the currency that owns more of it, never on the other
+    currency's fallback); among the tied, the settings currency wins, then
+    the lowest plan pk (`pick_preferred_plan`). Within the chosen currency at
+    most one plan may touch the stay — a GROSS and a NET regime both touching
+    it raise `MultiRegimeStay` rather than blend two price bases.
+    """
+    by_currency: dict[int, list[RatePeriod]] = {}
+    for period in touching:
+        by_currency.setdefault(period.currency_id, []).append(period)
+    if len(by_currency) > 1:
+        coverage = {
+            currency_id: _covered_nights(periods, date_from, date_to)
+            for currency_id, periods in by_currency.items()
+        }
+        best = max(coverage.values())
+        # Keyed by the *period's* stamped currency (not `plan.currency_id`)
+        # so a plan whose currency drifted from its periods' stamp still
+        # resolves to a period set rather than a KeyError.
+        candidate_plans: dict[int, RatePlan] = {}
+        currency_of_plan: dict[int, int] = {}
+        for currency_id, periods in by_currency.items():
+            if coverage[currency_id] != best:
+                continue
+            for period in periods:
+                candidate_plans[period.plan.pk] = period.plan
+                currency_of_plan[period.plan.pk] = currency_id
+        preferred = pick_preferred_plan(list(candidate_plans.values()), property)
+        assert preferred is not None  # candidates are never empty here
+        chosen = by_currency[currency_of_plan[preferred.pk]]
+    else:
+        chosen = next(iter(by_currency.values()))
+    plans = {period.plan.pk: period.plan for period in chosen}
+    if len(plans) > 1:
+        named = ", ".join(
+            f'"{plan.name}" (#{plan.pk})' for plan in sorted(plans.values(), key=lambda p: p.pk)
+        )
+        code = next(iter(chosen)).currency.code
+        raise MultiRegimeStay(
+            f"Stay {date_from}..{date_to} at {getattr(property, 'name', property)} is priced "
+            f"by more than one {code} rate plan: {named}. Adjust the periods so a single "
+            "plan covers the whole stay."
+        )
+    return next(iter(plans.values()))
+
 
 # `RatePeriod` EXCLUDE partitioned on the stamped (property, currency).
 _PERIOD_OVERLAP_CONSTRAINT = "rateperiod_no_overlap"

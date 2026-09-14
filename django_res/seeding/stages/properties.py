@@ -201,10 +201,11 @@ def _run(ctx: SeedContext) -> int:
             assign_commission(ctx.rng, prop)
             if ctx.rng.random() < ctx.knobs.pct_second_currency and len(currency_pool) > 1:
                 # Legacy: ~13% of villas price in 2+ currencies (by design —
-                # the quote builder handles a mixed-currency list). Dated one
-                # day earlier than the primary plan so `pick_preferred_plan`
-                # (most recent effective_from wins) keeps currency-less
+                # the quote builder handles a mixed-currency list). Created
+                # *after* the primary plan so `pick_preferred_plan` (settings
+                # currency, else lowest plan pk — GAP-110) keeps currency-less
                 # quotes — and therefore the booking stages — on the primary.
+                # The one-day-earlier envelope dial is inert and goes in U5a.
                 alt = currency_pool[(i + 1) % len(currency_pool)]
                 alt_plan = RatePlanFactory(
                     property=prop,

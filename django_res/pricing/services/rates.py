@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from core.exceptions import NoRateAvailable
+from core.exceptions import PoaRate
 from pricing.models import RateBand, RatePeriod
 
 
@@ -31,7 +31,7 @@ def rule_nightly(rule: RateBand) -> Decimal:
         return rule.effective_nightly
     if rule.effective_weekly is not None:
         return (rule.effective_weekly / Decimal(7)).quantize(Decimal("0.01"))
-    raise NoRateAvailable(f"RateBand {rule.pk} is POA and cannot be priced")
+    raise PoaRate(f"RateBand {rule.pk} is POA and cannot be priced")
 
 
 def rule_base_nightly(rule: RateBand) -> Decimal:
@@ -40,7 +40,7 @@ def rule_base_nightly(rule: RateBand) -> Decimal:
         return rule.nightly
     if rule.weekly is not None:
         return (rule.weekly / Decimal(7)).quantize(Decimal("0.01"))
-    raise NoRateAvailable(f"RateBand {rule.pk} is POA and cannot be priced")
+    raise PoaRate(f"RateBand {rule.pk} is POA and cannot be priced")
 
 
 @dataclass(frozen=True)

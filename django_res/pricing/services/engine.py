@@ -10,13 +10,12 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.db.models import Q
-
 from core.exceptions import (
     DiscountNotApplicable,
     MinNightsNotMet,
     NoRateAvailable,
     PartyOutOfRange,
+    PoaRate,
 )
 from pricing.enums import RuleKind
 from pricing.models import (
@@ -25,9 +24,8 @@ from pricing.models import (
     Extra,
     RateBand,
     RatePeriod,
-    RatePlan,
 )
-from pricing.services.currency import pick_preferred_plan, resolve_property_currency
+from pricing.services.currency import resolve_property_currency
 from pricing.services.discounts import apply_discount
 from pricing.services.extras import calc_extra, date_ranges_overlap
 from pricing.services.projection import PricingContext, RateProjectionService, keep_calendar_date
@@ -41,6 +39,7 @@ from pricing.services.rates import (
     rule_base_nightly,
     rule_nightly,
 )
+from pricing.services.regime import select_regime_plan
 from properties.enums import CommissionCalcType, PriceBasis
 from properties.models.services import PropertyService
 from properties.services.changeover import ChangeoverService
@@ -113,13 +112,29 @@ class PricingEngine:
         # years". A caller-supplied `context` (from `load_context`) skips the
         # resolution entirely — the caller guarantees its plan covers the
         # quoted dates (e.g. a context loaded for a wider window).
+        # Changeover auto-shift (GAP-007): legacy nudged a non-conforming
+        # arrival forward to the next valid changeover day rather than
+        # rejecting it. The property's effective changeover day (a
+        # ChangeOverRule window, else the settings chain) is the single source
+        # of truth; `any` / unconstrained means no shift. Shift *before* plan
+        # selection: the periods touching the stay are what pick the regime
+        # (GAP-110), so selecting on the unshifted nights could land on the
+        # wrong side of a period edge.
+        changeover_day = ChangeoverService.effective_day(property, date_from)
+        property_weekday = ChangeoverService.weekday_for(changeover_day)
+        allowed_weekdays = {property_weekday} if property_weekday is not None else set()
+        date_from, date_to, changeover_shifted_from = ChangeoverService.align_forward(
+            allowed_weekdays, date_from, date_to
+        )
+
         if context is None:
             context = cls._load_real_context(property, currency, date_from, date_to)
             if context is None and allow_projection:
                 # `find_anchor_plan` is currency-keyed, so a currency-less quote
-                # resolves one first via the canonical chain — the most recent
-                # plan's currency, i.e. the villa's *current* currency after a
-                # switch, never a stale pre-switch one (GAP-014).
+                # resolves one first via the canonical chain — the currency of
+                # the period in effect today (else the latest elapsed one),
+                # i.e. the villa's *current* currency after a switch, never a
+                # stale pre-switch one (GAP-014, GAP-110).
                 projection_currency = currency or resolve_property_currency(property)
                 if projection_currency is not None:
                     context = RateProjectionService.project(
@@ -139,18 +154,6 @@ class PricingEngine:
         if currency is None:
             # Price in the rate card's own currency (legacy parity, GAP-014).
             currency = plan.currency
-
-        # Changeover auto-shift (GAP-007): legacy nudged a non-conforming
-        # arrival forward to the next valid changeover day rather than
-        # rejecting it. The property's effective changeover day (a
-        # ChangeOverRule window, else the settings chain) is the single source
-        # of truth; `any` / unconstrained means no shift.
-        changeover_day = ChangeoverService.effective_day(property, date_from)
-        property_weekday = ChangeoverService.weekday_for(changeover_day)
-        allowed_weekdays = {property_weekday} if property_weekday is not None else set()
-        date_from, date_to, changeover_shifted_from = ChangeoverService.align_forward(
-            allowed_weekdays, date_from, date_to
-        )
 
         stay_nights = nights(date_from, date_to)
 
@@ -195,9 +198,7 @@ class PricingEngine:
             assert isinstance(pick, Picked)  # narrowing for mypy
             period, rule = pick.period, pick.rule
             if rule.is_poa:
-                raise NoRateAvailable(
-                    f"RateBand {rule.pk} is POA — cannot generate automatic quote"
-                )
+                raise PoaRate(f"RateBand {rule.pk} is POA — cannot generate automatic quote")
             nightly = rule_nightly(rule)
             # Q-018: carry the base price when a reduction changed this night
             # (equal base/effective — e.g. a sub-cent percent — stays None so
@@ -442,18 +443,27 @@ class PricingEngine:
         date_to: date,
         currency: Currency | None = None,
     ) -> PricingContext | None:
-        """Real-plan context covering ``[date_from, date_to)``, or ``None``
-        when no active plan covers the range (the projection path) or the
-        covering plan is misconfigured with no active periods.
+        """Real-plan context whose periods cover **every** night of
+        ``[date_from, date_to)``, or ``None`` when they don't (the projection
+        path for the uncovered nights) or two regimes touch the range
+        (`MultiRegimeStay`, GAP-110).
 
         Lets a caller load the context once and reuse it — feed it to
         `stay_length_bounds` and back into `quote(context=...)` for any stay
-        the plan covers, instead of paying the plan/card/rule queries twice.
+        inside the range, instead of paying the plan/period/band queries
+        twice. The full-coverage requirement is what makes that reuse safe:
+        a partly-covered range would price its uncovered sub-stays as
+        fallback / no-rate instead of letting them project on their own.
         """
         try:
-            return cls._load_real_context(property, currency, date_from, date_to)
+            context = cls._load_real_context(property, currency, date_from, date_to)
         except NoRateAvailable:
             return None
+        if context is None or not _periods_cover_all_nights(
+            context.periods, nights(date_from, date_to)
+        ):
+            return None
+        return context
 
     @classmethod
     def covering_bands(
@@ -490,24 +500,27 @@ class PricingEngine:
         """
         if date_to <= date_from:
             return []
-        if context is None:
-            context = cls.load_context(
-                property, date_from=date_from, date_to=date_to, currency=currency
-            )
-        if context is None:
-            return []
 
         # Mirror quote()'s changeover auto-shift (GAP-007) so the enumerated
         # night-set matches what a per-band quote() would actually price; a
         # non-conforming arrival nudges forward to the next valid changeover
         # day. `align_forward` is idempotent on already-conforming dates, so
         # this is safe even when the caller passes pre-aligned block dates.
+        # Shift before loading the context, as `quote()` does: the periods
+        # touching the *shifted* nights are what select the regime (GAP-110).
         changeover_day = ChangeoverService.effective_day(property, date_from)
         property_weekday = ChangeoverService.weekday_for(changeover_day)
         allowed_weekdays = {property_weekday} if property_weekday is not None else set()
         date_from, date_to, _shifted_from = ChangeoverService.align_forward(
             allowed_weekdays, date_from, date_to
         )
+
+        if context is None:
+            context = cls.load_context(
+                property, date_from=date_from, date_to=date_to, currency=currency
+            )
+        if context is None:
+            return []
 
         week_nights = nights(date_from, date_to)
         if not week_nights:
@@ -578,45 +591,42 @@ class PricingEngine:
         date_from: date,
         date_to: date,
     ) -> PricingContext | None:
-        """Load the (plan, periods, rules) triple from a real plan covering the stay.
+        """Load the (plan, periods, rules) triple for the stay, period-first.
 
-        With `currency=None`, plans in **any** currency are eligible and the
-        canonical `pick_preferred_plan` tie-break chooses among them (GAP-014).
+        GAP-110: the plan is a dateless regime bucket, so the periods are the
+        date authority. Fetch the active periods (of active plans) touching
+        any night of `[date_from, date_to)`, then infer the plan from them
+        (`select_regime_plan`): with `currency=None` the currency whose
+        periods cover the most nights wins, then the settings currency, then
+        the lowest plan pk; two plans in the chosen currency (a GROSS and a
+        NET regime) raise `MultiRegimeStay`.
 
-        Returns `None` when no active plan covers the whole `[date_from, date_to)`
-        range — the signal for the caller to try a projection. A plan that *does*
-        cover the dates but has no active periods is a misconfiguration, not a
-        projection trigger, so it still raises `NoRateAvailable`.
+        Returns `None` when no period touches the stay — the signal for the
+        caller to try a projection (gap policy: no real night → project). A
+        plan with `fallback_nightly` and no periods is therefore not a
+        pricing source; fallback only fills the uncovered nights of a stay
+        some period touches. The context carries the chosen plan's periods
+        that touch the stay — a plan is a multi-year bucket (the loader
+        regroups every legacy season of a villa + currency onto one), so
+        `stay_length_bounds` must not see another year's periods.
         """
-        covering = (
-            RatePlan.objects.filter(
-                property=property,
-                is_active=True,
-                effective_from__lte=date_from,
-            )
-            .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=date_to))
-            .order_by("-effective_from", "-pk")
+        touching = RatePeriod.objects.filter(
+            property=property,
+            is_active=True,
+            plan__is_active=True,
+            date_from__lt=date_to,  # starts on or before the last night
+            date_to__gte=date_from,
         )
         if currency is not None:
-            plan = covering.filter(currency=currency).first()
-        else:
-            plan = pick_preferred_plan(list(covering.select_related("currency")), property)
-        if plan is None:
-            return None
-        periods = list(
-            RatePeriod.objects.filter(plan=plan, is_active=True).order_by("date_from", "pk")
+            touching = touching.filter(currency=currency)
+        touching_periods = list(
+            touching.select_related("plan__currency").order_by("date_from", "pk")
         )
-        # A plan with no periods is a misconfiguration UNLESS it opts into
-        # fallback pricing (`fallback_nightly`), in which case an empty-period
-        # context is valid and every night prices at the fallback rate. This is
-        # the period-model successor to the legacy "empty card" all-fallback path
-        # (a card with no rules used to yield a context; periods only exist where
-        # rules do). No fallback + no periods → raise so the caller can project.
-        if not periods and plan.fallback_nightly is None:
-            raise NoRateAvailable(
-                f"No active RatePeriod on plan {plan.pk} for {date_from}..{date_to}"
-            )
-        # Period activeness (filtered above) is now the sole gate — the old
+        if not touching_periods:
+            return None
+        plan = select_regime_plan(property, touching_periods, date_from, date_to)
+        periods = [period for period in touching_periods if period.plan_id == plan.pk]
+        # Period activeness (filtered above) is the sole gate — the old
         # RateCard is gone, so `RatePeriod.is_active` fully governs whether a
         # band prices.
         bands_by_period: dict[int, list[RateBand]] = {}

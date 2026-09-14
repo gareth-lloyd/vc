@@ -187,11 +187,13 @@ def test_fallback_never_touches_a_villa_with_its_own_row(
     assert report.created == 0
 
 
-def test_fallback_without_template_still_records_the_contact(
+def test_fallback_without_template_records_the_contact_and_cpd_values(
     villa_with_owner: tuple[Property, Person],
 ) -> None:
     # Parity: the old GroupFinance mirror carried the owner contact even when
-    # no legacy template existed; the NULL policy columns read as the floor.
+    # no legacy template existed. BUG-028: legacy reads a villa with no
+    # VillaFinance row as an all-zero model, so the <= 0 rule fills it from
+    # the CPD — the row carries those values, not NULL policy columns.
     prop, contact = villa_with_owner
     loader = _loader_with_templates({"77": TEMPLATE})
     report = LoadReport(loader=loader.name)
@@ -200,18 +202,44 @@ def test_fallback_without_template_still_records_the_contact(
 
     finance = PropertyFinance.objects.get(property=prop)
     assert finance.contact_id == contact.pk
-    assert finance.commission_amount is None
+    assert finance.commission_calculation_type == CommissionCalcType.PERCENT
+    assert finance.commission_amount == Decimal("20.00")
+    assert finance.security_deposit_calculation_type is not None
+    assert finance.legacy_id is None
     assert report.created == 1
 
 
-def test_fallback_skips_villa_without_owner_assignment(
+def test_fallback_villa_without_owner_gets_cpd_values_and_no_contact(
     villa_with_owner: tuple[Property, Person],
 ) -> None:
     prop, _contact = villa_with_owner
     PropertyContactAssignment.objects.filter(property=prop).delete()
     loader = _loader_with_templates({"55": TEMPLATE})
+    report = LoadReport(loader=loader.name)
+
+    loader._apply_contact_defaults(report)
+
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.contact_id is None
+    assert finance.commission_amount == Decimal("20.00")
+    assert finance.deposit_required is False  # unflagged all-zero model: bools stay False
+    assert not finance.bank_account_name
+    assert report.created == 1
+
+
+def test_fallback_villa_without_owner_takes_its_rate_row_majority(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    prop, _contact = villa_with_owner
+    PropertyContactAssignment.objects.filter(property=prop).delete()
+    loader = _loader_with_templates({})
+    loader._rate_finance_cache = {"900": _FIFTEEN_PERCENT}
+
     loader._apply_contact_defaults(LoadReport(loader=loader.name))
-    assert not PropertyFinance.objects.filter(property=prop).exists()
+
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.commission_amount == Decimal("15.00")
+    assert finance.tax_percentage == Decimal("13")
 
 
 def test_fallback_ignores_ended_owner_assignments(
@@ -224,8 +252,11 @@ def test_fallback_ignores_ended_owner_assignments(
     loader = _loader_with_templates({"55": TEMPLATE})
     loader._apply_contact_defaults(LoadReport(loader=loader.name))
     # The only OWNER assignment has ended — a former owner's bank details
-    # must never be stamped onto the villa.
-    assert not PropertyFinance.objects.filter(property=prop).exists()
+    # must never be stamped onto the villa (it still gets the CPD values).
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.contact_id is None
+    assert not finance.bank_account_name
+    assert finance.commission_note != "Trip fee included"
 
 
 def test_fallback_uses_non_primary_owner_when_no_primary(

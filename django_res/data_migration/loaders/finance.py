@@ -452,6 +452,11 @@ class PropertyFinanceLoader(BaseLoader):
     ) -> None:
         """Fill financeless villas from their owner-contact default template.
 
+        BUG-028: legacy reads a villa with no VillaFinance row as an all-zero
+        model, so the CPD `<= 0` rule still fills it — a villa with no owner
+        or no template gets that resolution from an empty row (after its
+        rate-row majority), never NULL policy columns.
+
         Only creates rows where none exist, so the per-villa pass is never
         overwritten and re-runs are idempotent (create-only: a template edit
         in legacy after the row is written does NOT propagate — fallback
@@ -466,7 +471,7 @@ class PropertyFinanceLoader(BaseLoader):
         )
         if not villas.exists():
             return
-        outcomes = {"applied": 0, "contact_only": 0, "skipped": 0}
+        outcomes = {"applied": 0, "contact_only": 0, "cpd_only": 0}
         with transaction.atomic():
             for prop in villas:
                 try:
@@ -481,7 +486,7 @@ class PropertyFinanceLoader(BaseLoader):
             "data_migration.finance_contact_defaults_applied",
             applied=outcomes["applied"],
             contact_only=outcomes["contact_only"],
-            skipped=outcomes["skipped"],
+            cpd_only=outcomes["cpd_only"],
         )
 
     def _fallback_one(self, prop: Property, report: LoadReport) -> str:
@@ -500,23 +505,14 @@ class PropertyFinanceLoader(BaseLoader):
             .values_list("contact__legacy_id", "contact_id")
             .first()
         )
-        if owner is None:
-            return "skipped"
-        owner_legacy_id, owner_pk = owner
-        if not owner_legacy_id:  # filtered above; narrows the Optional for mypy
-            return "skipped"
-        template = self._by_contact().get(owner_legacy_id)
-        if template is None:
-            # Owner known but no legacy template: still record the finance
-            # contact (the old GroupFinance mirror carried the contact even
-            # without one); NULL policy columns read as the frozen floor,
-            # which equals the old GroupFinance schema defaults.
-            PropertyFinance.objects.create(property=prop, contact_id=owner_pk)
-            report.created += 1
-            return "contact_only"
+        owner_legacy_id, owner_pk = owner if owner is not None else (None, None)
+        template = self._by_contact().get(owner_legacy_id) if owner_legacy_id else None
+        # Owner known but no legacy template: still record the finance contact
+        # (the old GroupFinance mirror carried it even without one). With no
+        # template the CPD rule resolves an empty row.
         resolved = apply_legacy_finance_defaults(
             apply_rate_row_finance(
-                _strip_default_flags(template),
+                _strip_default_flags(template) if template is not None else {},
                 self._rate_finance().get(str(prop.legacy_id)),
                 row_is_villas_own=False,
             ),
@@ -526,7 +522,9 @@ class PropertyFinanceLoader(BaseLoader):
         defaults["contact_id"] = owner_pk
         PropertyFinance.objects.create(property=prop, **defaults)
         report.created += 1
-        return "applied"
+        if template is not None:
+            return "applied"
+        return "contact_only" if owner_pk is not None else "cpd_only"
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
         # `VillaId` is `int NOT NULL`; the contact-default template rows carry

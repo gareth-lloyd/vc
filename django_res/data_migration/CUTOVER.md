@@ -97,16 +97,42 @@ or reported errors** — so "step passes iff exit 0" now holds here too.
 
 Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 
-- **Legacy `IsDefault*` flag resolution is DEFERRED** (separate finance
-  investigation — GAP-073 owner decision 2026-07-06). Legacy overrode a
-  flagged row's stored column with the `VillaConfigPropertyDefault` value at
-  read time (min-nights 7, EUR currency, 20% commission, payment-schedule and
-  security-deposit defaults); reproducing that — plus the related
-  commission/deposit type-code re-key (`10=Percentage / 20=Fixed`) and the
-  VillaCurrency duplicate-code resolver — was built on `feat/legacy-loader`
-  but NOT landed here, pending confirmation that GAP-070's `PropertyDefaults`
-  snapshot doesn't already cover it. Until then finance/settings values load
-  from the stored VillaMaster columns as before.
+- **Legacy `IsDefault*` / zero-value resolution is ported (BUG-028,
+  2026-09-14; dry run 4).** The loaders read the single
+  `VillaConfigPropertyDefault` (CPD) row from legacy at load time — never the
+  operator-editable `PropertyDefaults` singleton — and fail the loader if it
+  is missing. As built:
+  - **Type codes** are `10 = percent`, `20 = fixed`; `0`/NULL is unset.
+  - **Finance** (`PropertyService2.cs:169-238`): a set `IsDefaultCommission`
+    / `IsDefaultPaysched` / `IsDefaultSecDep` flag copies that whole block from
+    the CPD; otherwise each numeric `<= 0` (NULL included) takes the CPD value
+    and booleans stay the row's own (NULL = False). Security-deposit days due
+    come from CPD `DaysBalanceDueBeforeArrival` (legacy's own choice). The
+    commission *type* also fills when blank — a deliberate deviation, so a CPD
+    20 never pairs with a template's FIXED. The GAP-070 owner template merge
+    runs afterwards and only fills what the CPD never covers (bank, tax,
+    notes). A villa with no `VillaFinance` row resolves the same way from its
+    owner template, or from an empty row when it has none.
+  - **Per-villa commission / tax (D7):** before the CPD rule, a flagged or
+    `<= 0` commission, and an unset non-exempt tax, take the majority of the
+    villa's priced non-POA rate rows ending on or after `reference_date`
+    (the load day; ties → lowest type, then amount). Villas whose rows
+    disagree are logged (`finance_rate_rows_mixed`) for a human call.
+  - **Settings** (`:668-686`) are flag-only: a set `IsDefaultSetting*` flag
+    takes the CPD currency, changeover day, min nights, check-in/out and
+    pre-approval; unflagged values load as stored. `prices_entered_as` stays
+    GROSS.
+  - **Currencies:** deleted `VillaCurrency` rows load retired; a live row
+    claims its code from a deleted twin, so EUR resolves to legacy Id 3.
+    `currency` ignores `--since` (no `UpdatedAt` column; 7-row full reload).
+  - **Rate bands:** only `NightlyPrice` / `WeeklyPrice > 0` (or `IsPOA`) are
+    prices — `Price` and `0.00` never are. Every imported band loads approved;
+    a legacy-unapproved row keeps its precedence and gets
+    `Unapproved in legacy (IsApprove=0)` appended to `notes` (a carried-forward
+    band copies that note — clear it on review).
+  - In-place re-runs: a season whose rows all became unquotable keeps its
+    stale `season:<ID>:svc` inclusion service and plan until a fresh-DB load
+    (BUG-029). Load the cutover into a fresh DB.
 - **`availability_block`** ports future non-available legacy calendar runs
   into `BookingHold(reason=MANUAL)` rows (see the reconcile table below).
   Like `rate_rule` it ignores `--since` and full-replaces its own

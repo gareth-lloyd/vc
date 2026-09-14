@@ -136,13 +136,11 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
    profile + 19 UAT rows. Secrets don't ride the migration: create the one
    SYSTEM `comms.SmtpProfile` by hand at cutover (CUTOVER step to add).
 6. **`VillaConfigGeneral` — 10 rows → DROP** (legacy app self-config; 1 prod
-   URL + 9 localhost rows). **`VillaConfigPropertyDefault` — 1 row → KEEP
-   until the deferred IsDefault resolution lands**: GAP-073 deferred the
-   `IsDefault*` default-resolution work to a separate finance investigation
-   (it targeted the now-deleted `GroupFinance`; must be re-aimed at GAP-070's
-   `PropertyDefaults`). Until then min_nights ×197 / commission ×68 /
-   currency ×91 still load from the stored VillaMaster columns — do NOT drop
-   this config row (see DRYRUN_LOG loader bugs 5–6 and the deferral note).
+   URL + 9 localhost rows). **`VillaConfigPropertyDefault` — 1 row → loaded, then
+   DROP after cutover**: `PropertyDefaultsLoader` ports it to the
+   `PropertyDefaults` singleton, and BUG-028 (2026-09-14) resolves every
+   `IsDefault*` / zero-value field from it at load time (finance, settings;
+   see CUTOVER §4). Keep it in the dump until the final load has run.
 7. **`VillaPaymentStatus` — 24 rows → DROP.** Misnamed table: a
    payment-gateway webhook/event log from the Feb–Apr 2025 provider trial,
    not a status lookup. Ephemeral events, recoverable from the archived

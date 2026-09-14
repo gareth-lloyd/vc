@@ -159,6 +159,11 @@ hand-cleanup leftover.
 
 - **BUG-028** should land first (its currency fix removes the largest
   order-dependence; the two-run test is most useful against corrected
-  output).
+  output). **Landed 2026-09-14** — build the two-run test against it. Two
+  in-place re-run leftovers it documents but does not fix: a season whose
+  rows all became unquotable (Price-only / `0.00`) keeps its
+  `season:<ID>:svc` inclusion service, and a regime plan left with no
+  quotable rows is not removed. Its per-villa commission depends on
+  `reference_date` (the load day), so a two-run test must pin that date.
 - **GAP-108** carries the doc pass that references this ticket's `--since`
   removal.

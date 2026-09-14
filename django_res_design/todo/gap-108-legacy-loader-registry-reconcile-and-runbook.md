@@ -180,6 +180,13 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
 
 - Sequence after **BUG-028 / BUG-029 / BUG-030** — they move most of the
   constants this ticket pins; do the pinning last on one dry-run.
+  **BUG-028 landed 2026-09-14** (DRYRUN_LOG run 4): `RateBand` re-pinned at
+  4492 with a zero-residual itemisation. Its dry run gave item 5 a head start:
+  the villa-level `RatePlan` check is 261/260 and night parity lists one
+  villa, both **villa 249** (the blank-name `VillaMaster` row `PropertyLoader`
+  skips — both legacy queries lack the name filter): mirror the filter or pin
+  1. `Room placement` is still 49. The rate-row `DeletedAt`/`DeletedBy`
+  asymmetry (0 rows differ on this dump) belongs in the doc pass.
 - **GAP-110** (landed 2026-09-14) regroups `RatePlan` (521 → ~276) and adds
   the night-parity invariant; its three dump-dependent checks are fix item 5.
 - **GAP-107** (resolved, merged 2026-09-14): shipped §1 extras, §2 retired

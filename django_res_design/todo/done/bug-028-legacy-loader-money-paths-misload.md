@@ -1,5 +1,30 @@
 # BUG-028 — Legacy loader: every money-bearing path mis-loads (finance type codes, defaults, EUR row, zero-priced bands)
 
+> **✅ RESOLVED (2026-09-14)** — shipped on `feat/bug-028`; fast-forwarded into
+> local `main` (unpushed) at close-out. 273fc47c U1 type codes 10/20 (0/NULL
+> unset); 1842ca19 U2 `CurrencyLoader` retires deleted rows and the live EUR
+> (Id 3) claims its code; 41fa1cb8 U3 finance `IsDefault*` / `<= 0` resolution
+> from the legacy CPD row, legacy-exact fill order (CPD before the owner
+> template); 76c93d45 U4 flag-only settings resolution; f2490278 U5 only
+> positive `NightlyPrice`/`WeeklyPrice` or POA price a band, all imported
+> bands approved with a notes marker; 039aada2 U6 per-villa commission/tax
+> majority from rate rows ending on/after the load day; a9218402 U7 reconcile
+> value invariants; 5bc6d4e6 U8a financeless villas without a template
+> resolve from an empty row; 1b71f1ab U8 dry run 4 (`DRYRUN_LOG.md`), `RateBand`
+> gap 3805 → 4492. Acceptance met on the dump: calc types 291/291, commission
+> 20 % on 291/291, settings currency EUR on 293/293, 0 non-POA bands `<= 0`,
+> 0 unapproved imports; the ticket's "changeover ANY on the 25" is 36 (incl.
+> stored −1 rows). **Citation correction for §4:** `vw_getRates` and
+> `sp_getQuotationPrices` carry no price or `IsApprove` filter; the real
+> gates are `sp_getQuotationData` (`DbScript.sql:47944`, villas need
+> `WeeklyPrice > 0`) and `quote_price_calc-query.sql:96-133` (a `0.00`
+> nightly is absent). **Deviations:** a blank commission type also fills from
+> the CPD; an own explicit commission beats the rate-row majority while
+> legacy's quote calc reads the rate row first (3 villas differ on the dump).
+> **Left open:** villa 249 on the GAP-110 plan/night-parity checks and Room
+> placement 49 (GAP-108); stale season services / plans on in-place re-runs
+> (BUG-029). Decision row in `design/decisions.md`.
+
 - **Severity:** 🔴 Bug (money — commission, deposits, security deposits,
   currencies and quoted prices are wrong on most migrated villas; the load
   exits 0 and `reconcile_legacy` passes because every check counts rows, not

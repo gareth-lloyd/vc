@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from django.contrib import admin, messages
 
-from core.exceptions import NoRateAvailable
+from core.exceptions import NoRateAvailable, RegimeConflict
 from pricing.models import (
     Currency,
     Discount,
@@ -71,7 +71,7 @@ class RatePlanAdmin(admin.ModelAdmin):
                     currency=plan.currency,
                 )
                 created += 1
-            except NoRateAvailable as exc:
+            except (NoRateAvailable, RegimeConflict) as exc:
                 self.message_user(request, str(exc), level=messages.WARNING)
         if created:
             self.message_user(

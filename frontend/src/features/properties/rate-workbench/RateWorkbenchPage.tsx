@@ -28,7 +28,6 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import {
   useChangeOverRules,
   useDeleteRatePlan,
-  useDuplicateRatePlan,
   usePropertyCapacity,
   usePropertyDiscounts,
   usePropertyExtras,
@@ -93,13 +92,11 @@ export function RateWorkbenchPage() {
 
   // Rate-plan (season) lifecycle, ported from the retired Pricing tab. Create
   // is offered from the always-rendered header (and the zero-config empty
-  // state) so a plan-less property is bootstrappable; edit/duplicate/delete act
+  // state) so a plan-less property is bootstrappable; edit/delete act
   // on the currently-selected matrix season via its actions menu.
   const deleteSeasonMutation = useDeleteRatePlan(property.id);
-  const duplicateSeasonMutation = useDuplicateRatePlan(property.id);
   const [addSeasonOpen, setAddSeasonOpen] = useState(false);
   const [editingSeason, setEditingSeason] = useState<RatePlan | null>(null);
-  const [duplicatingSeason, setDuplicatingSeason] = useState<RatePlan | null>(null);
   const [deletingSeason, setDeletingSeason] = useState<RatePlan | null>(null);
   // Carry-forward (GAP-069): open state for the projected-year promotion dialog.
   const [carryForwardOpen, setCarryForwardOpen] = useState(false);
@@ -113,17 +110,6 @@ export function RateWorkbenchPage() {
       setDeletingSeason(null);
     } catch {
       toast.error(t("pricing.seasons.toasts.delete_failed"));
-    }
-  };
-
-  const handleDuplicateSeason = async () => {
-    if (!duplicatingSeason) return;
-    try {
-      await duplicateSeasonMutation.mutateAsync({ ratePlanId: duplicatingSeason.id });
-      toast.success(t("pricing.seasons.toasts.duplicated"));
-      setDuplicatingSeason(null);
-    } catch {
-      toast.error(t("pricing.seasons.toasts.duplicate_failed"));
     }
   };
 
@@ -153,8 +139,8 @@ export function RateWorkbenchPage() {
     discounts.isLoading ||
     changeover.isLoading ||
     // Only the FIRST fan-out load blanks the page. Once any season detail has
-    // resolved, a still-loading member (e.g. the plan just created/duplicated
-    // in-page, which grows the fan-out) must not collapse the whole workbench
+    // resolved, a still-loading member (e.g. the plan just created in-page,
+    // which grows the fan-out) must not collapse the whole workbench
     // to a skeleton — the existing seasons stay rendered while it loads.
     (fanOut.isLoading && fanOut.details.length === 0);
 
@@ -509,7 +495,7 @@ export function RateWorkbenchPage() {
   // The rate-plan (currency) picker sits at the very top because it scopes the
   // whole view — timeline periods, coverage, and the matrix all follow it.
   // Rendered only when several plans exist (one per currency; most villas have
-  // exactly one, so no picker). The ··· menu edits/duplicates/deletes the
+  // exactly one, so no picker). The ··· menu edits/deletes the
   // selected plan; writer-only. Suppressed entirely when neither is applicable.
   const planBar =
     !isLoading && !isError && activeSeasonDetail && (allSeasonDetails.length > 1 || canWrite) ? (
@@ -556,9 +542,6 @@ export function RateWorkbenchPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setEditingSeason(activeSeasonDetail)}>
                 {t("pricing.seasons.row.edit")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDuplicatingSeason(activeSeasonDetail)}>
-                {t("pricing.seasons.row.duplicate")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"
@@ -618,17 +601,6 @@ export function RateWorkbenchPage() {
           confirmLabel={t("pricing.seasons.delete_confirm.confirm")}
           destructive
           busy={deleteSeasonMutation.isPending}
-        />
-      ) : null}
-      {duplicatingSeason ? (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setDuplicatingSeason(null)}
-          onConfirm={handleDuplicateSeason}
-          title={t("pricing.seasons.duplicate_confirm.title")}
-          description={t("pricing.seasons.duplicate_confirm.description")}
-          confirmLabel={t("pricing.seasons.duplicate_confirm.confirm")}
-          busy={duplicateSeasonMutation.isPending}
         />
       ) : null}
     </div>

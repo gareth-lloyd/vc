@@ -1,14 +1,16 @@
-"""Tests for `pricing.models.rate.RatePeriod` invariants (GAP-056).
+"""Tests for `pricing.models.rate.RatePeriod` invariants (GAP-056, GAP-110).
 
 A `RatePeriod` owns a plan's date window with inclusive dates (single-day
-allowed, `date_from <= date_to`). Periods on one plan are date-disjoint
-(`rateperiod_no_overlap` EXCLUDE, contract constraint from Unit 9).
+allowed, `date_from <= date_to`). Periods are date-disjoint per
+`(property, currency)` regime, whatever the plan (`rateperiod_no_overlap`
+EXCLUDE on the stamped columns, ungated by `is_active` on either level), and
+carry a stamped copy of the plan's regime key that `save()` derives.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -65,18 +67,60 @@ def test_rateperiod_no_overlap_is_inclusive_on_boundaries(plan: RatePlan) -> Non
         )
 
 
+def _june(plan: RatePlan, **overrides: Any) -> RatePeriod:
+    kwargs: dict[str, Any] = {
+        "plan": plan,
+        "name": "June",
+        "date_from": date(2026, 6, 1),
+        "date_to": date(2026, 6, 30),
+    }
+    kwargs.update(overrides)
+    return RatePeriod.objects.create(**kwargs)
+
+
+# --- GAP-110 U2a: the EXCLUDE partitions on the regime key ------------------
+#
+# An inactive regime still owns its dates: deactivate a plan by deleting its
+# periods to hand the dates over.
+
+
 @pytest.mark.django_db
-def test_rateperiod_overlap_allowed_across_plans() -> None:
-    """The EXCLUDE is per-plan: two plans may share a date window."""
-    plan_a = cast(RatePlan, RatePlanFactory())
-    plan_b = cast(RatePlan, RatePlanFactory())
-    RatePeriod.objects.create(
-        plan=plan_a, name="June A", date_from=date(2026, 6, 1), date_to=date(2026, 6, 30)
-    )
-    other = RatePeriod.objects.create(
-        plan=plan_b, name="June B", date_from=date(2026, 6, 1), date_to=date(2026, 6, 30)
-    )
-    assert other.pk is not None
+def test_rateperiod_overlap_blocked_across_plans_in_one_regime(
+    plan: RatePlan, sibling_plan: RatePlan
+) -> None:
+    _june(plan)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        _june(sibling_plan, name="June B")
+
+
+@pytest.mark.django_db
+def test_rateperiod_overlap_allowed_across_currencies(plan: RatePlan, usd: Currency) -> None:
+    other = cast(RatePlan, RatePlanFactory(property=plan.property, currency=usd))
+    _june(plan)
+    assert _june(other, name="June USD").pk is not None
+
+
+@pytest.mark.django_db
+def test_rateperiod_overlap_allowed_across_properties(plan: RatePlan) -> None:
+    other = cast(RatePlan, RatePlanFactory(currency=plan.currency))
+    _june(plan)
+    assert _june(other, name="June elsewhere").pk is not None
+
+
+@pytest.mark.django_db
+def test_rateperiod_inactive_period_still_blocks(plan: RatePlan, sibling_plan: RatePlan) -> None:
+    _june(plan, is_active=False)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        _june(sibling_plan, name="June B")
+
+
+@pytest.mark.django_db
+def test_rateperiod_inactive_plan_still_blocks(plan: RatePlan, sibling_plan: RatePlan) -> None:
+    plan.is_active = False
+    plan.save(update_fields=["is_active"])
+    _june(plan)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        _june(sibling_plan, name="June B")
 
 
 @pytest.mark.django_db

@@ -9,11 +9,12 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 import time_machine
 
+from pricing.factories import RatePlanFactory
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 
 if TYPE_CHECKING:
@@ -77,6 +78,13 @@ def plan(property_: Property, gbp: Currency) -> RatePlan:
         effective_to=date(2026, 12, 31),
         prices_by_occupancy=True,
     )
+
+
+@pytest.fixture
+def sibling_plan(plan: RatePlan) -> RatePlan:
+    """A second plan in `plan`'s (property, currency) regime (GAP-110) — the
+    shape the regime-wide invariants refuse to let overlap."""
+    return cast(RatePlan, RatePlanFactory(property=plan.property, currency=plan.currency))
 
 
 @pytest.fixture

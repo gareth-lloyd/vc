@@ -527,7 +527,7 @@ describe("RateWorkbenchPage — period create", () => {
 
 // ---------------------------------------------------------------------------
 // GAP-060: the rate-plan (season) lifecycle affordances the old Pricing tab
-// owned — create / edit / duplicate / delete — plus the GAP-026 currency
+// owned — create / edit / delete — plus the GAP-026 currency
 // mismatch warning, all brought into the workbench.
 // ---------------------------------------------------------------------------
 
@@ -575,29 +575,6 @@ describe("RateWorkbenchPage — rate-plan lifecycle", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "Edit rate plan" })).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("Summer 2026");
-  });
-
-  it("duplicates the active plan through a confirm dialog", async () => {
-    setUser("reservations");
-    installHandlers();
-    let duplicated = false;
-    server.use(
-      http.post("/api/v1/rate-plans/100:duplicate", () => {
-        duplicated = true;
-        return HttpResponse.json(
-          { ...season, id: 200, name: "Summer 2026 (copy)" },
-          { status: 201 },
-        );
-      }),
-    );
-    setup("/properties/casa-sur/rate-workbench");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Actions" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Duplicate" }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Duplicate" }));
-    await waitFor(() => expect(duplicated).toBe(true));
   });
 
   it("deletes the active plan through a destructive confirm dialog", async () => {

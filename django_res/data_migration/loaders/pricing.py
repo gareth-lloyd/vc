@@ -770,7 +770,11 @@ class RateBandLoader(BaseLoader):
         fragmented: its first fragment keeps the legacy_id, later ones are
         namespaced `#seg{n}` in `(period date_from, min_party)` order.
         UI-created periods (legacy_id NULL) and the bands hanging off them
-        survive untouched; a UI band added to a *legacy* period is
+        survive untouched — but since GAP-110 the no-overlap EXCLUDE is
+        regime-wide, so a UI period on *any* plan of the same (villa,
+        currency) that overlaps a re-loaded legacy period rolls the whole
+        load back (loud, total; delta loads are a cutover-window operation).
+        A UI band added to a *legacy* period is
         cascade-deleted with that period (loaders run at cutover, before staff
         editing, so that window is closed in practice). A full rebuild — rather
         than sparing such bands — is what keeps re-runs clear of the

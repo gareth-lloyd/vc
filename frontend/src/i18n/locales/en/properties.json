@@ -220,28 +220,20 @@
       "row": {
         "menu_label": "Actions",
         "edit": "Edit",
-        "duplicate": "Duplicate",
         "delete": "Delete"
       },
       "toasts": {
         "created": "Rate plan added",
         "updated": "Rate plan updated",
         "deleted": "Rate plan removed",
-        "duplicated": "Rate plan duplicated",
         "create_failed": "Couldn't add rate plan",
         "update_failed": "Couldn't update rate plan",
-        "delete_failed": "Couldn't remove rate plan",
-        "duplicate_failed": "Couldn't duplicate rate plan"
+        "delete_failed": "Couldn't remove rate plan"
       },
       "delete_confirm": {
         "title": "Remove rate plan?",
         "description": "This rate plan and all of its rate periods will be permanently removed.",
         "confirm": "Remove"
-      },
-      "duplicate_confirm": {
-        "title": "Duplicate rate plan?",
-        "description": "A copy of this rate plan — including its rate periods — will be created with \" (copy)\" appended to the name.",
-        "confirm": "Duplicate"
       },
       "price_basis": {
         "gross": "Gross",

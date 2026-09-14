@@ -28,7 +28,6 @@ import {
   deleteRatePeriod,
   deleteRateBand,
   deleteRatePlan,
-  duplicateRatePlan,
   fetchChangeOverRules,
   fetchNearbyPlaceTypes,
   fetchProperties,
@@ -321,16 +320,6 @@ export function useDeleteRatePlan(propertyId: PropertyId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ ratePlanId }: { ratePlanId: RatePlanId }) => deleteRatePlan(ratePlanId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.ratePlans(propertyId) });
-    },
-  });
-}
-
-export function useDuplicateRatePlan(propertyId: PropertyId) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ ratePlanId }: { ratePlanId: RatePlanId }) => duplicateRatePlan(ratePlanId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.properties.ratePlans(propertyId) });
     },

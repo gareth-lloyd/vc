@@ -16,7 +16,6 @@ from pricing.serializers.rate import (
     RateBandSerializer,
     RatePeriodSerializer,
     RatePlanDetailSerializer,
-    RatePlanDuplicateSerializer,
     RatePlanSerializer,
 )
 
@@ -32,6 +31,5 @@ __all__ = [
     "RateBandSerializer",
     "RatePeriodSerializer",
     "RatePlanDetailSerializer",
-    "RatePlanDuplicateSerializer",
     "RatePlanSerializer",
 ]

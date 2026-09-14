@@ -354,8 +354,8 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
         """Inclusive dates, period date-disjointness, and activation coverage.
 
         - Dates are inclusive: `date_from == date_to` is a legal single-day period.
-        - Periods on one plan must not overlap on the date axis (the Unit 9
-          EXCLUDE enforced in the DB; here we surface it as a 400).
+        - Periods in one (property, currency) regime must not overlap on the
+          date axis (the `rateperiod_no_overlap` EXCLUDE; here a 400).
         - When the period is (or becomes) `is_active` **and already has bands**,
           reject a gap in `1..max_occupancy` (POA is an explicit band, not a gap).
           A fresh period with no bands is exempt — coverage is built incrementally.
@@ -388,19 +388,26 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
 
         plan = self._resolve_plan(attrs)
         if plan is not None and None not in (date_from, date_to):
+            # GAP-110: the no-overlap rule is per (property, currency) regime,
+            # whatever the plan — mirror `rateperiod_no_overlap` as a 400.
+            # Explicit ordering: the model default (`plan`, `date_from`) drags
+            # the plan and property orderings in as joins; this lets the
+            # (property, currency, date_from, date_to) index serve the query.
             overlapping = RatePeriod.objects.filter(
-                plan=plan,
+                property_id=plan.property_id,
+                currency_id=plan.currency_id,
                 date_from__lte=date_to,
                 date_to__gte=date_from,
-            )
+            ).order_by("date_from")
             if self.instance is not None:
                 overlapping = overlapping.exclude(pk=self.instance.pk)
             clash = overlapping.first()
             if clash is not None:
+                where = "" if clash.plan_id == plan.pk else f' on plan "{clash.plan.name}"'
                 raise serializers.ValidationError(
                     {
                         "date_from": (
-                            "Dates overlap an existing period "
+                            f"Dates overlap an existing period{where} "
                             f"({clash.date_from} to {clash.date_to}). "
                             "Date ranges are inclusive: start the next period the "
                             "day after the previous one ends."
@@ -488,17 +495,3 @@ class RatePlanDetailSerializer(RatePlanSerializer):
     class Meta(RatePlanSerializer.Meta):
         fields = [*RatePlanSerializer.Meta.fields, "periods"]
         read_only_fields = [*RatePlanSerializer.Meta.read_only_fields, "periods"]
-
-
-class RatePlanDuplicateSerializer(serializers.Serializer[None]):
-    """Input for `POST /rate-plans/{id}:duplicate` (SMELL-009).
-
-    Retrying UIs send a key; a repeat POST with the same key returns the
-    original clone (FG-010). Absent, blank, and explicit-null all mean
-    "no idempotency requested" — the bodyless FE call keeps working.
-    `max_length=64` matches the model column.
-    """
-
-    idempotency_key = serializers.CharField(
-        required=False, allow_blank=True, allow_null=True, default="", max_length=64
-    )

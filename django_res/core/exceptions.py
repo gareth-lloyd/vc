@@ -185,6 +185,18 @@ class InvalidTransition(DomainError):
         self.allowed = allowed or []
 
 
+class RegimeConflict(DomainError):
+    """A rate-plan regime invariant refused the write at the database.
+
+    GAP-110: at most one plan prices a night in a currency for a property.
+    The serializers pre-check this as a 400 with guidance; a racing writer
+    that slips past the pre-check trips the constraint, and the view maps
+    that `IntegrityError` here (409) instead of a 500.
+    """
+
+    code = "regime_conflict"
+
+
 class NoRateAvailable(DomainError):
     code = "no_rate_available"
 

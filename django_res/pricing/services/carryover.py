@@ -21,7 +21,6 @@ from decimal import Decimal
 from typing import Any
 
 import structlog
-from django.db import transaction
 
 from core.exceptions import NoRateAvailable
 from pricing.models import RateBand, RatePeriod, RatePlan
@@ -36,6 +35,7 @@ from pricing.services.projection import (
     map_anchor_sources,
     shift_to_changeover_weekday,
 )
+from pricing.services.regime import period_overlap_guard
 
 logger = structlog.get_logger(__name__)
 
@@ -147,7 +147,12 @@ class RateCarryoverService:
                 reason="date_map_collision_clipped_party_bracket",
             )
 
-        with transaction.atomic():
+        # GAP-110 interim: the no-overlap EXCLUDE is regime-wide, so a mapped
+        # period can collide with an existing (property, currency) period —
+        # e.g. an anchor tail straddling New Year. Surfaced as a 409
+        # `RegimeConflict` (the guard opens the transaction) until the
+        # anchor-clipping rewrite lands.
+        with period_overlap_guard():
             new_plan = RatePlan.objects.create(
                 property=property,
                 currency=currency,

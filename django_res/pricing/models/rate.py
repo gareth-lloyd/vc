@@ -68,16 +68,16 @@ class RatePlan(AuditedModel):
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
-    # Retry dedupe for `:duplicate` (SMELL-009). Blank = "no idempotency
-    # requested" — only client-supplied keys enter the partial unique below.
+    # Retry dedupe for the removed `:duplicate` (SMELL-009; GAP-110 dropped
+    # the feature). Orphaned — nothing writes it; dropped with the envelope in
+    # the GAP-110 contract migration.
     idempotency_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
     class Meta:
         ordering = ["property", "-effective_from"]
         constraints = [
-            # FG-010 backstop for `duplicate_rate_plan`'s check-then-create
-            # pre-check: the losing racer fails loudly instead of silently
-            # duplicating. Same (property, key) scope as the service queries.
+            # FG-010 backstop for the removed `duplicate_rate_plan` pre-check;
+            # orphaned with the field above, dropped in the contract migration.
             models.UniqueConstraint(
                 fields=["property", "idempotency_key"],
                 condition=~models.Q(idempotency_key=""),
@@ -185,10 +185,16 @@ class RatePeriod(AuditedModel):
             # against inclusive period dates (pricing/services/engine.py) —
             # the two conventions meet only there; don't change one without
             # the other.
+            #
+            # GAP-110: partitioned on the stamped regime key, not the plan —
+            # at most one plan prices a night in a currency for a property.
+            # Ungated by `is_active` (period or plan): an inactive regime still
+            # owns its dates; hand them over by deleting its periods.
             ExclusionConstraint(
                 name="rateperiod_no_overlap",
                 expressions=[
-                    ("plan", RangeOperators.EQUAL),
+                    ("property", RangeOperators.EQUAL),
+                    ("currency", RangeOperators.EQUAL),
                     (
                         DateRangeFunc(
                             "date_from",

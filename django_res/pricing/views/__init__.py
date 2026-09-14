@@ -24,7 +24,6 @@ from pricing.views.rate import (
     RatePeriodBandListCreateView,
     RatePeriodDetailView,
     RatePlanDetailView,
-    RatePlanDuplicateView,
     RatePlanRatePeriodListCreateView,
 )
 
@@ -45,6 +44,5 @@ __all__ = [
     "RatePeriodBandListCreateView",
     "RatePeriodDetailView",
     "RatePlanDetailView",
-    "RatePlanDuplicateView",
     "RatePlanRatePeriodListCreateView",
 ]

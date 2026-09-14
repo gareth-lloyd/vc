@@ -12,18 +12,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import IsReservationsWriter
-from core.idempotency import integrity_conflict_guard
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.serializers import (
     RateBandSerializer,
     RatePeriodSerializer,
     RatePlanDetailSerializer,
-    RatePlanDuplicateSerializer,
     RatePlanSerializer,
 )
 from pricing.serializers.rate import guard_period_editable
 from pricing.services.carryover import RateCarryoverService
-from pricing.services.duplication import duplicate_rate_plan
+from pricing.services.regime import period_overlap_guard
 from properties.models import Property
 
 if TYPE_CHECKING:
@@ -63,29 +61,6 @@ class RatePlanDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in {"GET"}:
             return RatePlanDetailSerializer
         return RatePlanSerializer
-
-
-class RatePlanDuplicateView(APIView):
-    """`POST /rate-plans/{id}:duplicate` — clone the plan + grid (SMELL-009)."""
-
-    permission_classes = [IsReservationsWriter]
-
-    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        original = get_object_or_404(RatePlan, pk=self.kwargs["pk"])
-        serializer = RatePlanDuplicateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        idempotency_key = serializer.validated_data["idempotency_key"] or None
-        # FG-010: the guard maps a racing loser's IntegrityError (from
-        # `rateplan_idempotency_key_unique_per_property`) to a 409.
-        with integrity_conflict_guard(
-            idempotency_key,
-            "A duplicate with this idempotency key already exists for this property.",
-        ):
-            clone = duplicate_rate_plan(original, idempotency_key=idempotency_key)
-        return Response(
-            RatePlanDetailSerializer(clone).data,
-            status=status.HTTP_201_CREATED,
-        )
 
 
 class PropertyRatePlanCarryForwardView(APIView):
@@ -162,7 +137,8 @@ class RatePlanRatePeriodListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer: Any) -> None:
         plan = get_object_or_404(RatePlan, pk=self.kwargs["plan_id"])
-        serializer.save(plan=plan)
+        with period_overlap_guard():
+            serializer.save(plan=plan)
 
 
 class RatePeriodDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -174,8 +150,12 @@ class RatePeriodDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = RatePeriodSerializer
     permission_classes = [IsReservationsWriter]
     # GAP-056: bands inherit their dates from the period (no per-rule date
-    # columns), so a period date-edit needs no band repoint — the default
-    # `perform_update` (a plain save) suffices.
+    # columns), so a period date-edit needs no band repoint — a plain save,
+    # wrapped so a raced regime clash is a 409 (GAP-110).
+
+    def perform_update(self, serializer: Any) -> None:
+        with period_overlap_guard():
+            serializer.save()
 
     def perform_destroy(self, instance: RatePeriod) -> None:
         # A fully-elapsed period is a read-only record of what was charged.

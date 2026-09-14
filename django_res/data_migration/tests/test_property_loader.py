@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import time
+from decimal import Decimal
+
 import pytest
 import structlog
 from django.contrib.contenttypes.models import ContentType
@@ -8,10 +11,12 @@ from core.models import AuditLog
 from data_migration.base import LoadReport
 from data_migration.loaders.properties import PropertyLoader
 from data_migration.loaders.sentinels import unknown_country, unknown_region
-from properties.enums import DescriptionSection
+from pricing.models.currency import Currency
+from properties.enums import DescriptionSection, PrefilledChangeOverDay
 from properties.models.descriptions import PropertyDescription
 from properties.models.geo import Country, Region
 from properties.models.property import Property
+from properties.models.settings import PropertySettings
 
 
 def _row(**overrides: object) -> dict[str, object]:
@@ -322,3 +327,99 @@ def test_rerun_keeps_a_hand_written_other_information_row() -> None:
     sections = _write_and_fetch(FeatureDescription="")
 
     assert sections[DescriptionSection.OTHER_INFORMATION] == "Typed by staff"
+
+
+# --- BUG-028: IsDefaultSetting* flags resolve to the legacy CPD row --------
+
+_CPD = {
+    "CurrencyId": 3,
+    "ChangeOverDay": -1,
+    "MinimumNightsRental": Decimal("7.00"),
+    "CheckinTime": time(16, 0),
+    "CheckOutTime": time(10, 0),
+    "IsBookingsRequirePreApproval": True,
+}
+
+
+def _settings_for(loader: PropertyLoader, **overrides: object) -> PropertySettings:
+    loader._process_row(_row(**overrides), LoadReport(loader=loader.name))
+    return PropertySettings.objects.get(property__legacy_id="100")
+
+
+@pytest.mark.django_db
+def test_flagged_settings_take_the_cpd_values() -> None:
+    eur = Currency.objects.create(code="EUR", name="Euro", legacy_id="3")
+    loader = PropertyLoader()
+    loader._cpd_cache = _CPD
+    settings = _settings_for(
+        loader,
+        IsDefaultSettingCurrencyId=True,
+        SettingCurrencyId=2,  # the deleted EUR twin, stale behind the flag
+        IsDefaultSettingChangeoverDayId=True,
+        SettingChangeoverDayId=0,
+        IsDefaultSettingMinNightsRental=True,
+        SettingMinNightsRental=0,
+        IsDefaultSettingCheckInTime=True,
+        SettingCheckInTime=None,
+        IsDefaultSettingCheckOutTime=-1,  # any truthy flag counts
+        SettingCheckOutTime=time(11, 0),
+        IsDefaultSettingBookingreqPreApp=True,
+        SettingIsBookingsRequirePreApproval=False,
+    )
+    assert settings.currency == eur
+    assert settings.changeover_day == PrefilledChangeOverDay.ANY
+    assert settings.min_nights_rental == 7
+    assert settings.check_in_time == time(16, 0)
+    assert settings.check_out_time == time(10, 0)
+    assert settings.bookings_require_pre_approval is True
+
+
+@pytest.mark.django_db
+def test_unflagged_settings_keep_their_own_values_even_when_zero() -> None:
+    # Settings substitution is flag-only in legacy (no `<= 0` branch):
+    # changeover 0 is a real Sunday and min nights 0 keeps the floor of 1.
+    loader = PropertyLoader()  # no CPD cache: must never be fetched
+    settings = _settings_for(
+        loader,
+        IsDefaultSettingChangeoverDayId=False,
+        SettingChangeoverDayId=0,
+        IsDefaultSettingMinNightsRental=None,
+        SettingMinNightsRental=0,
+    )
+    assert settings.changeover_day == PrefilledChangeOverDay.SUN
+    assert settings.min_nights_rental == 1
+    assert not hasattr(loader, "_cpd_cache")
+
+
+def test_property_query_selects_the_setting_flags() -> None:
+    for flag in (
+        "IsDefaultSettingCurrencyId",
+        "IsDefaultSettingChangeoverDayId",
+        "IsDefaultSettingMinNightsRental",
+        "IsDefaultSettingCheckInTime",
+        "IsDefaultSettingCheckOutTime",
+        "IsDefaultSettingBookingreqPreApp",
+    ):
+        assert f"m.{flag}" in PropertyLoader.legacy_query
+
+
+@pytest.mark.django_db
+def test_load_rows_fetches_cpd_once_up_front_when_a_row_is_flagged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from data_migration.loaders import properties as properties_module
+
+    calls: list[int] = []
+
+    def _missing() -> dict[str, object]:
+        calls.append(1)
+        raise RuntimeError("VillaConfigPropertyDefault has no row")
+
+    monkeypatch.setattr(properties_module, "fetch_config_property_default", _missing)
+    loader = PropertyLoader()
+    with pytest.raises(RuntimeError):
+        loader._load_rows(
+            [_row(), _row(Id=101, IsDefaultSettingCurrencyId=True)],
+            LoadReport(loader=loader.name),
+        )
+    assert calls == [1]

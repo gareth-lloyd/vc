@@ -15,6 +15,7 @@ from django.db import transaction
 from django.utils.text import slugify
 
 from data_migration.base import BaseLoader, LoadReport
+from data_migration.loaders.finance import fetch_config_property_default
 from data_migration.loaders.sentinels import (
     unknown_country,
     unknown_region,
@@ -64,6 +65,24 @@ _DAY_MAP = {
 }
 
 
+# (VillaMaster flag, VillaMaster setting column, CPD column). Legacy settings
+# substitution is flag-only — no `<= 0` branch (`PropertyService2.cs:668-686`).
+# Availability and prices-entered are not listed: the loader stamps AVAILABLE
+# and GROSS regardless (91 villas store Net but are flagged to the CPD's Gross).
+_SETTING_DEFAULTS = (
+    ("IsDefaultSettingCurrencyId", "SettingCurrencyId", "CurrencyId"),
+    ("IsDefaultSettingChangeoverDayId", "SettingChangeoverDayId", "ChangeOverDay"),
+    ("IsDefaultSettingMinNightsRental", "SettingMinNightsRental", "MinimumNightsRental"),
+    ("IsDefaultSettingCheckInTime", "SettingCheckInTime", "CheckinTime"),
+    ("IsDefaultSettingCheckOutTime", "SettingCheckOutTime", "CheckOutTime"),
+    (
+        "IsDefaultSettingBookingreqPreApp",
+        "SettingIsBookingsRequirePreApproval",
+        "IsBookingsRequirePreApproval",
+    ),
+)
+
+
 def _decimal_or_none(v: Any) -> Decimal | None:
     if v is None or v == "":
         return None
@@ -101,6 +120,7 @@ class PropertyLoader(BaseLoader):
         "m.SettingPricesEnteredTypeId, m.SettingCurrencyId, "
         "m.SettingCheckInTime, m.SettingCheckOutTime, m.SettingChangeoverDayId, "
         "m.SettingMinNightsRental, m.SettingMinNightsRentalNote, "
+        f"{', '.join(f'm.{flag}' for flag, _, _ in _SETTING_DEFAULTS)}, "
         "d.WebDesc1, d.WebDesc2, d.Location1, d.Location2, d.VodeoUrl "
         "FROM VillaMaster m "
         "LEFT JOIN VillaPropertyImagesDescription d ON d.Id = ("
@@ -187,7 +207,29 @@ class PropertyLoader(BaseLoader):
             },
         )
 
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        # Fetch the CPD before the per-row savepoints (fail fast), and only
+        # when some row is flagged — a flag-less load never touches it.
+        if any(row.get(flag) for row in rows for flag, _, _ in _SETTING_DEFAULTS):
+            self._cpd()
+        super()._load_rows(rows, report)
+
+    def _cpd(self) -> dict[str, Any]:
+        if not hasattr(self, "_cpd_cache"):
+            self._cpd_cache = fetch_config_property_default()
+        return self._cpd_cache
+
+    def _resolve_setting_defaults(self, row: dict[str, Any]) -> dict[str, Any]:
+        """BUG-028: a flagged `IsDefaultSetting*` column means the villa uses
+        the global CPD value; the stored setting behind it is stale."""
+        flagged = [(own, cpd_col) for flag, own, cpd_col in _SETTING_DEFAULTS if row.get(flag)]
+        if not flagged:
+            return row
+        cpd = self._cpd()
+        return {**row, **{own: cpd.get(cpd_col) for own, cpd_col in flagged}}
+
     def _write_settings(self, prop: Property, row: dict[str, Any]) -> None:
+        row = self._resolve_setting_defaults(row)
         # NOT `or 0` — 0 is a real code (Sunday), only NULL means unset.
         day_code = row.get("SettingChangeoverDayId")
         changeover = _DAY_MAP.get(day_code) if day_code is not None else None

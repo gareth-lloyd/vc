@@ -60,7 +60,6 @@ def test_banded_parent_emits_band_rows_plus_gap_fallbacks() -> None:
     assert band1["WeeklyPrice"] == Decimal("500")
     # Nightly is left unset — the engine derives it from weekly identically.
     assert band1["NightlyPrice"] is None
-    assert band1["Price"] is None
     assert band1["IsPOA"] is False
     band2 = by_id["occ-102"]
     assert band2["_occ_band"] == (5, 6)
@@ -191,3 +190,13 @@ def test_multiple_parents_grouped_independently_order_preserved() -> None:
     assert out[-1]["ID"] == 20 and "_occ_band" not in out[-1]
     by_id = _by_legacy_id(out)
     assert "occ-101" in by_id
+
+
+def test_negative_price_band_dropped_and_covered_by_fallback() -> None:
+    rows = [
+        _join_row(OccId=101, OccupencyFrom=1, OccupencyTo=4, OccupencyPrice=Decimal("500")),
+        _join_row(OccId=102, OccupencyFrom=5, OccupencyTo=8, OccupencyPrice=Decimal("-10")),
+    ]
+    by_id = _by_legacy_id(_prepare_occupancy_rows(rows))
+    assert set(by_id) == {"occ-101", "occ-fb-10-0"}
+    assert by_id["occ-fb-10-0"]["_occ_band"] == (5, None)

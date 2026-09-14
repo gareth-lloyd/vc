@@ -84,20 +84,28 @@ def _as_date(value: Any) -> date | None:
     return value
 
 
-def _row_prices(row: dict[str, Any]) -> tuple[Decimal | None, Decimal | None, Decimal | None, bool]:
-    """The price columns of a VillaSeasonRate row, shared by the overlap
-    resolver's pre-filter and `transform` so the skip predicate can't drift."""
+def _positive(v: Any) -> Decimal | None:
+    """A price legacy can quote: 0.00 / negative / NULL are all "absent"."""
+    d = _to_decimal(v)
+    return d if d is not None and d > 0 else None
+
+
+def _row_prices(row: dict[str, Any]) -> tuple[Decimal | None, Decimal | None, bool]:
+    """(nightly, weekly, is_poa) of a VillaSeasonRate row, shared by the
+    overlap resolver's pre-filter and `transform` so the skip predicate can't
+    drift. BUG-028: only positive prices count, and `Price` is ignored —
+    legacy quotes read NightlyPrice/WeeklyPrice (`RatesModel.Price` merely
+    echoes WeeklyPrice), so a Price-only or 0.00 row was never quotable."""
     return (
-        _to_decimal(row.get("NightlyPrice")),
-        _to_decimal(row.get("WeeklyPrice")),
-        _to_decimal(row.get("Price")),
+        _positive(row.get("NightlyPrice")),
+        _positive(row.get("WeeklyPrice")),
         bool(row.get("IsPOA")),
     )
 
 
 def _has_price(row: dict[str, Any]) -> bool:
-    nightly, weekly, price, is_poa = _row_prices(row)
-    return bool(nightly or weekly or price or is_poa)
+    nightly, weekly, is_poa = _row_prices(row)
+    return bool(nightly or weekly or is_poa)
 
 
 @dataclass(frozen=True)
@@ -247,7 +255,7 @@ def plan_legacy_id(villa_id: int | str | None, currency_code: str) -> str:
 # child, never the parent). Negative parent prices are junk we don't model.
 PRICED_ROW_PREDICATE = (
     "r.DeletedAt IS NULL AND r.IsExTra <> 1 AND r.FromDate < r.ToDate"
-    " AND (r.NightlyPrice > 0 OR r.WeeklyPrice > 0 OR r.Price > 0 OR r.IsPOA = 1"
+    " AND (r.NightlyPrice > 0 OR r.WeeklyPrice > 0 OR r.IsPOA = 1"
     " OR (r.IsOccupationPrice = 1 AND EXISTS (SELECT 1 FROM VillaOccupencyPrice o"
     "  WHERE o.VillaSeasonRateId = r.ID AND o.OccupencyPrice > 0)))"
 )
@@ -533,8 +541,8 @@ def _prepare_occupancy_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 frm, to = int(frm), int(to)
                 if frm <= 0 or to <= 0 or frm > to:
                     continue
-                price = _to_decimal(row.get("OccupencyPrice"))
-                if not price:
+                price = _positive(row.get("OccupencyPrice"))
+                if price is None:
                     # A null/zero-price band prices nobody in legacy; dropping it
                     # lets the base-weekly fallback cover its party range rather
                     # than leaving a hole (no rule at all).
@@ -557,7 +565,6 @@ def _prepare_occupancy_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             # HALF_EVEN round) — don't duplicate that here, and clear the
             # parent's nightly the copy inherited.
             band["NightlyPrice"] = None
-            band["Price"] = None
             band["IsPOA"] = False
             out.append(band)
 
@@ -630,12 +637,9 @@ def _row_to_band(row: dict[str, Any], plan: RatePlan) -> _Band | None:
         if low > effective_high:
             return None
         min_party, max_party = low, effective_high
-    nightly, weekly, price, is_poa = _row_prices(row)
-    if not (nightly or weekly or price or is_poa):
+    nightly, weekly, is_poa = _row_prices(row)
+    if not (nightly or weekly or is_poa):
         return None
-    # If only Price is set, treat it as nightly.
-    if nightly is None and weekly is None and price is not None:
-        nightly = price
     if is_poa:
         # POA wins over any numeric price: raterule_poa_excludes_price forbids
         # both, and a hidden "on application" price must never resurface.
@@ -655,6 +659,9 @@ def _row_to_band(row: dict[str, Any], plan: RatePlan) -> _Band | None:
         legacy_id=str(legacy_id),
         sort_id=int(row["ID"]),
     )
+
+
+_UNAPPROVED_NOTE = "Unapproved in legacy (IsApprove=0)"
 
 
 class RateBandLoader(BaseLoader):
@@ -876,8 +883,16 @@ class RateBandLoader(BaseLoader):
                             nightly=band.nightly,
                             weekly=band.weekly,
                             is_poa=band.is_poa,
-                            is_approved=band.is_approved,
-                            notes=band.notes,
+                            # BUG-028: legacy quotes ignore IsApprove, so
+                            # every imported band is approved; the legacy
+                            # flag still orders precedence above and stays
+                            # visible in notes.
+                            is_approved=True,
+                            notes=(
+                                band.notes
+                                if band.is_approved
+                                else "\n".join(filter(None, [band.notes, _UNAPPROVED_NOTE]))
+                            ),
                             legacy_id=legacy_id,
                         )
         report.created += created

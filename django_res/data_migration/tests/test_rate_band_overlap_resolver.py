@@ -209,3 +209,14 @@ def test_occupancy_bands_disjoint_both_survive() -> None:
     # The explicit band range is carried through to `_row_to_band`.
     assert res.rows[0]["_occ_band"] == (2, 4)
     assert res.rows[1]["_occ_band"] == (5, 6)
+
+
+def test_zero_and_price_only_rows_are_priceless() -> None:
+    res = resolve_rate_band_overlaps(
+        [
+            _row(1, date(2025, 6, 1), date(2025, 6, 8)),
+            _row(2, date(2025, 6, 8), date(2025, 6, 15), WeeklyPrice=Decimal("0.00")),
+            _row(3, date(2025, 6, 15), date(2025, 6, 22), WeeklyPrice=None, Price=Decimal("9")),
+        ]
+    )
+    assert _spans(res.rows) == [(1, date(2025, 6, 1), date(2025, 6, 8))]

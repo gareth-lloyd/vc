@@ -186,13 +186,63 @@ def test_row_to_band_skips_row_with_no_price(loaded_plan: RatePlan) -> None:
 
 
 @pytest.mark.django_db
-def test_row_to_band_treats_price_as_nightly_when_alone(loaded_plan: RatePlan) -> None:
+def test_row_to_band_ignores_price_only_rows(loaded_plan: RatePlan) -> None:
+    # BUG-028: `Price` is not a quotable column in legacy (`RatesModel.Price`
+    # echoes WeeklyPrice; quotes read NightlyPrice/WeeklyPrice only).
+    assert (
+        _row_to_band(
+            _row(WeeklyPrice=None, NightlyPrice=None, Price=Decimal("250")),
+            loaded_plan,
+        )
+        is None
+    )
+
+
+@pytest.mark.django_db
+def test_row_to_band_zero_nightly_with_price_is_unpriced(loaded_plan: RatePlan) -> None:
+    # 0.00 is "absent" to legacy's quote calc — never a free 0.00 band.
+    assert (
+        _row_to_band(
+            _row(WeeklyPrice=None, NightlyPrice=Decimal("0.00"), Price=Decimal("13125")),
+            loaded_plan,
+        )
+        is None
+    )
+
+
+@pytest.mark.django_db
+def test_row_to_band_drops_a_zero_nightly_next_to_a_real_weekly(loaded_plan: RatePlan) -> None:
     band = _row_to_band(
-        _row(WeeklyPrice=None, NightlyPrice=None, Price=Decimal("250")),
+        _row(WeeklyPrice=Decimal("1000"), NightlyPrice=Decimal("0.00")),
         loaded_plan,
     )
     assert band is not None
-    assert band.nightly == Decimal("250")
+    assert band.nightly is None
+    assert band.weekly == Decimal("1000")
+
+
+@pytest.mark.django_db
+def test_load_rows_imports_unapproved_rows_approved_with_a_marker(loaded_plan: RatePlan) -> None:
+    # BUG-028 §5 decision: legacy quotes ignore IsApprove, so the imported
+    # band is approved; the legacy state stays visible in notes.
+    rows = [
+        _row(ID=1, IsApprove=False, Description="Peak"),
+        _row(ID=2, IsApprove=True, FromDate=date(2025, 7, 1), ToDate=date(2025, 7, 8)),
+    ]
+    RateBandLoader()._load_rows(rows, LoadReport(loader="rate_rule"))
+
+    unapproved = RateBand.objects.get(legacy_id="1")
+    assert unapproved.is_approved is True
+    assert unapproved.notes == "Peak\nUnapproved in legacy (IsApprove=0)"
+    approved = RateBand.objects.get(legacy_id="2")
+    assert approved.is_approved is True
+    assert "Unapproved" not in approved.notes
+
+
+def test_priced_row_predicate_ignores_the_price_column() -> None:
+    from data_migration.loaders.pricing import PRICED_ROW_PREDICATE
+
+    assert "r.Price > 0" not in PRICED_ROW_PREDICATE
 
 
 @pytest.mark.django_db

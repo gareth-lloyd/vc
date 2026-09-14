@@ -665,9 +665,10 @@ export function useUpsertPropertyDescription(propertyId: number) {
   return useMutation({
     mutationFn: ({ section, body }: { section: WritableDescriptionSection; body: string }) =>
       upsertPropertyDescription(propertyId, section, body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.descriptions(propertyId) });
-    },
+    // Returned so the mutation stays pending until the refetch lands: the
+    // description editor compares its draft against the echo (GAP-083).
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.descriptions(propertyId) }),
   });
 }
 
@@ -676,9 +677,9 @@ export function useDeletePropertyDescription(propertyId: number) {
   return useMutation({
     mutationFn: ({ section }: { section: WritableDescriptionSection }) =>
       deletePropertyDescription(propertyId, section),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.descriptions(propertyId) });
-    },
+    // Returned for the same reason as the upsert above.
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.properties.descriptions(propertyId) }),
   });
 }
 

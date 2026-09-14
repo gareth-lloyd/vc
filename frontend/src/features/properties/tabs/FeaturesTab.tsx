@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { FeatureIcon } from "@/components/data/FeatureIcon";
@@ -20,6 +22,7 @@ import { FEATURE_CATALOGUE_PAGE_SIZE } from "@/lib/domain/features/api";
 import { useFeatureCategories, useFeatures } from "@/lib/domain/features/hooks";
 import { OTHER_INFORMATION_CATEGORY_SLUG, type Feature } from "@/lib/domain/features/schemas";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
+import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 import { ApiError } from "@/lib/api/errors";
 import { usePropertyDescriptions, useUpdatePropertyFeatures } from "../hooks";
 import type { PropertyDetail } from "../schemas";
@@ -121,6 +124,34 @@ export function FeaturesTab() {
     return order.some((id, i) => id !== initialOrder[i]);
   }, [order, initialOrder]);
 
+  // GAP-083: the description saves through its own endpoint but is still
+  // "unsaved work on this tab", so it feeds the same indicator and guard.
+  // One guard per route (React Router allows a single blocker) — compose here,
+  // never add a second guard inside a section. The order is not guarded while
+  // its PATCH is in flight (the echo clears `isDirty`; a failed save while the
+  // operator has already left is the accepted trade-off); the section applies
+  // the same rule to its own mutations before reporting.
+  const [descriptionDirty, setDescriptionDirty] = useState(false);
+  const [resetVersion, setResetVersion] = useState(0);
+  const anyDirty = isDirty || descriptionDirty;
+  const guard = useUnsavedChangesGuard((isDirty && !saveMutation.isPending) || descriptionDirty);
+  // Rendered in every branch below (DialogContent is portalled): the guard
+  // must never hold a navigation without a visible prompt — e.g. when a failed
+  // background refetch swaps the tab for ErrorState while `order` still holds
+  // edits that Retry would bring back.
+  const guardDialog = guard.blocked ? (
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && guard.reset()}
+      onConfirm={guard.proceed}
+      title={t("common:unsaved.title")}
+      description={t("common:unsaved.description")}
+      confirmLabel={t("common:unsaved.discard")}
+      cancelLabel={t("common:unsaved.stay")}
+      destructive
+    />
+  ) : null;
+
   // Unselected, active features offered by the add controls, sorted by category
   // then per-category rank — grouping the dropdown without a grouped data shape.
   const availableFeatures = useMemo(() => {
@@ -192,11 +223,14 @@ export function FeaturesTab() {
   const handleReset = () => {
     setOrder(initialOrder);
     setTopLevelError(null);
+    // Also drops the description draft (the section remounts its editor).
+    setResetVersion((v) => v + 1);
   };
 
   if (features.isLoading || categories.isLoading) {
     return (
       <div className="space-y-4 p-6">
+        {guardDialog}
         <Skeleton className="h-6 w-40" />
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-24 w-full" />
@@ -207,6 +241,7 @@ export function FeaturesTab() {
   if (features.isError || categories.isError) {
     return (
       <div className="p-6">
+        {guardDialog}
         <ErrorState
           description={t("features.errors.load_failed")}
           onRetry={() => {
@@ -266,13 +301,20 @@ export function FeaturesTab() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{t("features.title")}</h2>
         <div className="flex items-center gap-2">
+          {anyDirty && (
+            <Badge variant="outline" className="border-warning/40 bg-warning/10 text-warning">
+              {t("common:unsaved.badge")}
+            </Badge>
+          )}
           {addControl}
-          <Button variant="outline" size="sm" onClick={handleReset} disabled={!isDirty}>
+          <Button variant="outline" size="sm" onClick={handleReset} disabled={!anyDirty}>
             {t("features.actions.reset")}
           </Button>
           {saveButton}
         </div>
       </div>
+
+      {guardDialog}
 
       {!hasCatalogue ? (
         <EmptyState
@@ -345,6 +387,8 @@ export function FeaturesTab() {
         onAdd={handleAdd}
         onRemove={handleRemove}
         onReorder={handleReorderTags}
+        onDirtyChange={setDescriptionDirty}
+        resetVersion={resetVersion}
       />
     </div>
   );

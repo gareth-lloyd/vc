@@ -1,10 +1,10 @@
 import { http, HttpResponse } from "msw";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
-import { renderWithProviders } from "@/test/render";
+import { renderWithDataRouter } from "@/test/render";
 import { drfPage } from "@/test/drf";
 import { useAuthStore } from "@/features/auth/store";
 import { PropertyDetailLayout } from "../PropertyDetailLayout";
@@ -197,14 +197,23 @@ function setReservationsUser() {
   );
 }
 
+// Data router (not MemoryRouter): FeaturesTab mounts `useUnsavedChangesGuard`
+// → `useBlocker`, which requires one. The `details` and `/properties` stubs
+// are navigation targets for the guard tests.
 function setup() {
-  return renderWithProviders(
-    <Routes>
-      <Route path="/properties/:id" element={<PropertyDetailLayout />}>
-        <Route index element={<Navigate to="features" replace />} />
-        <Route path="features" element={<FeaturesTab />} />
-      </Route>
-    </Routes>,
+  return renderWithDataRouter(
+    [
+      { path: "/properties", element: <div>properties-list-stub</div> },
+      {
+        path: "/properties/:id",
+        element: <PropertyDetailLayout />,
+        children: [
+          { index: true, element: <Navigate to="features" replace /> },
+          { path: "features", element: <FeaturesTab /> },
+          { path: "details", element: <div>details-stub</div> },
+        ],
+      },
+    ],
     { route: "/properties/casa-sur/features" },
   );
 }
@@ -214,6 +223,9 @@ function featureRow(id: number) {
 }
 
 afterEach(() => {
+  // Unmount before clearing the store, or the still-mounted tree re-renders
+  // outside act() on every test.
+  cleanup();
   useAuthStore.getState().clear();
 });
 
@@ -548,6 +560,258 @@ describe("FeaturesTab", () => {
       expect(screen.queryByRole("button", { name: /add tag/i })).not.toBeInTheDocument();
       // The description box does not depend on the vocabulary.
       expect(await screen.findByLabelText(/other information description/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("Unsaved changes guard (GAP-083)", () => {
+    async function addBbq() {
+      await userEvent.click(await screen.findByRole("button", { name: /add feature/i }));
+      await userEvent.click(await screen.findByRole("menuitem", { name: /bbq/i }));
+      expect(featureRow(12)).toBeInTheDocument();
+    }
+
+    function detailsTab() {
+      return screen.getByRole("link", { name: "Details" });
+    }
+
+    it("shows the indicator only while dirty; Reset clears it", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      setup();
+      await waitFor(() => expect(featureRow(11)).toBeInTheDocument());
+      expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+
+      await addBbq();
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /reset/i }));
+      expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    });
+
+    it("blocks a tab change while dirty; Stay keeps the edits in place", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      const { router } = setup();
+      await addBbq();
+
+      await userEvent.click(detailsTab());
+
+      const dialog = await screen.findByRole("dialog", { name: "Discard unsaved changes?" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Stay" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(router.state.location.pathname).toBe("/properties/casa-sur/features");
+      expect(featureRow(12)).toBeInTheDocument();
+      expect(screen.queryByText("details-stub")).not.toBeInTheDocument();
+    });
+
+    it("Discard changes leaves the tab and drops the edits", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      const { router } = setup();
+      await addBbq();
+
+      await userEvent.click(detailsTab());
+      const dialog = await screen.findByRole("dialog", { name: "Discard unsaved changes?" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Discard changes" }));
+
+      expect(await screen.findByText("details-stub")).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe("/properties/casa-sur/details");
+
+      // Coming back remounts a clean tab from the cached detail.
+      await router.navigate("/properties/casa-sur/features");
+      await waitFor(() => expect(featureRow(11)).toBeInTheDocument());
+      expect(screen.queryByTestId("property-feature-row-12")).not.toBeInTheDocument();
+      expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    });
+
+    it("saving clears the indicator and lets navigation through without a dialog", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      const captured = capturePatch();
+      setup();
+      await addBbq();
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+      await waitFor(() => expect(captured.body).not.toBeNull());
+      await waitFor(() => expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument());
+
+      await userEvent.click(detailsTab());
+      expect(await screen.findByText("details-stub")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("does not interfere with navigation when clean", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      setup();
+      await waitFor(() => expect(featureRow(11)).toBeInTheDocument());
+
+      await userEvent.click(detailsTab());
+
+      expect(await screen.findByText("details-stub")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("guards any route change, not just tab clicks (breadcrumb link)", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      const { router } = setup();
+      await addBbq();
+
+      await userEvent.click(screen.getByRole("link", { name: "Properties" }));
+
+      const dialog = await screen.findByRole("dialog", { name: "Discard unsaved changes?" });
+      expect(router.state.location.pathname).toBe("/properties/casa-sur/features");
+      expect(screen.queryByText("properties-list-stub")).not.toBeInTheDocument();
+
+      await userEvent.click(within(dialog).getByRole("button", { name: "Stay" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(featureRow(12)).toBeInTheDocument();
+    });
+
+    it("Reset also drops an unsaved description draft", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      server.use(
+        http.get("/api/v1/properties/7/descriptions", () =>
+          HttpResponse.json(
+            drfPage([
+              { id: 9, property: 7, section: "other_information", body: "Pets on request." },
+            ]),
+          ),
+        ),
+      );
+      setup();
+      const textarea = (await screen.findByLabelText(
+        /other information description/i,
+      )) as HTMLTextAreaElement;
+      await waitFor(() => expect(textarea.value).toBe("Pets on request."));
+      expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /reset/i })).toBeDisabled();
+
+      await userEvent.type(textarea, " Ask first.");
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /reset/i }));
+
+      await waitFor(() => expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument());
+      expect(
+        (screen.getByLabelText(/other information description/i) as HTMLTextAreaElement).value,
+      ).toBe("Pets on request.");
+    });
+
+    it("keeps guarding a description draft while a features save is in flight", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      let release: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      server.use(
+        http.patch("/api/v1/properties/7", async ({ request }) => {
+          const body = (await request.json()) as { features?: number[] };
+          await gate;
+          return HttpResponse.json({ ...propertyFixture, feature_ids: body.features ?? [] });
+        }),
+      );
+      setup();
+      const textarea = await screen.findByLabelText(/other information description/i);
+      await userEvent.type(textarea, "Pets on request.");
+      await addBbq();
+
+      await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+      expect(await screen.findByRole("button", { name: /saving/i })).toBeDisabled();
+
+      // Mid-flight: the order is committed to the server, the draft is not.
+      await userEvent.click(detailsTab());
+      const dialog = await screen.findByRole("dialog", { name: "Discard unsaved changes?" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Stay" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+      release!();
+      await screen.findByRole("button", { name: /save changes/i });
+      // The order settled clean; the draft still flags the tab.
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    it("still guards edits when the catalogue refetch fails (Retry brings them back)", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      const { queryClient, router } = setup();
+      await addBbq();
+
+      server.use(http.get("/api/v1/features", () => HttpResponse.json({}, { status: 500 })));
+      await queryClient.refetchQueries({ queryKey: ["features"] });
+      expect(await screen.findByRole("button", { name: /retry/i })).toBeInTheDocument();
+
+      await userEvent.click(detailsTab());
+      const dialog = await screen.findByRole("dialog", { name: "Discard unsaved changes?" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Stay" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(router.state.location.pathname).toBe("/properties/casa-sur/features");
+
+      installBaseHandlers();
+      await userEvent.click(screen.getByRole("button", { name: /retry/i }));
+      await waitFor(() => expect(featureRow(12)).toBeInTheDocument());
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    it("keeps the tab and its edits mounted when the property refetch fails", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      const { queryClient } = setup();
+      await addBbq();
+
+      server.use(
+        http.get("/api/v1/properties/casa-sur", () => HttpResponse.json({}, { status: 500 })),
+      );
+      await queryClient.refetchQueries({ queryKey: ["properties"] });
+
+      expect(featureRow(12)).toBeInTheDocument();
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+    });
+
+    it("counts unsaved other-information description text as dirty until it is saved", async () => {
+      setReservationsUser();
+      installBaseHandlers();
+      let stored = "";
+      server.use(
+        http.get("/api/v1/properties/7/descriptions", () =>
+          HttpResponse.json(
+            drfPage(
+              stored ? [{ id: 9, property: 7, section: "other_information", body: stored }] : [],
+            ),
+          ),
+        ),
+        http.put("/api/v1/properties/7/descriptions/other-information", async ({ request }) => {
+          stored = ((await request.json()) as { body?: string }).body ?? "";
+          return HttpResponse.json({
+            id: 9,
+            property: 7,
+            section: "other_information",
+            body: stored,
+          });
+        }),
+      );
+      setup();
+      const textarea = await screen.findByLabelText(/other information description/i);
+      expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+
+      await userEvent.type(textarea, "Pets on request.");
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+
+      await userEvent.click(detailsTab());
+      const dialog = await screen.findByRole("dialog", { name: "Discard unsaved changes?" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Stay" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole("button", { name: /save description/i }));
+      await waitFor(() => expect(stored).toBe("Pets on request."));
+      await waitFor(() => expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument());
+
+      await userEvent.click(detailsTab());
+      expect(await screen.findByText("details-stub")).toBeInTheDocument();
     });
   });
 });

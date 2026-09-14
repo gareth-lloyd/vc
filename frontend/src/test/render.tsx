@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from "react";
-import { render, type RenderResult } from "@testing-library/react";
+import { cleanup, render, type RenderResult } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   MemoryRouter,
@@ -67,8 +67,11 @@ export type DataRouterRenderResult = Omit<RenderResult, "rerender"> & {
 
 // RouterProvider only unsubscribes on unmount; the router's own window
 // listener and any in-flight navigation outlive the test unless disposed.
+// Unmount first (RTL's own cleanup hook runs later in the afterEach stack) so
+// the provider never observes a disposed router.
 const liveRouters = new Set<DataRouter>();
 afterEach(() => {
+  cleanup();
   for (const router of liveRouters) router.dispose();
   liveRouters.clear();
 });

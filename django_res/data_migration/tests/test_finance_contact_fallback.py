@@ -19,7 +19,11 @@ from accounts.enums import ContactRole
 from accounts.models import Person, User
 from core.enums import StaffRole
 from data_migration.base import LoadReport
-from data_migration.loaders.finance import PropertyFinanceLoader, _finance_defaults
+from data_migration.loaders.finance import (
+    PropertyFinanceLoader,
+    RateRowFinance,
+    _finance_defaults,
+)
 from data_migration.tests.test_legacy_finance_defaults import CPD
 from properties.enums import CommissionCalcType, DepositCalcType, SecurityDepositCalcType
 from properties.models.contacts import PropertyContactAssignment
@@ -92,6 +96,7 @@ def _loader_with_templates(templates: dict[str, dict[str, Any]]) -> PropertyFina
     loader = PropertyFinanceLoader()
     loader._by_contact_cache = templates
     loader._cpd_cache = CPD
+    loader._rate_finance_cache = {}
     return loader
 
 
@@ -462,3 +467,90 @@ def test_load_rows_fails_fast_when_cpd_is_missing(monkeypatch: pytest.MonkeyPatc
     with pytest.raises(RuntimeError):
         loader._load_rows([{"Id": 1, "VillaId": 900}], LoadReport(loader=loader.name))
     assert calls == [1]
+
+
+_FIFTEEN_PERCENT = RateRowFinance(
+    commission=(10, Decimal("15.00")),
+    tax=(Decimal("13"), False),
+    commission_mixed=False,
+    tax_mixed=False,
+)
+
+
+def test_process_row_flagged_commission_uses_rate_row_majority_over_cpd(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    prop, _contact = villa_with_owner
+    loader = _loader_with_templates({})
+    loader._rate_finance_cache = {"900": _FIFTEEN_PERCENT}
+    own_row: dict[str, Any] = {
+        "Id": 10,
+        "VillaId": 900,
+        "ContactId": None,
+        "ParentId": None,
+        "IsDefaultCommission": True,
+        "CommissionTypeId": 20,
+        "CommissionAmount": Decimal("0"),
+        "TaxPercentage": None,
+    }
+    loader._process_row(own_row, LoadReport(loader=loader.name))
+
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.commission_calculation_type == CommissionCalcType.PERCENT
+    assert finance.commission_amount == Decimal("15.00")
+    assert finance.tax_percentage == Decimal("13")
+
+
+def test_process_row_flagged_commission_without_rate_rows_uses_cpd(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    prop, _contact = villa_with_owner
+    loader = _loader_with_templates({})
+    own_row: dict[str, Any] = {
+        "Id": 10,
+        "VillaId": 900,
+        "ContactId": None,
+        "ParentId": None,
+        "IsDefaultCommission": True,
+        "CommissionTypeId": 20,
+        "CommissionAmount": Decimal("12"),
+    }
+    loader._process_row(own_row, LoadReport(loader=loader.name))
+    assert PropertyFinance.objects.get(property=prop).commission_amount == Decimal("20.00")
+
+
+def test_fallback_villa_gets_the_rate_row_majority(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    prop, _contact = villa_with_owner
+    # The template's positive 12.50 FIXED / 20 % tax are not the villa's own
+    # values, so the villa's rate-row majority beats them (review fix).
+    loader = _loader_with_templates({"55": TEMPLATE})
+    loader._rate_finance_cache = {"900": _FIFTEEN_PERCENT}
+    loader._apply_contact_defaults(LoadReport(loader=loader.name))
+
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.commission_calculation_type == CommissionCalcType.PERCENT
+    assert finance.commission_amount == Decimal("15.00")
+    assert finance.tax_percentage == Decimal("13")
+    assert finance.bank_account_name == "Owner Ltd"  # template still fills the rest
+
+
+def test_loader_defaults_reference_date_to_today() -> None:
+    from datetime import date
+
+    assert PropertyFinanceLoader().reference_date == date.today()
+    assert PropertyFinanceLoader(reference_date=date(2025, 1, 1)).reference_date == date(2025, 1, 1)
+
+
+def test_rate_row_query_uses_the_priced_predicate_and_reference_date() -> None:
+    from datetime import date
+
+    from data_migration.loaders.finance import rate_row_finance_query
+    from data_migration.loaders.pricing import PRICED_ROW_PREDICATE
+
+    query = rate_row_finance_query(date(2025, 4, 24))
+    assert PRICED_ROW_PREDICATE in query
+    assert "r.ToDate >= '2025-04-24'" in query
+    assert "ISNULL(r.IsPOA, 0) = 0" in query
+    assert "GROUP BY s.VillaId" in query

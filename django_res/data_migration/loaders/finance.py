@@ -13,7 +13,8 @@ VillaFinance is a multi-purpose table:
 from __future__ import annotations
 
 from collections.abc import Collection
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -32,6 +33,7 @@ from data_migration.loaders._util import (
     legacy_quotation_no,
     person_for_client,
 )
+from data_migration.loaders.pricing import PRICED_ROW_PREDICATE
 from properties.enums import (
     CommissionCalcType,
     DepositCalcType,
@@ -193,6 +195,96 @@ _AMOUNT_FOR_TYPE = {
 }
 
 
+@dataclass(frozen=True)
+class RateRowFinance:
+    """A villa's majority commission / tax across its current rate rows."""
+
+    commission: tuple[int, Decimal] | None  # (type code, amount)
+    tax: tuple[Decimal, bool] | None  # (rate, exempt)
+    commission_mixed: bool
+    tax_mixed: bool
+
+
+def rate_row_finance_query(reference_date: date) -> str:
+    """Current, quotable, non-POA rate rows grouped by villa and finance terms
+    (the rows `RateBandLoader` loads, from `reference_date` onwards)."""
+    return (
+        "SELECT s.VillaId, r.CommissionType, r.Commission, r.TaxRate, r.IsTaxExempt, "
+        "COUNT(*) AS N "
+        "FROM VillaSeasonRate r "
+        "JOIN VillaSeason s ON s.ID = r.SeasonId AND s.DeletedAt IS NULL "
+        f"WHERE {PRICED_ROW_PREDICATE} AND ISNULL(r.IsPOA, 0) = 0 "
+        f"AND r.ToDate >= '{reference_date.isoformat()}' "
+        "GROUP BY s.VillaId, r.CommissionType, r.Commission, r.TaxRate, r.IsTaxExempt"
+    )
+
+
+def _majority(votes: dict[Any, int]) -> tuple[Any, bool]:
+    """(winner, mixed): highest row count, ties to the lowest key."""
+    if not votes:
+        return None, False
+    winner = min(votes, key=lambda k: (-votes[k], k))
+    return winner, len(votes) > 1
+
+
+def rate_row_finance_by_villa(groups: list[dict[str, Any]]) -> dict[str, RateRowFinance]:
+    """Per legacy VillaId: the majority commission (positive amount with a
+    10/20 type) and tax (exempt, or a positive rate) over the grouped rows."""
+    commission: dict[str, dict[tuple[int, Decimal], int]] = {}
+    tax: dict[str, dict[tuple[Decimal, bool], int]] = {}
+    for g in groups:
+        villa = str(g["VillaId"])
+        commission.setdefault(villa, {})
+        tax.setdefault(villa, {})
+        n = int(g.get("N") or 0)
+        amount = _decimal(g.get("Commission"))
+        if g.get("CommissionType") in _COMMISSION_TYPE_MAP and amount is not None and amount > 0:
+            key = (int(g["CommissionType"]), amount.quantize(Decimal("0.01")))
+            commission[villa][key] = commission[villa].get(key, 0) + n
+        rate = _decimal(g.get("TaxRate"))
+        if g.get("IsTaxExempt"):
+            tax_key = (Decimal("0"), True)
+        elif rate is not None and rate > 0:
+            tax_key = (rate, False)
+        else:
+            continue
+        tax[villa][tax_key] = tax[villa].get(tax_key, 0) + n
+    out: dict[str, RateRowFinance] = {}
+    for villa in commission:
+        commission_winner, commission_mixed = _majority(commission[villa])
+        tax_winner, tax_mixed = _majority(tax[villa])
+        out[villa] = RateRowFinance(commission_winner, tax_winner, commission_mixed, tax_mixed)
+    return out
+
+
+def apply_rate_row_finance(
+    row: dict[str, Any],
+    villa_finance: RateRowFinance | None,
+    *,
+    row_is_villas_own: bool = True,
+) -> dict[str, Any]:
+    """BUG-028 D7: a default-flagged or non-positive commission, and an unset
+    non-exempt tax, take the villa's rate-row majority before the CPD rule.
+    An own explicit value is kept — but an owner-contact template is not the
+    villa's own (`row_is_villas_own=False`), so the majority beats it.
+    Returns a new dict."""
+    out = dict(row)
+    if villa_finance is None:
+        return out
+    if villa_finance.commission is not None and (
+        not row_is_villas_own
+        or row.get("IsDefaultCommission")
+        or (row.get("CommissionAmount") or 0) <= 0
+    ):
+        out["CommissionTypeId"], out["CommissionAmount"] = villa_finance.commission
+        out["IsDefaultCommission"] = False
+    if villa_finance.tax is not None and (
+        not row_is_villas_own or (not row.get("TaxExempt") and (row.get("TaxPercentage") or 0) <= 0)
+    ):
+        out["TaxPercentage"], out["TaxExempt"] = villa_finance.tax
+    return out
+
+
 def _strip_default_flags(row: dict[str, Any]) -> dict[str, Any]:
     """Drop a contact template row's own `IsDefault*` flags: they describe
     the template, not the villa it is applied to."""
@@ -296,10 +388,17 @@ class PropertyFinanceLoader(BaseLoader):
     target_model = PropertyFinance
     legacy_query = f"SELECT {_VILLAFINANCE_COLUMNS} FROM VillaFinance WHERE VillaId IS NOT NULL"
 
+    def __init__(self, since: str | None = None, reference_date: date | None = None) -> None:
+        super().__init__(since)
+        # Rate rows ending before this date don't vote on a villa's commission
+        # (D7). Defaults to the load day; recorded in DRYRUN_LOG per run.
+        self.reference_date = reference_date or date.today()
+
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
         # Fetched before the per-row savepoints, so a missing CPD row or a
         # dead connection aborts the loader instead of erroring every row.
         self._cpd()
+        self._rate_finance()
         super()._load_rows(rows, report)
         # A villa whose legacy row appeared in THIS pass is never
         # fallback-filled — even when its write errored into report.errors
@@ -314,6 +413,28 @@ class PropertyFinanceLoader(BaseLoader):
         if not hasattr(self, "_by_contact_cache"):
             self._by_contact_cache = _fetch_contact_default_finance()
         return self._by_contact_cache
+
+    def _rate_finance(self) -> dict[str, RateRowFinance]:
+        if not hasattr(self, "_rate_finance_cache"):
+            with legacy_cursor() as cursor:
+                cursor.execute(rate_row_finance_query(self.reference_date))
+                self._rate_finance_cache = rate_row_finance_by_villa(list(rows_as_dicts(cursor)))
+            mixed = sorted(
+                (
+                    v
+                    for v, f in self._rate_finance_cache.items()
+                    if f.commission_mixed or f.tax_mixed
+                ),
+                key=int,
+            )
+            logger.warning(
+                "data_migration.finance_rate_rows_mixed",
+                reference_date=self.reference_date.isoformat(),
+                villas_with_rate_rows=len(self._rate_finance_cache),
+                mixed_count=len(mixed),
+                mixed_villa_ids=mixed,
+            )
+        return self._rate_finance_cache
 
     def _cpd(self) -> dict[str, Any]:
         # The global defaults are read from legacy, not from the loaded
@@ -393,7 +514,14 @@ class PropertyFinanceLoader(BaseLoader):
             PropertyFinance.objects.create(property=prop, contact_id=owner_pk)
             report.created += 1
             return "contact_only"
-        resolved = apply_legacy_finance_defaults(_strip_default_flags(template), self._cpd())
+        resolved = apply_legacy_finance_defaults(
+            apply_rate_row_finance(
+                _strip_default_flags(template),
+                self._rate_finance().get(str(prop.legacy_id)),
+                row_is_villas_own=False,
+            ),
+            self._cpd(),
+        )
         defaults = _finance_defaults(resolved)
         defaults["contact_id"] = owner_pk
         PropertyFinance.objects.create(property=prop, **defaults)
@@ -420,7 +548,10 @@ class PropertyFinanceLoader(BaseLoader):
         # BUG-028 legacy-exact fill order: the CPD `IsDefault*` / `<= 0` rule
         # runs on the raw row first; the owner template below then fills only
         # what the CPD never covers (bank, tax, notes, NULL types).
-        defaults = _finance_defaults(apply_legacy_finance_defaults(row, self._cpd()))
+        # D7: the villa's rate-row majority fills default/zero commission and
+        # unset tax before that.
+        resolved = apply_rate_row_finance(row, self._rate_finance().get(str(row["VillaId"])))
+        defaults = _finance_defaults(apply_legacy_finance_defaults(resolved, self._cpd()))
         # GAP-070 parity: pre-cutover, a NULL/"" field on a villa's own row
         # resolved through the owner-contact default template at read time
         # (GroupFinance + effective()). Reproduce that merge concretely —

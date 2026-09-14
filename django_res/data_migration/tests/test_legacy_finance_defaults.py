@@ -16,7 +16,12 @@ from typing import Any
 
 import pytest
 
-from data_migration.loaders.finance import apply_legacy_finance_defaults
+from data_migration.loaders.finance import (
+    RateRowFinance,
+    apply_legacy_finance_defaults,
+    apply_rate_row_finance,
+    rate_row_finance_by_villa,
+)
 
 # The live CPD row on the 24-Apr-2025 dump (Id 1), plus interim values so the
 # paysched block has something distinguishable to copy.
@@ -204,3 +209,131 @@ def test_falsy_flag_is_unset(flag: Any) -> None:
 def test_missing_cpd_raises() -> None:
     with pytest.raises(RuntimeError):
         apply_legacy_finance_defaults(OWN, None)
+
+
+# --- per-villa commission/tax from rate rows (D7) -------------------------
+
+
+def _group(villa: int, n: int, **cols: Any) -> dict[str, Any]:
+    base = {
+        "VillaId": villa,
+        "CommissionType": 10,
+        "Commission": Decimal("15.00"),
+        "TaxRate": None,
+        "IsTaxExempt": False,
+        "N": n,
+    }
+    return {**base, **cols}
+
+
+def test_majority_commission_wins_by_row_count() -> None:
+    out = rate_row_finance_by_villa(
+        [
+            _group(1, 5),
+            _group(1, 2, CommissionType=20, Commission=Decimal("100.00")),
+        ]
+    )
+    assert out["1"].commission == (10, Decimal("15.00"))
+    assert out["1"].commission_mixed is True
+
+
+def test_tie_breaks_on_lowest_type_then_amount() -> None:
+    out = rate_row_finance_by_villa(
+        [
+            _group(1, 3, CommissionType=20, Commission=Decimal("50.00")),
+            _group(1, 3, CommissionType=10, Commission=Decimal("18.00")),
+            _group(1, 3, CommissionType=10, Commission=Decimal("12.00")),
+        ]
+    )
+    assert out["1"].commission == (10, Decimal("12.00"))
+
+
+def test_zero_or_untyped_commission_rows_do_not_vote() -> None:
+    out = rate_row_finance_by_villa(
+        [
+            _group(1, 9, Commission=Decimal("0")),
+            _group(1, 9, CommissionType=0),
+            _group(1, 9, CommissionType=None, Commission=None),
+        ]
+    )
+    assert out["1"].commission is None
+    assert out["1"].commission_mixed is False
+
+
+def test_single_value_villa_is_not_mixed_and_amounts_quantise() -> None:
+    out = rate_row_finance_by_villa(
+        [_group(2, 4, Commission=Decimal("15")), _group(2, 1, Commission=Decimal("15.00"))]
+    )
+    assert out["2"].commission == (10, Decimal("15.00"))
+    assert out["2"].commission_mixed is False
+
+
+def test_tax_majority_counts_rates_and_exemptions() -> None:
+    out = rate_row_finance_by_villa(
+        [
+            _group(1, 4, TaxRate=13),
+            _group(1, 1, TaxRate=24),
+            _group(1, 9, TaxRate=0),  # no tax information: does not vote
+            _group(2, 3, IsTaxExempt=True, TaxRate=13),
+        ]
+    )
+    assert out["1"].tax == (Decimal("13"), False)
+    assert out["1"].tax_mixed is True
+    assert out["2"].tax == (Decimal("0"), True)
+
+
+FINANCE_ROW: dict[str, Any] = {
+    "IsDefaultCommission": False,
+    "CommissionTypeId": 20,
+    "CommissionAmount": Decimal("150"),
+    "TaxExempt": False,
+    "TaxPercentage": Decimal("10"),
+}
+MAJORITY = RateRowFinance(
+    commission=(10, Decimal("15.00")),
+    tax=(Decimal("13"), False),
+    commission_mixed=False,
+    tax_mixed=False,
+)
+
+
+def test_flagged_commission_takes_the_rate_row_majority_and_clears_the_flag() -> None:
+    out = apply_rate_row_finance({**FINANCE_ROW, "IsDefaultCommission": True}, MAJORITY)
+    assert (out["CommissionTypeId"], out["CommissionAmount"]) == (10, Decimal("15.00"))
+    assert not out["IsDefaultCommission"]
+    # ...so the CPD rule that runs next leaves it alone.
+    resolved = apply_legacy_finance_defaults(out, CPD)
+    assert resolved["CommissionAmount"] == Decimal("15.00")
+
+
+def test_zero_commission_takes_the_majority() -> None:
+    out = apply_rate_row_finance({**FINANCE_ROW, "CommissionAmount": Decimal("0")}, MAJORITY)
+    assert out["CommissionAmount"] == Decimal("15.00")
+
+
+def test_own_explicit_commission_and_tax_are_kept() -> None:
+    assert apply_rate_row_finance(FINANCE_ROW, MAJORITY) == FINANCE_ROW
+
+
+@pytest.mark.parametrize("own_tax", [None, Decimal("0")])
+def test_unset_tax_takes_the_majority(own_tax: Decimal | None) -> None:
+    out = apply_rate_row_finance({**FINANCE_ROW, "TaxPercentage": own_tax}, MAJORITY)
+    assert (out["TaxPercentage"], out["TaxExempt"]) == (Decimal("13"), False)
+
+
+def test_exempt_villa_keeps_its_exemption() -> None:
+    row = {**FINANCE_ROW, "TaxPercentage": None, "TaxExempt": True}
+    assert apply_rate_row_finance(row, MAJORITY) == row
+
+
+def test_no_rate_rows_changes_nothing() -> None:
+    row = {**FINANCE_ROW, "IsDefaultCommission": True}
+    assert apply_rate_row_finance(row, None) == row
+
+
+def test_template_row_loses_to_the_majority_even_when_explicit() -> None:
+    out = apply_rate_row_finance(
+        {**FINANCE_ROW, "TaxExempt": True}, MAJORITY, row_is_villas_own=False
+    )
+    assert (out["CommissionTypeId"], out["CommissionAmount"]) == (10, Decimal("15.00"))
+    assert (out["TaxPercentage"], out["TaxExempt"]) == (Decimal("13"), False)

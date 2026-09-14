@@ -24,7 +24,7 @@ from pricing.models import Discount, RateBand, RatePlan
 from pricing.services.engine import PricingEngine
 from properties.models import Property
 from seeding._pricing_helpers import _PRICE_SHAPE, draw_base_nightly
-from seeding.context import utc_today
+from seeding.context import _PROFILES, Profile, utc_today
 
 _LEGACY_NIGHTLY = {Decimal("250.00"), Decimal("400.00"), Decimal("650.00")}
 
@@ -82,6 +82,7 @@ def test_seed_dev_mixed_prices_realistically() -> None:
     """
     _seed("mixed", properties=20, bookings=30, seed=42)
     today = utc_today()
+    spread = _PROFILES[Profile.MIXED].booking_date_spread_days
 
     plans = list(RatePlan.objects.select_related("currency").prefetch_related("periods__bands"))
     assert plans
@@ -95,15 +96,22 @@ def test_seed_dev_mixed_prices_realistically() -> None:
     # ---- Seasonal structure + gap-free coverage ----
     # A season now spans several disjoint date segments, so a plan carries more
     # than three periods — but each is named for its season, every period holds
-    # bands, and the whole window stays party-3 covered with no gaps.
+    # bands, and the seeded window stays party-3 covered with no gaps. GAP-110:
+    # the plan carries no dates, so the window is the periods' own span — and
+    # it must reach the stage's `today ± (spread + 60)` buffer (the profile's
+    # booking spread plus the longest stay), or the booking stages' generated
+    # stays would price nothing.
     for plan in plans:
         periods = list(plan.periods.all())
         assert periods, plan
         assert {p.name for p in periods} <= {"Low", "Mid", "Peak"}, plan
         assert all(p.bands.exists() for p in periods), plan
-        assert plan.effective_to is not None
-        day = plan.effective_from
-        while day <= plan.effective_to:
+        window_from = min(p.date_from for p in periods)
+        window_to = max(p.date_to for p in periods)
+        assert window_from <= today - timedelta(days=spread + 60), plan
+        assert window_to >= today + timedelta(days=spread + 60), plan
+        day = window_from
+        while day <= window_to:
             covering = [p for p in periods if p.date_from <= day <= p.date_to]
             assert any(r.min_party <= 3 <= r.max_party for p in covering for r in p.bands.all()), (
                 f"plan {plan.pk} has no party-3 rule covering {day}"

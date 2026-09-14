@@ -33,6 +33,9 @@ interface CarryForwardDialogProps {
   targetYear: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Receives the plan the periods landed on: the anchor plan for the currency
+   * (never a new plan) — usually the selected one, but it can be the
+   * other-basis plan in the same currency (GAP-110). */
   onCarried: (plan: RatePlanDetail) => void;
 }
 

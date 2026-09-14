@@ -95,8 +95,16 @@ def map_range(
     (and trip the `date_from < date_to` constraint when carryover saves it), and
     would silently change the night count — neither of which the operator intends
     when carrying a Saturday-to-Saturday week forward.
+
+    GAP-110: a period belongs to the year its `date_from` falls in (the anchor
+    year bucket), so a start the weekday map would nudge across a year
+    boundary — 1 Jan back into December, 30 Dec forward into January — keeps
+    its calendar date instead; it would otherwise vanish from that year's
+    anchor set and idempotency check.
     """
     new_from = date_map(date_from, year_delta)
+    if new_from.year != date_from.year + year_delta:
+        new_from = keep_calendar_date(date_from, year_delta)
     return new_from, new_from + (date_to - date_from)
 
 
@@ -129,16 +137,35 @@ def apply_uplift(value: Decimal | None, factor: Decimal) -> Decimal | None:
     return (Decimal(value) * factor).quantize(Decimal("0.01"))
 
 
-def load_anchor_periods_with_rules(anchor: RatePlan) -> list[tuple[RatePeriod, list[RateBand]]]:
-    """Active periods of `anchor`, each paired with its approved bands (GAP-056).
+@dataclass(frozen=True)
+class Anchor:
+    """The regime plan and the period year a projection carries forward.
+
+    GAP-110: a plan is a date-less bucket holding every year's periods, so
+    the *year* being carried is a property of its periods, not of the plan.
+    """
+
+    plan: RatePlan
+    source_year: int
+
+
+def load_anchor_periods_with_rules(
+    plan: RatePlan, source_year: int
+) -> list[tuple[RatePeriod, list[RateBand]]]:
+    """Active periods of `plan` starting in `source_year`, each paired with
+    its approved bands (GAP-056).
 
     One query for the periods, one for all their bands (batched via
     `period__in`). These are exactly the `is_active` / `is_approved` filters the
     engine's real path uses, so projection prices precisely the set a real quote
-    would (no dormant inactive periods or unapproved bands leaking in).
+    would (no dormant inactive periods or unapproved bands leaking in). A
+    period is the source year's by its `date_from` — a tail straddling New
+    Year rides with the year it starts in.
     """
     periods = list(
-        RatePeriod.objects.filter(plan=anchor, is_active=True).order_by("date_from", "pk")
+        RatePeriod.objects.filter(plan=plan, is_active=True, date_from__year=source_year).order_by(
+            "date_from", "pk"
+        )
     )
     bands_by_period: dict[int, list[RateBand]] = {}
     approved_rules = RateBand.objects.filter(period__in=periods, is_approved=True).order_by(
@@ -195,32 +222,33 @@ class RateProjectionService:
     """Derive a guide-rate `PricingContext` for a year that has no rate plan."""
 
     @staticmethod
-    def find_anchor_plan(
-        property: Any,
-        currency: Currency,
-        date_from: date,
-    ) -> RatePlan | None:
-        """The most recent active plan for this property+currency in an *earlier*
-        year than the requested stay.
+    def find_anchor(property: Any, currency: Currency, target_year: int) -> Anchor | None:
+        """The plan and period year to carry into `target_year`: the latest
+        active period (of an active plan) for this property+currency that
+        starts in an *earlier* year (GAP-110).
 
         `None` when the villa has no prior rates in this currency (a brand-new
-        villa), which the caller turns into a normal `NoRateAvailable`. Restricting
-        the anchor to `effective_from` before 1 Jan of the target year both
-        guarantees a forward projection (`year_delta >= 1`) and stops a partial
-        same-year plan — or a previously materialised carry-forward — from anchoring
-        on itself.
+        villa, or a plan with no periods), which the caller turns into a normal
+        `NoRateAvailable`. Restricting the anchor to periods starting before
+        1 Jan of the target year both guarantees a forward projection
+        (`year_delta >= 1`) and stops a partially priced target year — or a
+        previously materialised carry-forward — from anchoring on itself.
         """
-        target_year = date_from.year
-        return (
-            RatePlan.objects.filter(
+        latest = (
+            RatePeriod.objects.filter(
                 property=property,
                 currency=currency,
                 is_active=True,
-                effective_from__lt=date(target_year, 1, 1),
+                plan__is_active=True,
+                date_from__lt=date(target_year, 1, 1),
             )
-            .order_by("-effective_from", "-pk")
+            .select_related("plan__currency")
+            .order_by("-date_from", "-pk")
             .first()
         )
+        if latest is None:
+            return None
+        return Anchor(plan=latest.plan, source_year=latest.date_from.year)
 
     @classmethod
     def project(
@@ -234,22 +262,20 @@ class RateProjectionService:
     ) -> PricingContext | None:
         """Synthesize an in-memory plan for `date_from`'s year from the anchor.
 
-        Returns `None` when there is no anchor (or it has no active cards), so the
-        caller can fall through to the usual `NoRateAvailable`. Rule dates move via
-        `date_map`; the plan envelope always moves by calendar year (its precise
-        weekday is irrelevant — only its rules are priced). Prices are multiplied by
-        `1 + uplift`; the default `0` carries last year's figure verbatim.
+        Returns `None` when there is no anchor, so the caller can fall through
+        to the usual `NoRateAvailable`. Rule dates move via `date_map`; the
+        context's plan is the real regime plan (GAP-110: it is date-less, so
+        it already "covers" the target year — only its periods are synthetic).
+        Prices are multiplied by `1 + uplift`; the default `0` carries last
+        year's figure verbatim.
         """
-        anchor = cls.find_anchor_plan(property, currency, date_from)
+        target_year = date_from.year
+        anchor = cls.find_anchor(property, currency, target_year)
         if anchor is None:
             return None
 
-        periods_with_rules = load_anchor_periods_with_rules(anchor)
-        if not periods_with_rules:
-            return None
-
-        target_year = date_from.year
-        source_year = anchor.effective_from.year
+        source_year = anchor.source_year
+        periods_with_rules = load_anchor_periods_with_rules(anchor.plan, source_year)
         year_delta = target_year - source_year
         factor = Decimal("1") + uplift
 
@@ -268,22 +294,7 @@ class RateProjectionService:
             )
         )
 
-        proj_plan = RatePlan(
-            id=anchor.pk,
-            property_id=anchor.property_id,
-            currency_id=anchor.currency_id,
-            name=anchor.name,
-            price_basis=anchor.price_basis,
-            fallback_nightly=anchor.fallback_nightly,
-            effective_from=keep_calendar_date(anchor.effective_from, year_delta),
-            effective_to=(
-                keep_calendar_date(anchor.effective_to, year_delta)
-                if anchor.effective_to is not None
-                else None
-            ),
-            is_active=anchor.is_active,
-        )
-
+        plan = anchor.plan
         proj_periods: list[RatePeriod] = []
         bands_by_period: dict[int, list[RateBand]] = {}
         used_ids: set[int] = set()
@@ -307,7 +318,9 @@ class RateProjectionService:
             proj_periods.append(
                 RatePeriod(
                     id=period_id,
-                    plan_id=anchor.pk,
+                    plan_id=plan.pk,
+                    property_id=plan.property_id,
+                    currency_id=plan.currency_id,
                     name=uniform_or_derived_name(
                         (band.source.payload.period.name for band in flat_period.bands),
                         flat_period.date_from,
@@ -339,14 +352,14 @@ class RateProjectionService:
         assert len(used_ids) == len(proj_periods)  # ids are unique by construction
 
         projection = {
-            "source_plan_id": anchor.pk,
+            "source_plan_id": plan.pk,
             "source_year": source_year,
             "target_year": target_year,
             "uplift_pct": str((uplift * Decimal("100")).quantize(Decimal("0.01"))),
             "date_map": date_map.__name__,
         }
         return PricingContext(
-            plan=proj_plan,
+            plan=plan,
             property=property,
             periods=proj_periods,
             bands_by_period=bands_by_period,

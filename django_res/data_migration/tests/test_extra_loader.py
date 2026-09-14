@@ -17,6 +17,7 @@ from django.utils import timezone
 from data_migration.base import LoadReport
 from data_migration.loaders.extras import ExtraLoader
 from pricing.enums import ExtraCalc, ExtraKind
+from pricing.factories import RatePeriodFactory, RatePlanFactory
 from pricing.models.currency import Currency
 from pricing.models.extra import Extra
 from pricing.models.rate import RatePlan
@@ -122,12 +123,11 @@ def test_currency_falls_back_to_the_property_chain(
     # the engine does — preferred live plan, then settings, then EUR — so
     # the extra lands in the currency quotes are built in.
     PropertySettings.objects.update_or_create(property=villa, defaults={"currency": eur})
-    RatePlan.objects.create(
-        property=villa,
-        name="2026",
-        currency=gbp,
-        effective_from=timezone.localdate() - timedelta(days=1),
-        is_active=True,
+    today = timezone.localdate()
+    RatePeriodFactory(
+        plan=RatePlanFactory(property=villa, currency=gbp),
+        date_from=today - timedelta(days=1),
+        date_to=today + timedelta(days=30),
     )
     assert _transform(_row())["currency"] == gbp
 

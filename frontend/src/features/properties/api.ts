@@ -310,11 +310,6 @@ export async function deleteRatePlan(ratePlanId: RatePlanId): Promise<void> {
   await apiSend<void>("DELETE", `/rate-plans/${ratePlanId}`);
 }
 
-export async function duplicateRatePlan(ratePlanId: RatePlanId): Promise<RatePlan> {
-  const data = await apiSend<unknown>("POST", `/rate-plans/${ratePlanId}:duplicate`);
-  return ratePlanSchema.parse(data);
-}
-
 export async function createRatePeriod(
   ratePlanId: RatePlanId,
   body: RatePeriodWriteInput,

@@ -44,6 +44,17 @@ interface OtherInformationSectionProps {
   onAdd: (id: number) => void;
   onRemove: (id: number) => void;
   onReorder: (nextTagOrder: number[]) => void;
+  /**
+   * Reports whether the description has typed-but-unsaved text, so the tab can
+   * fold it into its own unsaved-changes indicator/guard (GAP-083). The tags
+   * need no equivalent — they live in the tab's `order` already.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Bump to discard the description draft: the editor remounts and re-seeds
+   * from the cached server text. Wired to the tab's Reset (GAP-083).
+   */
+  resetVersion?: number;
 }
 
 /**
@@ -63,6 +74,8 @@ export function OtherInformationSection({
   onAdd,
   onRemove,
   onReorder,
+  onDirtyChange,
+  resetVersion = 0,
 }: OtherInformationSectionProps) {
   const { t } = useTranslation("properties");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -146,7 +159,12 @@ export function OtherInformationSection({
       ) : null}
 
       {/* Keyed so a draft for one villa is dropped, not carried to the next. */}
-      <OtherInformationDescription key={propertyId} propertyId={propertyId} canWrite={canWrite} />
+      <OtherInformationDescription
+        key={`${propertyId}:${resetVersion}`}
+        propertyId={propertyId}
+        canWrite={canWrite}
+        onDirtyChange={onDirtyChange}
+      />
     </section>
   );
 }
@@ -154,9 +172,14 @@ export function OtherInformationSection({
 interface OtherInformationDescriptionProps {
   propertyId: number;
   canWrite: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-function OtherInformationDescription({ propertyId, canWrite }: OtherInformationDescriptionProps) {
+function OtherInformationDescription({
+  propertyId,
+  canWrite,
+  onDirtyChange,
+}: OtherInformationDescriptionProps) {
   const { t } = useTranslation("properties");
   const descriptions = usePropertyDescriptions(propertyId);
   const upsertMutation = useUpsertPropertyDescription(propertyId);
@@ -179,6 +202,19 @@ function OtherInformationDescription({ propertyId, canWrite }: OtherInformationD
       seeded.current = true;
     }
   }, [descriptions.data, initialBody]);
+
+  // Dirty = differs from the last server echo. Gated on `seeded` so the render
+  // that carries the first fetch (body still "") is not reported as dirty.
+  const draftDirty = seeded.current && body !== initialBody;
+  // Not while a save/clear is in flight: the mutation stays pending until the
+  // refetch echoes the new body, so the parent's guard neither blocks a
+  // navigation for already-persisted text nor swallows the click when the echo
+  // lands. The cleanup never leaves the parent holding a stale "dirty".
+  const reportedDirty = draftDirty && !upsertMutation.isPending && !deleteMutation.isPending;
+  useEffect(() => {
+    onDirtyChange?.(reportedDirty);
+    return () => onDirtyChange?.(false);
+  }, [reportedDirty, onDirtyChange]);
 
   const handleSave = async () => {
     try {
@@ -240,13 +276,13 @@ function OtherInformationDescription({ propertyId, canWrite }: OtherInformationD
             variant="outline"
             size="sm"
             onClick={() => setClearing(true)}
-            disabled={!initialBody || body !== initialBody}
+            disabled={!initialBody || draftDirty}
           >
             {t("features.otherInformation.description.actions.clear")}
           </Button>
         ) : null}
         {canWrite ? (
-          <Button size="sm" onClick={handleSave} disabled={body === initialBody || saving}>
+          <Button size="sm" onClick={handleSave} disabled={!draftDirty || saving}>
             {saving
               ? t("features.otherInformation.description.actions.saving")
               : t("features.otherInformation.description.actions.save")}

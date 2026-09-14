@@ -536,15 +536,11 @@ def test_update_line_reprices(
     assert Decimal(str(patch.data["total"])) == Decimal("1400.00")
 
 
-def _priced_plan_in(
-    property_: Property, currency: Currency, effective_from: date, nightly: str
-) -> RatePlan:
+def _priced_plan_in(property_: Property, currency: Currency, nightly: str) -> RatePlan:
     plan = RatePlan.objects.create(
         property=property_,
         name=f"{currency.code} plan",
         currency=currency,
-        effective_from=effective_from,
-        effective_to=date(2026, 12, 31),
     )
     period = RatePeriod.objects.create(
         plan=plan,
@@ -571,9 +567,10 @@ def test_patch_pins_currency_against_a_newer_plan_in_another_currency(
     gbp: Currency,
 ) -> None:
     """An edit must never silently re-denominate a priced line (GAP-014 /
-    FG-001): after the villa activates a newer EUR plan, a notes-style PATCH
-    repriced WITHOUT a pin would flip the line to EUR — the pin exact-matches
-    the line's own GBP instead."""
+    FG-001): after the villa gains an EUR plan *and* EUR becomes its settings
+    currency (so an unpinned resolve would now pick EUR — GAP-110), a
+    notes-style PATCH repriced WITHOUT a pin would flip the line to EUR — the
+    pin exact-matches the line's own GBP instead."""
     api_client.force_login(staff)
     create = api_client.post(
         f"/api/v1/quotations/{quotation.pk}/lines",
@@ -591,8 +588,9 @@ def test_patch_pins_currency_against_a_newer_plan_in_another_currency(
     assert line.currency == gbp
 
     eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
-    # Newer effective_from — an unpinned reprice would prefer this plan.
-    _priced_plan_in(property_, eur, date(2026, 2, 1), "300.00")
+    # EUR becomes the unpinned pick (settings currency) — the pin must still win.
+    PropertySettings.objects.update_or_create(property=property_, defaults={"currency": eur})
+    _priced_plan_in(property_, eur, "300.00")
 
     patch = api_client.patch(
         f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
@@ -635,7 +633,7 @@ def test_patch_fails_loud_when_pinned_currency_no_longer_priceable(
     plan.is_active = False
     plan.save(update_fields=["is_active"])
     eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
-    _priced_plan_in(property_, eur, date(2026, 2, 1), "300.00")
+    _priced_plan_in(property_, eur, "300.00")
 
     patch = api_client.patch(
         f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}",
@@ -2735,13 +2733,15 @@ def test_create_with_lines_pins_supplied_currency(
     rate_rule: object,
     gbp: Currency,
 ) -> None:
-    """An explicitly supplied currency exact-matches its plan even when a newer
-    plan in another currency would win an unpinned search (GAP-014)."""
+    """An explicitly supplied currency exact-matches its plan even when the
+    villa's settings currency (the unpinned resolver's pick — GAP-110) names
+    another plan (GAP-014)."""
     api_client.force_login(staff)
     enquiry = customer.enquiries_as_customer.create()
     eur = Currency.objects.create(code="EUR", name="Euro", symbol="€")
-    # Newer effective_from — an unpinned pricing would prefer this plan.
-    _priced_plan_in(property_, eur, date(2026, 2, 1), "300.00")
+    # EUR becomes the unpinned pick (settings currency) — the pin must still win.
+    PropertySettings.objects.update_or_create(property=property_, defaults={"currency": eur})
+    _priced_plan_in(property_, eur, "300.00")
 
     response = api_client.post(
         "/api/v1/quotations",

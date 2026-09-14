@@ -290,12 +290,15 @@ Small curated taxonomy (airport, beach, restaurant, station, etc.) FK'd from `Pr
 > period-native — `Property → RatePlan → RatePeriod → RateBand`, no card level:
 >
 > - `GET/POST /properties/{id}/rate-plans` · `POST /properties/{id}/rate-plans:carry-forward`
-> - `GET/PATCH/DELETE /rate-plans/{id}` · `POST /rate-plans/{id}:duplicate`
+> - `GET/PATCH/DELETE /rate-plans/{id}` (`POST /rate-plans/{id}:duplicate` was removed in GAP-110 — a plan is a date-less regime bucket, add periods or carry forward instead; the plan body carries no `effective_from/to`)
 > - `GET/POST /rate-plans/{id}/rate-periods` · `GET/PATCH/DELETE /periods/{id}`
 > - `GET/POST /periods/{id}/bands` · `GET/PATCH/DELETE /bands/{id}`
 >
 > Band writes are still validated serializer-side against the DB constraints
-> (band ranges are per-period; periods on a plan are EXCLUDE-disjoint). Open
+> (band ranges are per-period; periods are EXCLUDE-disjoint per `(property, currency)`
+> across **all** plans, ungated by `is_active` — GAP-110: a period overlapping another
+> plan's period is a 400 keyed `date_from` naming that plan; a raced write is a 409
+> `regime_conflict`). Open
 > follow-up: [`../todo/gap-059-rate-period-name-compulsory.md`](../../todo/done/gap-059-rate-period-name-compulsory.md)
 > makes `name` required on period writes. The Extras and quote-helper endpoints
 > further down remain accurate; in the Discounts table, `pricing.Discount` is now

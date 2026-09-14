@@ -127,7 +127,7 @@ Note: an earlier draft of this doc described `SeasonDateRange` and `OccupancyBan
 ### Season
 Named pricing period for a property. Original `VillaSeason`. Holds metadata only — no prices.
 
-Fields: `property` (FK), `name`, `notes`, `inclusion` (free amenities text), `currency` (FK), `price_basis` (`gross` / `net`), `effective_from`, `effective_to` (nullable), `is_active`. `carried_rates` and `parent_season` are out of scope unless required by a real workflow — defer.
+Fields: `property` (FK), `name`, `notes`, `inclusion` (free amenities text), `currency` (FK), `price_basis` (`gross` / `net`), `effective_from`, `effective_to` (nullable), `is_active`. `carried_rates` and `parent_season` are out of scope unless required by a real workflow — defer. *(As built: `inclusion` went to `PropertyService` (GAP-037) and `effective_from/to` were dropped — a `RatePlan` is a date-less regime bucket whose `RatePeriod` rows are the only date authority (GAP-110).)*
 
 ### RateCard
 The operator's editable unit within a season — what they think of as "the summer week price". Attaches min/max nights and discount rules. Original `VillaSeasonRate` (the "card-level" parts). Changeover is property-level, not card-level (GAP-007).

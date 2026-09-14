@@ -28,7 +28,6 @@ import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import {
   useChangeOverRules,
   useDeleteRatePlan,
-  useDuplicateRatePlan,
   usePropertyCapacity,
   usePropertyDiscounts,
   usePropertyExtras,
@@ -93,13 +92,11 @@ export function RateWorkbenchPage() {
 
   // Rate-plan (season) lifecycle, ported from the retired Pricing tab. Create
   // is offered from the always-rendered header (and the zero-config empty
-  // state) so a plan-less property is bootstrappable; edit/duplicate/delete act
+  // state) so a plan-less property is bootstrappable; edit/delete act
   // on the currently-selected matrix season via its actions menu.
   const deleteSeasonMutation = useDeleteRatePlan(property.id);
-  const duplicateSeasonMutation = useDuplicateRatePlan(property.id);
   const [addSeasonOpen, setAddSeasonOpen] = useState(false);
   const [editingSeason, setEditingSeason] = useState<RatePlan | null>(null);
-  const [duplicatingSeason, setDuplicatingSeason] = useState<RatePlan | null>(null);
   const [deletingSeason, setDeletingSeason] = useState<RatePlan | null>(null);
   // Carry-forward (GAP-069): open state for the projected-year promotion dialog.
   const [carryForwardOpen, setCarryForwardOpen] = useState(false);
@@ -113,17 +110,6 @@ export function RateWorkbenchPage() {
       setDeletingSeason(null);
     } catch {
       toast.error(t("pricing.seasons.toasts.delete_failed"));
-    }
-  };
-
-  const handleDuplicateSeason = async () => {
-    if (!duplicatingSeason) return;
-    try {
-      await duplicateSeasonMutation.mutateAsync({ ratePlanId: duplicatingSeason.id });
-      toast.success(t("pricing.seasons.toasts.duplicated"));
-      setDuplicatingSeason(null);
-    } catch {
-      toast.error(t("pricing.seasons.toasts.duplicate_failed"));
     }
   };
 
@@ -153,8 +139,8 @@ export function RateWorkbenchPage() {
     discounts.isLoading ||
     changeover.isLoading ||
     // Only the FIRST fan-out load blanks the page. Once any season detail has
-    // resolved, a still-loading member (e.g. the plan just created/duplicated
-    // in-page, which grows the fan-out) must not collapse the whole workbench
+    // resolved, a still-loading member (e.g. the plan just created in-page,
+    // which grows the fan-out) must not collapse the whole workbench
     // to a skeleton — the existing seasons stay rendered while it loads.
     (fanOut.isLoading && fanOut.details.length === 0);
 
@@ -300,9 +286,11 @@ export function RateWorkbenchPage() {
       windowTo: to,
       // The top rate-plan picker scopes the whole view: the rates lane (and the
       // derived coverage lane below) reflect only the selected plan. For the
-      // common single-plan villa this is the one plan, unchanged; for a
-      // multi-currency property it keeps each currency's periods in their own
-      // coherent view rather than stacking mixed currencies in one lane.
+      // common single-plan villa this is the one plan, unchanged; with several
+      // plans (GAP-110: one ACTIVE plan per currency × basis, so even a
+      // single-currency property can have a gross and a net plan) it keeps
+      // each regime's periods in their own coherent view rather than stacking
+      // mixed currencies or bases in one lane.
       ratePlanDetails: activeSeasonDetail ? [activeSeasonDetail] : [],
       coveragePlanId: activeMatrixRatePlanId,
       services: serviceList,
@@ -506,11 +494,28 @@ export function RateWorkbenchPage() {
       />
     ) : null;
 
-  // The rate-plan (currency) picker sits at the very top because it scopes the
-  // whole view — timeline periods, coverage, and the matrix all follow it.
-  // Rendered only when several plans exist (one per currency; most villas have
-  // exactly one, so no picker). The ··· menu edits/duplicates/deletes the
-  // selected plan; writer-only. Suppressed entirely when neither is applicable.
+  // The rate-plan picker sits at the very top because it scopes the whole
+  // view — timeline periods, coverage, and the matrix all follow it. Rendered
+  // only when several plans exist (GAP-110: one ACTIVE plan per currency ×
+  // basis, so a two-plan property may be single-currency; most villas have
+  // exactly one plan, so no picker). The ··· menu edits/deletes the selected
+  // plan; writer-only. Suppressed entirely when neither is applicable.
+  // A plan is a regime bucket, so it's named by its regime — `EUR · Gross` —
+  // falling back to the plan's own name when either half is unknown. The
+  // list includes retired plans and the unique-active constraint only dedupes
+  // ACTIVE ones, so an inactive plan is marked to keep it apart from its
+  // active successor in the same regime.
+  const planLabel = (plan: RatePlan) => {
+    const label =
+      plan.currency_code && plan.price_basis
+        ? t("pricing.seasons.plan_label", {
+            currency: plan.currency_code,
+            basis: t(`pricing.seasons.price_basis.${plan.price_basis}`),
+          })
+        : plan.name;
+    return plan.is_active === false ? t("pricing.seasons.plan_label_inactive", { label }) : label;
+  };
+
   const planBar =
     !isLoading && !isError && activeSeasonDetail && (allSeasonDetails.length > 1 || canWrite) ? (
       <div className="flex items-center gap-2">
@@ -528,7 +533,7 @@ export function RateWorkbenchPage() {
             <SelectContent>
               {allSeasonDetails.map((s) => (
                 <SelectItem key={s.id} value={String(s.id)}>
-                  {s.currency_code ? `${s.name} · ${s.currency_code}` : s.name}
+                  {planLabel(s)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -536,9 +541,7 @@ export function RateWorkbenchPage() {
         ) : (
           // Single plan: no picker, so name the plan the ··· menu acts on.
           <span className="text-foreground text-sm font-medium">
-            {activeSeasonDetail.currency_code
-              ? `${activeSeasonDetail.name} · ${activeSeasonDetail.currency_code}`
-              : activeSeasonDetail.name}
+            {planLabel(activeSeasonDetail)}
           </span>
         )}
         {canWrite ? (
@@ -556,9 +559,6 @@ export function RateWorkbenchPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setEditingSeason(activeSeasonDetail)}>
                 {t("pricing.seasons.row.edit")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDuplicatingSeason(activeSeasonDetail)}>
-                {t("pricing.seasons.row.duplicate")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"
@@ -589,6 +589,11 @@ export function RateWorkbenchPage() {
           mode="create"
         />
       ) : null}
+      {/* GAP-110: carry-forward never creates a plan — it appends periods to
+          the anchor plan for the currency and returns it. That is usually the
+          selected plan, but the backend resolves by (property, currency) only,
+          so it can be the other-basis plan in the same currency: follow the
+          response id so the matrix shows where the periods actually landed. */}
       {carryForwardOpen && activeSeasonCurrencyCode ? (
         <CarryForwardDialog
           propertyId={property.id}
@@ -618,17 +623,6 @@ export function RateWorkbenchPage() {
           confirmLabel={t("pricing.seasons.delete_confirm.confirm")}
           destructive
           busy={deleteSeasonMutation.isPending}
-        />
-      ) : null}
-      {duplicatingSeason ? (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setDuplicatingSeason(null)}
-          onConfirm={handleDuplicateSeason}
-          title={t("pricing.seasons.duplicate_confirm.title")}
-          description={t("pricing.seasons.duplicate_confirm.description")}
-          confirmLabel={t("pricing.seasons.duplicate_confirm.confirm")}
-          busy={duplicateSeasonMutation.isPending}
         />
       ) : null}
     </div>

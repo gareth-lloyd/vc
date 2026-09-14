@@ -23,7 +23,7 @@
 > Live rows claim an iso2 before deleted duplicates. `--since` now filters on
 > legacy's real `CreatedAt` / `UpdateAt` / `DeletedAt` columns.
 >
-> **Finance.** `PropertyFinance.legacy_id` (migration `properties/0008`) is
+> **Finance.** `PropertyFinance.legacy_id` (migration `properties/0009`) is
 > stamped by the per-villa pass; the reconcile `loaded_count` scopes to it,
 > so the gap is **1236 = 1089 `VillaId = 0` + 146 on deleted villas + 1 on the
 > blank-name villa**, stable regardless of the GAP-070 fallback count. No
@@ -38,18 +38,53 @@
 > ⚠️ **Product-visible at cutover:** legacy deleted the United Kingdom row,
 > so **GB retires on load** (readable, not offered in pickers), as do IN, NZ
 > and AU; 6 migrated villas sit in retired regions. The 84 ported extras are
-> opt-in and **not quotable from the quote builder until GAP-108** wires
+> opt-in and **not quotable from the quote builder until GAP-111** wires
 > `opt_in_extras`. Run `zoho_backfill --kinds villa` after the load.
 >
-> Spun off: GAP-108 (builder opt-in extras), GAP-109 (`CurrencyLoader`
-> ignores `DeletedAt`), GAP-110 (`loadlegacy --since` raises on tables with
-> no `UpdatedAt`). GAP-103 is unblocked.
+> Spun off: GAP-111 (builder opt-in extras). Folded into the 2026-09-11
+> audit tickets at merge (2026-09-14): `CurrencyLoader` ignoring `DeletedAt`
+> → BUG-028 §3; `loadlegacy --since` raising on tables with no `UpdatedAt`
+> → BUG-029 §2 (`--since` retired). GAP-103 is unblocked.
+>
+> **Merge reconciliation with the 2026-09-11 audit (2026-09-14).** The audit
+> below was written against `main` before this branch merged, so parts of it
+> are superseded by the as-built work above:
+> - §1 extras — answered (ported as opt-in, no date windows); Q-028 item 4
+>   closed accordingly.
+> - §2 geo — counts match the audit (64 / 12 / 42). **User decision
+>   2026-09-14: merge as built** — a deleted legacy country keeps its
+>   `legacy_id` on the ISO row and retires it (GB, IN, NZ, AU), overriding
+>   BUG-030 §7's "attach no `legacy_id` to a live ISO row". The active/retired
+>   parity checks GAP-108 planned are already in `reconcile_legacy`. The
+>   region remap (25→61, 27→60, BUG-030 §8) is still open and lands on top.
+> - §3 finance — the audit's 1235 counts every `PropertyFinance` row; the
+>   branch stamps `legacy_id` and scopes the check to it, so the pinned gap
+>   is 1236 (the villa-463 fallback row carries no `legacy_id`). GAP-108's
+>   §3 item is done by this ticket.
+>
+> **2026-09-11 audit update (see BUG-028/029/030, GAP-108/109, Q-028).**
+> - **§1 extras** — still open; restated as Q-028 item 4 so it rides the next
+>   Nick call. The `OldId_ExtraRate` disagreement stands.
+> - **§2 geo** — the 71/57 numbers do not match the 24-Apr dump: `VillaRegion`
+>   has **64** rows, **12** with `DeletedAt`, **10** live under deleted
+>   countries, 42 clean; `VillaCountry` 23 rows, 17 deleted, 10 of those still
+>   `IsActive=1`. Recount before pinning the invariant. Two refinements land
+>   with BUG-030: a deleted legacy country must not attach its `legacy_id` to
+>   a live ISO seed row (today 6→GB, 10→NZ, 11→IN do, so regions 42/44/45/46
+>   resolve onto live countries), and the six live villas under deleted
+>   regions with live twins are **remapped** (25→61, 27→60; user decision
+>   2026-09-11), not left in an inactive region. The invariant "zero active
+>   Region/Country whose legacy twin is deleted" is added by GAP-108.
+> - **§3 finance** — explained and pinned by GAP-108: the gap is **1235** =
+>   one owner-contact fallback row (villa 463); fallback rows carry no marker,
+>   so the constant is pinned with its derivation. Closed here.
 
 - **Severity:** 🟠 Gap (cutover fidelity). Backend `data_migration/` only.
 - **Source:** 2026-09-10 sweep of `todo/` for loader follow-ups. Pulls together
   three items that each said "needs its own ticket" and never got one:
   - SPEC-001's "Cutover parity gap" bullet
-    (`spec-001-rateplan-date-authority-regime-bucket.md:212–217`).
+    (`done/spec-001-rateplan-date-authority-regime-bucket.md:235–241` — SPEC-001
+    closed 2026-09-14 with GAP-110; the bullet still reads the same).
   - GAP-102's geo-loader note (`done/gap-102-…md:122–127`).
   - GAP-073 live dry-run follow-up #2 (`done/gap-073-…md:22–23`).
 - **Files touched (best-guess):**

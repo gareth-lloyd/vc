@@ -8,7 +8,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("pricing", "0007_extra_idempotency_key_and_more"),
+        ("pricing", "0012_rateplan_drop_envelope"),
     ]
 
     operations = [

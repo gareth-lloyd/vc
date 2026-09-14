@@ -25,14 +25,13 @@ def _run(ctx: SeedContext) -> int:
     # Longer live window on dense runs so SENT quotation cells stay visible
     # across the demo calendar; the legacy 7 days otherwise.
     expires_at = timezone.now() + timedelta(days=30 if ctx.knobs.dense_calendar else 7)
-    # Keep stays inside the seeded rate-coverage window. The `properties` stage
-    # seeds RatePeriods out to `today + (spread + 60)` (or the factory default
-    # `today + 400`); an unbounded `i * 21` stride marches years past that and
-    # trips NoRateAvailable, which aborts the whole stage. Wrap the forward
-    # offset within the covered window, leaving a 13-day tail for the longest
-    # conforming stay (min-nights + up-to-6-day changeover alignment).
-    spread = ctx.knobs.booking_date_spread_days
-    coverage_days = spread + 60 if spread > 30 else 400
+    # Keep stays inside the seeded rate-coverage window (`ctx.rate_window`, the
+    # span the `properties` stage seeds periods across — GAP-110); an unbounded
+    # `i * 21` stride marches years past its end and trips NoRateAvailable,
+    # which aborts the whole stage. Wrap the forward offset within the covered
+    # window, leaving a 13-day tail for the longest conforming stay (min-nights
+    # + up-to-6-day changeover alignment).
+    coverage_days = (ctx.rate_window[1] - ctx.today).days
     span = max(1, coverage_days - 30 - 13)
     made = 0
     for i in range(target):

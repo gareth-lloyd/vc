@@ -572,8 +572,6 @@ describe("toLanes", () => {
         detail({
           id: 5,
           name: "Summer",
-          effective_from: "2026-05-01",
-          effective_to: "2026-09-30",
           periods: [
             {
               id: 50,
@@ -597,18 +595,20 @@ describe("toLanes", () => {
       "discounts",
       "changeover",
     ]);
+    // GAP-110: a plan carries no effective window of its own, so gaps run to
+    // the edges of the visible year, not to a plan envelope.
     const coverage = lane(lanes, "coverage");
     expect(coverage.planName).toBe("Summer");
     expect(coverage.bands).toHaveLength(2);
     expect(coverage.bands[0]).toMatchObject({
-      dateFrom: "2026-05-01",
+      dateFrom: "2026-01-01",
       dateTo: "2026-05-31",
       sourceId: 5,
       meta: { isGap: true, planName: "Summer" },
     });
     expect(coverage.bands[1]).toMatchObject({
       dateFrom: "2026-09-01",
-      dateTo: "2026-09-30",
+      dateTo: "2026-12-31",
     });
   });
 
@@ -620,14 +620,12 @@ describe("toLanes", () => {
         detail({
           id: 5,
           name: "Summer",
-          effective_from: "2026-06-01",
-          effective_to: "2026-08-31",
           periods: [
             {
               id: 50,
               plan: 5,
-              date_from: "2026-06-01",
-              date_to: "2026-08-31",
+              date_from: "2026-01-01",
+              date_to: "2026-12-31",
               coverage_gaps: [],
               bands: [{ id: 1, period: 50, nightly: "650" }],
             },
@@ -646,23 +644,33 @@ describe("toLanes", () => {
     );
   });
 
-  it("omits the coverage lane when the plan's effective range misses the window", () => {
-    // An empty lane would falsely read "no gaps" for a year the plan never
-    // prices — the lane only appears when the plan touches the window.
+  it("keeps the coverage lane for a selected plan that prices nothing in the window", () => {
+    // GAP-110: a plan is a date-less regime bucket, so there is no envelope to
+    // gate the lane on. A plan with no periods this year is a whole-year gap —
+    // exactly the feedback that invites adding periods (or carrying forward).
     const lanes = toLanes({
       ...base(),
       coveragePlanId: 5,
       ratePlanDetails: [
         detail({
           id: 5,
-          name: "Summer 2025",
-          effective_from: "2025-06-01",
-          effective_to: "2025-08-31",
-          periods: [],
+          name: "EUR gross",
+          periods: [
+            {
+              id: 50,
+              plan: 5,
+              date_from: "2025-06-01",
+              date_to: "2025-08-31",
+              coverage_gaps: [],
+              bands: [],
+            },
+          ],
         }),
       ],
     });
-    expect(lanes.some((l) => l.key === "coverage")).toBe(false);
+    const coverage = lane(lanes, "coverage");
+    expect(coverage.bands).toHaveLength(1);
+    expect(coverage.bands[0]).toMatchObject({ dateFrom: "2026-01-01", dateTo: "2026-12-31" });
   });
 
   it("leaves all-POA rate periods untiered (fall back to lane tone)", () => {

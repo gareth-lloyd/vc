@@ -76,19 +76,13 @@ def _changeover_day_plan(ctx: SeedContext) -> list[str]:
 
 def _run(ctx: SeedContext) -> int:
     spread = ctx.knobs.booking_date_spread_days
-    plan_kwargs: dict[str, Any] = {}
-    period_kwargs: dict[str, Any] = {}
+    # GAP-110: plans carry no dates — the priced window is the periods', and
+    # `ctx.rate_window` is its single owner (the booking stages stay inside it).
+    window = ctx.rate_window
+    period_kwargs: dict[str, Any] = {"date_from": window[0], "date_to": window[1]}
     discount_kwargs: dict[str, Any] = {}
     if spread > 30:
         buffer = timedelta(days=spread + 60)
-        plan_kwargs = {
-            "effective_from": ctx.today - buffer,
-            "effective_to": ctx.today + buffer,
-        }
-        period_kwargs = {
-            "date_from": ctx.today - buffer,
-            "date_to": ctx.today + buffer,
-        }
         discount_kwargs = {
             "valid_from": ctx.today - buffer,
             "valid_to": ctx.today + buffer,
@@ -174,9 +168,7 @@ def _run(ctx: SeedContext) -> int:
         )
         plan = cast(
             RatePlan,
-            RatePlanFactory(
-                property=prop, currency=currency, prices_by_occupancy=by_occupancy, **plan_kwargs
-            ),
+            RatePlanFactory(property=prop, currency=currency, prices_by_occupancy=by_occupancy),
         )
         seed_included_services(prop, i)
         if ctx.knobs.realistic_pricing:
@@ -194,6 +186,7 @@ def _run(ctx: SeedContext) -> int:
             build_seasonal_periods(
                 plan,
                 draw_base_nightly(ctx.rng, currency.code),
+                window=window,
                 min_nights=min_nights,
                 brackets=brackets,
                 wide_spread=ctx.rng.random() < 0.08,
@@ -201,21 +194,18 @@ def _run(ctx: SeedContext) -> int:
             assign_commission(ctx.rng, prop)
             if ctx.rng.random() < ctx.knobs.pct_second_currency and len(currency_pool) > 1:
                 # Legacy: ~13% of villas price in 2+ currencies (by design —
-                # the quote builder handles a mixed-currency list). Dated one
-                # day earlier than the primary plan so `pick_preferred_plan`
-                # (most recent effective_from wins) keeps currency-less
+                # the quote builder handles a mixed-currency list). Created
+                # *after* the primary plan so `pick_preferred_plan` (settings
+                # currency, else lowest plan pk — GAP-110) keeps currency-less
                 # quotes — and therefore the booking stages — on the primary.
                 alt = currency_pool[(i + 1) % len(currency_pool)]
                 alt_plan = RatePlanFactory(
-                    property=prop,
-                    currency=alt,
-                    effective_from=plan.effective_from - timedelta(days=1),
-                    effective_to=plan.effective_to,
-                    prices_by_occupancy=by_occupancy,
+                    property=prop, currency=alt, prices_by_occupancy=by_occupancy
                 )
                 build_seasonal_periods(
                     alt_plan,
                     draw_base_nightly(ctx.rng, alt.code),
+                    window=window,
                     min_nights=min_nights,
                     brackets=brackets,
                 )

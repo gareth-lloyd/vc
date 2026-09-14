@@ -35,8 +35,10 @@ class _FakeCursor:
 
     A scalar response is read via `fetchone()[0]` (COUNT queries); a list
     response is read via `fetchall()` (the continuity `SELECT Id ...` query),
-    yielded as one-tuples. Keying by query rather than by position means adding
-    or reordering a check can't silently feed the wrong number to a query.
+    yielded as one-tuples — or as-is when the scripted items are already
+    tuples (multi-column rows, e.g. the night-parity `(VillaId, From, To)`
+    query). Keying by query rather than by position means adding or
+    reordering a check can't silently feed the wrong number to a query.
     """
 
     def __init__(self, responses: dict[str, object]) -> None:
@@ -58,9 +60,9 @@ class _FakeCursor:
     def fetchone(self) -> tuple[object]:
         return (self._last,)
 
-    def fetchall(self) -> list[tuple[object]]:
+    def fetchall(self) -> list[tuple[object, ...]]:
         assert isinstance(self._last, list), "fetchall() called on a scalar response"
-        return [(v,) for v in self._last]
+        return [v if isinstance(v, tuple) else (v,) for v in self._last]
 
 
 def _patch(
@@ -68,6 +70,11 @@ def _patch(
     checks: list[_Check],
     responses: dict[str, object],
 ) -> None:
+    # The night-parity section runs unconditionally; tests that don't script
+    # it see an empty legacy side (no villas → no mismatches).
+    responses = {**responses}
+    responses.setdefault(reconcile_legacy.NIGHT_PARITY_QUERY, [])
+
     @contextmanager
     def _fake_cursor() -> Iterator[_FakeCursor]:
         yield _FakeCursor(responses)
@@ -365,6 +372,128 @@ def test_geo_parity_checks_split_active_from_retired(monkeypatch: pytest.MonkeyP
     )
     output = _run()
     assert "BLOCKER" not in output
+
+
+@pytest.mark.django_db
+def test_rate_plan_check_counts_regime_plans_against_villas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GAP-110: a plan is one (villa, currency) regime, so the legacy side is
+    distinct priced villas and the loaded side is `villa:`-keyed plans only —
+    a staff-created plan or a stale season-keyed one must not move it."""
+    from datetime import date
+
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+    from pricing.factories import RatePeriodFactory, RatePlanFactory
+    from properties.factories import PropertyFactory
+
+    villa_900 = PropertyFactory(legacy_id="900")
+    eur = RatePlanFactory(property=villa_900, legacy_id="villa:900:EUR")
+    gbp = RatePlanFactory(property=villa_900, legacy_id="villa:900:GBP")
+    RatePeriodFactory(
+        plan=eur, date_from=date(2025, 6, 1), date_to=date(2025, 6, 30), legacy_id="a"
+    )
+    RatePeriodFactory(
+        plan=gbp, date_from=date(2025, 6, 1), date_to=date(2025, 6, 30), legacy_id="b"
+    )
+    RatePeriodFactory(
+        plan=RatePlanFactory(legacy_id="villa:901:EUR"),
+        date_from=date(2025, 6, 1),
+        date_to=date(2025, 6, 30),
+        legacy_id="c",
+    )
+    RatePlanFactory(legacy_id="villa:902:EUR")  # minted, but no period ever landed
+    RatePeriodFactory(
+        plan=RatePlanFactory(legacy_id="123"),  # pre-regroup key — not a regime plan
+        date_from=date(2025, 6, 1),
+        date_to=date(2025, 6, 30),
+        legacy_id="d",
+    )
+    RatePeriodFactory(plan=RatePlanFactory())  # staff-created plan + UI period
+
+    check = next(c for c in _CHECKS if c.label.startswith("RatePlan (villas"))
+    assert "COUNT(DISTINCT s.VillaId)" in check.legacy_query
+    assert check.loaded_count is not None
+    assert check.loaded_count(check.model) == 2  # villas 900 (two currencies) + 901
+    assert check.expected_gap == 0
+
+
+@pytest.mark.django_db
+def test_night_parity_check_counts_villas_with_a_coverage_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GAP-110 U0b: per villa, the set of nights legacy priced (union of its
+    live priced rate rows, ToDate inclusive) must equal the nights its loaded
+    legacy periods cover — the regroup must not lose or invent priced nights.
+    The section lists every mismatched villa with both night counts and
+    returns one blocker per villa, so a dump residue can be itemised."""
+    from datetime import date
+
+    from pricing.factories import RatePeriodFactory, RatePlanFactory
+    from pricing.models.rate import RatePeriod
+    from properties.factories import PropertyFactory
+
+    ok_villa = PropertyFactory(legacy_id="900")
+    bad_villa = PropertyFactory(legacy_id="901")
+    ok_plan = RatePlanFactory(property=ok_villa, legacy_id="villa:900:EUR")
+    bad_plan = RatePlanFactory(property=bad_villa, legacy_id="villa:901:EUR")
+    # Villa 900: two contiguous legacy rows, loaded as two trimmed periods —
+    # identical night set.
+    RatePeriodFactory(
+        plan=ok_plan,
+        date_from=date(2025, 6, 1),
+        date_to=date(2025, 6, 7),
+        legacy_id="villa:900:EUR:p0",
+    )
+    RatePeriodFactory(
+        plan=ok_plan,
+        date_from=date(2025, 6, 8),
+        date_to=date(2025, 6, 15),
+        legacy_id="villa:900:EUR:p1",
+    )
+    # Villa 901: legacy priced June, loaded only the first week.
+    RatePeriodFactory(
+        plan=bad_plan,
+        date_from=date(2025, 6, 1),
+        date_to=date(2025, 6, 7),
+        legacy_id="villa:901:EUR:p0",
+    )
+    # A UI-created period never counts (legacy_id NULL).
+    RatePeriodFactory(plan=bad_plan, date_from=date(2025, 6, 8), date_to=date(2025, 6, 30))
+    assert RatePeriod.objects.filter(legacy_id__isnull=True).count() == 1
+
+    legacy_rows = [
+        (900, date(2025, 6, 1), date(2025, 6, 8)),
+        (900, date(2025, 6, 8), date(2025, 6, 15)),
+        (901, date(2025, 6, 1), date(2025, 6, 30)),
+    ]
+    assert reconcile_legacy.night_parity_mismatches(legacy_rows) == [("901", 30, 7)]
+
+    _patch(monkeypatch, [], responses={reconcile_legacy.NIGHT_PARITY_QUERY: legacy_rows})
+    with pytest.raises(CommandError, match="villa 901 legacy 30 nights, loaded 7"):
+        _run()
+
+
+def test_night_parity_compares_coalesced_spans_not_individual_nights() -> None:
+    """Touching and overlapping legacy spans fuse; a sentinel far-future row
+    must not expand to a date per night."""
+    from datetime import date
+
+    spans = [
+        (date(2025, 6, 8), date(2025, 6, 15)),
+        (date(2025, 6, 1), date(2025, 6, 7)),
+        (date(2025, 6, 10), date(2099, 12, 31)),
+    ]
+    assert reconcile_legacy._coalesce(spans) == [(date(2025, 6, 1), date(2099, 12, 31))]
+
+
+@pytest.mark.django_db
+def test_night_parity_section_is_ok_when_nothing_mismatches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch(monkeypatch, [], responses={})
+    output = _run()
+    assert "RatePeriod night parity" in output and "BLOCKER" not in output
 
 
 @pytest.mark.django_db

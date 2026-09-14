@@ -20,6 +20,13 @@
     "back_to_dashboard": "Back to dashboard",
     "reload": "Reload"
   },
+  "unsaved": {
+    "badge": "Unsaved changes",
+    "title": "Discard unsaved changes?",
+    "description": "You have unsaved changes. Leave without saving and they will be lost.",
+    "discard": "Discard changes",
+    "stay": "Stay"
+  },
   "errors": {
     "generic": "Something went wrong",
     "field_required": "Required",

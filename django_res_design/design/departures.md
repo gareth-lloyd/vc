@@ -65,7 +65,7 @@ Disposition column legend:
 
 | Legacy | New | Disposition | Rationale |
 |---|---|---|---|
-| `VillaSeason` | `pricing.RatePlan` | Replaced | Plan as the grouping container (name, notes, inclusion, currency, envelope dates) |
+| `VillaSeason` | `pricing.RatePlan` | Replaced | Plan as the grouping container (name, notes, inclusion, currency, envelope dates). **GAP-110 (2026-09-14):** not 1:1 any more — the loader merges a villa's live priced seasons into **one plan per (villa, resolved currency)**, `legacy_id="villa:<VillaId>:<CODE>"`; season names → `notes`, dates live only on the `RatePeriod` rows (the plan has no envelope; `VillaSeasonDates` feeds `PropertyService` bands only), `inclusion` went to `PropertyService` (GAP-037) |
 | — (legacy had no equivalent) | `pricing.RateCard` | Added | Operator-mental-unit: name, min/max nights, discount profile. Sits between Plan and Rule. (Changeover is property-level, not card-level — GAP-007.) |
 | `VillaSeasonRate` | `pricing.RateRule` | Replaced | Price row with date range + party range; one card has many rules (one per band / disjoint sub-range). Legacy overlaps are resolved at load time (`data_migration/CUTOVER.md`); precedence between cards is `RateCard.sort_order` |
 | `VillaSeasonDate` | Folded into `RateRule.date_from/date_to` | Merged | Production data showed ~1.0 ranges per season; separate table was vestigial |

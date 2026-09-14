@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from core.exceptions import NoRateAvailable
+from core.exceptions import NoRateAvailable, RegimeConflict
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.services.carryover import RateCarryoverService
 from pricing.services.period_names import derive_period_name
@@ -27,8 +27,6 @@ def anchor_rule(property_: Property, gbp: Currency) -> RateBand:
         property=property_,
         name="Summer 2026",
         currency=gbp,
-        effective_from=date(2026, 1, 1),
-        effective_to=date(2026, 12, 31),
         fallback_nightly=Decimal("120.00"),
     )
     # min-nights lives on the period now (GAP-056); "Peak" is the period label.
@@ -58,12 +56,12 @@ def test_materialise_writes_real_rows_for_target_year(
         date_map=keep_calendar_date,
     )
 
-    assert new_plan.pk != anchor_rule.period.plan.pk
-    assert new_plan.effective_from == date(2028, 1, 1)
-    assert new_plan.effective_to == date(2028, 12, 31)
-    assert new_plan.fallback_nightly == Decimal("120.00")
+    # GAP-110: the regime plan is the date-less bucket — carried periods land
+    # on it; no new plan is minted.
+    assert new_plan.pk == anchor_rule.period.plan.pk
+    assert RatePlan.objects.filter(property=property_, currency=gbp).count() == 1
 
-    period = new_plan.periods.get()
+    period = new_plan.periods.get(date_from__year=2028)
     # The period carries the anchor period's dates (mapped) + min-nights.
     assert period.min_nights == 7
     assert period.date_from == date(2028, 6, 1)
@@ -83,18 +81,157 @@ def test_materialise_is_idempotent(
     second = RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
 
     assert first.pk == second.pk
-    # Anchor (2026) + one materialised (2028) — never duplicated.
-    assert RatePlan.objects.filter(property=property_, currency=gbp).count() == 2
-    assert RateBand.objects.filter(period__plan=first).count() == 1
+    # One 2028 period — a re-run never duplicates (the anchor's own 2026
+    # period is the only other row).
+    assert RatePeriod.objects.filter(plan=first, date_from__year=2028).count() == 1
+    assert RateBand.objects.filter(period__plan=first).count() == 2
 
 
 @pytest.mark.django_db
-def test_materialise_records_provenance(
+def test_materialise_is_idempotent_across_active_plans_in_the_regime(
     property_: Property, gbp: Currency, anchor_rule: RateBand
 ) -> None:
-    new_plan = RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
-    assert f"plan #{anchor_rule.period.plan.pk}" in new_plan.notes
-    assert "2026" in new_plan.notes
+    """A target-year period on *any* active plan of the (property, currency)
+    regime — a NET plan alongside the GROSS anchor — already prices that
+    year, so the carry is a no-op returning that plan."""
+    net_plan = RatePlan.objects.create(
+        property=property_,
+        name="Net rates",
+        currency=gbp,
+        price_basis="net",
+    )
+    RatePeriod.objects.create(
+        plan=net_plan, name="Spring 2028", date_from=date(2028, 3, 1), date_to=date(2028, 3, 31)
+    )
+    returned = RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
+    assert returned == net_plan
+    assert not RatePeriod.objects.filter(plan=anchor_rule.period.plan, date_from__year=2028)
+
+
+@pytest.mark.django_db
+def test_materialise_refuses_a_target_year_owned_by_withdrawn_rows(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    """A retired sibling plan's period (or a withdrawn period on the anchor
+    plan itself) still owns its dates in the regime-wide EXCLUDE; carrying
+    into that year would land nothing on those dates, so it is refused with
+    guidance rather than reported as a success."""
+    retired = RatePlan.objects.create(
+        property=property_,
+        name="Retired",
+        currency=gbp,
+        is_active=False,
+    )
+    RatePeriod.objects.create(
+        plan=retired, name="Owned", date_from=date(2028, 6, 15), date_to=date(2028, 7, 15)
+    )
+    with pytest.raises(RegimeConflict, match='"Owned" on plan "Retired"'):
+        RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
+    assert not anchor_rule.period.plan.periods.filter(date_from__year=2028).exists()
+
+    RatePeriod.objects.filter(plan=retired).delete()
+    RatePeriod.objects.create(
+        plan=anchor_rule.period.plan,
+        name="Withdrawn",
+        date_from=date(2028, 3, 1),
+        date_to=date(2028, 3, 31),
+        is_active=False,
+    )
+    with pytest.raises(RegimeConflict, match='"Withdrawn"'):
+        RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
+
+
+@pytest.mark.django_db
+def test_materialise_clips_around_the_next_years_rows(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    """A December tail mapped into a year whose successor is already carried
+    is clipped where the successor's January period starts."""
+    plan = anchor_rule.period.plan
+    tail = RatePeriod.objects.create(
+        plan=plan, name="Festive", date_from=date(2027, 12, 27), date_to=date(2028, 1, 3)
+    )
+    RateBand.objects.create(period=tail, min_party=1, max_party=8, nightly=Decimal("400.00"))
+    RatePeriod.objects.create(
+        plan=plan, name="New Year 2029", date_from=date(2029, 1, 1), date_to=date(2029, 1, 7)
+    )
+
+    RateCarryoverService.materialise(
+        property_, target_year=2028, currency=gbp, date_map=keep_calendar_date
+    )
+    carried = plan.periods.filter(date_from__year=2028).order_by("date_from")
+    assert [(p.date_from, p.date_to, p.name) for p in carried] == [
+        (date(2028, 12, 27), date(2028, 12, 31), "Festive"),
+    ]
+    assert carried.get().bands.get().nightly == Decimal("400.00")
+
+
+@pytest.mark.django_db
+def test_materialise_keeps_a_new_year_period_in_its_year_under_the_weekday_map(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    """A period belongs to the year its `date_from` falls in, so the default
+    weekday map must not nudge 1 Jan back into December — the row would then
+    be invisible to the next carry's anchor set and to the idempotency check."""
+    plan = anchor_rule.period.plan
+    new_year = RatePeriod.objects.create(
+        plan=plan, name="New Year", date_from=date(2027, 1, 1), date_to=date(2027, 1, 7)
+    )
+    RateBand.objects.create(period=new_year, min_party=1, max_party=8, nightly=Decimal("350.00"))
+
+    # 1 Jan 2027 is a Friday; the naive 1 Jan 2028 is a Saturday, so the
+    # weekday map alone would land on 31 Dec 2027.
+    RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
+    carried = plan.periods.filter(date_from__year=2028).order_by("date_from")
+    assert [(p.date_from, p.date_to) for p in carried] == [(date(2028, 1, 1), date(2028, 1, 7))]
+    # ...and the next carry sees it as 2028's New Year.
+    RateCarryoverService.materialise(property_, target_year=2029, currency=gbp)
+    assert plan.periods.filter(date_from__year=2029, name="New Year").exists()
+
+
+@pytest.mark.django_db
+def test_next_target_year_follows_the_latest_live_period(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    plan = anchor_rule.period.plan
+    assert RateCarryoverService.next_target_year(property_, gbp) == 2027
+    RatePeriod.objects.create(
+        plan=plan,
+        name="Withdrawn 2029",
+        date_from=date(2029, 6, 1),
+        date_to=date(2029, 8, 31),
+        is_active=False,
+    )
+    assert RateCarryoverService.next_target_year(property_, gbp) == 2027
+    plan.is_active = False
+    plan.save(update_fields=["is_active"])
+    assert RateCarryoverService.next_target_year(property_, gbp) is None
+
+
+@pytest.mark.django_db
+def test_materialise_clips_a_straddling_new_year_tail(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    """A 2027 New-Year period mapped into 2028 collides with the 2027 tail that
+    crosses into January 2028; the overlap is clipped, not refused."""
+    plan = anchor_rule.period.plan
+    tail = RatePeriod.objects.create(
+        plan=plan, name="Festive", date_from=date(2027, 12, 27), date_to=date(2028, 1, 3)
+    )
+    RateBand.objects.create(period=tail, min_party=1, max_party=8, nightly=Decimal("400.00"))
+    new_year = RatePeriod.objects.create(
+        plan=plan, name="New Year", date_from=date(2027, 1, 1), date_to=date(2027, 1, 7)
+    )
+    RateBand.objects.create(period=new_year, min_party=1, max_party=8, nightly=Decimal("350.00"))
+
+    RateCarryoverService.materialise(
+        property_, target_year=2028, currency=gbp, date_map=keep_calendar_date
+    )
+    carried = plan.periods.filter(date_from__year=2028).order_by("date_from")
+    assert [(p.date_from, p.date_to, p.name) for p in carried] == [
+        (date(2028, 1, 4), date(2028, 1, 7), "New Year"),
+        (date(2028, 12, 27), date(2029, 1, 3), "Festive"),
+    ]
 
 
 @pytest.mark.django_db
@@ -107,7 +244,7 @@ def test_materialise_applies_uplift(
         currency=gbp,
         uplift=Decimal("0.10"),
     )
-    rule = RateBand.objects.get(period__plan=new_plan)
+    rule = RateBand.objects.get(period__plan=new_plan, period__date_from__year=2028)
     assert rule.nightly == Decimal("220.00")
 
 
@@ -149,9 +286,9 @@ def test_materialise_skips_inactive_periods_and_unapproved_rules(
     )
 
     # Only the active period's approved rule is carried forward.
-    assert new_plan.periods.count() == 1
-    assert new_plan.periods.get().min_nights == 7  # the carried anchor period
-    assert RateBand.objects.filter(period__plan=new_plan).count() == 1
+    assert new_plan.periods.filter(date_from__year=2028).count() == 1
+    assert new_plan.periods.get(date_from__year=2028).min_nights == 7  # the carried anchor period
+    assert RateBand.objects.filter(period__plan=new_plan, period__date_from__year=2028).count() == 1
 
 
 @pytest.mark.django_db
@@ -170,8 +307,6 @@ def test_materialise_clips_date_map_collisions(property_: Property, gbp: Currenc
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     RateBand.objects.create(
         period=RatePeriod.objects.create(
@@ -198,7 +333,9 @@ def test_materialise_clips_date_map_collisions(property_: Property, gbp: Currenc
     )
 
     new_rules = list(
-        RateBand.objects.filter(period__plan=new_plan).order_by("period__date_from"),
+        RateBand.objects.filter(period__plan=new_plan, period__date_from__year=2025).order_by(
+            "period__date_from"
+        ),
     )
     assert [(r.period.date_from, r.period.date_to) for r in new_rules] == [
         (date(2025, 2, 25), date(2025, 3, 1)),  # span preserved across the lost Feb 29
@@ -217,8 +354,6 @@ def test_materialise_splits_around_earlier_rule(property_: Property, gbp: Curren
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     RateBand.objects.create(
         period=RatePeriod.objects.create(
@@ -247,7 +382,11 @@ def test_materialise_splits_around_earlier_rule(property_: Property, gbp: Curren
         property_, target_year=2027, currency=gbp, date_map=shift_to_changeover_weekday
     )
 
-    new_rules = list(RateBand.objects.filter(period__plan=new_plan).order_by("period__date_from"))
+    new_rules = list(
+        RateBand.objects.filter(period__plan=new_plan, period__date_from__year=2027).order_by(
+            "period__date_from"
+        )
+    )
     # Rule A claims [1 Mar - 4 Mar]; rule B ([26 Feb - 7 Mar] mapped) keeps
     # both remainders around it.
     assert [(r.period.date_from, r.period.date_to, r.nightly) for r in new_rules] == [
@@ -267,8 +406,6 @@ def test_materialise_persists_single_day_sliver(property_: Property, gbp: Curren
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     # Lower pk, spans Feb 29: maps (keep_calendar, +1yr) to [27 Feb - 1 Mar] 2025
     # (span preserved across the lost leap day), claiming 1 Mar first.
@@ -295,7 +432,11 @@ def test_materialise_persists_single_day_sliver(property_: Property, gbp: Curren
         property_, target_year=2025, currency=gbp, date_map=keep_calendar_date
     )
 
-    new_rules = list(RateBand.objects.filter(period__plan=new_plan).order_by("period__date_from"))
+    new_rules = list(
+        RateBand.objects.filter(period__plan=new_plan, period__date_from__year=2025).order_by(
+            "period__date_from"
+        )
+    )
     assert [(r.period.date_from, r.period.date_to, r.nightly) for r in new_rules] == [
         (date(2025, 2, 27), date(2025, 3, 1), Decimal("100.00")),
         (date(2025, 3, 2), date(2025, 3, 2), Decimal("150.00")),  # single-day sliver survives
@@ -321,8 +462,6 @@ def test_materialise_keeps_wider_party_remainder_on_collision(
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     # Lower pk, party 1-4, spans Feb 29: maps to [25 Feb - 1 Mar] 2025.
     RateBand.objects.create(
@@ -359,7 +498,9 @@ def test_materialise_keeps_wider_party_remainder_on_collision(
     ) == [(1, 4, Decimal("100.00")), (5, 8, Decimal("150.00"))]
 
     # And a party-6 guest on that night prices identically in both paths.
-    mat_periods = list(RatePeriod.objects.filter(plan=new_plan, is_active=True))
+    mat_periods = list(
+        RatePeriod.objects.filter(plan=new_plan, is_active=True, date_from__year=2025)
+    )
     mat_rules = {p.pk: list(p.bands.all()) for p in mat_periods}
     projected = pick_band_for_night(ctx.periods, ctx.bands_by_period, date(2025, 3, 1), party=6)
     materialised = pick_band_for_night(mat_periods, mat_rules, date(2025, 3, 1), party=6)
@@ -377,8 +518,6 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     # Lower pk, *later* dates — entered first.
     RateBand.objects.create(
@@ -411,7 +550,9 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
         property_, target_year=2025, currency=gbp, date_map=keep_calendar_date
     )
     mat_periods = list(
-        RatePeriod.objects.filter(plan=new_plan, is_active=True).order_by("date_from", "pk")
+        RatePeriod.objects.filter(plan=new_plan, is_active=True, date_from__year=2025).order_by(
+            "date_from", "pk"
+        )
     )
     mat_rules = {p.pk: list(p.bands.all()) for p in mat_periods}
 
@@ -454,7 +595,7 @@ def test_materialise_copies_source_period_names(
     new_plan = RateCarryoverService.materialise(
         property_, target_year=2028, currency=gbp, date_map=keep_calendar_date
     )
-    carried = RatePeriod.objects.get(plan=new_plan)
+    carried = RatePeriod.objects.get(plan=new_plan, date_from__year=2028)
     assert carried.name == "Peak"  # the anchor fixture's period label
 
 
@@ -474,8 +615,6 @@ def test_materialise_derives_name_when_segment_mixes_source_periods(
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     RateBand.objects.create(
         period=RatePeriod.objects.create(
@@ -502,7 +641,7 @@ def test_materialise_derives_name_when_segment_mixes_source_periods(
     )
 
     names = list(
-        RatePeriod.objects.filter(plan=new_plan)
+        RatePeriod.objects.filter(plan=new_plan, date_from__year=2025)
         .order_by("date_from")
         .values_list("name", flat=True)
     )
@@ -540,7 +679,7 @@ def test_materialise_drops_reductions_and_carries_base(
         date_map=keep_calendar_date,
     )
 
-    band = RateBand.objects.get(period__plan=new_plan)
+    band = RateBand.objects.get(period__plan=new_plan, period__date_from__year=2027)
     assert band.nightly == Decimal("200.00")
     assert band.weekly == Decimal("1300.00")
     assert band.reduction_percent is None
@@ -566,7 +705,7 @@ def test_materialise_uplift_applies_to_base_not_effective(
         uplift=Decimal("0.10"),
     )
 
-    band = RateBand.objects.get(period__plan=new_plan)
+    band = RateBand.objects.get(period__plan=new_plan, period__date_from__year=2027)
     # 10% on the base 200.00 — never on the reduced 100.00.
     assert band.nightly == Decimal("220.00")
     assert band.has_reduction is False

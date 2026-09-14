@@ -54,7 +54,12 @@ def _run(ctx: SeedContext) -> int:
         # from. Seasonal Low/Mid/Peak periods + commission mirror the realistic
         # portfolio plans.
         local_rng = random.Random(0)
-        build_seasonal_periods(plan, draw_base_nightly(local_rng, currency.code), min_nights=1)
+        build_seasonal_periods(
+            plan,
+            draw_base_nightly(local_rng, currency.code),
+            window=ctx.rate_window,
+            min_nights=1,
+        )
         assign_commission(local_rng, prop)
     else:
         # Legacy single 1-30 period, matching the happy portfolio (no commission

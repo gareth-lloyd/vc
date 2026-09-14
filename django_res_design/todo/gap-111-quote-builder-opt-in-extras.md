@@ -1,4 +1,4 @@
-# GAP-108 — Quote builder cannot select opt-in extras (ported legacy extras are unquotable)
+# GAP-111 — Quote builder cannot select opt-in extras (ported legacy extras are unquotable)
 
 - **Severity:** 🟠 Gap (frontend). The catalogue exists; staff cannot use it.
 - **Source:** GAP-107 plan review (2026-09-10). GAP-107 ports the 84 live

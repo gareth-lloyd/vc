@@ -23,6 +23,7 @@ def loaded_property(db: None) -> Property:
         display_name="P",
         slug="p",
         region=region,
+        legacy_id="900",
     )
     PropertyCapacity.objects.create(property=prop, guests=8)
     return prop
@@ -30,22 +31,25 @@ def loaded_property(db: None) -> Property:
 
 @pytest.fixture
 def loaded_plan(loaded_property: Property) -> RatePlan:
-    currency = Currency.objects.create(code="EUR", name="Euro", symbol="€")
+    """The regime plan `RatePlanLoader` mints for villa 900 in EUR (GAP-110)."""
+    currency = Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
     return RatePlan.objects.create(
         property=loaded_property,
-        name="High",
+        name="EUR rates",
         currency=currency,
-        effective_from=date(2025, 1, 1),
-        legacy_id="42",
+        legacy_id="villa:900:EUR",
     )
 
 
 def _row(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
         "ID": 1,
-        "VillaId": None,
+        "VillaId": 900,
         "SeasonId": 42,
-        "CurrencyId": 2,
+        "CurrencyId": 3,
+        # Season-level resolution inputs (same subselects as RatePlanLoader).
+        "SeasonCurrencyId": 3,
+        "VillaCurrencyId": None,
         "FromDate": date(2025, 6, 1),
         "ToDate": date(2025, 6, 14),
         "PartySize": None,
@@ -73,12 +77,90 @@ def test_row_to_band_uses_capacity_when_party_size_missing(loaded_plan: RatePlan
 
 @pytest.mark.django_db
 def test_load_rows_skips_when_plan_missing(loaded_plan: RatePlan) -> None:
-    """A row whose season has no loaded RatePlan is skipped, not loaded."""
+    """A row whose (villa, currency) has no loaded RatePlan is skipped: an
+    unknown villa, or a season resolving to a currency the plan loader never
+    minted a plan for."""
+    Currency.objects.create(code="GBP", name="Pound sterling", symbol="£", legacy_id="1")
     loader = RateBandLoader()
     report = LoadReport(loader="rate_rule")
-    loader._load_rows([_row(SeasonId=999)], report)
+    loader._load_rows(
+        [_row(ID=1, SeasonId=42, VillaId=999), _row(ID=2, SeasonId=43, SeasonCurrencyId=1)],
+        report,
+    )
     assert RateBand.objects.count() == 0
-    assert report.skipped == 1
+    assert report.skipped == 2
+
+
+@pytest.mark.django_db
+def test_load_rows_two_seasons_land_on_one_plan(loaded_plan: RatePlan) -> None:
+    """GAP-110: rows from two seasons of one villa + currency build ONE plan's
+    period axis; the seasons' shared boundary trims like siblings."""
+    loader = RateBandLoader()
+    report = LoadReport(loader="rate_rule")
+    loader._load_rows(
+        [
+            _row(ID=1, SeasonId=42, FromDate=date(2025, 6, 1), ToDate=date(2025, 6, 8)),
+            _row(ID=2, SeasonId=43, FromDate=date(2025, 6, 8), ToDate=date(2025, 6, 15)),
+        ],
+        report,
+    )
+    assert report.skipped == 0
+    periods = list(RatePeriod.objects.order_by("date_from"))
+    assert [p.plan_id for p in periods] == [loaded_plan.pk, loaded_plan.pk]
+    assert [(p.date_from, p.date_to) for p in periods] == [
+        (date(2025, 6, 1), date(2025, 6, 7)),
+        (date(2025, 6, 8), date(2025, 6, 15)),
+    ]
+    assert [p.legacy_id for p in periods] == ["villa:900:EUR:p0", "villa:900:EUR:p1"]
+
+
+@pytest.mark.django_db
+def test_load_rows_cross_season_conflict_resolves_by_precedence(loaded_plan: RatePlan) -> None:
+    """Overlapping rows from different seasons of one regime resolve by the
+    same `(not approved, id, disc)` precedence as siblings: an approved later
+    season beats an unapproved earlier one on the overlap."""
+    loader = RateBandLoader()
+    loader._load_rows(
+        [
+            _row(
+                ID=1,
+                SeasonId=42,
+                IsApprove=False,
+                FromDate=date(2025, 6, 1),
+                ToDate=date(2025, 6, 30),
+                WeeklyPrice=Decimal("1000"),
+            ),
+            _row(
+                ID=2,
+                SeasonId=43,
+                IsApprove=True,
+                FromDate=date(2025, 6, 10),
+                ToDate=date(2025, 6, 20),
+                WeeklyPrice=Decimal("2000"),
+            ),
+        ],
+        LoadReport(loader="rate_rule"),
+    )
+    by_span = {
+        (b.period.date_from, b.period.date_to): (b.legacy_id, b.weekly)
+        for b in RateBand.objects.select_related("period")
+    }
+    assert by_span == {
+        (date(2025, 6, 1), date(2025, 6, 9)): ("1", Decimal("1000")),
+        (date(2025, 6, 10), date(2025, 6, 20)): ("2", Decimal("2000")),
+        (date(2025, 6, 21), date(2025, 6, 30)): ("1#seg1", Decimal("1000")),
+    }
+
+
+@pytest.mark.django_db
+def test_load_rows_null_season_currency_resolves_via_villa(loaded_plan: RatePlan) -> None:
+    """A season whose own rows carry no currency lands on the plan its villa
+    currency resolves to — the same chain `RatePlanLoader` used to mint it."""
+    loader = RateBandLoader()
+    report = LoadReport(loader="rate_rule")
+    loader._load_rows([_row(CurrencyId=None, SeasonCurrencyId=None, VillaCurrencyId=3)], report)
+    assert report.skipped == 0
+    assert RateBand.objects.get().period.plan == loaded_plan
 
 
 @pytest.mark.django_db

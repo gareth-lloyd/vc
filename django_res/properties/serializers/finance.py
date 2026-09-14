@@ -60,7 +60,7 @@ _FINANCE_FIELDS = (
 class PropertyFinanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = PropertyFinance
-        fields = ("property", *_FINANCE_FIELDS, "season", "contact", "parent")
+        fields = ("property", *_FINANCE_FIELDS, "contact", "parent")
         read_only_fields = ["property"]
         # Encrypted bank-secret fields are accepted on write but suppressed on
         # read by `to_representation` below.

@@ -1,5 +1,23 @@
 # GAP-083 — Features tab: flag unsaved changes + block navigation without explicit discard
 
+> **✅ RESOLVED (2026-09-14, local `main` unpushed)** — shipped on `feat/gap-083`
+> in 2 code units + this close-out (20baf9f0 `useUnsavedChangesGuard` hook +
+> data-router test harness, 5a8b7a20 Features tab badge / guard dialog /
+> description-draft hoist). The hook (`frontend/src/lib/useUnsavedChangesGuard.ts`)
+> wraps React Router's `useBlocker` + `useBeforeUnload`, auto-releases when the
+> caller turns clean and settles each block once; **one guard per route** —
+> callers compose dirty flags, never stack guards. FeaturesTab shows an
+> "Unsaved changes" badge and a Stay / Discard `ConfirmDialog` covering the
+> feature/tag order **and** the other-information description draft (hoisted via
+> `onDirtyChange`); Reset now also drops that draft. Two review-driven extras in
+> the same shape: the description mutations stay pending until the refetch echo,
+> and `PropertyDetailLayout` keeps retained detail on a failed background refetch
+> instead of unmounting the tab. Test infra: `renderWithDataRouter` plus a custom
+> vitest environment (`test/jsdomEnvironment.ts`) keeping Node's
+> AbortController/FormData/File globals. Roll-out to the other explicit-save
+> surfaces (SettingsTab sections, DescriptionsSection) stays a follow-up as
+> scoped here.
+
 - **Severity:** 🟢 Gap (UX / data-loss guard). Frontend-only.
 - **Source:** Gareth GTD capture 2026-07-08 ("When editing property features,
   requires an explicit save. Should be flagged that data has changed, and no

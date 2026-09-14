@@ -50,7 +50,10 @@ export function PropertyDetailLayout() {
     );
   }
 
-  if (query.isError || !query.data) {
+  // Only when there is nothing to show: a failed *background* refetch keeps
+  // the retained detail on screen, because swapping in ErrorState would
+  // unmount the active tab — and any unsaved edits — with no prompt (GAP-083).
+  if (!query.data) {
     const is404 = query.error instanceof ApiError && query.error.status === 404;
     return (
       <div className="p-6">

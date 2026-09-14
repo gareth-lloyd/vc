@@ -30,8 +30,6 @@ class PricingConfig(AppConfig):
                 "price_basis",
                 "prices_by_occupancy",
                 "fallback_nightly",
-                "effective_from",
-                "effective_to",
                 "is_active",
             ],
         )

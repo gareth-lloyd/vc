@@ -26,17 +26,6 @@ function setReservationsUser() {
   );
 }
 
-// Two independent single-date inputs (not a range picker) — a plan's effective
-// window is typically very wide, so the range picker was the wrong control.
-const FROM_LABEL = /^effective from$/i;
-const TO_LABEL = /^effective to$/i;
-
-async function typeDate(label: RegExp, value: string) {
-  const input = screen.getByLabelText(label);
-  await userEvent.clear(input);
-  if (value) await userEvent.type(input, value);
-}
-
 const eurCurrency = {
   id: 42,
   code: "EUR",
@@ -68,7 +57,7 @@ function installBaseHandlers(propertyCurrency: number | null = 42) {
 }
 
 describe("RatePlanFormDialog — create", () => {
-  it("posts to /properties/:id/rate-plans with the selected currency id", async () => {
+  it("posts to /properties/:id/rate-plans with the selected currency id and no dates", async () => {
     setReservationsUser();
     installBaseHandlers(42);
     let postBody: Record<string, unknown> | null = null;
@@ -82,8 +71,6 @@ describe("RatePlanFormDialog — create", () => {
             name: postBody.name,
             currency: postBody.currency,
             price_basis: postBody.price_basis,
-            effective_from: postBody.effective_from,
-            effective_to: postBody.effective_to,
             is_active: postBody.is_active,
           },
           { status: 201 },
@@ -96,9 +83,11 @@ describe("RatePlanFormDialog — create", () => {
     );
 
     const nameInput = await screen.findByLabelText(/^Name$/i);
+    // GAP-110: a rate plan is a date-less regime bucket — RatePeriod rows are
+    // the only date authority, so the dialog offers no effective window.
+    expect(screen.queryByLabelText(/effective/i)).toBeNull();
+    expect(screen.queryByLabelText(/dates/i)).toBeNull();
     await userEvent.type(nameInput, "Summer 2027");
-    await typeDate(FROM_LABEL, "2027-06-01");
-    await typeDate(TO_LABEL, "2027-09-30");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(postBody).not.toBeNull());
@@ -106,9 +95,9 @@ describe("RatePlanFormDialog — create", () => {
       name: "Summer 2027",
       currency: 42,
       price_basis: "gross",
-      effective_from: "2027-06-01",
-      effective_to: "2027-09-30",
     });
+    expect(postBody).not.toHaveProperty("effective_from");
+    expect(postBody).not.toHaveProperty("effective_to");
     useAuthStore.getState().clear();
   });
 
@@ -147,7 +136,6 @@ describe("RatePlanFormDialog — create", () => {
     await waitFor(() => expect(within(basisTrigger).getByText(/^Net$/i)).toBeInTheDocument());
 
     await userEvent.type(screen.getByLabelText(/^Name$/i), "Agent net 2027");
-    await typeDate(FROM_LABEL, "2027-06-01");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(postBody).not.toBeNull());
@@ -174,7 +162,6 @@ describe("RatePlanFormDialog — create", () => {
       <RatePlanFormDialog propertyId={7} open onOpenChange={() => {}} mode="create" />,
     );
     await userEvent.type(await screen.findByLabelText(/^Name$/i), "Summer 2027");
-    await typeDate(FROM_LABEL, "2027-06-01");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     expect(await screen.findByText(/already taken/i)).toBeInTheDocument();
     useAuthStore.getState().clear();
@@ -188,13 +175,11 @@ describe("RatePlanFormDialog — edit", () => {
     name: "Summer 2026",
     currency: 42,
     price_basis: "gross",
-    effective_from: "2026-06-01",
-    effective_to: "2026-09-30",
     is_active: true,
     notes: "",
   };
 
-  it("PATCHes the season with edited fields", async () => {
+  it("PATCHes the season with edited fields and no dates", async () => {
     setReservationsUser();
     installBaseHandlers(42);
     let patchBody: Record<string, unknown> | null = null;
@@ -217,51 +202,15 @@ describe("RatePlanFormDialog — edit", () => {
 
     const nameInput = (await screen.findByLabelText(/^Name$/i)) as HTMLInputElement;
     await waitFor(() => expect(nameInput.value).toBe("Summer 2026"));
-    // The stored season window prefills both date inputs.
-    expect(screen.getByLabelText(FROM_LABEL)).toHaveValue("2026-06-01");
-    expect(screen.getByLabelText(TO_LABEL)).toHaveValue("2026-09-30");
+    expect(screen.queryByLabelText(/effective/i)).toBeNull();
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, "Summer 2026 (revised)");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(patchBody).not.toBeNull());
     expect(patchBody!.name).toBe("Summer 2026 (revised)");
-    useAuthStore.getState().clear();
-  });
-
-  it("supports an open-ended season: a cleared To PATCHes explicit null", async () => {
-    setReservationsUser();
-    installBaseHandlers(42);
-    let patchBody: Record<string, unknown> | null = null;
-    server.use(
-      http.patch("/api/v1/rate-plans/11", async ({ request }) => {
-        patchBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ ...season, effective_from: "2026-07-04", effective_to: null });
-      }),
-    );
-
-    renderWithProviders(
-      <RatePlanFormDialog
-        propertyId={7}
-        open
-        onOpenChange={() => {}}
-        mode="edit"
-        season={season}
-      />,
-    );
-
-    // Retype From, clear To → an open-ended season.
-    await waitFor(() => expect(screen.getByLabelText(FROM_LABEL)).toHaveValue("2026-06-01"));
-    await typeDate(FROM_LABEL, "2026-07-04");
-    await typeDate(TO_LABEL, "");
-
-    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(patchBody).not.toBeNull());
-    // The submit mapping sends explicit `null` for an empty To (never "" or an
-    // omitted key) so the PATCH actually clears a previously-set end date.
-    expect(patchBody!.effective_from).toBe("2026-07-04");
-    expect(patchBody!.effective_to).toBeNull();
+    expect(patchBody).not.toHaveProperty("effective_from");
+    expect(patchBody).not.toHaveProperty("effective_to");
     useAuthStore.getState().clear();
   });
 });

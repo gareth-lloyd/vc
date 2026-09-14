@@ -195,16 +195,30 @@ class TestStayOptionsSearch:
             ("2026-07-11", "2026-07-18", False),
         ]
 
-    def test_plan_boundary_inside_window_still_offers_blocks(
+    def test_regime_boundary_inside_window_still_offers_blocks(
         self, property_: Property, plan: RatePlan, rate_rule: RateBand
     ) -> None:
-        # The plan covers the preferred dates but ends inside the widened
-        # window, so no single context covers the window: the bounds clamp is
-        # skipped and the quote loads its own context — blocks still come back
-        # and the default still prices.
+        # A NET plan takes over mid-window (GAP-110: the GROSS period is
+        # truncated, the NET plan owns the rest), so no single context covers
+        # the window (`MultiRegimeStay` → `None`): the bounds clamp is skipped
+        # and each week's quote loads its own context — blocks still come back
+        # and the default (entirely GROSS) still prices.
+        from pricing.models import RateBand, RatePeriod, RatePlan
+        from properties.enums import PriceBasis
+
         _sat_changeover(property_)
-        plan.effective_to = date(2026, 7, 12)
-        plan.save(update_fields=["effective_to"])
+        rate_rule.period.date_to = date(2026, 7, 12)
+        rate_rule.period.save(update_fields=["date_to"])
+        net_plan = RatePlan.objects.create(
+            property=property_,
+            name="GBP net",
+            currency=plan.currency,
+            price_basis=PriceBasis.NET,
+        )
+        net_period = RatePeriod.objects.create(
+            plan=net_plan, name="Net summer", date_from=date(2026, 7, 13), date_to=date(2026, 8, 31)
+        )
+        RateBand.objects.create(period=net_period, min_party=1, max_party=8, nightly=Decimal("150"))
 
         [result] = StayOptionsService.search(
             requests=[_entry(property_, date(2026, 7, 5), date(2026, 7, 15))],
@@ -583,6 +597,76 @@ class TestWeeklyPrices:
             assert week["error_code"] == "no_rate_available"
             # POA still resolves a display currency (from the covering plan).
             assert week["currency_code"] == "GBP"
+
+    def test_weeks_past_the_last_period_project_on_their_own(
+        self, property_: Property, plan: RatePlan, rate_rule: RateBand
+    ) -> None:
+        """GAP-110: a window straddling the last period gets no shared context
+        (it would price the later weeks as no-rate), so each week loads its
+        own — covered weeks price real, later weeks project from the year
+        before. Here the 2026 period ends 31 Aug; the window runs into Sept."""
+        from pricing.models import RateBand as RateBandModel
+        from pricing.models import RatePeriod
+
+        _sat_changeover(property_)
+        # 2025 rates for September weeks to project from — on the same regime
+        # plan (GAP-110: the anchor is the latest prior *period* year).
+        period = RatePeriod.objects.create(
+            plan=plan, name="2025", date_from=date(2025, 1, 1), date_to=date(2025, 12, 31)
+        )
+        RateBandModel.objects.create(
+            period=period, min_party=1, max_party=8, nightly=Decimal("100.00")
+        )
+
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2026, 8, 22),
+            window_to=date(2026, 9, 12),
+        )
+
+        by_arrival = {w["week_start"]: w for w in result["weeks"]}
+        assert by_arrival["2026-08-22"]["price"] == "1400.00"
+        assert by_arrival["2026-08-22"]["is_projected"] is False
+        assert by_arrival["2026-09-05"]["price"] == "700.00"
+        assert by_arrival["2026-09-05"]["is_projected"] is True
+
+    def test_multi_regime_week_is_not_flagged_poa_by_its_name(
+        self, property_: Property, plan: RatePlan, rate_rule: RateBand
+    ) -> None:
+        """POA is detected by exception type, not by sniffing the message, so
+        a `MultiRegimeStay` detail naming a plan called "POA net rates" stays a
+        plain no-rate week."""
+        from pricing.models import RateBand as RateBandModel
+        from pricing.models import RatePeriod
+        from pricing.models import RatePlan as RatePlanModel
+        from properties.enums import PriceBasis
+
+        _sat_changeover(property_)
+        rate_rule.period.date_to = date(2026, 7, 7)
+        rate_rule.period.save(update_fields=["date_to"])
+        net_plan = RatePlanModel.objects.create(
+            property=property_,
+            name="POA net rates",
+            currency=plan.currency,
+            price_basis=PriceBasis.NET,
+        )
+        net_period = RatePeriod.objects.create(
+            plan=net_plan, name="Net", date_from=date(2026, 7, 8), date_to=date(2026, 8, 31)
+        )
+        RateBandModel.objects.create(
+            period=net_period, min_party=1, max_party=8, nightly=Decimal("150.00")
+        )
+
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2026, 7, 4),
+            window_to=date(2026, 7, 11),
+        )
+
+        [week] = result["weeks"]
+        assert week["price"] is None
+        assert week["error_code"] == "no_rate_available"
+        assert week["is_poa"] is False
 
     def test_future_year_prices_are_flagged_as_projected_guides(
         self, property_: Property, rate_rule: RateBand

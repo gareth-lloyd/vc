@@ -241,8 +241,6 @@ def test_reset_clears_protecting_rows_on_property() -> None:
         property=prop,
         currency=gbp,
         name="summer",
-        effective_from=date(2026, 6, 1),
-        effective_to=date(2026, 9, 1),
     )
     # A QuotationLine on the property from an unrelated customer (not the demo
     # guest) — the case that broke the original guest-scoped teardown.

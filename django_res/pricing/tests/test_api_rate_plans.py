@@ -1,16 +1,19 @@
-"""API tests for /rate-plans, /rate-periods, /bands CRUD + duplicate action (GAP-056)."""
+"""API tests for /rate-plans, /rate-periods, /bands CRUD (GAP-056)."""
 
 from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from rest_framework.test import APIClient
 
 from accounts.models import User
 from core.enums import StaffRole
+from pricing.factories import RatePlanFactory
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
+from properties.factories import PropertyFactory
 from properties.models import Property, PropertyCapacity
 
 
@@ -64,44 +67,26 @@ def test_rate_plan_detail_exposes_currency_code(
 def test_create_rate_plan(
     api_client: APIClient, staff: User, property_: Property, gbp: Currency
 ) -> None:
+    """GAP-110: a plan is a date-less regime bucket — no envelope in or out. A
+    client still sending the pre-GAP-110 date pair (the SPA, until U5b) is
+    not rejected: the fields are unknown to the serializer and dropped."""
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/properties/{property_.pk}/rate-plans",
         data={
             "name": "Winter 2027",
             "currency": gbp.pk,
+            "is_active": True,
             "effective_from": "2027-01-01",
             "effective_to": "2027-03-31",
-            "is_active": True,
         },
         format="json",
     )
     assert response.status_code == 201, response.content
     assert RatePlan.objects.filter(name="Winter 2027").exists()
-
-
-@pytest.mark.django_db
-def test_rate_plan_duplicate_copies_periods_and_rules(
-    api_client: APIClient,
-    staff: User,
-    plan: RatePlan,
-    period: RatePeriod,
-    rule: RateBand,
-) -> None:
-    api_client.force_login(staff)
-    response = api_client.post(f"/api/v1/rate-plans/{plan.pk}:duplicate")
-    assert response.status_code == 201, response.content
     payload = response.json()
-    cloned = RatePlan.objects.get(pk=payload["id"])
-    assert cloned.periods.count() == 1
-    first_period = cloned.periods.first()
-    assert first_period is not None
-    assert first_period.bands.count() == 1
-    # GAP-056: the clone's bands must hang off periods on the CLONE's plan, not
-    # the source plan's.
-    cloned_rule = first_period.bands.get()
-    assert cloned_rule.period_id == first_period.pk
-    assert first_period.plan_id == cloned.pk
+    assert "effective_from" not in payload
+    assert "effective_to" not in payload
 
 
 @pytest.mark.django_db
@@ -316,7 +301,7 @@ def test_create_rate_plan_defaults_to_flat(
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/properties/{property_.pk}/rate-plans",
-        data={"name": "New", "currency": gbp.pk, "effective_from": "2027-01-01"},
+        data={"name": "New", "currency": gbp.pk},
         format="json",
     )
     assert response.status_code == 201, response.content
@@ -407,16 +392,48 @@ def test_carry_forward_creates_editable_plan_for_future_year(
     )
     assert response.status_code == 201, response.content
     payload = response.json()
-    assert payload["effective_from"] == "2028-01-01"
     assert rule.period is not None
-    assert payload["id"] != rule.period.plan_id
-    # The materialised plan is a real, queryable row distinct from the anchor.
-    assert RatePlan.objects.filter(property=property_, effective_from__year=2028).exists()
+    # GAP-110: the carried periods land on the regime plan itself — the
+    # response is that plan (with its new periods inlined), not a new row.
+    assert payload["id"] == rule.period.plan_id
+    assert RatePlan.objects.filter(property=property_).count() == 1
+    carried = RatePeriod.objects.filter(plan_id=payload["id"], date_from__year=2028)
+    assert carried.exists()
+    assert {p["date_from"][:4] for p in payload["periods"]} == {"2026", "2028"}
     # GAP-059: every carried period arrives named (exact naming rules are the
     # service's contract — see test_carryover).
-    carried = RatePeriod.objects.filter(plan_id=payload["id"])
-    assert carried.exists()
     assert all(p.name for p in carried)
+
+
+@pytest.mark.django_db
+def test_carry_forward_into_a_year_owned_by_withdrawn_rows_returns_409(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    rule: RateBand,
+) -> None:
+    """GAP-110: a period a retired sibling plan still owns in the target year
+    sits in the regime-wide EXCLUDE; the carry is refused as a 409
+    `regime_conflict` with guidance (service contract — see test_carryover)
+    rather than silently landing nothing."""
+    owner = cast(
+        RatePlan,
+        RatePlanFactory(property=property_, currency=gbp, is_active=False),
+    )
+    RatePeriod.objects.create(
+        plan=owner, name="Owned", date_from=date(2028, 6, 15), date_to=date(2028, 8, 31)
+    )
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/rate-plans:carry-forward",
+        {"currency": gbp.code, "target_year": 2028},
+        format="json",
+    )
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "regime_conflict"
+    assert "Owned" in response.json()["detail"]
+    assert not RatePeriod.objects.filter(plan=rule.period.plan, date_from__year=2028).exists()
 
 
 @pytest.mark.django_db
@@ -471,130 +488,260 @@ def test_carry_forward_rejects_out_of_range_year(
 
 
 @pytest.mark.django_db
-def test_rate_plan_duplicate_copies_reductions_verbatim(
+def test_create_period_overlapping_another_plans_period_rejected(
     api_client: APIClient,
     staff: User,
     plan: RatePlan,
-    period: RatePeriod,
-    rule: RateBand,
+    sibling_plan: RatePlan,
+    future_period: RatePeriod,
 ) -> None:
-    """Q-018 decision 5: `:duplicate` is a same-context literal copy tool, so
-    reductions ride along verbatim — the sanctioned next-year path
-    (carry-forward) is what drops them."""
-    rule.reduction_percent = Decimal("15.00")
-    rule.reduced_at = date(2026, 5, 1)
-    rule.reduction_reason = "June push"
-    rule.save()
-
+    """GAP-110: the no-overlap rule is per (property, currency) regime, not
+    per plan — the pre-check names the other plan so the operator knows where
+    the clash lives."""
+    other = sibling_plan
     api_client.force_login(staff)
-    response = api_client.post(f"/api/v1/rate-plans/{plan.pk}:duplicate")
+    response = api_client.post(
+        f"/api/v1/rate-plans/{other.pk}/rate-periods",
+        data={"name": "Clash", "date_from": "2099-07-01", "date_to": "2099-07-31"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    [message] = response.json()["field_errors"]["date_from"]
+    assert plan.name in message
+    assert not other.periods.exists()
+
+
+@pytest.mark.django_db
+def test_create_period_raced_past_precheck_maps_to_409(
+    api_client: APIClient,
+    staff: User,
+    plan: RatePlan,
+    sibling_plan: RatePlan,
+    future_period: RatePeriod,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A racing writer that slips past the serializer pre-check trips the
+    EXCLUDE; the view maps that `IntegrityError` to a 409 `regime_conflict`
+    rather than a 500. Simulated by silencing the pre-check."""
+    from pricing.serializers.rate import RatePeriodSerializer
+
+    monkeypatch.setattr(RatePeriodSerializer, "validate", lambda self, attrs: attrs)
+    other = sibling_plan
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/rate-plans/{other.pk}/rate-periods",
+        data={"name": "Clash", "date_from": "2099-07-01", "date_to": "2099-07-31"},
+        format="json",
+    )
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "regime_conflict"
+    assert not other.periods.exists()
+
+
+@pytest.mark.django_db
+def test_patch_period_dates_onto_another_plans_period_rejected(
+    api_client: APIClient,
+    staff: User,
+    plan: RatePlan,
+    sibling_plan: RatePlan,
+    future_period: RatePeriod,
+) -> None:
+    other = sibling_plan
+    mine = RatePeriod.objects.create(
+        plan=other, name="Sept", date_from=date(2099, 9, 1), date_to=date(2099, 9, 30)
+    )
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/periods/{mine.pk}", data={"date_from": "2099-08-15"}, format="json"
+    )
+    assert response.status_code == 400, response.content
+    assert plan.name in response.json()["field_errors"]["date_from"][0]
+
+
+@pytest.mark.django_db
+def test_patch_plan_currency_rejected_once_periods_exist(
+    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod, usd: Currency
+) -> None:
+    """GAP-110: periods carry a stamped copy of the plan's currency (the regime
+    partition key), so a plan with periods keeps its currency for life."""
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}", data={"currency": usd.pk}, format="json"
+    )
+    assert response.status_code == 400, response.content
+    assert "currency" in response.json()["field_errors"]
+    plan.refresh_from_db()
+    assert plan.currency_id != usd.pk
+
+
+@pytest.mark.django_db
+def test_patch_plan_property_is_read_only(
+    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod
+) -> None:
+    """`property` comes from the URL on create and never moves — a body value
+    is ignored (DRF read-only), so the stamped regime key can't drift."""
+    other = cast(Property, PropertyFactory())
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}", data={"property": other.pk}, format="json"
+    )
+    assert response.status_code == 200, response.content
+    plan.refresh_from_db()
+    assert plan.property_id != other.pk
+
+
+@pytest.mark.django_db
+def test_patch_plan_currency_allowed_while_periodless(
+    api_client: APIClient, staff: User, plan: RatePlan, usd: Currency
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}", data={"currency": usd.pk}, format="json"
+    )
+    assert response.status_code == 200, response.content
+    plan.refresh_from_db()
+    assert plan.currency_id == usd.pk
+
+
+@pytest.mark.django_db
+def test_patch_plan_same_currency_with_periods_is_fine(
+    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod
+) -> None:
+    """Re-sending the current currency (a full PUT-style body) is not a change."""
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}",
+        data={"currency": plan.currency_id, "name": "Renamed"},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+
+
+# --- One active plan per regime (GAP-110 U4) --------------------------------
+
+
+@pytest.mark.django_db
+def test_create_plan_into_an_occupied_regime_rejected_with_guidance(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/rate-plans",
+        data={"name": "Second GBP", "currency": gbp.pk},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    [message] = response.json()["field_errors"]["non_field_errors"]
+    assert "already has an active GBP gross plan" in message
+    assert "carry forward" in message
+    assert RatePlan.objects.filter(property=property_).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_plan_in_a_free_regime_is_fine(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/rate-plans",
+        data={
+            "name": "Net GBP",
+            "currency": gbp.pk,
+            "price_basis": "net",
+        },
+        format="json",
+    )
     assert response.status_code == 201, response.content
 
-    cloned = RatePlan.objects.get(pk=response.json()["id"])
-    cloned_band = RateBand.objects.get(period__plan=cloned)
-    assert cloned_band.reduction_percent == Decimal("15.00")
-    assert cloned_band.reduced_at == date(2026, 5, 1)
-    assert cloned_band.reduction_reason == "June push"
-    assert cloned_band.effective_nightly == rule.effective_nightly
 
-
-# ---------------------------------------------------------------------------
-# SMELL-009: `:duplicate` idempotency via optional body key
-# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_reactivating_a_plan_into_an_occupied_regime_rejected(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    retired = cast(RatePlan, RatePlanFactory(property=property_, currency=gbp, is_active=False))
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{retired.pk}", data={"is_active": True}, format="json"
+    )
+    assert response.status_code == 400, response.content
+    assert (
+        "already has an active GBP gross plan"
+        in response.json()["field_errors"]["non_field_errors"][0]
+    )
+    retired.refresh_from_db()
+    assert retired.is_active is False
 
 
 @pytest.mark.django_db
-def test_rate_plan_duplicate_retry_same_key_returns_same_plan(
-    api_client: APIClient,
-    staff: User,
-    plan: RatePlan,
-    period: RatePeriod,
-    rule: RateBand,
+def test_switching_basis_onto_an_occupied_regime_rejected(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    net = cast(RatePlan, RatePlanFactory(property=property_, currency=gbp, price_basis="net"))
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{net.pk}", data={"price_basis": "gross"}, format="json"
+    )
+    assert response.status_code == 400, response.content
+    assert (
+        "already has an active GBP gross plan"
+        in response.json()["field_errors"]["non_field_errors"][0]
+    )
+
+
+@pytest.mark.django_db
+def test_patching_the_occupying_plan_itself_is_fine(
+    api_client: APIClient, staff: User, plan: RatePlan
 ) -> None:
     api_client.force_login(staff)
-    first = api_client.post(
-        f"/api/v1/rate-plans/{plan.pk}:duplicate",
-        data={"idempotency_key": "ui-123"},
-        format="json",
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}", data={"name": "Renamed", "is_active": True}, format="json"
     )
-    assert first.status_code == 201, first.content
-    count = RatePlan.objects.count()
-
-    second = api_client.post(
-        f"/api/v1/rate-plans/{plan.pk}:duplicate",
-        data={"idempotency_key": "ui-123"},
-        format="json",
-    )
-
-    assert second.status_code == 201, second.content
-    assert second.json()["id"] == first.json()["id"]
-    assert RatePlan.objects.count() == count
+    assert response.status_code == 200, response.content
 
 
 @pytest.mark.django_db
-def test_rate_plan_duplicate_race_loser_maps_to_409(
+def test_create_plan_raced_past_precheck_maps_to_409(
     api_client: APIClient,
     staff: User,
+    property_: Property,
+    gbp: Currency,
     plan: RatePlan,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """FG-010: a racer past the pre-check trips the partial-unique backstop;
-    the view maps the IntegrityError to 409 `idempotency_conflict`, not 500.
+    from pricing.serializers.rate import RatePlanSerializer
 
-    Patch the IMPORT SITE (`pricing.services.duplication.find_by_key`) — the
-    service binds the name at import, so patching `core.idempotency` would
-    leave the pre-check live and the test would pass vacuously.
-    """
-    import pricing.services.duplication as duplication
-
-    monkeypatch.setattr(duplication, "find_by_key", lambda queryset, idempotency_key: None)
-
-    api_client.force_login(staff)
-    first = api_client.post(
-        f"/api/v1/rate-plans/{plan.pk}:duplicate",
-        data={"idempotency_key": "race-key"},
-        format="json",
-    )
-    assert first.status_code == 201, first.content
-
-    second = api_client.post(
-        f"/api/v1/rate-plans/{plan.pk}:duplicate",
-        data={"idempotency_key": "race-key"},
-        format="json",
-    )
-
-    assert second.status_code == 409, second.content
-    assert second.json()["code"] == "idempotency_conflict"
-
-
-@pytest.mark.django_db
-def test_rate_plan_duplicate_without_body_still_works(
-    api_client: APIClient,
-    staff: User,
-    plan: RatePlan,
-) -> None:
-    # Back-compat: the FE sends no body today; a bodyless POST must keep
-    # returning a fresh clone every time.
-    api_client.force_login(staff)
-    first = api_client.post(f"/api/v1/rate-plans/{plan.pk}:duplicate")
-    second = api_client.post(f"/api/v1/rate-plans/{plan.pk}:duplicate")
-    assert first.status_code == 201, first.content
-    assert second.status_code == 201, second.content
-    assert first.json()["id"] != second.json()["id"]
-
-
-@pytest.mark.django_db
-def test_rate_plan_duplicate_explicit_null_key_is_ignored(
-    api_client: APIClient,
-    staff: User,
-    plan: RatePlan,
-) -> None:
-    # An explicit JSON null must stay "no idempotency requested" (today's
-    # behaviour), not become a 400.
+    monkeypatch.setattr(RatePlanSerializer, "validate", lambda self, attrs: attrs)
     api_client.force_login(staff)
     response = api_client.post(
-        f"/api/v1/rate-plans/{plan.pk}:duplicate",
-        data={"idempotency_key": None},
+        f"/api/v1/properties/{property_.pk}/rate-plans",
+        data={"name": "Second GBP", "currency": gbp.pk},
         format="json",
     )
-    assert response.status_code == 201, response.content
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "regime_conflict"
+    assert RatePlan.objects.filter(property=property_).count() == 1
+
+
+@pytest.mark.django_db
+def test_reactivate_plan_raced_past_precheck_maps_to_409(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    plan: RatePlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The PATCH route to the constraint (reactivating a retired plan) is
+    guarded like the POST route."""
+    from pricing.serializers.rate import RatePlanSerializer
+
+    monkeypatch.setattr(RatePlanSerializer, "validate", lambda self, attrs: attrs)
+    retired = cast(RatePlan, RatePlanFactory(property=property_, currency=gbp, is_active=False))
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{retired.pk}", data={"is_active": True}, format="json"
+    )
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "regime_conflict"
+    retired.refresh_from_db()
+    assert retired.is_active is False

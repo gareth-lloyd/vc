@@ -185,8 +185,40 @@ class InvalidTransition(DomainError):
         self.allowed = allowed or []
 
 
+class RegimeConflict(DomainError):
+    """A rate-plan regime invariant refused the write at the database.
+
+    GAP-110: at most one plan prices a night in a currency for a property.
+    The serializers pre-check this as a 400 with guidance; a racing writer
+    that slips past the pre-check trips the constraint, and the view maps
+    that `IntegrityError` here (409) instead of a 500.
+    """
+
+    code = "regime_conflict"
+
+
 class NoRateAvailable(DomainError):
     code = "no_rate_available"
+
+
+class PoaRate(NoRateAvailable):
+    """The band that would price a night is price-on-application.
+
+    Same `code` as `NoRateAvailable` (the API contract is unchanged); the
+    subclass lets consumers that render POA differently from "no rate"
+    branch on the type instead of sniffing the message text.
+    """
+
+
+class MultiRegimeStay(NoRateAvailable):
+    """Two same-currency rate plans (a GROSS and a NET regime) each price part
+    of one stay — the engine refuses to blend them (GAP-110).
+
+    Subclasses `NoRateAvailable` and inherits its `code`, so every backend
+    `except NoRateAvailable` and every front-end `no_rate_available` branch
+    degrades safely; the staff-readable detail names the villa and both
+    plans so the fix (move the periods onto one plan) is obvious.
+    """
 
 
 class PartyOutOfRange(DomainError):

@@ -147,6 +147,18 @@ Tooltip explaining why. Reference: `BookingActions.tsx`, `PeopleTab.tsx`.
 Gate dialogs behind their open state (`{open && <Dialog />}`) so form state
 and mutation hooks aren't instantiated for every closed dialog in a list.
 
+### Unsaved-changes guard (GAP-083)
+
+Explicit-save surfaces flag dirty state and block navigation with
+`useUnsavedChangesGuard(isDirty)` (`src/lib/`) + a Stay / Discard
+`ConfirmDialog` rendered off `guard.blocked` (copy in `common:unsaved.*`).
+**One guard per route** — React Router honours a single blocker, so compose
+every dirty flag on the page into one call (child sections report via an
+`onDirtyChange` prop); never add a second guard inside a section. Don't guard
+a value while its own save is in flight, and render the dialog in every
+branch (loading / error included) so a block is never held without a prompt.
+Reference: `FeaturesTab.tsx` + `OtherInformationSection.tsx`.
+
 ### Error differentiation in detail pages
 
 On detail fetch failure, branch on `query.error instanceof ApiError` +
@@ -187,6 +199,16 @@ surfaces use `shadow-card`; popovers/dialogs use `shadow-popover` /
 
 - **`renderWithProviders`** (`test/render.tsx`): QueryClientProvider +
   MemoryRouter + TooltipProvider; pass `route` for initial URL.
+- **`renderWithDataRouter(routes, { route })`** (same file): the same stack
+  over `createMemoryRouter` + `RouterProvider`. Required for anything using
+  data-router-only hooks (`useBlocker` → `useUnsavedChangesGuard`), which
+  throw under `MemoryRouter`; returns `router` for
+  `router.state.location.pathname` assertions. Navigation assertions must be
+  async (`findBy*`/`waitFor`).
+- **Environment**: `test/jsdomEnvironment.ts` (wired in `vite.config.ts`) is
+  stock jsdom keeping Node's `AbortController`/`FormData`/`File` so
+  component code and Node's `fetch` share one realm. Never override per file
+  with `// @vitest-environment jsdom`.
 - **`drfPage(rows)`** (`test/drf.ts`): wraps rows in DRF's paginated envelope.
 - **MSW**: `test/msw/server.ts`; override handlers per-test with
   `server.use(...)`.

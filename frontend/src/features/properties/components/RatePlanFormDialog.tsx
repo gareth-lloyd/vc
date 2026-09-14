@@ -60,8 +60,6 @@ function createDefaults(
     // (prices_entered_as) so staff don't re-pick GROSS/NET every time. Still
     // freely editable per plan — basis is a per-plan property.
     price_basis: basis,
-    effective_from: "",
-    effective_to: "",
     is_active: true,
     notes: "",
   };
@@ -72,8 +70,6 @@ function defaultsFromSeason(season: RatePlan): RatePlanWriteInput {
     name: season.name,
     currency: season.currency ?? 0,
     price_basis: season.price_basis ?? "gross",
-    effective_from: season.effective_from ?? "",
-    effective_to: season.effective_to ?? "",
     is_active: season.is_active ?? true,
     notes: season.notes ?? "",
   };
@@ -115,21 +111,16 @@ export function RatePlanFormDialog(props: RatePlanFormDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCreate ? defaultCurrency : props.season.id, isCreate ? defaultBasis : null]);
 
+  // GAP-110: the body carries no dates — a plan is a date-less regime bucket;
+  // its rate periods (edited in the workbench matrix) own every date.
   const handleSubmit = async (values: RatePlanWriteInput) => {
     setTopLevelError(null);
-    // An empty To is "open-ended season" — send explicit `null`, never the
-    // empty string the API rejects as an invalid date, and never `undefined`
-    // (which a PATCH would omit, leaving a previously-set end date uncleared).
-    const body: RatePlanWriteInput = {
-      ...values,
-      effective_to: values.effective_to || null,
-    };
     try {
       if (isCreate) {
-        await createMutation.mutateAsync(body);
+        await createMutation.mutateAsync(values);
         toast.success(t("pricing.seasons.toasts.created"));
       } else {
-        await updateMutation.mutateAsync({ ratePlanId: props.season.id, input: body });
+        await updateMutation.mutateAsync({ ratePlanId: props.season.id, input: values });
         toast.success(t("pricing.seasons.toasts.updated"));
       }
       onOpenChange(false);
@@ -213,48 +204,6 @@ export function RatePlanFormDialog(props: RatePlanFormDialogProps) {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-
-          {/* Inclusive [effective_from, effective_to] — the season covers both
-              endpoint days. Two independent single-date inputs (not a range
-              picker): a plan's effective window is typically very wide, where a
-              two-endpoint calendar is the wrong control. effective_to is
-              optional — an open-ended season is legal and common; a cleared To
-              submits as `null` (see handleSubmit). */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="season-effective-from">
-                {t("pricing.seasons.dialog.fields.effective_from")}
-              </Label>
-              <Input
-                id="season-effective-from"
-                type="date"
-                {...form.register("effective_from")}
-                aria-invalid={!!form.formState.errors.effective_from}
-              />
-              {form.formState.errors.effective_from ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.effective_from.message)}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="season-effective-to">
-                {t("pricing.seasons.dialog.fields.effective_to")}
-              </Label>
-              <Input
-                id="season-effective-to"
-                type="date"
-                {...form.register("effective_to")}
-                aria-invalid={!!form.formState.errors.effective_to}
-              />
-              {form.formState.errors.effective_to ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrorText(t, form.formState.errors.effective_to.message)}
-                </p>
-              ) : null}
             </div>
           </div>
 

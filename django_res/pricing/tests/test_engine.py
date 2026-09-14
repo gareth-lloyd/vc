@@ -328,26 +328,32 @@ def test_fallback_nightly_fills_gap_night(
 
 
 @pytest.mark.django_db
-def test_all_fallback_stay_skips_period_validation(
-    property_: Property, gbp: Currency, plan: RatePlan
+def test_fallback_nights_count_toward_the_winning_periods_min_nights(
+    property_: Property, gbp: Currency, plan: RatePlan, period: RatePeriod, rule: RateBand
 ) -> None:
-    """A stay with no covering bands quotes entirely on fallback; no period is
-    selected, so the strictest-wins min/max-nights guard is skipped (GAP-056)."""
+    """Fallback fills the uncovered nights of a partly-covered stay (GAP-110:
+    a stay no period touches projects instead of pricing all-fallback). The
+    covered period still wins, and its min-nights guard counts every night of
+    the stay — fallback nights included."""
     plan.fallback_nightly = Decimal("99.00")
     plan.save(update_fields=["fallback_nightly"])
+    period.min_nights = 4
+    period.save(update_fields=["min_nights"])
 
     quote = PricingEngine.quote(
         property=property_,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 13),  # 3 nights, all uncovered (no bands at all)
+        date_from=date(2026, 8, 30),
+        date_to=date(2026, 9, 3),  # Aug 30, Aug 31 covered; Sep 1, Sep 2 fallback
         party=4,
         currency=gbp,
     )
 
-    assert len(quote.lines) == 3
-    assert all(ln.band_id is None and ln.period_id is None for ln in quote.lines)
-    assert quote.rate_subtotal == Decimal("297.00")
-    assert quote.breakdown["winning_period_id"] is None
+    assert len(quote.lines) == 4
+    fallback_lines = [ln for ln in quote.lines if ln.band_id is None]
+    assert [ln.date for ln in fallback_lines] == [date(2026, 9, 1), date(2026, 9, 2)]
+    assert all(ln.period_id is None for ln in fallback_lines)
+    assert quote.rate_subtotal == Decimal("598.00")  # 200 + 200 + 99 + 99
+    assert quote.breakdown["winning_period_id"] == period.pk
 
 
 @pytest.mark.django_db
@@ -432,14 +438,44 @@ def test_fallback_does_not_mask_party_out_of_range(
 
 
 @pytest.mark.django_db
-def test_all_fallback_stay_ignores_other_propertys_discount(
-    property_: Property, gbp: Currency, plan: RatePlan
+def test_all_fallback_stay_on_a_period_without_approved_bands(
+    property_: Property, gbp: Currency, plan: RatePlan, period: RatePeriod
 ) -> None:
-    """An all-fallback stay must not pick up a *different* property's discount.
+    """A period touches the stay (so it is a real pricing source) but none of
+    its bands is approved: every night prices at the fallback, no period wins,
+    and the breakdown reports no constraints."""
+    RateBand.objects.create(
+        period=period, min_party=1, max_party=8, nightly=Decimal("200.00"), is_approved=False
+    )
+    plan.fallback_nightly = Decimal("99.00")
+    plan.save(update_fields=["fallback_nightly"])
+
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 13),
+        party=4,
+        currency=gbp,
+    )
+
+    assert len(quote.lines) == 3
+    assert all(ln.band_id is None and ln.period_id is None for ln in quote.lines)
+    assert quote.rate_subtotal == Decimal("297.00")
+    assert quote.breakdown["winning_period_id"] is None
+    assert quote.breakdown["min_nights"] is None
+    assert quote.breakdown["max_nights"] is None
+
+
+@pytest.mark.django_db
+def test_partly_fallback_stay_ignores_other_propertys_discount(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
+) -> None:
+    """A stay with fallback nights must not pick up a *different* property's
+    discount.
 
     Discounts are property-scoped (GAP-056 Unit 7 dropped the card scope), so a
-    discount belonging to another property must never apply here — even on an
-    all-fallback stay where no band/period won.
+    discount belonging to another property must never apply here — fallback
+    nights (no band) included.
     """
     from pricing.enums import DiscountKind, RuleKind
     from pricing.models import Discount
@@ -467,13 +503,13 @@ def test_all_fallback_stay_ignores_other_propertys_discount(
 
     quote = PricingEngine.quote(
         property=property_,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 13),  # 3 uncovered nights (no `rule` fixture)
+        date_from=date(2026, 8, 30),
+        date_to=date(2026, 9, 2),  # Aug 30, Aug 31 covered; Sep 1 fallback
         party=4,
         currency=gbp,
     )
 
-    assert quote.rate_subtotal == Decimal("300.00")
+    assert quote.rate_subtotal == Decimal("500.00")  # 200 + 200 + 100
     assert quote.discount == Decimal("0.00")
 
 
@@ -660,16 +696,10 @@ def test_quote_projects_from_prior_year_when_no_plan(
 def test_quote_prefers_real_plan_over_projection(
     property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
-    """A real plan covering the stay wins; projection never runs."""
-    plan_2028 = RatePlan.objects.create(
-        property=property_,
-        name="Summer 2028",
-        currency=gbp,
-        effective_from=date(2028, 1, 1),
-        effective_to=date(2028, 12, 31),
-    )
+    """A real period covering the stay wins; projection never runs. GAP-110:
+    2028's rates live on the same regime plan as 2026's."""
     _rule(
-        plan_2028,
+        rule.period.plan,
         date_from=date(2028, 6, 1),
         date_to=date(2028, 8, 31),
         min_party=1,
@@ -913,25 +943,31 @@ def test_breakdown_min_max_nights_from_winning_period(
 
 
 @pytest.mark.django_db
-def test_breakdown_min_max_nights_null_on_all_fallback_stay(
-    property_: Property, gbp: Currency, plan: RatePlan
+def test_breakdown_reports_the_winning_period_past_leading_fallback_nights(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
-    """No winning period (all-fallback stay) → no constraints to report."""
+    """Leading fallback nights don't null the breakdown: the first *real*
+    night's period wins and its constraints are reported (GAP-110 — a stay no
+    period touches never reaches the breakdown; it projects)."""
     plan.fallback_nightly = Decimal("99.00")
     plan.save(update_fields=["fallback_nightly"])
+    period = _period_of(rule)
+    period.min_nights = 3
+    period.max_nights = 14
+    period.save(update_fields=["min_nights", "max_nights"])
 
     quote = PricingEngine.quote(
         property=property_,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 13),  # all uncovered by the (absent) bands
+        date_from=date(2026, 5, 30),
+        date_to=date(2026, 6, 2),  # May 30, May 31 fallback; Jun 1 covered
         party=4,
         currency=gbp,
     )
 
-    assert quote.breakdown["winning_period_id"] is None
-    assert quote.breakdown["min_nights"] is None
-    assert quote.breakdown["max_nights"] is None
-    assert quote.breakdown["occupancy_pricing"] is False
+    assert [ln.period_id for ln in quote.lines] == [None, None, period.pk]
+    assert quote.breakdown["winning_period_id"] == period.pk
+    assert quote.breakdown["min_nights"] == 3
+    assert quote.breakdown["max_nights"] == 14
 
 
 @pytest.mark.django_db
@@ -1035,8 +1071,11 @@ def test_stay_length_bounds_aggregates_across_periods(
     property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """A stay is valid if ANY period accepts it, so the search-layer bounds are
-    the LOOSEST across the plan's active periods — an uncapped period uncaps the
-    lot (GAP-056 decision 4; this is the permissive pre-filter, not the guard)."""
+    the LOOSEST across the periods touching the window — an uncapped period
+    uncaps the lot (GAP-056 decision 4; this is the permissive pre-filter, not
+    the guard). GAP-110: a plan is a multi-year bucket, so only the periods the
+    window touches take part — another year's off-peak must not loosen a
+    window entirely inside the peak."""
     peak = _period_of(rule)  # covers June (2026-06-01..08-31)
     peak.min_nights = 7
     peak.max_nights = 14
@@ -1056,10 +1095,15 @@ def test_stay_length_bounds_aggregates_across_periods(
     off_peak.min_nights = 3
     off_peak.save(update_fields=["min_nights"])
 
-    context = _june_context(property_)
-    assert context is not None
+    straddling = PricingEngine.load_context(
+        property_, date_from=date(2026, 8, 28), date_to=date(2026, 9, 5)
+    )
+    assert straddling is not None
+    assert PricingEngine.stay_length_bounds(straddling) == (3, None)
 
-    assert PricingEngine.stay_length_bounds(context) == (3, None)
+    june_only = _june_context(property_)
+    assert june_only is not None
+    assert PricingEngine.stay_length_bounds(june_only) == (7, 14)
 
 
 @pytest.mark.django_db
@@ -1081,8 +1125,8 @@ def test_divergent_period_min_nights_strict_in_quote_but_loose_in_search(
     off_peak = _period_of(
         _rule(
             rule.period.plan,
-            date_from=date(2026, 10, 1),
-            date_to=date(2026, 10, 31),
+            date_from=date(2026, 9, 1),
+            date_to=date(2026, 9, 30),
             min_party=1,
             max_party=8,
             nightly=Decimal("120.00"),
@@ -1091,7 +1135,11 @@ def test_divergent_period_min_nights_strict_in_quote_but_loose_in_search(
     off_peak.min_nights = 3
     off_peak.save(update_fields=["min_nights"])
 
-    context = _june_context(property_)
+    # A search window straddling both periods (GAP-110: bounds come from the
+    # periods the window touches).
+    context = PricingEngine.load_context(
+        property_, date_from=date(2026, 8, 28), date_to=date(2026, 9, 5)
+    )
     assert context is not None
     # Loosest-wins search pre-filter.
     assert PricingEngine.stay_length_bounds(context) == (3, None)
@@ -1109,8 +1157,8 @@ def test_divergent_period_min_nights_strict_in_quote_but_loose_in_search(
     # The same length in the 3-night off-peak period prices fine.
     off_peak_quote = PricingEngine.quote(
         property=property_,
-        date_from=date(2026, 10, 5),
-        date_to=date(2026, 10, 9),  # 4 nights, all in off-peak
+        date_from=date(2026, 9, 5),
+        date_to=date(2026, 9, 9),  # 4 nights, all in off-peak
         party=4,
         currency=gbp,
     )

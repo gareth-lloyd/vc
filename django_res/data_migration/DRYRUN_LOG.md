@@ -358,8 +358,8 @@ data) or pin them to `loadscope`.**
 ## Run 3 — 2026-09-10 (GAP-107 cutover-fidelity leftovers, feat/gap-107)
 
 Same 24-Apr-2025 dump (`res-db`), fresh `villacollective_legacy_dryrun`
-migrated to the branch leaves (`pricing/0008_extra_legacy_id`,
-`properties/0008_propertyfinance_legacy_id`). `loadlegacy --all` run twice
+migrated to the branch leaves (`pricing/0008_extra_legacy_id`, renumbered `0013` at the 2026-09-14 merge;
+`properties/0008_propertyfinance_legacy_id`, renumbered `0009`). `loadlegacy --all` run twice
 (idempotence), then `reconcile_legacy`.
 
 ### Census (legacy dump, `sqlcmd` one-liners; corrects the ticket's numbers)
@@ -426,7 +426,7 @@ git-tracked `DbScript.sql`, not the prod dump. Measured on the dump:
   region Orana; **IN, NZ and AU** retire the same way. **6 migrated properties
   sit in retired regions**, 0 in retired countries — they stay reachable, but
   the region no longer appears in the quote-builder geo pickers.
-- The 84 ported extras are **opt-in** (`is_mandatory=False`); until GAP-108
+- The 84 ported extras are **opt-in** (`is_mandatory=False`); until GAP-111
   wires `opt_in_extras` into the quote builder they are catalogue + Zoho
   `extras[]` visibility only. Run `zoho_backfill --kinds villa` after the load
   so the villa payloads carry them.

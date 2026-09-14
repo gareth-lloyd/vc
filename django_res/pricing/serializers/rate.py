@@ -15,8 +15,8 @@ from django.db import models
 from django.utils import timezone
 from rest_framework import serializers
 
-from pricing.models import RateBand, RatePeriod, RatePlan
-from properties.models import Property
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
+from pricing.models.rate import REGIME_LOCKED_MESSAGE, regime_occupied_message
 
 # Record-level lock message shared by the serializers and the destroy views.
 HISTORICAL_LOCKED_MESSAGE = (
@@ -33,6 +33,24 @@ def guard_period_editable(period: RatePeriod | None) -> None:
     """Raise if ``period`` has fully elapsed (its rates are frozen)."""
     if period is not None and period.is_historical:
         raise serializers.ValidationError(HISTORICAL_LOCKED_MESSAGE)
+
+
+def _effective_value(
+    model: type[models.Model], attrs: dict[str, Any], instance: models.Model | None
+) -> Callable[[str], Any]:
+    """`field -> value the write would leave in place`: the submitted value,
+    else the stored one (PATCH), else the model default (create)."""
+
+    def effective(field: str) -> Any:
+        if field in attrs:
+            return attrs[field]
+        if instance is not None:
+            return getattr(instance, field)
+        model_field = model._meta.get_field(field)
+        assert isinstance(model_field, models.Field)  # only concrete columns queried
+        return model_field.get_default() if model_field.has_default() else None
+
+    return effective
 
 
 def _max_occupancy(plan: RatePlan) -> int | None:
@@ -354,8 +372,8 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
         """Inclusive dates, period date-disjointness, and activation coverage.
 
         - Dates are inclusive: `date_from == date_to` is a legal single-day period.
-        - Periods on one plan must not overlap on the date axis (the Unit 9
-          EXCLUDE enforced in the DB; here we surface it as a 400).
+        - Periods in one (property, currency) regime must not overlap on the
+          date axis (the `rateperiod_no_overlap` EXCLUDE; here a 400).
         - When the period is (or becomes) `is_active` **and already has bands**,
           reject a gap in `1..max_occupancy` (POA is an explicit band, not a gap).
           A fresh period with no bands is exempt — coverage is built incrementally.
@@ -388,19 +406,26 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
 
         plan = self._resolve_plan(attrs)
         if plan is not None and None not in (date_from, date_to):
+            # GAP-110: the no-overlap rule is per (property, currency) regime,
+            # whatever the plan — mirror `rateperiod_no_overlap` as a 400.
+            # Explicit ordering: the model default (`plan`, `date_from`) drags
+            # the plan and property orderings in as joins; this lets the
+            # (property, currency, date_from, date_to) index serve the query.
             overlapping = RatePeriod.objects.filter(
-                plan=plan,
+                property_id=plan.property_id,
+                currency_id=plan.currency_id,
                 date_from__lte=date_to,
                 date_to__gte=date_from,
-            )
+            ).order_by("date_from")
             if self.instance is not None:
                 overlapping = overlapping.exclude(pk=self.instance.pk)
             clash = overlapping.first()
             if clash is not None:
+                where = "" if clash.plan_id == plan.pk else f' on plan "{clash.plan.name}"'
                 raise serializers.ValidationError(
                     {
                         "date_from": (
-                            "Dates overlap an existing period "
+                            f"Dates overlap an existing period{where} "
                             f"({clash.date_from} to {clash.date_to}). "
                             "Date ranges are inclusive: start the next period the "
                             "day after the previous one ends."
@@ -428,9 +453,10 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
 class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
     """Lighter list shape — no nested periods/rules."""
 
-    property = serializers.PrimaryKeyRelatedField(
-        queryset=Property.objects.all(),
-        required=False,
+    # Supplied by the view from the URL on create (`perform_create`); never a
+    # body input — periods stamp it as the regime key (GAP-110).
+    property: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(
+        read_only=True
     )
     currency_code = serializers.CharField(source="currency.code", read_only=True)
 
@@ -445,12 +471,53 @@ class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
             "price_basis",
             "prices_by_occupancy",
             "fallback_nightly",
-            "effective_from",
-            "effective_to",
             "is_active",
             "notes",
         ]
         read_only_fields = ["id"]
+
+    def validate_currency(self, value: Currency) -> Currency:
+        """GAP-110: periods stamp the plan's currency (half the regime
+        partition key), so it is fixed for life once any period exists. The
+        other half, `property`, is read-only above — the view sets it from the
+        URL on create and it never moves."""
+        if self.instance is not None and self.instance.currency_locked_against(value.pk):
+            raise serializers.ValidationError(REGIME_LOCKED_MESSAGE)
+        return value
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """GAP-110: one active plan per (property, currency, price basis) —
+        mirror `rateplan_one_active_per_regime` as a guided non-field 400.
+        Checked whenever the write would leave the plan active in a regime
+        (create, reactivate, or a currency/basis move onto an occupied one).
+        """
+        attrs = super().validate(attrs)
+        instance = self.instance
+        # A missing key falls back to the stored instance (PATCH) or the
+        # model default (create), so the pre-check and the constraint agree.
+        effective = _effective_value(RatePlan, attrs, instance)
+        if not effective("is_active"):
+            return attrs
+        currency, price_basis = effective("currency"), effective("price_basis")
+        property_id: int | None
+        if instance is not None:
+            property_id = instance.property_id
+        else:
+            # The view supplies `property` at `save()` from its URL kwarg
+            # (same route the period/band serializers take to their parent).
+            view = self.context.get("view")
+            property_id = getattr(view, "kwargs", {}).get("property_id")
+        if currency is None or property_id is None:
+            return attrs  # field-level validation reports the missing input
+        occupant = RatePlan.regime_occupant(
+            int(property_id),
+            currency.pk,
+            price_basis,
+            exclude_pk=instance.pk if instance else None,
+        )
+        if occupant is not None:
+            raise serializers.ValidationError(regime_occupied_message(occupant))
+        return attrs
 
     def validate_prices_by_occupancy(self, value: bool) -> bool:
         """Occupancy → flat is only safe once every period holds a single band.
@@ -478,17 +545,3 @@ class RatePlanDetailSerializer(RatePlanSerializer):
     class Meta(RatePlanSerializer.Meta):
         fields = [*RatePlanSerializer.Meta.fields, "periods"]
         read_only_fields = [*RatePlanSerializer.Meta.read_only_fields, "periods"]
-
-
-class RatePlanDuplicateSerializer(serializers.Serializer[None]):
-    """Input for `POST /rate-plans/{id}:duplicate` (SMELL-009).
-
-    Retrying UIs send a key; a repeat POST with the same key returns the
-    original clone (FG-010). Absent, blank, and explicit-null all mean
-    "no idempotency requested" — the bodyless FE call keeps working.
-    `max_length=64` matches the model column.
-    """
-
-    idempotency_key = serializers.CharField(
-        required=False, allow_blank=True, allow_null=True, default="", max_length=64
-    )

@@ -10,7 +10,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("properties", "0007_description_other_information"),
+        ("properties", "0008_remove_propertyfinance_season"),
     ]
 
     operations = [

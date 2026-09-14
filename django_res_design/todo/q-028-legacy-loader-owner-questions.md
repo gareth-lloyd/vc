@@ -1,0 +1,75 @@
+# Q-028 — Legacy-loader questions for Nick (the ones the audit could not settle from the data)
+
+- **Severity:** Question (each blocks one small slice of loader work; none
+  blocks cutover on its own).
+- **Source:** 2026-09-11 legacy-loader audit. Everything the audit *could*
+  decide from the dump or the legacy code was decided the same day (recorded
+  in BUG-028 / BUG-029 / BUG-030 / GAP-108 / GAP-109 and to be written into
+  `design/decisions.md` as they land). The residue below needs the owner.
+- **Files:** `django_res/data_migration/management/commands/import_past_bookers.py:206-256`;
+  `django_res/data_migration/loaders/properties.py` (concierge tier);
+  `django_res/data_migration/loaders/property_children.py:83-164`
+  (`GallaryOrder`); `django_res/data_migration/loaders/pricing.py:534-543`
+  (extras — GAP-107 §1).
+- **Format:** numbered, each with a suggested answer so a one-word reply per
+  number is complete, in the style of
+  [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md). Fold onto
+  the next Nick call rather than sending as a standalone e-mail.
+
+## Questions
+
+1. **Future stays in the Past Bookers sheet.** The Booking History sheet has
+   141 stays dated 2026 and 17 dated 2027 (plus 160 for 2025). Today they
+   import as "past stays" and make those guests count as repeat customers
+   before they have stayed. **Suggested answer:** skip anything dated after
+   the cutover year and list them in the import report; they are bookings-to-
+   be and will arrive through the normal booking flow. *(Alternative: keep
+   them all — a stay is a relationship fact regardless of date.)*
+
+2. **Concierge tier per villa.** Legacy stores a concierge service tier on
+   291 live villas (tier 1 ×165, tier 2 ×126). The new system has no field
+   for it and concierge is deferred to M2. **Suggested answer:** keep the
+   number on the villa as a plain "concierge tier" field now (cheap, nothing
+   reads it yet) rather than lose it and re-derive from the archived dump
+   later. *(Alternative: drop it; we have the dump.)*
+
+3. **Featured-image grid slots.** Legacy's image screen lets a curator pin
+   up to four images into a "featured grid" (696 images carry a slot 1–4).
+   The new gallery has a hero and a sort order, no slots. **Suggested
+   answer:** ask Ben whether the rebuilt website (GAP-106) wants a featured
+   grid; if yes we carry the slot across, if no we drop it and record the
+   count. *(Depends on Q-026 / GAP-106.)*
+
+4. ~~**Legacy extras catalogue**~~ — **answered, drop from the call.**
+   User decision 2026-09-10, shipped in GAP-107 (merged 2026-09-14): the 96
+   live legacy extras (not 137) port as **opt-in** `pricing.Extra` rows with
+   **no date window** (legacy `FromDate`/`ToDate` on extras are 2022 fold-in
+   timestamps and would hide every extra from quotes); 84 load. Quoting them
+   from the builder waits on GAP-111.
+
+5. **Do we ever run two price lists for one villa at once — a gross public
+   one and a net agent one — on the same dates?** (GAP-110.) The 2026-06-22
+   net/gross decision text says yes in principle; no legacy villa does it
+   (all 521 loaded plans are gross) and the quote path has no way to pick
+   one. GAP-110 forbids two plans pricing the same night in one currency.
+   **Suggested answer:** no — one list per villa per currency; a switch
+   from gross to net happens at a season boundary. *(If yes: the plan
+   gains a segment, the invariant becomes per villa + currency + segment,
+   and the quote path must let staff choose the segment. Small, but must
+   be known before GAP-110 U2.)*
+   **Recorded 2026-09-14 (GAP-110 shipped, U2 landed):** the partition is
+   `(property, currency)` with **no `segment`** — `rateperiod_no_overlap` is
+   per villa + currency, and at most one *active* plan exists per villa +
+   currency + price basis. A GROSS and a NET plan can therefore coexist only
+   on **different dates**; a stay touching both is a loud `MultiRegimeStay`
+   error, never a silent pick. Agent-vs-direct pricing on the *same* dates
+   would need a `segment` on the plan, the invariant widened to
+   `(property, currency, segment)`, and a segment selector on the quote
+   path — a small extension, but it is **still open for the owner**: the
+   question stands as asked.
+
+## Disposition
+
+Record each answer in `design/decisions.md` and on the owning ticket
+(1 → BUG-030 §36; 2, 3 → GAP-109 rows 10/11; 4 → GAP-107 §1; 5 → GAP-110
+U2); retire this file to `reviews/` when all five are answered.

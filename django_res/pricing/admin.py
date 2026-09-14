@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from django.contrib import admin, messages
 
-from core.exceptions import NoRateAvailable
+from core.exceptions import NoRateAvailable, RegimeConflict
 from pricing.models import (
     Currency,
     Discount,
@@ -47,7 +47,6 @@ class RatePlanAdmin(admin.ModelAdmin):
         "currency",
         "price_basis",
         "fallback_nightly",
-        "effective_from",
         "is_active",
     )
     list_filter = ("price_basis", "is_active", "currency")
@@ -56,22 +55,29 @@ class RatePlanAdmin(admin.ModelAdmin):
 
     @admin.action(description="Carry forward to next year (editable rows)")
     def carry_forward_next_year(self, request: HttpRequest, queryset: QuerySet[RatePlan]) -> None:
-        """Materialise editable rows for each selected plan's following year.
+        """Materialise editable rows for the year after each selected plan's
+        latest period (GAP-110: periods, not the plan, date the regime).
 
-        Idempotent: a plan whose next year already exists is left untouched. The
+        Idempotent: a year the regime already prices is left untouched. The
         anchor is resolved per (property, currency), so selecting any plan for a
         villa carries that villa's most recent year forward.
         """
         created = 0
-        for plan in queryset:
+        for plan in queryset.select_related("property", "currency"):
+            target_year = RateCarryoverService.next_target_year(plan.property, plan.currency)
+            if target_year is None:
+                self.message_user(
+                    request, f"{plan} has no periods to carry forward.", level=messages.WARNING
+                )
+                continue
             try:
                 RateCarryoverService.materialise(
                     plan.property,
-                    target_year=plan.effective_from.year + 1,
+                    target_year=target_year,
                     currency=plan.currency,
                 )
                 created += 1
-            except NoRateAvailable as exc:
+            except (NoRateAvailable, RegimeConflict) as exc:
                 self.message_user(request, str(exc), level=messages.WARNING)
         if created:
             self.message_user(

@@ -1,8 +1,36 @@
 # SPEC-001 — Make `RatePeriod` the sole date authority; `RatePlan` becomes a dateless regime bucket
 
+> **✅ RESOLVED (2026-09-14)** — the **regime-bucket cut** (open decision 1)
+> was adopted and shipped as
+> [GAP-110](gap-110-rateplan-regime-bucket-period-date-authority.md) on
+> `feat/gap-110`: `RatePlan.effective_from/effective_to` dropped
+> (`pricing/0012`), `RatePeriod` carries the regime key and is the only date
+> authority, `rateperiod_no_overlap` partitions on `(property, currency)`,
+> one active plan per `(property, currency, price_basis)`, the engine selects
+> periods first and raises `MultiRegimeStay` on a two-regime stay, projection
+> and carry-forward anchor on a period year, and the legacy loader merges
+> seasons into one plan per villa + currency. Open decisions 1 (adopt the
+> cut), 2 (gap policy: some real nights → real + fallback / fail; none →
+> project), 3 (workbench scoping: URL-driven year picker + period-derived
+> coverage lane, no plan dates) and 5 (the same-currency regime invariant,
+> landed as the widened EXCLUDE — no interim guard) are answered on GAP-110.
+> **Decision 4 — the offer-item season-linkage drift — is unaddressed** and
+> stays open here (see "Open decisions" below); it has no other home yet. The
+> interim "bind the envelope to the period union" guardrail was **not** built.
+> This file remains the record of the alternatives considered and rejected.
+
 - **Severity:** 🔵 Speculative (design exploration — no committed decision; captures
   an investigation so the reasoning isn't lost. Demand-driven: adopt only if the
   drift bug below actually bites, or when the rate model is next opened.)
+  **2026-09-11: it bit, and the recommended direction is adopted as
+  [GAP-110](gap-110-rateplan-regime-bucket-period-date-authority.md)**, the
+  build ticket — with one addition this exploration could not see: legacy
+  seasons were never a pricing concept (`VillaSeasonDates` was a data-entry
+  assignment key), every legacy villa is one regime, so the loader stops
+  minting a plan per `VillaSeason` and the "empty plan loses its year" cost
+  disappears. Open decisions 1, 2, 3 and 5 are answered there; 4 (offer-item
+  season linkage) stays open below. This file remains the record of
+  alternatives considered.
 - **Source:** 2026-07-03 far-future-rates investigation (owner-feedback pass).
   Grew out of a question about how far-future enquiries are priced and turned
   into a rate-model critique.
@@ -216,6 +244,16 @@ even across a year boundary. Not worth it.
   villas. Inclusions *are* ported (GAP-037). Confirm whether the drop is intentional
   or an un-ported surface; if intentional, record it in `CUTOVER.md` expected-losses.
   → **Filed as GAP-107 §1 (2026-09-10).**
+- **Season-envelope parity gap (2026-09-11 loader audit, BUG-028 §5):**
+  `RatePlanLoader` sets `effective_from/to` from `VillaSeasonDates`, the engine
+  only picks plans whose window covers the whole stay, and legacy ignored
+  `VillaSeasonDates` for pricing — so **268 priced live rows (89 future)** sit
+  outside their plan's window and 64 loaded plans have periods outside their
+  own envelope. Two options: widen the window in the loader (min/max over
+  both sources; interim) or make this ticket's period-as-date-authority the
+  fix. **Parked** (user, 2026-09-11) to explore after the other loader
+  questions land; whichever way it goes, this is the first concrete data
+  that the "regime bucket" model would have avoided.
 - **Workbench carry-forward affordance** already filed as **GAP-069** — since
   resolved (2026-07-03): the `…:carry-forward` endpoint has its SPA caller
   (`CarryForwardDialog`).
@@ -229,7 +267,10 @@ even across a year boundary. Not worth it.
 3. How does the workbench scope a plan/year when an empty plan has no dates?
 4. Is the offer-item season-linkage drift worth addressing (and does that reopen any
    argument for plan-scoped offer-items — the one good idea the rejected year model
-   had)?
+   had)? **Still open (2026-09-14):** not addressed by GAP-110 and not filed
+   elsewhere — under the regime model a plan spans every year, so "plan-scoped"
+   offer-items would have to be period-scoped; pick it up when offer-items are
+   next touched.
 5. Same-currency plan overlap (adjacent problem): confirm the regime invariant "at most
    one active regime per `(property, currency, night)`" is the intended rule — i.e. we
    reject the "coexist iff different currency" constraint — and decide whether a cheap

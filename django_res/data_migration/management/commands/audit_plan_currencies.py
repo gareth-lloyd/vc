@@ -23,21 +23,21 @@ from datetime import date
 from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models import Count, Q
+from django.db.models import Count
 
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
+from data_migration.loaders.pricing import PLAN_LEGACY_PREFIX, VILLA_CURRENCY_SUBSELECT
 from pricing.models.currency import Currency
 from pricing.models.rate import RatePlan
 from pricing.services.currency import default_currency, settings_currency
+from properties.models.property import Property
 
 # Seasons whose own rate rows carry no usable currency, plus the villa-level
 # inference the loader applies (the villa's most recent non-NULL row).
 _AFFECTED_SEASONS_QUERY = (
     "SELECT s.ID, s.VillaId, "
-    "(SELECT TOP 1 r2.CurrencyId FROM VillaSeasonRate r2 "
-    " WHERE r2.VillaId = s.VillaId AND r2.CurrencyId IS NOT NULL AND r2.CurrencyId <> 0 "
-    " AND r2.DeletedAt IS NULL ORDER BY r2.ID DESC) AS VillaCurrencyId "
+    f"{VILLA_CURRENCY_SUBSELECT} AS VillaCurrencyId "
     "FROM VillaSeason s WHERE s.DeletedAt IS NULL AND NOT EXISTS ("
     " SELECT 1 FROM VillaSeasonRate r"
     " WHERE r.SeasonId = s.ID AND r.CurrencyId IS NOT NULL AND r.CurrencyId <> 0"
@@ -53,56 +53,68 @@ class AuditResult:
     unloaded: int = 0
 
 
-def _expected_resolution(plan: RatePlan, villa_currency_id: Any) -> tuple[str, Currency | None]:
-    """(rule label, currency) the loader chain would resolve for this plan now."""
+def _expected_resolution(prop: Property, villa_currency_id: Any) -> tuple[str, Currency | None]:
+    """(rule label, currency) the loader chain would resolve for this villa now."""
     if villa_currency_id:
         villa_currency = Currency.objects.filter(legacy_id=str(villa_currency_id)).first()
         if villa_currency is not None:
             return "villa-rates", villa_currency
     # Same helper the loader's fallback uses (settings chain incl. the
     # group fallback) so the audit can never drift from the chain it audits.
-    configured = settings_currency(plan.property)
+    configured = settings_currency(prop)
     if configured is not None:
         return "settings", configured
     return "eur-default", default_currency()
 
 
 def audit_null_currency_seasons(rows: list[dict[str, Any]]) -> AuditResult:
-    """Compare each NULL-currency season's loaded plan against the loader chain."""
+    """Compare each NULL-currency season's villa regime plans against the
+    loader chain.
+
+    GAP-110: a season no longer has a plan of its own — its rows land on the
+    villa's `villa:<VillaId>:<CODE>` regime plan for the currency the chain
+    resolves. So the question becomes: does that plan exist? A villa with
+    regime plans but none in the expected currency was loaded under the wrong
+    currency (BLOCKER); a villa with no regime plan at all is unloaded.
+    """
     result = AuditResult()
     for row in rows:
         season_id = str(row["ID"])
-        plan = (
-            RatePlan.objects.filter(legacy_id=season_id)
+        villa_id = str(row.get("VillaId") or "")
+        plans = list(
+            RatePlan.objects.filter(legacy_id__startswith=f"{PLAN_LEGACY_PREFIX}{villa_id}:")
             .select_related("currency", "property")
-            .first()
+            .order_by("currency__code")
         )
-        if plan is None:
+        if not plans:
             result.unloaded += 1
             continue
-        rule, expected = _expected_resolution(plan, row.get("VillaCurrencyId"))
-        loaded_code = plan.currency.code
-        ok = expected is not None and expected.pk == plan.currency_id
+        prop = plans[0].property
+        rule, expected = _expected_resolution(prop, row.get("VillaCurrencyId"))
+        loaded_codes = "/".join(p.currency.code for p in plans)
+        ok = expected is not None and any(p.currency_id == expected.pk for p in plans)
         if not ok:
             result.blockers.append(
-                f"season {season_id} ({plan.property.name}): loaded {loaded_code}, "
+                f"season {season_id} ({prop.name}): loaded {loaded_codes}, "
                 f"loader would resolve {expected.code if expected else 'nothing'} via {rule}"
             )
         elif rule == "eur-default":
-            result.eur_defaults.append(f"season {season_id} — {plan.property.name}")
+            result.eur_defaults.append(f"season {season_id} — {prop.name}")
         result.rows.append(
-            (season_id, plan.property.name[:40], rule, loaded_code, "OK" if ok else "BLOCKER")
+            (season_id, prop.name[:40], rule, loaded_codes, "OK" if ok else "BLOCKER")
         )
     return result
 
 
 def bookable_currency_mix() -> list[tuple[str, int, int]]:
-    """(currency, plans, properties) for active plans covering today or later."""
+    """(currency, plans, properties) for active plans with an active period
+    ending today or later (GAP-110: periods, not the plan, date the regime)."""
     qs = (
-        RatePlan.objects.filter(is_active=True)
-        .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=date.today()))
+        RatePlan.objects.filter(
+            is_active=True, periods__is_active=True, periods__date_to__gte=date.today()
+        )
         .values("currency__code")
-        .annotate(plans=Count("pk"), properties=Count("property", distinct=True))
+        .annotate(plans=Count("pk", distinct=True), properties=Count("property", distinct=True))
         .order_by("-properties")
     )
     return [(r["currency__code"], r["plans"], r["properties"]) for r in qs]

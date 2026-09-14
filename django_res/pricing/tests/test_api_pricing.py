@@ -181,8 +181,6 @@ def test_pricing_quote_bulk_mixed_currencies_all_price(
         property=eur_villa,
         name="Summer 2026",
         currency=eur,
-        effective_from=date(2026, 1, 1),
-        effective_to=date(2026, 12, 31),
     )
     period2 = RatePeriod.objects.create(
         plan=plan2,
@@ -419,8 +417,6 @@ def test_quote_bulk_carries_hero_image_url(
         property=no_hero,
         name="Summer 2026",
         currency=gbp,
-        effective_from=date(2026, 1, 1),
-        effective_to=date(2026, 12, 31),
     )
     period2 = RatePeriod.objects.create(
         plan=plan2,

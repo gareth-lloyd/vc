@@ -7,6 +7,10 @@
   agreeing the Res → Payload villa push. The contract rests on "Res proposes
   the slug, the site owns the URL, and edits in Res never move a URL"; today
   nothing on our side upholds the second half of that.
+- **⚠️ 2026-09-11 loader audit:** the legacy loader writes `Property.slug`
+  as the full WordPress URL (`https://www.villacollective.com/<region>/<villa>`,
+  294/294 live villas) — BUG-030 §1 fixes the loader to a real slug. Build
+  the history table after that lands, or it inherits 294 URL-shaped "slugs".
 - **Files touched (when built):**
   - `django_res/properties/models/property.py:18` — `slug =
     models.SlugField(max_length=255, unique=True)`.

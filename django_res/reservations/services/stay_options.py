@@ -26,7 +26,7 @@ from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
 
-from core.exceptions import DomainError
+from core.exceptions import DomainError, PoaRate
 from pricing.models import Currency
 from pricing.services import PricingContext, PricingEngine
 from pricing.services.currency import resolve_property_currency
@@ -149,9 +149,10 @@ class StayOptionsService:
 
         Performance: ONE `PricingEngine.load_context()` per property covers the
         whole window when a single plan spans it, and every week's quote reuses
-        it — no per-week plan/card/rule reload. When a plan boundary falls
-        inside the window the load returns ``None`` and each week loads its own
-        context (still correct, just off the fast path).
+        it — no per-week plan/card/rule reload. When no period touches the
+        window, or two regimes do (a GROSS→NET hand-over inside the window,
+        GAP-110 `MultiRegimeStay`), the load returns ``None`` and each week
+        loads its own context (still correct, just off the fast path).
         """
         properties_by_id = {
             p.pk: p
@@ -325,7 +326,7 @@ class StayOptionsService:
                 )
             except DomainError as exc:
                 # Q-013: POA / no-rate flags the band, never drops it. POA is a
-                # NoRateAvailable whose message names it. Its display currency is
+                # `PoaRate` (a NoRateAvailable subclass). Its display currency is
                 # the covering plan's (or the searched currency) — the very one
                 # every priceable band reports, so a POA band can never show a
                 # different currency than its siblings in the same fan-out. We
@@ -334,7 +335,7 @@ class StayOptionsService:
                 # week), rather than re-resolving the property's *current*
                 # currency, which a currency switch could make diverge.
                 code = getattr(exc, "code", "domain_error")
-                is_poa = code == "no_rate_available" and "POA" in str(exc)
+                is_poa = isinstance(exc, PoaRate)
                 band_currency = (
                     currency.code if currency is not None else context.plan.currency.code
                 )
@@ -498,10 +499,10 @@ class StayOptionsService:
             )
         except DomainError as exc:
             # Q-013 parity: no-rate / POA / party-out-of-range feed the
-            # incomplete-pricing shape, never a 500. POA is a NoRateAvailable
-            # whose message names it (the engine has no distinct POA code).
+            # incomplete-pricing shape, never a 500. POA is the `PoaRate`
+            # subclass of NoRateAvailable (same API code, distinct type).
             code = getattr(exc, "code", "domain_error")
-            is_poa = code == "no_rate_available" and "POA" in str(exc)
+            is_poa = isinstance(exc, PoaRate)
             resolved = (
                 resolve_property_currency(property_obj) if code == "no_rate_available" else None
             )

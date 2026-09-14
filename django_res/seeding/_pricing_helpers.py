@@ -156,13 +156,16 @@ def build_seasonal_periods(
     plan: Any,
     base_nightly: Decimal,
     *,
+    window: tuple[date, date],
     min_nights: int = 1,
     brackets: tuple[tuple[int, int, Decimal], ...] | None = None,
     wide_spread: bool = False,
 ) -> None:
     """One Low/Mid/Peak `RatePeriod` per season segment on `plan`, each with one
-    rule per party bracket, partitioning the whole plan window gap-free so any
-    stay the booking stages generate prices without NoRateAvailable.
+    rule per party bracket, partitioning `window` (inclusive) gap-free so any
+    stay the booking stages generate prices without NoRateAvailable. GAP-110:
+    the plan carries no dates of its own, so the caller names the window —
+    always `ctx.rate_window`, the one span the booking stages stay inside.
 
     The segments are date-disjoint (satisfying the periods EXCLUDE) and the
     brackets are party-disjoint (satisfying the bands EXCLUDE), so every
@@ -173,12 +176,16 @@ def build_seasonal_periods(
     `brackets` defaults to a single flat band spanning the villa's capacity
     (`flat_brackets`); pass explicit party brackets for occupancy pricing.
     """
-    assert plan.effective_to is not None  # factories/stages always set it
+    window_from, window_to = window
+    if window_from > window_to:
+        # Fail at the call site, not as the periods' CHECK constraint deep
+        # inside factory-boy.
+        raise ValueError(f"inverted rate window {window_from}..{window_to}")
     if brackets is None:
         capacity = getattr(getattr(plan.property, "capacity", None), "guests", None) or 1
         brackets = flat_brackets(capacity)
     multipliers = _WIDE_SEASON_MULTIPLIERS if wide_spread else _SEASON_MULTIPLIERS
-    for seg_from, seg_to, season in _season_segments(plan.effective_from, plan.effective_to):
+    for seg_from, seg_to, season in _season_segments(window_from, window_to):
         period = RatePeriodFactory(
             plan=plan,
             date_from=seg_from,

@@ -11,6 +11,7 @@ from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.services.projection import (
     RateProjectionService,
     keep_calendar_date,
+    map_range,
     shift_to_changeover_weekday,
 )
 from properties.models import Property
@@ -55,6 +56,27 @@ def test_shift_to_changeover_weekday_always_preserves_weekday_with_minimal_shift
         assert abs((mapped - keep_calendar_date(source, delta)).days) <= 3
 
 
+def test_map_range_keeps_a_start_inside_its_target_year() -> None:
+    """GAP-110: a period belongs to the year of its `date_from`, so the weekday
+    map may not carry 1 Jan back into December or 30 Dec forward into
+    January; those starts fall back to the calendar date, span preserved."""
+    # Fri 1 Jan 2027 -> naive Sat 1 Jan 2028 -> weekday map says 31 Dec 2027.
+    assert map_range(date(2027, 1, 1), date(2027, 1, 7), 1, shift_to_changeover_weekday) == (
+        date(2028, 1, 1),
+        date(2028, 1, 7),
+    )
+    # Thu 30 Dec 2027 -> naive Mon 30 Dec 2030 -> weekday map says Thu 2 Jan 2031.
+    assert map_range(date(2027, 12, 30), date(2028, 1, 5), 3, shift_to_changeover_weekday) == (
+        date(2030, 12, 30),
+        date(2031, 1, 5),
+    )
+    # Mid-year starts keep the weekday nudge.
+    assert (
+        map_range(date(2027, 6, 1), date(2027, 6, 7), 1, shift_to_changeover_weekday)[0].weekday()
+        == date(2027, 6, 1).weekday()
+    )
+
+
 # --- anchor resolution ------------------------------------------------------
 
 
@@ -80,50 +102,112 @@ def anchor_plan(property_: Property, gbp: Currency) -> RateBand:
 
 
 @pytest.mark.django_db
-def test_find_anchor_returns_most_recent_prior_plan(
+def test_find_anchor_returns_latest_period_year_before_target(
     property_: Property, gbp: Currency, anchor_plan: RateBand
 ) -> None:
-    newer = RatePlan.objects.create(
-        property=property_,
-        name="Summer 2027",
-        currency=gbp,
-        effective_from=date(2027, 1, 1),
-        effective_to=date(2027, 12, 31),
+    """GAP-110: the anchor is the *period* year, not a plan envelope — a
+    regime plan holding 2026 and 2027 periods anchors 2028 on 2027."""
+    plan = _period_of(anchor_plan).plan
+    RatePeriod.objects.create(
+        plan=plan, name="Summer 2027", date_from=date(2027, 6, 1), date_to=date(2027, 8, 31)
     )
-    found = RateProjectionService.find_anchor_plan(property_, gbp, date(2028, 7, 4))
-    assert found == newer
+    found = RateProjectionService.find_anchor(property_, gbp, 2028)
+    assert found is not None
+    assert found.plan == plan
+    assert found.source_year == 2027
 
 
 @pytest.mark.django_db
 def test_find_anchor_ignores_other_currency(
     property_: Property, gbp: Currency, usd: Currency, anchor_plan: RateBand
 ) -> None:
-    found = RateProjectionService.find_anchor_plan(property_, usd, date(2028, 7, 4))
+    found = RateProjectionService.find_anchor(property_, usd, 2028)
     assert found is None
 
 
 @pytest.mark.django_db
 def test_find_anchor_none_for_brand_new_villa(property_: Property, gbp: Currency) -> None:
-    found = RateProjectionService.find_anchor_plan(property_, gbp, date(2028, 7, 4))
+    found = RateProjectionService.find_anchor(property_, gbp, 2028)
     assert found is None
 
 
 @pytest.mark.django_db
-def test_find_anchor_excludes_same_year_plan(
+def test_find_anchor_none_for_a_periodless_plan(property_: Property, gbp: Currency) -> None:
+    """A plan with no periods says nothing about any year (GAP-110: the plan
+    envelope is not a date authority)."""
+    RatePlan.objects.create(
+        property=property_, name="Empty", currency=gbp, effective_from=date(2026, 1, 1)
+    )
+    assert RateProjectionService.find_anchor(property_, gbp, 2028) is None
+
+
+@pytest.mark.django_db
+def test_find_anchor_excludes_same_year_periods(
     property_: Property, gbp: Currency, anchor_plan: RateBand
 ) -> None:
-    # A plan whose effective_from is in the target year is not an anchor for that
-    # year — it would anchor on itself.
-    RatePlan.objects.create(
-        property=property_,
+    # A period starting in the target year is not an anchor for that year — it
+    # would anchor on itself (a partially priced target year still projects
+    # from the last complete prior year).
+    RatePeriod.objects.create(
+        plan=_period_of(anchor_plan).plan,
         name="Partial 2028",
-        currency=gbp,
-        effective_from=date(2028, 1, 1),
-        effective_to=date(2028, 3, 31),
+        date_from=date(2028, 1, 1),
+        date_to=date(2028, 3, 31),
     )
-    found = RateProjectionService.find_anchor_plan(property_, gbp, date(2028, 7, 4))
+    found = RateProjectionService.find_anchor(property_, gbp, 2028)
     assert found is not None
-    assert found.name == "Summer 2026"
+    assert found.source_year == 2026
+
+
+@pytest.mark.django_db
+def test_find_anchor_skips_inactive_periods_and_inactive_plans(
+    property_: Property, gbp: Currency, anchor_plan: RateBand
+) -> None:
+    plan = _period_of(anchor_plan).plan
+    RatePeriod.objects.create(
+        plan=plan,
+        name="Withdrawn 2027",
+        date_from=date(2027, 6, 1),
+        date_to=date(2027, 8, 31),
+        is_active=False,
+    )
+    retired = RatePlan.objects.create(
+        property=property_,
+        name="Retired",
+        currency=gbp,
+        effective_from=date(2027, 1, 1),
+        is_active=False,
+    )
+    RatePeriod.objects.create(
+        plan=retired, name="Autumn 2027", date_from=date(2027, 9, 1), date_to=date(2027, 9, 30)
+    )
+    found = RateProjectionService.find_anchor(property_, gbp, 2028)
+    assert found is not None
+    assert found.plan == plan
+    assert found.source_year == 2026
+
+
+@pytest.mark.django_db
+def test_project_carries_only_the_source_year_periods(
+    property_: Property, gbp: Currency, anchor_plan: RateBand
+) -> None:
+    """A regime plan holds every year's periods; projecting 2028 shifts only
+    the 2027 (source-year) set, never 2026's alongside it."""
+    plan = _period_of(anchor_plan).plan
+    later = RatePeriod.objects.create(
+        plan=plan, name="Summer 2027", date_from=date(2027, 6, 1), date_to=date(2027, 8, 31)
+    )
+    RateBand.objects.create(period=later, min_party=1, max_party=8, nightly=Decimal("300.00"))
+    ctx = RateProjectionService.project(
+        property=property_, date_from=date(2028, 7, 4), currency=gbp, date_map=keep_calendar_date
+    )
+    assert ctx is not None
+    [period] = ctx.periods
+    assert (period.date_from, period.date_to) == (date(2028, 6, 1), date(2028, 8, 31))
+    [rule] = ctx.bands_by_period[later.pk]
+    assert rule.nightly == Decimal("300.00")
+    assert ctx.projection is not None
+    assert ctx.projection["source_year"] == 2027
 
 
 # --- project() --------------------------------------------------------------

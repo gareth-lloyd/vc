@@ -23,7 +23,7 @@ from datetime import date
 from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models import Count, Q
+from django.db.models import Count
 
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
@@ -107,12 +107,14 @@ def audit_null_currency_seasons(rows: list[dict[str, Any]]) -> AuditResult:
 
 
 def bookable_currency_mix() -> list[tuple[str, int, int]]:
-    """(currency, plans, properties) for active plans covering today or later."""
+    """(currency, plans, properties) for active plans with an active period
+    ending today or later (GAP-110: periods, not the plan, date the regime)."""
     qs = (
-        RatePlan.objects.filter(is_active=True)
-        .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=date.today()))
+        RatePlan.objects.filter(
+            is_active=True, periods__is_active=True, periods__date_to__gte=date.today()
+        )
         .values("currency__code")
-        .annotate(plans=Count("pk"), properties=Count("property", distinct=True))
+        .annotate(plans=Count("pk", distinct=True), properties=Count("property", distinct=True))
         .order_by("-properties")
     )
     return [(r["currency__code"], r["plans"], r["properties"]) for r in qs]

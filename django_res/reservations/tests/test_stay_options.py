@@ -610,19 +610,10 @@ class TestWeeklyPrices:
         from pricing.models import RatePeriod
 
         _sat_changeover(property_)
-        # 2025 rates for September weeks to project from (Unit 6 re-anchors on
-        # periods; today the anchor is the plan envelope year, so a 2025 plan).
-        from pricing.models import RatePlan as RatePlanModel
-
-        last_year = RatePlanModel.objects.create(
-            property=property_,
-            name="2025",
-            currency=plan.currency,
-            effective_from=date(2025, 1, 1),
-            effective_to=date(2025, 12, 31),
-        )
+        # 2025 rates for September weeks to project from — on the same regime
+        # plan (GAP-110: the anchor is the latest prior *period* year).
         period = RatePeriod.objects.create(
-            plan=last_year, name="2025", date_from=date(2025, 1, 1), date_to=date(2025, 12, 31)
+            plan=plan, name="2025", date_from=date(2025, 1, 1), date_to=date(2025, 12, 31)
         )
         RateBandModel.objects.create(
             period=period, min_party=1, max_party=8, nightly=Decimal("100.00")

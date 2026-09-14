@@ -269,8 +269,15 @@ def test_rerun_purges_pre_regroup_season_keyed_plans(
         applies_to=date(2025, 8, 31),
         legacy_id="1:svc",
     )
+    # A staff-made plan in another regime bucket (NET) survives untouched. An
+    # active staff plan in the *same* bucket as the loader's would trip
+    # `rateplan_one_active_per_regime` — the operator resolves that by hand.
     staff_plan = RatePlan.objects.create(
-        property=loaded_property, name="Staff plan", currency=eur, effective_from=date(2025, 1, 1)
+        property=loaded_property,
+        name="Staff plan",
+        currency=eur,
+        price_basis=PriceBasis.NET,
+        effective_from=date(2025, 1, 1),
     )
     _load(_row(ID=1, CurrencyId=3, Inclusion="Chef."))
 

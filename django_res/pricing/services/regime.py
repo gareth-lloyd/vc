@@ -130,3 +130,16 @@ def _regime_conflict_guard(constraint: str, message: str) -> Iterator[None]:
 def period_overlap_guard() -> AbstractContextManager[None]:
     """Guard a `RatePeriod` write against `rateperiod_no_overlap`."""
     return _regime_conflict_guard(_PERIOD_OVERLAP_CONSTRAINT, _PERIOD_OVERLAP_MESSAGE)
+
+
+# `RatePlan` partial unique on (property, currency, price_basis) where active.
+_PLAN_UNIQUE_CONSTRAINT = "rateplan_one_active_per_regime"
+_PLAN_UNIQUE_MESSAGE = (
+    "Another active rate plan for this property, currency and price basis was "
+    "just created; reload and add periods to it instead."
+)
+
+
+def plan_regime_guard() -> AbstractContextManager[None]:
+    """Guard a `RatePlan` write against `rateplan_one_active_per_regime`."""
+    return _regime_conflict_guard(_PLAN_UNIQUE_CONSTRAINT, _PLAN_UNIQUE_MESSAGE)

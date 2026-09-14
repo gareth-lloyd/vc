@@ -6,7 +6,7 @@ pure ORM, so it's tested directly without a live SQL Server.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -15,7 +15,8 @@ from data_migration.management.commands.audit_plan_currencies import (
     bookable_currency_mix,
 )
 from pricing.models.currency import Currency
-from pricing.models.rate import RatePlan
+from pricing.models.rate import RatePeriod, RatePlan
+from properties.enums import PriceBasis
 from properties.models.geo import Country, Region
 from properties.models.property import Property
 from properties.models.settings import PropertySettings
@@ -107,22 +108,43 @@ def test_unloaded_season_counts_without_blocking(prop: Property) -> None:
 
 @pytest.mark.django_db
 def test_bookable_currency_mix_counts_distinct_properties(prop: Property) -> None:
+    """GAP-110: bookable means an active period ending today or later — a
+    plan whose only period has elapsed, or whose current period is
+    withdrawn, does not count; the GROSS and NET buckets of one villa do."""
     gbp = Currency.objects.create(code="GBP", name="Pound", symbol="£", legacy_id="1")
-    _plan(prop, gbp)
-    RatePlan.objects.create(
+    today = date.today()
+    gross = _plan(prop, gbp)
+    RatePeriod.objects.create(
+        plan=gross, name="Current", date_from=today, date_to=today + timedelta(days=30)
+    )
+    net = RatePlan.objects.create(
         property=prop,
-        name="Open-ended",
+        name="Net rates",
         currency=gbp,
+        price_basis=PriceBasis.NET,
         effective_from=date(2025, 1, 1),
         legacy_id="2",
     )
-    # A plan that ended before today must not count as bookable.
-    RatePlan.objects.create(
+    RatePeriod.objects.create(
+        plan=net,
+        name="Next month",
+        date_from=today + timedelta(days=31),
+        date_to=today + timedelta(days=60),
+    )
+    # A plan whose periods all ended before today must not count as bookable
+    # (its own currency, so a false positive would show up as a USD row).
+    usd = Currency.objects.create(code="USD", name="Dollar", symbol="$", legacy_id="2")
+    ended = RatePlan.objects.create(
         property=prop,
         name="Ended",
-        currency=gbp,
+        currency=usd,
         effective_from=date(2020, 1, 1),
-        effective_to=date(2020, 12, 31),
         legacy_id="3",
     )
+    RatePeriod.objects.create(
+        plan=ended, name="2020", date_from=date(2020, 1, 1), date_to=date(2020, 12, 31)
+    )
     assert bookable_currency_mix() == [("GBP", 2, 1)]
+
+    RatePeriod.objects.filter(plan=net).update(is_active=False)
+    assert bookable_currency_mix() == [("GBP", 1, 1)]

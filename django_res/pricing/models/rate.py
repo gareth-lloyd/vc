@@ -25,6 +25,23 @@ from properties.enums import PriceBasis
 REGIME_LOCKED_MESSAGE = (
     "Property and currency are fixed once a plan has periods; create a new plan instead."
 )
+# `full_clean()` wording for `rateplan_one_active_per_regime`; the API names
+# the occupying plan (`regime_occupied_message`).
+REGIME_OCCUPIED_MESSAGE = (
+    "This property already has an active plan for this currency and price basis "
+    "— add periods to it or carry forward instead."
+)
+
+
+def regime_occupied_message(occupant: RatePlan) -> str:
+    """The guided 400 for a write that would make a second active plan in
+    `occupant`'s (property, currency, price basis) regime."""
+    basis = PriceBasis(occupant.price_basis).label.lower()
+    return (
+        f"This property already has an active {occupant.currency.code} {basis} plan "
+        f'("{occupant.name}") — add periods to it or carry forward instead of '
+        "creating another."
+    )
 
 
 class RatePlan(AuditedModel):
@@ -83,6 +100,15 @@ class RatePlan(AuditedModel):
                 condition=~models.Q(idempotency_key=""),
                 name="rateplan_idempotency_key_unique_per_property",
             ),
+            # GAP-110: the regime bucket is unique — one *active* plan per
+            # (property, currency, price basis). Retired plans may pile up;
+            # their periods still own their dates (`rateperiod_no_overlap`).
+            models.UniqueConstraint(
+                fields=["property", "currency", "price_basis"],
+                condition=models.Q(is_active=True),
+                name="rateplan_one_active_per_regime",
+                violation_error_message=REGIME_OCCUPIED_MESSAGE,
+            ),
         ]
         indexes = [
             models.Index(fields=["property", "currency", "is_active"]),
@@ -101,6 +127,27 @@ class RatePlan(AuditedModel):
 
     def currency_locked_against(self, currency_id: int) -> bool:
         return self.pk is not None and self.periods.exclude(currency_id=currency_id).exists()
+
+    @classmethod
+    def regime_occupant(
+        cls,
+        property_id: int,
+        currency_id: int,
+        price_basis: str,
+        *,
+        exclude_pk: int | None = None,
+    ) -> RatePlan | None:
+        """The active plan already holding this regime (GAP-110), if any —
+        mirrors `rateplan_one_active_per_regime` for the serializer pre-check."""
+        occupants = cls.objects.filter(
+            property_id=property_id,
+            currency_id=currency_id,
+            price_basis=price_basis,
+            is_active=True,
+        ).select_related("currency")
+        if exclude_pk is not None:
+            occupants = occupants.exclude(pk=exclude_pk)
+        return occupants.order_by("pk").first()
 
     def clean(self) -> None:
         super().clean()

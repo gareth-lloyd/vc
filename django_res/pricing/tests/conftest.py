@@ -16,6 +16,7 @@ import time_machine
 
 from pricing.factories import RatePlanFactory
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
+from properties.enums import PriceBasis
 
 if TYPE_CHECKING:
     from properties.models import Property
@@ -83,8 +84,12 @@ def plan(property_: Property, gbp: Currency) -> RatePlan:
 @pytest.fixture
 def sibling_plan(plan: RatePlan) -> RatePlan:
     """A second plan in `plan`'s (property, currency) regime (GAP-110) — the
-    shape the regime-wide invariants refuse to let overlap."""
-    return cast(RatePlan, RatePlanFactory(property=plan.property, currency=plan.currency))
+    shape the regime-wide invariants refuse to let overlap. NET basis: the
+    GROSS bucket is `plan`'s (`rateplan_one_active_per_regime`)."""
+    return cast(
+        RatePlan,
+        RatePlanFactory(property=plan.property, currency=plan.currency, price_basis=PriceBasis.NET),
+    )
 
 
 @pytest.fixture

@@ -21,7 +21,7 @@ from pricing.serializers import (
 )
 from pricing.serializers.rate import guard_period_editable
 from pricing.services.carryover import RateCarryoverService
-from pricing.services.regime import period_overlap_guard
+from pricing.services.regime import period_overlap_guard, plan_regime_guard
 from properties.models import Property
 
 if TYPE_CHECKING:
@@ -44,7 +44,8 @@ class PropertyRatePlanListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer: Any) -> None:
         property_obj = get_object_or_404(Property, pk=self.kwargs["property_id"])
-        serializer.save(property=property_obj)
+        with plan_regime_guard():
+            serializer.save(property=property_obj)
 
 
 class RatePlanDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -61,6 +62,10 @@ class RatePlanDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in {"GET"}:
             return RatePlanDetailSerializer
         return RatePlanSerializer
+
+    def perform_update(self, serializer: Any) -> None:
+        with plan_regime_guard():
+            serializer.save()
 
 
 class PropertyRatePlanCarryForwardView(APIView):

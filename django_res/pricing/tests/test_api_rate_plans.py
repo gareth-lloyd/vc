@@ -386,37 +386,39 @@ def test_carry_forward_creates_editable_plan_for_future_year(
     )
     assert response.status_code == 201, response.content
     payload = response.json()
-    assert payload["effective_from"] == "2028-01-01"
     assert rule.period is not None
-    assert payload["id"] != rule.period.plan_id
-    # The materialised plan is a real, queryable row distinct from the anchor.
-    assert RatePlan.objects.filter(property=property_, effective_from__year=2028).exists()
+    # GAP-110: the carried periods land on the regime plan itself — the
+    # response is that plan (with its new periods inlined), not a new row.
+    assert payload["id"] == rule.period.plan_id
+    assert RatePlan.objects.filter(property=property_).count() == 1
+    carried = RatePeriod.objects.filter(plan_id=payload["id"], date_from__year=2028)
+    assert carried.exists()
+    assert {p["date_from"][:4] for p in payload["periods"]} == {"2026", "2028"}
     # GAP-059: every carried period arrives named (exact naming rules are the
     # service's contract — see test_carryover).
-    carried = RatePeriod.objects.filter(plan_id=payload["id"])
-    assert carried.exists()
     assert all(p.name for p in carried)
 
 
 @pytest.mark.django_db
-def test_carry_forward_into_dates_another_plan_owns_returns_409(
+def test_carry_forward_into_a_year_owned_by_withdrawn_rows_returns_409(
     api_client: APIClient,
     staff: User,
     property_: Property,
     gbp: Currency,
     rule: RateBand,
 ) -> None:
-    """GAP-110 interim: the mapped periods land in the regime-wide EXCLUDE, so
-    a clash with a period another plan already owns in the target year is a
-    409 `regime_conflict`, not a 500 — and nothing is half-written."""
-    # An older plan in the same regime (so `rule`'s 2026 plan stays the
-    # anchor) that already prices summer 2028.
+    """GAP-110: a period a retired sibling plan still owns in the target year
+    sits in the regime-wide EXCLUDE; the carry is refused as a 409
+    `regime_conflict` with guidance (service contract — see test_carryover)
+    rather than silently landing nothing."""
     owner = cast(
         RatePlan,
-        RatePlanFactory(property=property_, currency=gbp, effective_from=date(2025, 1, 1)),
+        RatePlanFactory(
+            property=property_, currency=gbp, effective_from=date(2025, 1, 1), is_active=False
+        ),
     )
     RatePeriod.objects.create(
-        plan=owner, name="Owned", date_from=date(2028, 6, 1), date_to=date(2028, 8, 31)
+        plan=owner, name="Owned", date_from=date(2028, 6, 15), date_to=date(2028, 8, 31)
     )
     api_client.force_login(staff)
     response = api_client.post(
@@ -426,7 +428,8 @@ def test_carry_forward_into_dates_another_plan_owns_returns_409(
     )
     assert response.status_code == 409, response.content
     assert response.json()["code"] == "regime_conflict"
-    assert not RatePlan.objects.filter(property=property_, effective_from__year=2028).exists()
+    assert "Owned" in response.json()["detail"]
+    assert not RatePeriod.objects.filter(plan=rule.period.plan, date_from__year=2028).exists()
 
 
 @pytest.mark.django_db
@@ -608,3 +611,134 @@ def test_patch_plan_same_currency_with_periods_is_fine(
         format="json",
     )
     assert response.status_code == 200, response.content
+
+
+# --- One active plan per regime (GAP-110 U4) --------------------------------
+
+
+@pytest.mark.django_db
+def test_create_plan_into_an_occupied_regime_rejected_with_guidance(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/rate-plans",
+        data={"name": "Second GBP", "currency": gbp.pk, "effective_from": "2027-01-01"},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    [message] = response.json()["field_errors"]["non_field_errors"]
+    assert "already has an active GBP gross plan" in message
+    assert "carry forward" in message
+    assert RatePlan.objects.filter(property=property_).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_plan_in_a_free_regime_is_fine(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/rate-plans",
+        data={
+            "name": "Net GBP",
+            "currency": gbp.pk,
+            "price_basis": "net",
+            "effective_from": "2027-01-01",
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+
+
+@pytest.mark.django_db
+def test_reactivating_a_plan_into_an_occupied_regime_rejected(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    retired = cast(RatePlan, RatePlanFactory(property=property_, currency=gbp, is_active=False))
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{retired.pk}", data={"is_active": True}, format="json"
+    )
+    assert response.status_code == 400, response.content
+    assert (
+        "already has an active GBP gross plan"
+        in response.json()["field_errors"]["non_field_errors"][0]
+    )
+    retired.refresh_from_db()
+    assert retired.is_active is False
+
+
+@pytest.mark.django_db
+def test_switching_basis_onto_an_occupied_regime_rejected(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency, plan: RatePlan
+) -> None:
+    net = cast(RatePlan, RatePlanFactory(property=property_, currency=gbp, price_basis="net"))
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{net.pk}", data={"price_basis": "gross"}, format="json"
+    )
+    assert response.status_code == 400, response.content
+    assert (
+        "already has an active GBP gross plan"
+        in response.json()["field_errors"]["non_field_errors"][0]
+    )
+
+
+@pytest.mark.django_db
+def test_patching_the_occupying_plan_itself_is_fine(
+    api_client: APIClient, staff: User, plan: RatePlan
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}", data={"name": "Renamed", "is_active": True}, format="json"
+    )
+    assert response.status_code == 200, response.content
+
+
+@pytest.mark.django_db
+def test_create_plan_raced_past_precheck_maps_to_409(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    plan: RatePlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pricing.serializers.rate import RatePlanSerializer
+
+    monkeypatch.setattr(RatePlanSerializer, "validate", lambda self, attrs: attrs)
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/rate-plans",
+        data={"name": "Second GBP", "currency": gbp.pk, "effective_from": "2027-01-01"},
+        format="json",
+    )
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "regime_conflict"
+    assert RatePlan.objects.filter(property=property_).count() == 1
+
+
+@pytest.mark.django_db
+def test_reactivate_plan_raced_past_precheck_maps_to_409(
+    api_client: APIClient,
+    staff: User,
+    property_: Property,
+    gbp: Currency,
+    plan: RatePlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The PATCH route to the constraint (reactivating a retired plan) is
+    guarded like the POST route."""
+    from pricing.serializers.rate import RatePlanSerializer
+
+    monkeypatch.setattr(RatePlanSerializer, "validate", lambda self, attrs: attrs)
+    retired = cast(RatePlan, RatePlanFactory(property=property_, currency=gbp, is_active=False))
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{retired.pk}", data={"is_active": True}, format="json"
+    )
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "regime_conflict"
+    retired.refresh_from_db()
+    assert retired.is_active is False

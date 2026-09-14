@@ -16,7 +16,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
-from pricing.models.rate import REGIME_LOCKED_MESSAGE
+from pricing.models.rate import REGIME_LOCKED_MESSAGE, regime_occupied_message
 
 # Record-level lock message shared by the serializers and the destroy views.
 HISTORICAL_LOCKED_MESSAGE = (
@@ -33,6 +33,24 @@ def guard_period_editable(period: RatePeriod | None) -> None:
     """Raise if ``period`` has fully elapsed (its rates are frozen)."""
     if period is not None and period.is_historical:
         raise serializers.ValidationError(HISTORICAL_LOCKED_MESSAGE)
+
+
+def _effective_value(
+    model: type[models.Model], attrs: dict[str, Any], instance: models.Model | None
+) -> Callable[[str], Any]:
+    """`field -> value the write would leave in place`: the submitted value,
+    else the stored one (PATCH), else the model default (create)."""
+
+    def effective(field: str) -> Any:
+        if field in attrs:
+            return attrs[field]
+        if instance is not None:
+            return getattr(instance, field)
+        model_field = model._meta.get_field(field)
+        assert isinstance(model_field, models.Field)  # only concrete columns queried
+        return model_field.get_default() if model_field.has_default() else None
+
+    return effective
 
 
 def _max_occupancy(plan: RatePlan) -> int | None:
@@ -468,6 +486,40 @@ class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
         if self.instance is not None and self.instance.currency_locked_against(value.pk):
             raise serializers.ValidationError(REGIME_LOCKED_MESSAGE)
         return value
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """GAP-110: one active plan per (property, currency, price basis) —
+        mirror `rateplan_one_active_per_regime` as a guided non-field 400.
+        Checked whenever the write would leave the plan active in a regime
+        (create, reactivate, or a currency/basis move onto an occupied one).
+        """
+        attrs = super().validate(attrs)
+        instance = self.instance
+        # A missing key falls back to the stored instance (PATCH) or the
+        # model default (create), so the pre-check and the constraint agree.
+        effective = _effective_value(RatePlan, attrs, instance)
+        if not effective("is_active"):
+            return attrs
+        currency, price_basis = effective("currency"), effective("price_basis")
+        property_id: int | None
+        if instance is not None:
+            property_id = instance.property_id
+        else:
+            # The view supplies `property` at `save()` from its URL kwarg
+            # (same route the period/band serializers take to their parent).
+            view = self.context.get("view")
+            property_id = getattr(view, "kwargs", {}).get("property_id")
+        if currency is None or property_id is None:
+            return attrs  # field-level validation reports the missing input
+        occupant = RatePlan.regime_occupant(
+            int(property_id),
+            currency.pk,
+            price_basis,
+            exclude_pk=instance.pk if instance else None,
+        )
+        if occupant is not None:
+            raise serializers.ValidationError(regime_occupied_message(occupant))
+        return attrs
 
     def validate_prices_by_occupancy(self, value: bool) -> bool:
         """Occupancy → flat is only safe once every period holds a single band.

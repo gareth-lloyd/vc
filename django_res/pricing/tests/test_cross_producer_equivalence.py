@@ -185,10 +185,14 @@ def _projected_snapshot(ctx: PricingContext) -> Snapshot:
     ]
 
 
-def _materialised_snapshot(plan: RatePlan) -> Snapshot:
+def _materialised_snapshot(plan: RatePlan, target_year: int) -> Snapshot:
+    # GAP-110: the carried rows land on the anchor plan itself, beside the
+    # source-year periods — snapshot only the target year's.
     return [
         _row(period, list(period.bands.order_by("min_party")))
-        for period in RatePeriod.objects.filter(plan=plan).order_by("date_from")
+        for period in RatePeriod.objects.filter(plan=plan, date_from__year=target_year).order_by(
+            "date_from"
+        )
     ]
 
 
@@ -216,7 +220,7 @@ def test_projected_grid_is_byte_identical_to_materialised_twin(
         uplift=case.uplift,
     )
 
-    assert _projected_snapshot(ctx) == _materialised_snapshot(plan)
+    assert _projected_snapshot(ctx) == _materialised_snapshot(plan, case.target_year)
     # The plan-level pricing inputs must agree too (fallback pricing when the
     # grid is empty; basis drives gross/net maths).
     assert ctx.plan.fallback_nightly == plan.fallback_nightly
@@ -246,7 +250,9 @@ def test_projected_quote_prices_every_point_like_materialised_twin(
         date_map=case.date_map,
         uplift=case.uplift,
     )
-    mat_periods = list(RatePeriod.objects.filter(plan=plan, is_active=True))
+    mat_periods = list(
+        RatePeriod.objects.filter(plan=plan, is_active=True, date_from__year=case.target_year)
+    )
     mat_rules = {p.pk: list(p.bands.all()) for p in mat_periods}
 
     if not mat_periods:

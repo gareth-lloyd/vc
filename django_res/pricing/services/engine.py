@@ -130,7 +130,7 @@ class PricingEngine:
         if context is None:
             context = cls._load_real_context(property, currency, date_from, date_to)
             if context is None and allow_projection:
-                # `find_anchor_plan` is currency-keyed, so a currency-less quote
+                # `find_anchor` is currency-keyed, so a currency-less quote
                 # resolves one first via the canonical chain — the currency of
                 # the period in effect today (else the latest elapsed one),
                 # i.e. the villa's *current* currency after a switch, never a

@@ -696,16 +696,10 @@ def test_quote_projects_from_prior_year_when_no_plan(
 def test_quote_prefers_real_plan_over_projection(
     property_: Property, gbp: Currency, rule: RateBand
 ) -> None:
-    """A real plan covering the stay wins; projection never runs."""
-    plan_2028 = RatePlan.objects.create(
-        property=property_,
-        name="Summer 2028",
-        currency=gbp,
-        effective_from=date(2028, 1, 1),
-        effective_to=date(2028, 12, 31),
-    )
+    """A real period covering the stay wins; projection never runs. GAP-110:
+    2028's rates live on the same regime plan as 2026's."""
     _rule(
-        plan_2028,
+        rule.period.plan,
         date_from=date(2028, 6, 1),
         date_to=date(2028, 8, 31),
         min_party=1,

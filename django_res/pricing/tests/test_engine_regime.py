@@ -150,14 +150,7 @@ def test_unpriced_dates_of_a_partly_priced_year_project_from_the_prior_year(
 ) -> None:
     """2026 only prices Jun-Aug; an October 2026 stay projects from 2025 instead
     of failing inside the 2026 envelope as the old gate made it."""
-    last_year = _plan(
-        property_,
-        gbp,
-        name="2025",
-        effective_from=date(2025, 1, 1),
-        effective_to=date(2025, 12, 31),
-    )
-    _priced_period(last_year, date(2025, 1, 1), date(2025, 12, 31), nightly="150.00")
+    _priced_period(plan, date(2025, 1, 1), date(2025, 12, 31), nightly="150.00", name="2025")
 
     quote = PricingEngine.quote(
         property=property_,

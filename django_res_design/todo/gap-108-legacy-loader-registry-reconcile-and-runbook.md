@@ -137,6 +137,17 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
    filename.
 4. Recount GAP-107 §2 and note that §3 closed here; note Q-025's placeholder
    closed here; note the Zoho contact fact on GAP-098.
+5. **GAP-110 dump checks** (`CUTOVER.md` §5 items 3–5), on the same dry run:
+   pin the villa-level `RatePlan` check's `expected_gap` (placeholder `0`)
+   with each unresolved villa itemised; run the night-parity section and
+   itemise any villa it reports (loader fix or explained loss, never waved
+   through); quote a sample of `VillaQuotationMaster` rows on the 37 villas
+   with cross-season same-party overlaps and compare against legacy. The
+   sample is also the only evidence for GAP-110's unticked "one-plan stays
+   quote identically before and after" line — the suite proves projected ==
+   materialised, not old-engine == new-engine. A systematic miss means the
+   cross-season precedence needs an `is_occ`/season sort key, not a
+   per-villa patch.
 
 ## Acceptance
 
@@ -146,6 +157,10 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
   every constant explained in its comment, a check for every registered
   loader, and the value invariants green.
 - A `createsuperuser` before reconcile does not change the result.
+- GAP-110: `RatePlan` check pinned with a derivation; night-parity reports
+  0 villas or every residue is itemised in CUTOVER; the overlap-villa quote
+  sample matches legacy (mismatches listed with cause) and its result is
+  recorded on `done/gap-110-…`.
 - Every §3 line corrected; `grep -n "Guest.merge\|--since\|60 tables"` finds
   nothing stale.
 - Quality gate green.
@@ -154,8 +169,8 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
 
 - Sequence after **BUG-028 / BUG-029 / BUG-030** — they move most of the
   constants this ticket pins; do the pinning last on one dry-run.
-- **GAP-110** U0 regroups `RatePlan` (521 → ~276) and adds the night-parity
-  invariant; if it lands before cutover, pin the plan constant after it.
+- **GAP-110** (landed 2026-09-14) regroups `RatePlan` (521 → ~276) and adds
+  the night-parity invariant; its three dump-dependent checks are fix item 5.
 - **GAP-107**: §3 closes here; §1 (extras) and §2 (deleted geo as inactive)
   stay there. **Q-025**: its reconcile residual closes here. **GAP-098**:
   Zoho contact note. **GAP-103**: still blocked on GAP-107 §2, not on this.

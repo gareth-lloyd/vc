@@ -690,7 +690,7 @@ must be made jointly overlap-free under the one EXCLUDE constraint):
    leftover:** a stale `villa:<id>:<CODE>` plan whose villa re-resolved to
    another currency, or lost all its priced rows, is *not* swept — it
    survives as an active, periodless plan (harmless to pricing, visible in
-   the workbench picker); deactivate or delete it by hand.
+   the workbench picker); deactivate or delete it by hand (fix tracked in BUG-029 §6).
 
 ## 6. (Optional) Delta load for late writes
 

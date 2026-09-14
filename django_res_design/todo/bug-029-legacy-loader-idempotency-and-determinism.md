@@ -96,6 +96,19 @@ roll back, so a successful preview exits 1 in a script
 `DRYRUN_LOG.md`'s "byte-identical second reconcile" is a row-count
 comparison. §1 passed it three times.
 
+### 6. A re-resolved villa leaves a stale regime plan behind
+
+Since GAP-110 the `rate_plan` loader keys plans `villa:<VillaId>:<CODE>`
+and its sweep only deletes pre-regroup (non-`villa:`) loader plans. If a
+villa's currency re-resolves on a later run (e.g. BUG-028's currency fix
+turns EUR into GBP) or it loses all its priced rows, the old
+`villa:<id>:EUR` plan is not swept: the band full-replace removes its
+periods and it survives as an **active, periodless** plan. Harmless to
+pricing (period-first selection skips it) but it shows in the workbench
+picker and occupies the `(property, currency, GROSS)` active slot, so staff
+can't create a plan in that regime. `CUTOVER.md` §5 item 6 records it as a
+hand-cleanup leftover.
+
 ## Proposed fix
 
 1. `.exclude(legacy_id=str(row["Id"]))` in both demotion checks, mirroring
@@ -118,6 +131,11 @@ comparison. §1 passed it three times.
    duplicate availability day): run every loader twice and assert
    field-level equality, not counts. This is the regression net for the
    whole package.
+6. At the end of `RatePlanLoader`, delete `villa:`-keyed plans whose
+   `legacy_id` was not produced this run and which own no non-legacy
+   (staff) periods; deactivate the rest and log them. Drop the "known
+   leftover" note from `CUTOVER.md` §5 item 6. Covered by the two-run test
+   with a villa whose currency changes between runs.
 
 ## Acceptance
 
@@ -127,6 +145,8 @@ comparison. §1 passed it three times.
   mention no delta mode.
 - The two-run test is in CI and fails if any loader's second pass changes a
   field.
+- A villa whose resolved currency changes between runs ends with exactly
+  one active `villa:` plan; no periodless loader plan survives.
 - Quality gate green.
 
 ## Dependencies

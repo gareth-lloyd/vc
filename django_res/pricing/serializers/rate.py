@@ -15,8 +15,8 @@ from django.db import models
 from django.utils import timezone
 from rest_framework import serializers
 
-from pricing.models import RateBand, RatePeriod, RatePlan
-from properties.models import Property
+from pricing.models import Currency, RateBand, RatePeriod, RatePlan
+from pricing.models.rate import REGIME_LOCKED_MESSAGE
 
 # Record-level lock message shared by the serializers and the destroy views.
 HISTORICAL_LOCKED_MESSAGE = (
@@ -428,9 +428,10 @@ class RatePeriodSerializer(serializers.ModelSerializer[RatePeriod]):
 class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
     """Lighter list shape — no nested periods/rules."""
 
-    property = serializers.PrimaryKeyRelatedField(
-        queryset=Property.objects.all(),
-        required=False,
+    # Supplied by the view from the URL on create (`perform_create`); never a
+    # body input — periods stamp it as the regime key (GAP-110).
+    property: serializers.PrimaryKeyRelatedField = serializers.PrimaryKeyRelatedField(
+        read_only=True
     )
     currency_code = serializers.CharField(source="currency.code", read_only=True)
 
@@ -451,6 +452,15 @@ class RatePlanSerializer(serializers.ModelSerializer[RatePlan]):
             "notes",
         ]
         read_only_fields = ["id"]
+
+    def validate_currency(self, value: Currency) -> Currency:
+        """GAP-110: periods stamp the plan's currency (half the regime
+        partition key), so it is fixed for life once any period exists. The
+        other half, `property`, is read-only above — the view sets it from the
+        URL on create and it never moves."""
+        if self.instance is not None and self.instance.currency_locked_against(value.pk):
+            raise serializers.ValidationError(REGIME_LOCKED_MESSAGE)
+        return value
 
     def validate_prices_by_occupancy(self, value: bool) -> bool:
         """Occupancy → flat is only safe once every period holds a single band.

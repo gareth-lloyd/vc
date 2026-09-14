@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from rest_framework.test import APIClient
@@ -11,6 +12,7 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from core.enums import StaffRole
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
+from properties.factories import PropertyFactory
 from properties.models import Property, PropertyCapacity
 
 
@@ -598,3 +600,62 @@ def test_rate_plan_duplicate_explicit_null_key_is_ignored(
         format="json",
     )
     assert response.status_code == 201, response.content
+
+
+@pytest.mark.django_db
+def test_patch_plan_currency_rejected_once_periods_exist(
+    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod, usd: Currency
+) -> None:
+    """GAP-110: periods carry a stamped copy of the plan's currency (the regime
+    partition key), so a plan with periods keeps its currency for life."""
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}", data={"currency": usd.pk}, format="json"
+    )
+    assert response.status_code == 400, response.content
+    assert "currency" in response.json()["field_errors"]
+    plan.refresh_from_db()
+    assert plan.currency_id != usd.pk
+
+
+@pytest.mark.django_db
+def test_patch_plan_property_is_read_only(
+    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod
+) -> None:
+    """`property` comes from the URL on create and never moves — a body value
+    is ignored (DRF read-only), so the stamped regime key can't drift."""
+    other = cast(Property, PropertyFactory())
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}", data={"property": other.pk}, format="json"
+    )
+    assert response.status_code == 200, response.content
+    plan.refresh_from_db()
+    assert plan.property_id != other.pk
+
+
+@pytest.mark.django_db
+def test_patch_plan_currency_allowed_while_periodless(
+    api_client: APIClient, staff: User, plan: RatePlan, usd: Currency
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}", data={"currency": usd.pk}, format="json"
+    )
+    assert response.status_code == 200, response.content
+    plan.refresh_from_db()
+    assert plan.currency_id == usd.pk
+
+
+@pytest.mark.django_db
+def test_patch_plan_same_currency_with_periods_is_fine(
+    api_client: APIClient, staff: User, plan: RatePlan, period: RatePeriod
+) -> None:
+    """Re-sending the current currency (a full PUT-style body) is not a change."""
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/rate-plans/{plan.pk}",
+        data={"currency": plan.currency_id, "name": "Renamed"},
+        format="json",
+    )
+    assert response.status_code == 200, response.content

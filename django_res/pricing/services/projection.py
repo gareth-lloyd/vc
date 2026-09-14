@@ -308,6 +308,8 @@ class RateProjectionService:
                 RatePeriod(
                     id=period_id,
                     plan_id=anchor.pk,
+                    property_id=anchor.property_id,
+                    currency_id=anchor.currency_id,
                     name=uniform_or_derived_name(
                         (band.source.payload.period.name for band in flat_period.bands),
                         flat_period.date_from,

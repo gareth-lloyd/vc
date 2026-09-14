@@ -7,16 +7,24 @@ one cell. The old `RateCard` precedence level is gone (no prod villa used it).
 
 from __future__ import annotations
 
+import builtins
 from decimal import Decimal
+from typing import Any
 
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import RangeBoundary, RangeOperators
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
 from core.fields import DateRangeFunc, Int4RangeFunc
 from core.models.base import AuditedModel
 from properties.enums import PriceBasis
+
+# Shared by the model's `clean()` (admin/forms) and `RatePlanSerializer` (API).
+REGIME_LOCKED_MESSAGE = (
+    "Property and currency are fixed once a plan has periods; create a new plan instead."
+)
 
 
 class RatePlan(AuditedModel):
@@ -84,6 +92,26 @@ class RatePlan(AuditedModel):
     def __str__(self) -> str:
         return f"{self.name} ({self.currency_id})"
 
+    # GAP-110: periods carry stamped copies of the plan's (property, currency)
+    # — the regime partition key — so neither may move once a period exists.
+    # Both checks compare against what the periods actually carry (one query
+    # each), which also catches stamp drift from any raw write.
+    def property_locked_against(self, property_id: int) -> bool:
+        return self.pk is not None and self.periods.exclude(property_id=property_id).exists()
+
+    def currency_locked_against(self, currency_id: int) -> bool:
+        return self.pk is not None and self.periods.exclude(currency_id=currency_id).exists()
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict[str, str] = {}
+        if self.property_locked_against(self.property_id):
+            errors["property"] = REGIME_LOCKED_MESSAGE
+        if self.currency_locked_against(self.currency_id):
+            errors["currency"] = REGIME_LOCKED_MESSAGE
+        if errors:
+            raise ValidationError(errors)
+
 
 class RatePeriod(AuditedModel):
     """A disjoint date window on a plan; owns the dates its bands inherit (GAP-056).
@@ -104,6 +132,22 @@ class RatePeriod(AuditedModel):
         on_delete=models.CASCADE,
         related_name="periods",
     )
+    # GAP-110: denormalised copies of the plan's regime key. Postgres EXCLUDE
+    # can't join through `plan`, so the regime-wide no-overlap partition needs
+    # them on the row. Derived — `save()` stamps them from the plan and ignores
+    # caller input; not audit-tracked (`pricing/0008` expand, `0009` contract).
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.PROTECT,
+        related_name="rate_periods",
+        editable=False,
+    )
+    currency = models.ForeignKey(
+        "pricing.Currency",
+        on_delete=models.PROTECT,
+        related_name="rate_periods",
+        editable=False,
+    )
     name = models.CharField(max_length=128)
     date_from = models.DateField()
     date_to = models.DateField()
@@ -111,6 +155,18 @@ class RatePeriod(AuditedModel):
     max_nights = models.PositiveSmallIntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        # Re-derive the stamps whenever `plan_id` is being written, so they
+        # only ever land together with it. A partial save that leaves `plan`
+        # alone leaves them alone too (and `update_fields=[]` stays a no-op).
+        update_fields = kwargs.get("update_fields")
+        if update_fields is None or "plan" in update_fields:
+            self.property_id = self.plan.property_id
+            self.currency_id = self.plan.currency_id
+            if update_fields is not None:
+                kwargs["update_fields"] = {*update_fields, "property", "currency"}
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ["plan", "date_from"]
@@ -146,12 +202,17 @@ class RatePeriod(AuditedModel):
         ]
         indexes = [
             models.Index(fields=["plan", "date_from", "date_to"]),
+            # Regime lookups (GAP-110): the engine selects periods by
+            # (property, currency) over a stay window, plan inferred after.
+            models.Index(fields=["property", "currency", "date_from", "date_to"]),
         ]
 
     def __str__(self) -> str:
         return f"{self.plan_id} [{self.date_from}..{self.date_to}]"
 
-    @property
+    # `builtins.property`: the `property` FK shadows the decorator in the
+    # class body (same dance as `reservations.Booking`).
+    @builtins.property
     def is_historical(self) -> bool:
         """True once the whole date window has elapsed (``date_to`` before today).
 

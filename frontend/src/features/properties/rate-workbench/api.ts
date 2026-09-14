@@ -59,8 +59,11 @@ export async function deleteDiscount(discountId: number): Promise<void> {
 }
 
 // Carry-forward (GAP-069): promote a projected future year into real editable
-// rows. Returns the created plan in the RatePlanDetail shape (id + periods +
-// bands). A 409 `no_rate_available` means there is no prior year to carry from.
+// rows. GAP-110: returns the anchor plan for the currency (never a new plan)
+// in the RatePlanDetail shape with the target year's periods appended —
+// usually the selected plan, but the backend resolves by (property, currency)
+// only, so it can be the other-basis plan in the same currency. A 409
+// `no_rate_available` means there is no prior year to carry from.
 export async function carryForwardRatePlan(
   propertyId: PropertyId,
   body: CarryForwardPayload,

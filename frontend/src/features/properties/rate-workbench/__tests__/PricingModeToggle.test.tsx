@@ -14,8 +14,6 @@ const flatPlan: RatePlanDetail = {
   currency_code: "EUR",
   price_basis: "gross",
   prices_by_occupancy: false,
-  effective_from: "2026-06-01",
-  effective_to: "2026-08-31",
   is_active: true,
   periods: [
     {

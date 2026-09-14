@@ -26,13 +26,14 @@ const propertyFixture = {
   updated_at: "2026-05-01T00:00:00Z",
 };
 
+// GAP-110: a rate plan is a date-less regime bucket (currency · basis); its
+// RatePeriod rows are the only date authority.
 const season = {
   id: 100,
   property: 7,
   name: "Summer 2026",
   currency_code: "EUR",
-  effective_from: "2026-06-01",
-  effective_to: "2026-08-31",
+  price_basis: "gross",
   is_active: true,
 };
 
@@ -148,9 +149,46 @@ describe("RateWorkbenchPage", () => {
     expect(screen.queryByText("Seasons")).not.toBeInTheDocument();
     expect(screen.getByText("Rate periods")).toBeInTheDocument();
     expect(screen.getByText("Changeover")).toBeInTheDocument();
-    // Single plan → no picker, but the plan (and its currency) is named so the
-    // ··· menu has context.
-    expect(screen.getByText("Summer 2026 · EUR")).toBeInTheDocument();
+    // Single plan → no picker, but the plan's regime (currency · basis) is
+    // named so the ··· menu has context.
+    expect(screen.getByText("EUR · Gross")).toBeInTheDocument();
+  });
+
+  it("marks a retired plan so it reads apart from its active successor in the same regime", async () => {
+    setUser("reservations");
+    installHandlers();
+    // The list includes inactive plans; only ACTIVE plans are unique per
+    // regime, so a retired EUR·Gross plan sits beside its active successor.
+    const retired = { ...season, id: 99, name: "Summer 2025", is_active: false };
+    server.use(
+      http.get("/api/v1/properties/7/rate-plans", () =>
+        HttpResponse.json(drfPage([retired, season])),
+      ),
+      http.get("/api/v1/rate-plans/99", () => HttpResponse.json({ ...retired, periods: [] })),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("combobox", { name: "Rate plan" }));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual(["EUR · Gross (inactive)", "EUR · Gross"]);
+  });
+
+  it("falls back to the plan name when its currency or basis is unknown", async () => {
+    setUser("reservations");
+    installHandlers();
+    const unlabelled = { ...season, price_basis: null };
+    server.use(
+      http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([unlabelled]))),
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json({ ...ratePlanDetail, price_basis: null }),
+      ),
+    );
+    setup("/properties/casa-sur/rate-workbench");
+
+    await screen.findByRole("button", { name: /Standard, 1 Jun 2026/ });
+    expect(screen.getByText("Summer 2026")).toBeInTheDocument();
+    expect(screen.queryByText(/EUR · /)).toBeNull();
   });
 
   it("shows the Rates tab in nav to a read-only user (GAP-060 dropped the writer-only gate)", async () => {
@@ -180,18 +218,9 @@ describe("RateWorkbenchPage", () => {
 
   it("distinguishes config in another year from no config at all", async () => {
     setUser("reservations");
-    // A season configured only for 2025; the page defaults to the current year
-    // (2026) so no bands are visible — but the property IS configured.
-    const pastSeason = { ...season, effective_from: "2025-06-01", effective_to: "2025-08-31" };
-    server.use(
-      http.get("/api/v1/properties/casa-sur", () => HttpResponse.json(propertyFixture)),
-      http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([pastSeason]))),
-      http.get("/api/v1/rate-plans/100", () => HttpResponse.json({ ...pastSeason, periods: [] })),
-      http.get("/api/v1/properties/7/services", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/7/extras", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/7/discounts", () => HttpResponse.json(drfPage([]))),
-      http.get("/api/v1/properties/7/change-over-rules", () => HttpResponse.json(drfPage([]))),
-    );
+    // A plan with no periods in the current year (2026, the default) so no
+    // bands are visible — but the property IS configured.
+    installProjectedHandlers();
     setup("/properties/casa-sur/rate-workbench");
     expect(await screen.findByText(/Nothing scheduled in 2026/i)).toBeInTheDocument();
     expect(screen.queryByText(/No configuration yet/i)).not.toBeInTheDocument();
@@ -205,13 +234,13 @@ describe("RateWorkbenchPage", () => {
 // existing period.
 // ---------------------------------------------------------------------------
 
+// One active plan per (currency, basis): the second plan is the EUR net regime.
 const winterSeason = {
   id: 101,
   property: 7,
   name: "Winter 2026",
   currency_code: "EUR",
-  effective_from: "2026-11-01",
-  effective_to: "2027-02-28",
+  price_basis: "net",
   is_active: true,
 };
 
@@ -235,8 +264,8 @@ describe("RateWorkbenchPage — period create", () => {
     const user = userEvent.setup();
     const picker = await screen.findByRole("combobox", { name: "Rate plan" });
     await user.click(picker);
-    // Option labels carry the plan's currency (a plan == a currency).
-    await user.click(await screen.findByRole("option", { name: /Winter 2026/ }));
+    // Option labels are the plan's regime (currency · basis), not its name.
+    await user.click(await screen.findByRole("option", { name: "EUR · Net" }));
 
     expect(await screen.findByText("This rate plan has no rate periods yet.")).toBeInTheDocument();
     // Both the header button and the empty-state CTA offer period creation.
@@ -297,9 +326,21 @@ describe("RateWorkbenchPage — period create", () => {
   it("shows the selected plan's coverage lane with no-gap feedback when fully priced", async () => {
     setUser("reservations");
     installHandlers();
+    // GAP-110: no plan envelope to clamp to, so "fully priced" means the
+    // periods tile the whole visible year.
+    server.use(
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json({
+          ...ratePlanDetail,
+          periods: [
+            { ...ratePlanDetail.periods[0], date_from: "2026-01-01" },
+            { ...ratePlanDetail.periods[1], date_to: "2026-12-31" },
+          ],
+        }),
+      ),
+    );
     setup("/properties/casa-sur/rate-workbench");
 
-    // Summer 2026's periods tile its effective range exactly (Jun 1 – Aug 31).
     expect(await screen.findByText("Coverage — Summer 2026")).toBeInTheDocument();
     expect(screen.getByText(/No gaps — every date in range has a rate period/)).toBeInTheDocument();
   });
@@ -307,8 +348,8 @@ describe("RateWorkbenchPage — period create", () => {
   it("clicking a coverage gap opens the period dialog prefilled with the gap's inclusive range", async () => {
     setUser("reservations");
     installHandlers();
-    // Shrink the plan to a single early period: Jun 21 – Aug 31 becomes a gap
-    // (the plan is effective through Aug 31).
+    // Shrink the plan to a single early period: Jun 29 – Dec 31 becomes a gap
+    // (GAP-110: gaps run to the visible year's edge, there is no plan envelope).
     server.use(
       http.get("/api/v1/rate-plans/100", () =>
         HttpResponse.json({ ...ratePlanDetail, periods: [ratePlanDetail.periods[0]] }),
@@ -321,11 +362,11 @@ describe("RateWorkbenchPage — period create", () => {
     // action-bearing accessible name.
     await user.click(
       await screen.findByRole("button", {
-        name: "No rates, 29 Jun 2026 to 31 Aug 2026 — add a rate period",
+        name: "No rates, 29 Jun 2026 to 31 Dec 2026 — add a rate period",
       }),
     );
     await screen.findByRole("dialog");
-    expectTriggerRange(/^dates/i, "29 Jun – 31 Aug 2026");
+    expectTriggerRange(/^dates/i, "29 Jun – 31 Dec 2026");
   });
 
   it("keeps coverage gaps inert for a non-writer", async () => {
@@ -340,7 +381,7 @@ describe("RateWorkbenchPage — period create", () => {
 
     const user = userEvent.setup();
     await user.click(
-      await screen.findByRole("button", { name: "No rates, 29 Jun 2026 to 31 Aug 2026" }),
+      await screen.findByRole("button", { name: "No rates, 29 Jun 2026 to 31 Dec 2026" }),
     );
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -420,7 +461,7 @@ describe("RateWorkbenchPage — period create", () => {
     // Switching the top picker re-scopes the whole timeline to the other plan.
     const user = userEvent.setup();
     await user.click(screen.getByRole("combobox", { name: "Rate plan" }));
-    await user.click(await screen.findByRole("option", { name: /Winter 2026/ }));
+    await user.click(await screen.findByRole("option", { name: "EUR · Net" }));
 
     expect(
       await screen.findByRole("button", { name: /Winter break, 1 Nov 2026/ }),
@@ -438,8 +479,7 @@ describe("RateWorkbenchPage — period create", () => {
       property: 7,
       name: "USD sheet",
       currency_code: "USD",
-      effective_from: "2027-01-01",
-      effective_to: "2027-12-31",
+      price_basis: "gross",
       is_active: true,
     };
     const currentPlan = {
@@ -447,8 +487,7 @@ describe("RateWorkbenchPage — period create", () => {
       property: 7,
       name: "EUR sheet",
       currency_code: "EUR",
-      effective_from: "2026-01-01",
-      effective_to: "2026-12-31",
+      price_basis: "gross",
       is_active: true,
     };
     server.use(
@@ -628,15 +667,13 @@ describe("RateWorkbenchPage — rate-plan lifecycle", () => {
 // and a non-past year (past years always fail the backend's window guard).
 // ---------------------------------------------------------------------------
 
-const pastSeason = { ...season, effective_from: "2025-06-01", effective_to: "2025-08-31" };
-
 function installProjectedHandlers() {
-  // A single plan whose only periods are in 2025; viewing 2026 (current year)
-  // gives the empty_year state with a real active plan (EUR currency).
+  // A single plan with no periods at all; viewing 2026 (current year) gives
+  // the empty_year state with a real active plan (EUR currency).
   installHandlers();
   server.use(
-    http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([pastSeason]))),
-    http.get("/api/v1/rate-plans/100", () => HttpResponse.json({ ...pastSeason, periods: [] })),
+    http.get("/api/v1/properties/7/rate-plans", () => HttpResponse.json(drfPage([season]))),
+    http.get("/api/v1/rate-plans/100", () => HttpResponse.json({ ...season, periods: [] })),
     ...emptyAncillaryHandlers(),
   );
 }
@@ -705,26 +742,21 @@ describe("RateWorkbenchPage — carry forward", () => {
     expect(screen.queryByRole("button", { name: "Carry rates forward" })).toBeNull();
   });
 
-  it("carries earlier rates forward, posting the currency code, and fills the year in place", async () => {
+  it("carries earlier rates forward into the SAME plan and refetches its periods in place", async () => {
     setUser("reservations");
     installHandlers(); // plan 100 prices 2026; viewing 2027 is empty
     let carried = false;
     const posted: Array<Record<string, unknown>> = [];
-    const newPlan = {
-      id: 200,
-      property: 7,
-      name: "Carried forward 2027",
-      currency_code: "EUR",
-      effective_from: "2027-01-01",
-      effective_to: "2027-12-31",
-      is_active: true,
-    };
-    const newPlanDetail = {
-      ...newPlan,
+    // GAP-110: carry-forward never creates a plan — here the currency's anchor
+    // plan is the selected one, so the response is plan 100 itself with the
+    // 2027 periods appended.
+    const carriedDetail = {
+      ...ratePlanDetail,
       periods: [
+        ...ratePlanDetail.periods,
         {
           id: 800,
-          plan: 200,
+          plan: 100,
           name: "Carried",
           date_from: "2027-06-01",
           date_to: "2027-06-30",
@@ -738,13 +770,12 @@ describe("RateWorkbenchPage — carry forward", () => {
       http.post("/api/v1/properties/7/rate-plans:carry-forward", async ({ request }) => {
         posted.push((await request.json()) as Record<string, unknown>);
         carried = true;
-        return HttpResponse.json(newPlanDetail, { status: 201 });
+        return HttpResponse.json(carriedDetail, { status: 200 });
       }),
-      // After the carry the list grows, so the fan-out picks up the new plan.
-      http.get("/api/v1/properties/7/rate-plans", () =>
-        HttpResponse.json(drfPage(carried ? [season, newPlan] : [season])),
+      // The plan list is unchanged; only plan 100's detail (periods) grows.
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json(carried ? carriedDetail : ratePlanDetail),
       ),
-      http.get("/api/v1/rate-plans/200", () => HttpResponse.json(newPlanDetail)),
       ...emptyAncillaryHandlers(),
     );
     setup("/properties/casa-sur/rate-workbench?year=2027");
@@ -758,8 +789,65 @@ describe("RateWorkbenchPage — carry forward", () => {
     await waitFor(() => expect(posted).toHaveLength(1));
     // The endpoint resolves Currency.code, so the code string (not the FK id) is sent.
     expect(posted[0]).toMatchObject({ currency: "EUR", target_year: 2027, uplift_pct: 0 });
-    // The new plan is selected and its 2027 rates now render in place.
+    // The carried periods render in place (the response seeds plan 100's
+    // detail cache).
     expect(await screen.findByRole("button", { name: /Carried, 1 Jun 2027/ })).toBeInTheDocument();
     expect(screen.queryByText(/Nothing scheduled in 2027/i)).not.toBeInTheDocument();
+    // Still the same (only) plan — no picker appeared, and the regime label is unchanged.
+    expect(screen.queryByRole("combobox", { name: "Rate plan" })).toBeNull();
+    expect(screen.getByText("EUR · Gross")).toBeInTheDocument();
+  });
+
+  it("follows the response plan when the carry lands on the other-basis plan in the same currency", async () => {
+    setUser("reservations");
+    // EUR·Gross (plan 100, prices 2026) and EUR·Net (plan 101, empty). With
+    // Net selected, the backend resolves the carry target by (property,
+    // currency) only, so the 2027 periods land on — and the response is — the
+    // Gross plan. The matrix must switch to it rather than stay on Net.
+    installMultiSeasonHandlers();
+    let carried = false;
+    const carriedDetail = {
+      ...ratePlanDetail,
+      periods: [
+        ...ratePlanDetail.periods,
+        {
+          id: 800,
+          plan: 100,
+          name: "Carried",
+          date_from: "2027-06-01",
+          date_to: "2027-06-30",
+          is_active: true,
+          coverage_gaps: [],
+          bands: [{ id: 9, period: 800, min_party: 1, max_party: 8, nightly: "700" }],
+        },
+      ],
+    };
+    server.use(
+      http.post("/api/v1/properties/7/rate-plans:carry-forward", () => {
+        carried = true;
+        return HttpResponse.json(carriedDetail, { status: 200 });
+      }),
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json(carried ? carriedDetail : ratePlanDetail),
+      ),
+      ...emptyAncillaryHandlers(),
+    );
+    setup("/properties/casa-sur/rate-workbench?year=2027");
+
+    const user = userEvent.setup();
+    await screen.findByText(/Nothing scheduled in 2027/i);
+    const picker = await screen.findByRole("combobox", { name: "Rate plan" });
+    await user.click(picker);
+    await user.click(await screen.findByRole("option", { name: "EUR · Net" }));
+    expect(picker).toHaveTextContent("EUR · Net");
+
+    await user.click(await screen.findByRole("button", { name: "Carry rates forward" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Carry forward" }));
+
+    // The workbench followed the response id: the Gross plan is selected and
+    // its carried 2027 band renders.
+    expect(await screen.findByRole("button", { name: /Carried, 1 Jun 2027/ })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Rate plan" })).toHaveTextContent("EUR · Gross");
   });
 });

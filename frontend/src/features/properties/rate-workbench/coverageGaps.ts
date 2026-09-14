@@ -15,39 +15,35 @@ export interface CoverageGapsInput {
   windowFrom: string;
   /** EXCLUSIVE window end (yearWindow `to`, the next Jan 1). */
   windowTo: string;
-  /** Plan effective range (inclusive, nullable) — gaps are clamped inside it. */
-  effectiveFrom?: string | null;
-  effectiveTo?: string | null;
 }
 
 /**
- * The date ranges a plan does NOT price within the visible window, clamped to
- * its effective range. Pure date-string arithmetic: ISO dates order
- * lexicographically, and ±1-day steps go through `addDaysIso`. Input periods
- * may be unsorted; overlaps (impossible under the DB EXCLUDE, but cheap to
- * tolerate) merge rather than corrupt the walk.
+ * The date ranges a plan does NOT price within the visible window. GAP-110: a
+ * plan has no effective window of its own (its periods are the only date
+ * authority), so gaps run to the window's edges. Pure date-string arithmetic:
+ * ISO dates order lexicographically, and ±1-day steps go through `addDaysIso`.
+ * Input periods may be unsorted; overlaps (impossible under the DB EXCLUDE,
+ * but cheap to tolerate) merge rather than corrupt the walk.
  */
 export function coverageDateGaps(input: CoverageGapsInput): CoverageGap[] {
-  const lo =
-    input.effectiveFrom && input.effectiveFrom > input.windowFrom
-      ? input.effectiveFrom
-      : input.windowFrom;
+  // Inclusive last day of the window (the caller's exclusive `to` is the next
+  // Jan 1). Defensive: an inverted window yields no gaps rather than one
+  // spanning backwards.
   const windowLast = addDaysIso(input.windowTo, -1);
-  const hi = input.effectiveTo && input.effectiveTo < windowLast ? input.effectiveTo : windowLast;
-  if (lo > hi) return [];
+  if (input.windowFrom > windowLast) return [];
 
   const sorted = [...input.periods].sort((a, b) => a.date_from.localeCompare(b.date_from));
   const gaps: CoverageGap[] = [];
-  let cursor = lo;
+  let cursor = input.windowFrom;
   for (const period of sorted) {
     if (period.date_to < cursor) continue;
-    if (period.date_from > hi) break;
+    if (period.date_from > windowLast) break;
     if (period.date_from > cursor) {
       gaps.push({ from: cursor, to: addDaysIso(period.date_from, -1) });
     }
     cursor = addDaysIso(period.date_to, 1);
-    if (cursor > hi) return gaps;
+    if (cursor > windowLast) return gaps;
   }
-  gaps.push({ from: cursor, to: hi });
+  gaps.push({ from: cursor, to: windowLast });
   return gaps;
 }

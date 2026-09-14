@@ -53,31 +53,6 @@ describe("coverageDateGaps", () => {
     ).toEqual([{ from: "2026-02-16", to: "2026-11-30" }]);
   });
 
-  it("clamps gaps to the plan's effective range when set", () => {
-    expect(
-      coverageDateGaps({
-        ...win,
-        periods: [period("2026-06-01", "2026-07-15")],
-        effectiveFrom: "2026-05-01",
-        effectiveTo: "2026-09-30",
-      }),
-    ).toEqual([
-      { from: "2026-05-01", to: "2026-05-31" },
-      { from: "2026-07-16", to: "2026-09-30" },
-    ]);
-  });
-
-  it("returns nothing when the effective range misses the window entirely", () => {
-    expect(
-      coverageDateGaps({
-        ...win,
-        periods: [],
-        effectiveFrom: "2025-06-01",
-        effectiveTo: "2025-08-31",
-      }),
-    ).toEqual([]);
-  });
-
   it("returns nothing when the window is fully covered", () => {
     expect(coverageDateGaps({ ...win, periods: [period("2025-12-01", "2027-01-31")] })).toEqual([]);
   });

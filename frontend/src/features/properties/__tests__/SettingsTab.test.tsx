@@ -75,7 +75,6 @@ function makeFinance(overrides: Record<string, unknown> = {}) {
     cancellation_window_days: 30,
     cancellation_notes: "",
     notes: "",
-    season: null,
     contact: null,
     parent: null,
     ...overrides,

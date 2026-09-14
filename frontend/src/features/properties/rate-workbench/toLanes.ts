@@ -368,26 +368,18 @@ export function toLanes(input: ToLanesInput): LaneModel[] {
   }));
 
   // Coverage: the selected plan's unpriced dates, as clickable gap bands.
-  // Only meaningful once that plan's detail (periods) has loaded, and only
-  // when the plan's effective range touches the window at all — otherwise the
-  // empty lane would falsely read "no gaps" for a year the plan never prices.
-  const selectedPlan =
+  // Only meaningful once that plan's detail (periods) has loaded. GAP-110: a
+  // plan has no effective window to gate on — a plan pricing nothing this
+  // year is one whole-window gap, which is exactly the feedback wanted.
+  const coveragePlan =
     input.coveragePlanId != null
       ? (input.ratePlanDetails.find((p) => p.id === input.coveragePlanId) ?? null)
-      : null;
-  const coveragePlan =
-    selectedPlan &&
-    !(selectedPlan.effective_to && selectedPlan.effective_to < windowFrom) &&
-    !(selectedPlan.effective_from && selectedPlan.effective_from > windowLast)
-      ? selectedPlan
       : null;
   const coverageBands: RawBand[] = coveragePlan
     ? coverageDateGaps({
         periods: coveragePlan.periods ?? [],
         windowFrom,
         windowTo,
-        effectiveFrom: coveragePlan.effective_from,
-        effectiveTo: coveragePlan.effective_to,
       }).map((gap) => ({
         id: `coverage-${gap.from}`,
         dateFrom: gap.from,

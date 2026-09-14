@@ -52,6 +52,8 @@ describe("CarryForwardDialog", () => {
 
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]).toMatchObject({ currency: "GBP", target_year: 2027, uplift_pct: 5 });
+    // The plan the periods landed on is handed back so the page can follow it
+    // (GAP-110: the currency's anchor plan, which may not be the selected one).
     await waitFor(() =>
       expect(onCarried).toHaveBeenCalledWith(expect.objectContaining({ id: 88 })),
     );

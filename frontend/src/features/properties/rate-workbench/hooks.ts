@@ -207,16 +207,19 @@ export function useDeleteDiscount(propertyId: PropertyId) {
 
 /**
  * Carry-forward (GAP-069): promote a projected future year into real editable
- * rows. On success, invalidate the property's rate-plan list so the workbench
- * fan-out picks up the newly-created plan and the year fills in place. Mirrors
- * `useDeleteRatePlan`'s invalidation shape (no manual detail-cache seeding).
+ * rows. GAP-110: the endpoint appends the new year's periods to an EXISTING
+ * plan (the currency's anchor plan — never a new one) and returns it in the
+ * RatePlanDetail shape, already parsed. Seed that plan's detail cache from the
+ * response so the workbench fan-out, matrix and timeline show the carried
+ * periods immediately — no refetch needed, and no plan-list change (the list
+ * envelope carries no period columns).
  */
 export function useCarryForwardRatePlan(propertyId: PropertyId) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CarryForwardPayload) => carryForwardRatePlan(propertyId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.ratePlans(propertyId) });
+    onSuccess: (plan) => {
+      queryClient.setQueryData(queryKeys.properties.ratePlanDetail(plan.id), plan);
     },
   });
 }

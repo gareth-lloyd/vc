@@ -674,8 +674,9 @@ export const ratePlanSchema = z.object({
   currency_code: z.string().nullable().optional(),
   price_basis: z.enum(PROPERTY_PRICE_BASES).nullable().optional(),
   prices_by_occupancy: z.boolean().optional(),
-  effective_from: z.string().nullable().optional(),
-  effective_to: z.string().nullable().optional(),
+  // GAP-110: no effective_from/effective_to — a plan is a date-less regime
+  // bucket (one active per property × currency × basis); its RatePeriod rows
+  // are the only date authority.
   is_active: z.boolean().optional(),
   notes: z.string().nullable().optional(),
 });
@@ -870,31 +871,17 @@ export const propertyImageCreateInputSchema = propertyImageMetadataSchema.extend
 });
 export type PropertyImageCreateInput = z.infer<typeof propertyImageCreateInputSchema>;
 
-export const ratePlanWriteInputSchema = z
-  .object({
-    name: z.string().trim().min(1, { message: "properties:errors.season_name_required" }).max(255),
-    currency: z
-      .number({ message: "properties:errors.season_currency_required" })
-      .int()
-      .min(1, { message: "properties:errors.season_currency_required" }),
-    price_basis: z.enum(PROPERTY_PRICE_BASES),
-    effective_from: z
-      .string()
-      .min(1, { message: "properties:errors.season_effective_from_required" }),
-    // Nullable so a cleared To can be sent as explicit `null` to CLEAR an
-    // existing end date on PATCH (making the season open-ended). `.optional()`
-    // alone would emit `undefined`, omit the field from the JSON body, and
-    // silently keep the old end date — same trap as documented on
-    // `propertyServiceWriteInputSchema` above.
-    effective_to: z.string().nullable().optional(),
-    is_active: z.boolean().optional(),
-    prices_by_occupancy: z.boolean().optional(),
-    notes: z.string().trim().optional(),
-  })
-  .refine((v) => !v.effective_to || v.effective_to >= v.effective_from, {
-    path: ["effective_to"],
-    message: "properties:errors.season_effective_to_before_from",
-  });
+export const ratePlanWriteInputSchema = z.object({
+  name: z.string().trim().min(1, { message: "properties:errors.season_name_required" }).max(255),
+  currency: z
+    .number({ message: "properties:errors.season_currency_required" })
+    .int()
+    .min(1, { message: "properties:errors.season_currency_required" }),
+  price_basis: z.enum(PROPERTY_PRICE_BASES),
+  is_active: z.boolean().optional(),
+  prices_by_occupancy: z.boolean().optional(),
+  notes: z.string().trim().optional(),
+});
 export type RatePlanWriteInput = z.infer<typeof ratePlanWriteInputSchema>;
 
 export const propertySettingsSchema = z.object({
@@ -994,7 +981,6 @@ export const propertyFinanceSchema = z.object({
   cancellation_window_days: z.number().nullable().optional(),
   cancellation_notes: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
-  season: z.number().nullable().optional(),
   contact: z.number().nullable().optional(),
   parent: z.number().nullable().optional(),
 });

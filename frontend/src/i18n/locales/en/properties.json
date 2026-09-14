@@ -215,6 +215,8 @@
       "currency_mismatch": "This rate plan prices in {{season}}, but the property's currency is {{property}}."
     },
     "seasons": {
+      "plan_label": "{{currency}} · {{basis}}",
+      "plan_label_inactive": "{{label}} (inactive)",
       "add_button": "Add rate plan",
       "add_button_disabled_tooltip": "You need the Reservations role to add rate plans.",
       "row": {
@@ -248,9 +250,6 @@
           "currency": "Currency",
           "currency_placeholder": "Select currency",
           "price_basis": "Price basis",
-          "dates": "Dates",
-          "effective_from": "Effective from",
-          "effective_to": "Effective to",
           "is_active": "Active",
           "notes": "Internal notes"
         },
@@ -1034,8 +1033,6 @@
     "changeover_to_before_from": "To date must be on or after From date",
     "season_name_required": "Rate plan name is required",
     "season_currency_required": "Pick a currency",
-    "season_effective_from_required": "Effective from date is required",
-    "season_effective_to_before_from": "Effective to must be on or after Effective from",
     "load_failed": "Couldn't load.",
     "block_from_required": "From date is required",
     "block_to_required": "To date is required",

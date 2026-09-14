@@ -215,6 +215,8 @@
       "currency_mismatch": "Αυτό το πρόγραμμα τιμών τιμολογείται σε {{season}}, αλλά το νόμισμα του καταλύματος είναι {{property}}."
     },
     "seasons": {
+      "plan_label": "{{currency}} · {{basis}}",
+      "plan_label_inactive": "{{label}} (ανενεργό)",
       "add_button": "Προσθήκη προγράμματος τιμών",
       "add_button_disabled_tooltip": "Χρειάζεστε τον ρόλο Κρατήσεων για να προσθέσετε προγράμματα τιμών.",
       "row": {
@@ -248,9 +250,6 @@
           "currency": "Νόμισμα",
           "currency_placeholder": "Επιλέξτε νόμισμα",
           "price_basis": "Βάση τιμής",
-          "dates": "Ημερομηνίες",
-          "effective_from": "Ισχύει από",
-          "effective_to": "Ισχύει έως",
           "is_active": "Ενεργό",
           "notes": "Εσωτερικές σημειώσεις"
         },
@@ -1034,8 +1033,6 @@
     "changeover_to_before_from": "Η ημερομηνία Έως πρέπει να είναι μετά ή ίδια με την ημερομηνία Από",
     "season_name_required": "Το όνομα προγράμματος τιμών είναι υποχρεωτικό",
     "season_currency_required": "Επιλέξτε νόμισμα",
-    "season_effective_from_required": "Η ημερομηνία έναρξης ισχύος είναι υποχρεωτική",
-    "season_effective_to_before_from": "Η ημερομηνία λήξης ισχύος πρέπει να είναι μετά ή ίδια με την ημερομηνία έναρξης ισχύος",
     "load_failed": "Δεν ήταν δυνατή η φόρτωση.",
     "block_from_required": "Η ημερομηνία «Από» είναι υποχρεωτική",
     "block_to_required": "Η ημερομηνία «Έως» είναι υποχρεωτική",

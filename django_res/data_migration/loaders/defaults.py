@@ -32,6 +32,7 @@ from data_migration.loaders.finance import (
     _COMMISSION_TYPE_MAP,
     _DEPOSIT_TYPE_MAP,
     _SEC_DEPOSIT_TYPE_MAP,
+    CPD_QUERY,
     _calc_type,
     _decimal,
 )
@@ -93,7 +94,9 @@ def _defaults_updates(row: dict[str, Any]) -> dict[str, Any]:
     put("security_deposit_amount", _decimal(row.get("SecurityDepositAmount")))
     put(
         "security_deposit_days_due_before_arrival",
-        row.get("SecurityDepositDaysDueBeforeArrival"),
+        # Legacy reads DaysBalanceDueBeforeArrival for sec-dep days due; the
+        # CPD's own SecurityDepositDaysDueBeforeArrival is dead (BUG-028).
+        row.get("DaysBalanceDueBeforeArrival"),
     )
     # The legacy DB column really is the `Defunded` typo (see
     # design/departures.md) — map it onto the clean field name.
@@ -109,18 +112,7 @@ class PropertyDefaultsLoader(BaseLoader):
 
     name = "property_defaults"
     target_model = PropertyDefaults
-    legacy_query = (
-        "SELECT Id, IsBookingsRequirePreApproval, CurrencyId, "
-        "CommissionType, CommissionAmount, CheckinTime, CheckOutTime, "
-        "ChangeOverDay, MinimumNightsRental, "
-        "IsDepositRequired, DepositType, DepositAmount, "
-        "IsInterimRequired, InterimType, InterimAmount, "
-        "DaysInterimDueBeforeArrival, DaysBalanceDueBeforeArrival, "
-        "SecurityDepositRequired, SecurityDepositAmountType, "
-        "SecurityDepositAmount, SecurityDepositDaysDueBeforeArrival, "
-        "SecurityDepositDaysDefundedAfterDeparture "
-        "FROM VillaConfigPropertyDefault ORDER BY Id"
-    )
+    legacy_query = CPD_QUERY
 
     def _apply_since(self, query: str) -> str:
         # Deliberate no-op: the table has no `UpdatedAt` (its audit column is

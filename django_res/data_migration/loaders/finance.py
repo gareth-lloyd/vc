@@ -84,8 +84,119 @@ _VILLAFINANCE_COLUMNS = (
     "PaymentScheduleDaysBalanceDueBeforeArrival, "
     "SecurityDepositIsRequired, SecurityDepositAmountTypeId, "
     "SecurityDepositAmount, "
-    "SecurityDepositDaysDueBeforeArrival, SecurityDepositDaysRefundedAfterDeparture"
+    "SecurityDepositDaysDueBeforeArrival, SecurityDepositDaysRefundedAfterDeparture, "
+    "IsDefaultCommission, IsDefaultPaysched, IsDefaultSecDep"
 )
+
+# The global `VillaConfigPropertyDefault` (CPD) singleton row.
+CPD_QUERY = (
+    "SELECT Id, IsBookingsRequirePreApproval, CurrencyId, "
+    "CommissionType, CommissionAmount, CheckinTime, CheckOutTime, "
+    "ChangeOverDay, MinimumNightsRental, "
+    "IsDepositRequired, DepositType, DepositAmount, "
+    "IsInterimRequired, InterimType, InterimAmount, "
+    "DaysInterimDueBeforeArrival, DaysBalanceDueBeforeArrival, "
+    "SecurityDepositRequired, SecurityDepositAmountType, "
+    "SecurityDepositAmount, SecurityDepositDaysDueBeforeArrival, "
+    "SecurityDepositDaysDefundedAfterDeparture "
+    "FROM VillaConfigPropertyDefault ORDER BY Id"
+)
+
+# (VillaFinance column, CPD column) pairs per `IsDefault*` block, from
+# `PropertyService2.cs:169-238`. Sec-dep days due read the CPD's
+# DaysBalanceDueBeforeArrival — legacy never reads its sec-dep days column.
+_COMMISSION_FROM_CPD = (
+    ("CommissionTypeId", "CommissionType"),
+    ("CommissionAmount", "CommissionAmount"),
+)
+_PAYSCHED_NUMERICS = (
+    ("PaymentScheduleDepositTypeId", "DepositType"),
+    ("PaymentScheduleDepositAmount", "DepositAmount"),
+    ("PaymentScheduleInterimTypeId", "InterimType"),
+    ("PaymentScheduleInterimAmount", "InterimAmount"),
+    ("PaymentScheduleDaysInterimDueBeforeArrival", "DaysInterimDueBeforeArrival"),
+    ("PaymentScheduleDaysBalanceDueBeforeArrival", "DaysBalanceDueBeforeArrival"),
+)
+_PAYSCHED_BOOLS = (
+    ("PaymentScheduleIsDepositRequired", "IsDepositRequired"),
+    ("PaymentScheduleIsInterimRequired", "IsInterimRequired"),
+)
+_SECDEP_NUMERICS = (
+    ("SecurityDepositAmountTypeId", "SecurityDepositAmountType"),
+    ("SecurityDepositAmount", "SecurityDepositAmount"),
+    ("SecurityDepositDaysDueBeforeArrival", "DaysBalanceDueBeforeArrival"),
+    ("SecurityDepositDaysRefundedAfterDeparture", "SecurityDepositDaysDefundedAfterDeparture"),
+)
+_SECDEP_BOOLS = (("SecurityDepositIsRequired", "SecurityDepositRequired"),)
+
+
+def fetch_config_property_default() -> dict[str, Any]:
+    """The legacy CPD row. Raises when absent — a silent `None` would
+    reproduce BUG-028's mis-load without a trace."""
+    with legacy_cursor() as cursor:
+        cursor.execute(CPD_QUERY)
+        row = next(rows_as_dicts(cursor), None)
+    if row is None:
+        raise RuntimeError("VillaConfigPropertyDefault has no row")
+    return row
+
+
+def apply_legacy_finance_defaults(
+    row: dict[str, Any], cpd: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Resolve a raw VillaFinance row's `IsDefault*` flags against the CPD.
+
+    Port of `PropertyService2.cs:169-238`: a flagged block is copied from the
+    CPD wholesale; an unflagged block has each numeric `<= 0` replaced (the
+    legacy view model is non-nullable, so NULL reads as 0 and a NULL boolean
+    as False). Returns a new dict.
+
+    One deliberate deviation: legacy applies `<= 0` to the unflagged
+    commission *amount* only, leaving a 0 type that renders blank. We fill
+    the type the same way (as for deposit/sec-dep types), so an amount taken
+    from the CPD never pairs with a type from elsewhere (BUG-028 review).
+    """
+    if cpd is None:
+        raise RuntimeError("VillaConfigPropertyDefault row is required")
+    out = dict(row)
+
+    def from_cpd(column: str) -> Any:
+        return cpd.get(column) or 0  # C# ChangeType(NULL) -> 0
+
+    blocks: tuple[tuple[str, tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]], ...] = (
+        ("IsDefaultCommission", _COMMISSION_FROM_CPD, ()),
+        ("IsDefaultPaysched", _PAYSCHED_NUMERICS, _PAYSCHED_BOOLS),
+        ("IsDefaultSecDep", _SECDEP_NUMERICS, _SECDEP_BOOLS),
+    )
+    for flag, numerics, bools in blocks:
+        if row.get(flag):
+            for own, default in numerics:
+                out[own] = from_cpd(default)
+            for own, default in bools:
+                out[own] = bool(cpd.get(default))
+            continue
+        for own, default in numerics:
+            if (out.get(own) or 0) <= 0:
+                out[own] = from_cpd(default)
+        for own, _default in bools:
+            out[own] = bool(out.get(own))
+    return out
+
+
+# A calculation type only means something next to its own amount: the
+# template merge must not fill one half of a pair the CPD already resolved.
+_AMOUNT_FOR_TYPE = {
+    "commission_calculation_type": "commission_amount",
+    "deposit_calculation_type": "deposit_amount",
+    "interim_calculation_type": "interim_amount",
+    "security_deposit_calculation_type": "security_deposit_amount",
+}
+
+
+def _strip_default_flags(row: dict[str, Any]) -> dict[str, Any]:
+    """Drop a contact template row's own `IsDefault*` flags: they describe
+    the template, not the villa it is applied to."""
+    return {k: v for k, v in row.items() if not k.startswith("IsDefault")}
 
 
 def _decimal(v: Any) -> Decimal | None:
@@ -186,6 +297,9 @@ class PropertyFinanceLoader(BaseLoader):
     legacy_query = f"SELECT {_VILLAFINANCE_COLUMNS} FROM VillaFinance WHERE VillaId IS NOT NULL"
 
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        # Fetched before the per-row savepoints, so a missing CPD row or a
+        # dead connection aborts the loader instead of erroring every row.
+        self._cpd()
         super()._load_rows(rows, report)
         # A villa whose legacy row appeared in THIS pass is never
         # fallback-filled — even when its write errored into report.errors
@@ -200,6 +314,14 @@ class PropertyFinanceLoader(BaseLoader):
         if not hasattr(self, "_by_contact_cache"):
             self._by_contact_cache = _fetch_contact_default_finance()
         return self._by_contact_cache
+
+    def _cpd(self) -> dict[str, Any]:
+        # The global defaults are read from legacy, not from the loaded
+        # PropertyDefaults singleton (operator-editable, skipped under
+        # `--since`). One round trip per load; tests seed the cache.
+        if not hasattr(self, "_cpd_cache"):
+            self._cpd_cache = fetch_config_property_default()
+        return self._cpd_cache
 
     def _apply_contact_defaults(
         self,
@@ -271,7 +393,8 @@ class PropertyFinanceLoader(BaseLoader):
             PropertyFinance.objects.create(property=prop, contact_id=owner_pk)
             report.created += 1
             return "contact_only"
-        defaults = _finance_defaults(template)
+        resolved = apply_legacy_finance_defaults(_strip_default_flags(template), self._cpd())
+        defaults = _finance_defaults(resolved)
         defaults["contact_id"] = owner_pk
         PropertyFinance.objects.create(property=prop, **defaults)
         report.created += 1
@@ -294,7 +417,10 @@ class PropertyFinanceLoader(BaseLoader):
             if row.get("ContactId")
             else None
         )
-        defaults = _finance_defaults(row)
+        # BUG-028 legacy-exact fill order: the CPD `IsDefault*` / `<= 0` rule
+        # runs on the raw row first; the owner template below then fills only
+        # what the CPD never covers (bank, tax, notes, NULL types).
+        defaults = _finance_defaults(apply_legacy_finance_defaults(row, self._cpd()))
         # GAP-070 parity: pre-cutover, a NULL/"" field on a villa's own row
         # resolved through the owner-contact default template at read time
         # (GroupFinance + effective()). Reproduce that merge concretely —
@@ -303,6 +429,9 @@ class PropertyFinanceLoader(BaseLoader):
         if template is not None:
             template_defaults = _finance_defaults(template)
             for field, own in defaults.items():
+                paired_amount = _AMOUNT_FOR_TYPE.get(field)
+                if paired_amount is not None and defaults[paired_amount] is not None:
+                    continue
                 fallback = template_defaults.get(field)
                 if (own is None or own == "") and fallback not in (None, ""):
                     defaults[field] = fallback

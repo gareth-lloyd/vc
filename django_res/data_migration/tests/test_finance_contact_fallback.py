@@ -20,6 +20,7 @@ from accounts.models import Person, User
 from core.enums import StaffRole
 from data_migration.base import LoadReport
 from data_migration.loaders.finance import PropertyFinanceLoader, _finance_defaults
+from data_migration.tests.test_legacy_finance_defaults import CPD
 from properties.enums import CommissionCalcType, DepositCalcType, SecurityDepositCalcType
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.finance import PropertyFinance
@@ -86,10 +87,11 @@ def _admin() -> User:
 
 
 def _loader_with_templates(templates: dict[str, dict[str, Any]]) -> PropertyFinanceLoader:
-    """A loader whose per-contact template cache is pre-seeded, so no test
-    touches the legacy DB (`_by_contact` reads the cache when present)."""
+    """A loader whose per-contact template and CPD caches are pre-seeded, so
+    no test touches the legacy DB (`_by_contact` / `_cpd` read the caches)."""
     loader = PropertyFinanceLoader()
     loader._by_contact_cache = templates
+    loader._cpd_cache = CPD
     return loader
 
 
@@ -322,17 +324,21 @@ def test_process_row_merges_template_under_null_own_fields(
 
     finance = PropertyFinance.objects.get(property=prop)
     assert finance.tax_number == "OWN-42"  # own value wins
-    assert finance.commission_calculation_type == CommissionCalcType.FIXED
-    assert finance.commission_amount == Decimal("12.50")
+    # BUG-028: NULL own commission is `<= 0`, so the CPD pair (20 %) wins
+    # before the template is consulted — never CPD 20 with a template FIXED.
+    assert finance.commission_calculation_type == CommissionCalcType.PERCENT
+    assert finance.commission_amount == Decimal("20.00")
     assert finance.bank_iban == "GB29NWBK60161331926819"
     assert finance.contact_id == contact.pk
     # GAP-107: the per-villa pass stamps the legacy VillaFinance.Id.
     assert finance.legacy_id == "10"
 
 
-def test_process_row_own_values_beat_the_template(
+def test_process_row_zero_commission_takes_cpd_not_template(
     villa_with_owner: tuple[Property, Person],
 ) -> None:
+    # BUG-028 (legacy-exact fill order): an own 0 amount is `<= 0`, so the
+    # global CPD amount (20) replaces it — the template's 12.50 never wins.
     prop, _contact = villa_with_owner
     loader = _loader_with_templates({"55": TEMPLATE})
     own_row: dict[str, Any] = {
@@ -341,10 +347,118 @@ def test_process_row_own_values_beat_the_template(
         "ContactId": 55,
         "ParentId": None,
         "CommissionTypeId": 10,
-        "CommissionAmount": Decimal("0"),  # explicit 0 is an own value
+        "CommissionAmount": Decimal("0"),
     }
     loader._process_row(own_row, LoadReport(loader=loader.name))
 
     finance = PropertyFinance.objects.get(property=prop)
     assert finance.commission_calculation_type == CommissionCalcType.PERCENT
-    assert finance.commission_amount == Decimal("0")
+    assert finance.commission_amount == Decimal("20.00")
+
+
+def test_process_row_flagged_commission_ignores_template_but_template_fills_bank(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    prop, _contact = villa_with_owner
+    loader = _loader_with_templates({"55": {**TEMPLATE, "CommissionAmount": Decimal("15")}})
+    own_row: dict[str, Any] = {
+        "Id": 10,
+        "VillaId": 900,
+        "ContactId": 55,
+        "ParentId": None,
+        "IsDefaultCommission": True,
+        "CommissionTypeId": 20,
+        "CommissionAmount": Decimal("99"),
+        "BankAccAccountIBAN": None,
+    }
+    loader._process_row(own_row, LoadReport(loader=loader.name))
+
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.commission_calculation_type == CommissionCalcType.PERCENT
+    assert finance.commission_amount == Decimal("20.00")
+    assert finance.bank_iban == "GB29NWBK60161331926819"  # CPD has no bank
+
+
+def test_process_row_applies_secdep_flag_and_unflagged_null_booleans_are_false(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    prop, _contact = villa_with_owner
+    loader = _loader_with_templates({})
+    own_row: dict[str, Any] = {
+        "Id": 10,
+        "VillaId": 900,
+        "ContactId": None,
+        "ParentId": None,
+        "CommissionTypeId": 10,
+        "CommissionAmount": Decimal("18"),
+        "IsDefaultSecDep": True,
+        "SecurityDepositAmountTypeId": 20,
+        "SecurityDepositAmount": Decimal("250"),
+    }
+    loader._process_row(own_row, LoadReport(loader=loader.name))
+
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.security_deposit_required is True
+    assert finance.security_deposit_calculation_type == SecurityDepositCalcType.PERCENT
+    assert finance.security_deposit_amount == Decimal("10.00")
+    assert finance.security_deposit_days_due_before_arrival == 56
+    assert finance.deposit_required is False  # NULL own boolean, unflagged
+    assert finance.days_balance_due_before_arrival == 56  # NULL <= 0 -> CPD
+
+
+def test_fallback_template_flags_are_stripped_and_zero_rule_applies(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    # A contact template row carries its own IsDefault* flags; they belong
+    # to the template, not to the villa, so its own values stand — but the
+    # `<= 0` rule still fills its zero fields from the CPD.
+    prop, _contact = villa_with_owner
+    template = {**TEMPLATE, "IsDefaultPaysched": True, "IsDefaultCommission": True}
+    loader = _loader_with_templates({"55": template})
+    loader._apply_contact_defaults(LoadReport(loader=loader.name))
+
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.commission_amount == Decimal("12.50")  # not CPD 20
+    assert finance.days_balance_due_before_arrival == 60  # not CPD 56
+    assert finance.interim_amount == Decimal("5.00")  # template NULL -> CPD
+    assert finance.days_interim_due_before_arrival == 90  # template 0 -> CPD
+
+
+def test_template_never_fills_a_type_whose_amount_the_cpd_resolved(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    # Flagged paysched with a CPD interim type of NULL: the interim type stays
+    # unset rather than borrowing the template's type for the CPD amount.
+    prop, _contact = villa_with_owner
+    loader = _loader_with_templates({"55": {**TEMPLATE, "PaymentScheduleInterimTypeId": 20}})
+    loader._cpd_cache = {**CPD, "InterimType": None}
+    own_row: dict[str, Any] = {
+        "Id": 10,
+        "VillaId": 900,
+        "ContactId": 55,
+        "ParentId": None,
+        "IsDefaultPaysched": True,
+    }
+    loader._process_row(own_row, LoadReport(loader=loader.name))
+
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.interim_amount == Decimal("5.00")
+    assert finance.interim_calculation_type is None
+
+
+@pytest.mark.django_db
+def test_load_rows_fails_fast_when_cpd_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from data_migration.loaders import finance as finance_module
+
+    calls = []
+
+    def _missing() -> dict[str, Any]:
+        calls.append(1)
+        raise RuntimeError("VillaConfigPropertyDefault has no row")
+
+    monkeypatch.setattr(finance_module, "fetch_config_property_default", _missing)
+    loader = PropertyFinanceLoader()
+    loader._by_contact_cache = {}
+    with pytest.raises(RuntimeError):
+        loader._load_rows([{"Id": 1, "VillaId": 900}], LoadReport(loader=loader.name))
+    assert calls == [1]

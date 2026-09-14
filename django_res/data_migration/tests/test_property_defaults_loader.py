@@ -54,6 +54,15 @@ def _legacy_row(**overrides: Any) -> dict[str, Any]:
     return row
 
 
+def test_secdep_days_due_come_from_balance_due_column() -> None:
+    # BUG-028: legacy reads the CPD's DaysBalanceDueBeforeArrival for the
+    # security-deposit due days; its own sec-dep days column is dead.
+    updates = _defaults_updates(
+        _legacy_row(DaysBalanceDueBeforeArrival=56, SecurityDepositDaysDueBeforeArrival=0)
+    )
+    assert updates["security_deposit_days_due_before_arrival"] == 56
+
+
 def test_maps_typo_refund_column() -> None:
     # The legacy DB column really is `...DefundedAfterDeparture` (see
     # design/departures.md) — it must land on the clean field name.

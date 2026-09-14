@@ -444,26 +444,30 @@ _CHECKS: list[_Check] = [
         " WHERE r.DeletedAt IS NULL AND r.IsExTra <> 1 AND r.IsOccupationPrice = 1)",
         RateBand,
         "RateBand",
-        # Calibrated 2026-07-05 against the 24-Apr-2025 prod dump (DRYRUN_LOG
-        # run 1). Legacy 7333 = 7082 VillaSeasonRate parents + 251 occupancy
-        # children; loaded 3528 = 3265 simple + 27 #seg fragments + 235 occ-*
-        # bands + 1 occ-fb-* gap fallback. Itemised (balances exactly, zero
-        # residual):
+        # Recalibrated 2026-09-14 (BUG-028, post-GAP-110) against the
+        # 24-Apr-2025 prod dump (DRYRUN_LOG run 4; replayed through the
+        # loader's own pipeline, zero residual). Legacy 7333 = 7082
+        # VillaSeasonRate parents + 251 occupancy children; loaded 2841 =
+        # 2593 simple + 12 #seg fragments + 235 occ-* bands + 1 occ-fb-* gap
+        # fallback. Itemised:
+        #   + 1154  rows outside the loader's source query (deleted/dangling
+        #           season or deleted villa — GAP-110 moved that filter into
+        #           SQL; run 1 counted them among "no RatePlan")
         #   +  108  occupancy-banded parents replaced by their band expansion
-        #   + 2477  priceless non-POA rows (2476 simple + 1 fallback with a
-        #           NULL parent base price)
-        #   +  985  rows on seasons with no RatePlan (654 on deleted/dangling
-        #           seasons + 331 on 59 of the 67 unloaded live seasons)
+        #   + 3099  priceless non-POA rows (BUG-028: only NightlyPrice /
+        #           WeeklyPrice > 0 or IsPOA count — 792 of these are
+        #           Price-only or 0.00 rows that used to load)
+        #   +    9  rows on live seasons with no regime plan
         #   +  106  synthetic gap fallbacks emptied by capacity (bands
         #           already cover 1..cap)
-        #   +  264  flattener-shadowed sources (248 simple + 16 duplicate occ
-        #           bands at identical price — no distinct price lost)
+        #   +  136  flattener-shadowed sources (cross-season within a regime
+        #           since GAP-110)
         #   -  108  synthetic occ-fb-* fallback rows added by expansion
-        #   -   27  #seg fragments added by the flattener
-        # Junk dates / invalid occ children / resolver dedupe: all 0 on this
+        #   -   12  #seg fragments added by the flattener
+        # Junk dates / invalid occ children / resolver drops: all 0 on this
         # dump. Recalibrate on a newer dump — the mix (especially priceless
         # rows and unloaded seasons) moves with the data, not the code.
-        expected_gap=3805,
+        expected_gap=4492,
     ),
     _Check(
         # BUG-028: legacy quotes treat a 0.00 (or negative) price as absent, so

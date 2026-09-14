@@ -143,7 +143,7 @@ Feb-2025 payment trial, drop.
 
 **NEW LOADER BUGS (live correctness, fix queue items 5–6):**
 
-5. **IsDefault* resolution never implemented.** Legacy
+5. **[FIXED — BUG-028, run 4]** **IsDefault* resolution never implemented.** Legacy
    (`PropertyService2.cs:668-688`): when a villa's `IsDefault*` flag is set,
    the `VillaConfigPropertyDefault` value OVERRIDES the stored column.
    Measured on live villas: min_nights loads 1 instead of effective 7 for
@@ -151,7 +151,7 @@ Feb-2025 payment trial, drop.
    finance rows (money!); currency loads None instead of EUR for 91 villas.
    Fix in PropertyLoader/finance loaders (read the single CPD row as
    constants), then the table itself is droppable.
-6. **`_COMMISSION_TYPE_MAP = {1: PERCENT, 2: FIXED}`** but legacy
+6. **[FIXED — BUG-028, run 4]** **`_COMMISSION_TYPE_MAP = {1: PERCENT, 2: FIXED}`** but legacy
    `CommissionTypeId` values are 0/10/20 (1,509 rows = 10) →
    `commission_calculation_type` loads None everywhere. Fix map to
    10→PERCENT, 20→FIXED (verify 20's meaning against legacy code first).
@@ -430,3 +430,93 @@ git-tracked `DbScript.sql`, not the prod dump. Measured on the dump:
   wires `opt_in_extras` into the quote builder they are catalogue + Zoho
   `extras[]` visibility only. Run `zoho_backfill --kinds villa` after the load
   so the villa payloads carry them.
+
+## Run 4 — 2026-09-14 (BUG-028 money-path loaders, feat/bug-028)
+
+Same 24-Apr-2025 dump (`res-db`), fresh `villacollective_bug028` migrated to
+the branch leaves (post-GAP-110 `main`). `loadlegacy --all` run twice
+(idempotence), then `reconcile_legacy`. **`reference_date` = 2026-09-14**
+(the load day — `PropertyFinanceLoader`'s D7 rate-row window).
+
+### Pre-flight (legacy dump)
+
+- Every `IsDefault*` column the queries select exists on the dump
+  (`VillaFinance.IsDefaultCommission/Paysched/SecDep`; `VillaMaster.IsDefaultSetting{CurrencyId,ChangeoverDayId,MinNightsRental,CheckInTime,CheckOutTime,BookingreqPreApp}`)
+  — none are in the checked-in `DbScript.sql` DDL. Values: 0 / 1, plus NULL
+  on 4 `VillaMaster` rows (read as unset).
+- CPD row (`VillaConfigPropertyDefault`): `CurrencyId=3`,
+  `CommissionType=10` / `CommissionAmount=20.00`, `ChangeOverDay=-1`,
+  `MinimumNightsRental=7`, `IsBookingsRequirePreApproval=0`,
+  `CheckinTime=16:30`, `CheckOutTime=10:30`, deposit 10 / 30.00 / 56 days,
+  interim 10 / 20.00 / not required / 28 days, security deposit required /
+  10 / 10.00 / refunded after 14 days.
+- `VillaCurrency`: GBP 1, EUR **2 (deleted 2023-10-21)**, EUR **3 (live)**,
+  USD 6; HTFG 4 / RUPEE 5 / RS 7 deleted.
+
+### Results
+
+- **`loadlegacy --all` (first run) → exit 0, zero errors.** `currency` 3
+  created / 4 skipped; `rate_rule` **2829** created (was 3501);
+  `property_finance` 291 created; `finance_rate_rows_mixed`
+  `villas_with_rate_rows=9 mixed_count=0` (only 9 villas have rate rows
+  ending on/after 2026-09-14 on a 2025 dump).
+- **Second run → exit 0, idempotent.** Every loader 0 created except
+  `rate_rule` (2829, its documented full replace); `property_finance`
+  0 created / 290 updated.
+- **Fallback villas** (`finance_contact_defaults_applied`): run 1
+  `applied=1 contact_only=0 skipped=2`. Villas 464 / 466 (no owner) had no
+  finance row at all — legacy reads a missing `VillaFinance` row as an
+  all-zero model and fills it from the CPD, so the loader now resolves them
+  from an empty row (BUG-028 U8a). Re-run of `property_finance`:
+  `cpd_only=2`; all three fallback rows carry 20 % / 30 % / 10 % types.
+- **Acceptance (psql, 293 imported villas):** calculation types non-NULL on
+  291/291 finance rows (incl. the fallback rows); commission `percent 20.00`
+  on 291/291; settings currency EUR (`legacy_id=3`) on 293/293 (every
+  imported villa has a settings row — the ticket's 293 is right; 294 live
+  `VillaMaster` rows less blank-name villa 249); min nights 7 on 292, 14 on 1;
+  changeover `any` 36 (= 25 flagged 0 + 2 flagged −1 + 5 unflagged −1 + 4
+  NULL-flag −1), `sun` 11 (unflagged 0, genuine Sundays); check-in/out
+  16:30/10:30 on 246; pre-approval False everywhere (CPD 0); `Currency`
+  EUR/GBP/USD active with legacy ids 3/1/6; rate plans EUR 225 / GBP 32 /
+  USD 9; imported bands priced ≤ 0 non-POA: 0; unapproved: 0; 470 bands carry
+  the `Unapproved in legacy (IsApprove=0)` marker. Unflagged security-deposit
+  rows keep their own days due (72 × 7 days) — legacy keeps an own value
+  `> 0`.
+- **`reconcile_legacy`**: every BUG-028 check OK — `Currency (active)` 3/3,
+  `Currency EUR legacy_id (live row)` 3/3, `PropertyFinance NULL calculation
+  type` 0, `PropertySettings without currency` 0, `RateBand non-POA priced
+  <= 0` 0, `RateBand unapproved imported` 0. **`RateBand` recalibrated 3805 →
+  4492** (legacy 7333, loaded 2841), replayed through the loader pipeline
+  with zero residual: 1154 outside the loader query + 108 occupancy parents
+  replaced + 3099 priceless (792 newly: Price-only / 0.00) + 9 plan-less +
+  106 capacity-emptied fallbacks + 136 shadowed − 108 fallbacks added − 12
+  `#seg` fragments. Itemisation pinned on the `_Check`.
+- **Exit 1 on three PRE-EXISTING blockers, none from this branch:**
+  `Room placement (GAP-065)` 49 (unchanged since run 2), and villa **249**
+  on both GAP-110 checks — `RatePlan (villas with a loaded regime)` 261/260
+  gap 1 and night parity 64 legacy nights / 0 loaded. 249 is the blank-name
+  `VillaMaster` row `PropertyLoader` skips (the `Property` gap of 1); both
+  legacy queries join `VillaMaster` without the name filter. Left to GAP-108
+  item 5 (pin or mirror the filter).
+
+### D7 at the dump's own date (read-only replay, `reference_date` 2025-04-24)
+
+230 villas have current priced non-POA rate rows; 197 carry a commission
+majority, 1 a tax majority. 191 flagged-or-zero villas would take the
+majority: `10 / 20.00` 182, `10 / 15.00` 8, `10 / 17.00` 3, `10 / 10.00` 1,
+`10 / 16.67` 1, plus two suspect rows — `20 / 20.00` (a fixed EUR 20) and
+`20 / 15000.00`. 11 villas are mixed (logged): 5, 11, 50, 51, 59, 164, 165,
+168, 173, 245, 416. Only 4 villas have both an own explicit commission and
+rate-row commission; 3 of those differ, which is where legacy's quote
+calculation (rate row first, `quote_price_calc-query.sql:96-147`) and D7
+(own first) disagree. Re-measure on the cutover dump with `reference_date` =
+the load day.
+
+### Side effects to surface at cutover (product-visible)
+
+- 672 fewer imported bands: Price-only and 0.00 rows legacy could never
+  quote no longer land as priced bands; seasons left with no quotable row
+  lose their plan.
+- Imported bands are all approved; 470 carry the legacy-unapproved marker
+  in notes for staff review.
+- Commission on all 291 finance rows is now 20 % (was NULL type / 0 on 68).

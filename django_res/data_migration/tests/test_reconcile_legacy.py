@@ -866,9 +866,9 @@ def test_documented_expected_gaps_are_encoded() -> None:
     assert by_label["CollectionMembership"] == 308
     assert by_label["PropertyFinance"] == 1236
     assert by_label["Currency"] == 4
-    # Calibrated 2026-07-05 against the 24-Apr-2025 prod dump — itemised
-    # decomposition lives on the _CHECKS entry (reconcile_legacy).
-    assert by_label["RateBand"] == 3805
+    # Recalibrated 2026-09-14 (BUG-028) against the 24-Apr-2025 prod dump —
+    # itemised decomposition lives on the _CHECKS entry (reconcile_legacy).
+    assert by_label["RateBand"] == 4492
     assert by_label["Property"] == 1
     assert by_label["PropertyContactAssignment"] == 1
     # GAP-107: the legacy side mirrors PropertyLoader's villa filter, so the

@@ -37,7 +37,6 @@ def loaded_plan(loaded_property: Property) -> RatePlan:
         property=loaded_property,
         name="EUR rates",
         currency=currency,
-        effective_from=date(2025, 1, 1),
         legacy_id="villa:900:EUR",
     )
 

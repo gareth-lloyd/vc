@@ -47,7 +47,6 @@ class RatePlanAdmin(admin.ModelAdmin):
         "currency",
         "price_basis",
         "fallback_nightly",
-        "effective_from",
         "is_active",
     )
     list_filter = ("price_basis", "is_active", "currency")

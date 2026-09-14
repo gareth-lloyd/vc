@@ -164,7 +164,9 @@ def _new_showcase_property(ctx: SeedContext) -> Any:
     if ctx.knobs.realistic_pricing:
         # Same price shape + commission as the rest of the portfolio (flat
         # brackets, no occupancy bands — these villas host short stays).
-        build_seasonal_periods(plan, draw_base_nightly(ctx.rng, ctx.default_currency.code))
+        build_seasonal_periods(
+            plan, draw_base_nightly(ctx.rng, ctx.default_currency.code), window=ctx.rate_window
+        )
         assign_commission(ctx.rng, prop)
     else:
         period = RatePeriodFactory(plan=plan, min_nights=1)

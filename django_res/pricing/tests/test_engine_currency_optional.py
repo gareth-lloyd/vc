@@ -40,8 +40,6 @@ def _priced_plan(
         property=property_,
         name=f"Season {year} {currency.code}",
         currency=currency,
-        effective_from=date(year, 1, 1),
-        effective_to=date(year, 12, 31),
     )
     period = RatePeriod.objects.create(
         plan=plan,

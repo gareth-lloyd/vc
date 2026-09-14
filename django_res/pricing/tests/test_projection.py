@@ -87,8 +87,6 @@ def anchor_plan(property_: Property, gbp: Currency) -> RateBand:
         property=property_,
         name="Summer 2026",
         currency=gbp,
-        effective_from=date(2026, 1, 1),
-        effective_to=date(2026, 12, 31),
     )
     period = RatePeriod.objects.create(
         plan=plan, name="Summer", date_from=date(2026, 6, 1), date_to=date(2026, 8, 31)
@@ -135,9 +133,7 @@ def test_find_anchor_none_for_brand_new_villa(property_: Property, gbp: Currency
 def test_find_anchor_none_for_a_periodless_plan(property_: Property, gbp: Currency) -> None:
     """A plan with no periods says nothing about any year (GAP-110: the plan
     envelope is not a date authority)."""
-    RatePlan.objects.create(
-        property=property_, name="Empty", currency=gbp, effective_from=date(2026, 1, 1)
-    )
+    RatePlan.objects.create(property=property_, name="Empty", currency=gbp)
     assert RateProjectionService.find_anchor(property_, gbp, 2028) is None
 
 
@@ -175,7 +171,6 @@ def test_find_anchor_skips_inactive_periods_and_inactive_plans(
         property=property_,
         name="Retired",
         currency=gbp,
-        effective_from=date(2027, 1, 1),
         is_active=False,
     )
     RatePeriod.objects.create(
@@ -328,8 +323,6 @@ def _collision_anchor(
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     late_feb = RatePeriod.objects.create(
         plan=plan, name="Late Feb", date_from=date(2024, 2, 25), date_to=date(2024, 2, 29)
@@ -401,8 +394,6 @@ def test_project_second_fragment_of_reused_parent_gets_negative_id(
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     late_feb = RatePeriod.objects.create(
         plan=plan, name="Late Feb", date_from=date(2024, 2, 26), date_to=date(2024, 2, 29)

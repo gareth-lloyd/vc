@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -306,3 +306,17 @@ class SeedContext:
     # Convenience accessor for the "primary" currency. Set by `system_setup`
     # (or by the legacy fallback in the seed command).
     default_currency: Any = None
+
+    @property
+    def rate_window(self) -> tuple[date, date]:
+        """The span every seeded plan's periods cover (inclusive), owned here
+        so the `properties` stage (which seeds it), the showcase/demo villas
+        and the booking-creating stages (which must stay inside it) agree.
+        GAP-110: plans carry no dates, so this is the only seeded window.
+        A wide booking spread stretches it to `today ± (spread + 60)`; the
+        legacy near-today shape keeps the factories' -30/+400 days."""
+        spread = self.knobs.booking_date_spread_days
+        if spread > 30:
+            buffer = timedelta(days=spread + 60)
+            return self.today - buffer, self.today + buffer
+        return self.today - timedelta(days=30), self.today + timedelta(days=400)

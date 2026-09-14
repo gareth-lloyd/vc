@@ -42,8 +42,6 @@ def _plan(
         property=property_,
         name=f"Season {year} {currency.code}",
         currency=currency,
-        effective_from=date(year, 1, 1),
-        effective_to=date(year, 12, 31),
         **kwargs,
     )
     RatePeriod.objects.create(
@@ -144,9 +142,7 @@ def test_periodless_plan_does_not_resolve(
 ) -> None:
     """A plan is a dateless bucket (GAP-110): without a period it says nothing
     about which currency is in effect."""
-    RatePlan.objects.create(
-        property=property_, name="Empty", currency=gbp, effective_from=date(TODAY.year, 1, 1)
-    )
+    RatePlan.objects.create(property=property_, name="Empty", currency=gbp)
     PropertySettings.objects.create(property=property_, currency=eur)
     assert resolve_property_currency(property_) == eur
 

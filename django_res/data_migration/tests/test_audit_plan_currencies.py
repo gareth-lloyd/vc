@@ -41,7 +41,6 @@ def _plan(prop: Property, currency: Currency, legacy_id: str | None = None) -> R
         property=prop,
         name=f"{currency.code} rates",
         currency=currency,
-        effective_from=date(2026, 1, 1),
         legacy_id=legacy_id or f"villa:900:{currency.code}",
     )
 
@@ -122,7 +121,6 @@ def test_bookable_currency_mix_counts_distinct_properties(prop: Property) -> Non
         name="Net rates",
         currency=gbp,
         price_basis=PriceBasis.NET,
-        effective_from=date(2025, 1, 1),
         legacy_id="2",
     )
     RatePeriod.objects.create(
@@ -138,7 +136,6 @@ def test_bookable_currency_mix_counts_distinct_properties(prop: Property) -> Non
         property=prop,
         name="Ended",
         currency=usd,
-        effective_from=date(2020, 1, 1),
         legacy_id="3",
     )
     RatePeriod.objects.create(

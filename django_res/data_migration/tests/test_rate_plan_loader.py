@@ -130,8 +130,6 @@ def test_fallback_ignores_previously_loaded_plans(
         property=loaded_property,
         name="EUR rates",
         currency=eur,  # the run-1 stamp the re-run must NOT echo
-        effective_from=date(2025, 1, 1),
-        effective_to=date(2025, 12, 31),
         legacy_id="villa:900:EUR",
     )
     PropertySettings.objects.create(property=loaded_property, currency=gbp)
@@ -170,9 +168,6 @@ def test_two_seasons_one_currency_merge_into_one_plan(
     assert "2 — 2025 rates" in plan.notes
     assert "Owner-negotiated." in plan.notes
     assert "Re-priced Jan." in plan.notes
-    # Interim envelope (dropped in U6a): merged min/max of the live windows.
-    assert plan.effective_from == date(2025, 1, 1)
-    assert plan.effective_to == date(2026, 12, 31)
 
 
 @pytest.mark.django_db
@@ -240,14 +235,6 @@ def test_unknown_villa_is_skipped(loaded_property: Property, eur: Currency) -> N
 
 
 @pytest.mark.django_db
-def test_no_live_window_leaves_envelope_open(loaded_property: Property, eur: Currency) -> None:
-    _load(_row(ID=1, CurrencyId=3, DateFrom=None, DateTo=None))
-    plan = RatePlan.objects.get()
-    assert plan.effective_from == date(2020, 1, 1)
-    assert plan.effective_to is None
-
-
-@pytest.mark.django_db
 def test_rerun_purges_pre_regroup_season_keyed_plans(
     loaded_property: Property, eur: Currency
 ) -> None:
@@ -258,7 +245,6 @@ def test_rerun_purges_pre_regroup_season_keyed_plans(
         property=loaded_property,
         name="High Season",
         currency=eur,
-        effective_from=date(2025, 1, 1),
         legacy_id="1",
     )
     PropertyService.objects.create(
@@ -277,7 +263,6 @@ def test_rerun_purges_pre_regroup_season_keyed_plans(
         name="Staff plan",
         currency=eur,
         price_basis=PriceBasis.NET,
-        effective_from=date(2025, 1, 1),
     )
     _load(_row(ID=1, CurrencyId=3, Inclusion="Chef."))
 
@@ -288,8 +273,9 @@ def test_rerun_purges_pre_regroup_season_keyed_plans(
 
 @pytest.mark.django_db
 def test_inverted_live_window_is_ignored(loaded_property: Property, eur: Currency) -> None:
-    """Junk `VillaSeasonDates` (to before from) must neither band a service
-    (the from<=to CHECK would roll the whole plan back) nor set the envelope."""
+    """Junk `VillaSeasonDates` (to before from) must not band a service — the
+    from<=to CHECK would roll the whole plan back — while the plan itself
+    still lands."""
     _load(
         _row(
             ID=1,
@@ -300,8 +286,7 @@ def test_inverted_live_window_is_ignored(loaded_property: Property, eur: Currenc
         ),
         _row(ID=2, CurrencyId=3, DateFrom=date(2026, 1, 1), DateTo=date(2026, 12, 31)),
     )
-    plan = RatePlan.objects.get()
-    assert (plan.effective_from, plan.effective_to) == (date(2026, 1, 1), date(2026, 12, 31))
+    assert RatePlan.objects.get().legacy_id == "villa:900:EUR"
     assert not PropertyService.objects.exists()
 
 
@@ -383,7 +368,8 @@ def test_inclusion_without_live_window_makes_no_service(
     loaded_property: Property, eur: Currency
 ) -> None:
     """A season whose every VillaSeasonDates row is soft-deleted has no window
-    to band the service on — skip it rather than invent an open-ended one."""
+    to band the service on — skip it rather than invent an open-ended one. The
+    plan itself still lands: rate rows carry their own dates (GAP-110)."""
     _load(_row(ID=1, CurrencyId=3, Inclusion="Chef included.", DateFrom=None, DateTo=None))
     assert RatePlan.objects.count() == 1
     assert not PropertyService.objects.exists()

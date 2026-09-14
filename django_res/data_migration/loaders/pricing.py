@@ -8,7 +8,7 @@ Legacy structure:
                         nightly_price, is_poa, ...)
 
 New structure (GAP-056):
-  RatePlan (property, currency, effective_from, effective_to)
+  RatePlan (property, currency, price_basis)  — date-less regime bucket (GAP-110)
     └── RatePeriod (plan, date_from, date_to)  — disjoint date axis
           └── RateBand (period, min_party, max_party, nightly, weekly, is_poa)
 
@@ -22,8 +22,6 @@ Strategy:
   and never `resolve_property_currency`, whose plans-first step reads the
   very table this loader populates (load-order dependent, and a wrong stamp
   would re-resolve from itself forever on idempotent re-runs).
-- effective_from/to (interim, dropped in U6a) from min/max of the seasons'
-  live VillaSeasonDates rows.
 - The RatePlan owns no rate rows directly: `RateBandLoader` builds the plan's
   disjoint `RatePeriod` date axis (via the shared `segment_card_rules`
   segmentation) and hangs each party band off its covering period.
@@ -420,9 +418,6 @@ class RatePlanLoader(BaseLoader):
         """Upsert the group's regime plan + inclusion services; True if the
         plan was created (False when updated in place)."""
         season_rows = sorted(season_rows, key=lambda r: int(r["ID"]))
-        windows = [w for w in (_live_window(r) for r in season_rows) if w]
-        froms = [w[0] for w in windows]
-        tos = [w[1] for w in windows]
         if len(season_rows) == 1:
             name = _season_label(season_rows[0])
             notes = str(season_rows[0].get("Notes") or "").strip()
@@ -441,10 +436,6 @@ class RatePlanLoader(BaseLoader):
                 "property": prop,
                 "name": name[:128],
                 "currency": currency,
-                # Interim envelope until U6a drops the fields: merged min/max of
-                # the seasons' live windows.
-                "effective_from": min(froms) if froms else date(2020, 1, 1),
-                "effective_to": max(tos) if tos else None,
                 "is_active": True,
                 "notes": notes,
                 # SMELL-021: stamped explicitly, not left to the model default.

@@ -54,8 +54,6 @@ def plan(property_: Property, gbp: Currency) -> RatePlan:
         property=property_,
         name="Summer 2026",
         currency=gbp,
-        effective_from=date(2026, 1, 1),
-        effective_to=date(2026, 12, 31),
     )
 
 

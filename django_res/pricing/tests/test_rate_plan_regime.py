@@ -3,8 +3,6 @@ per (property, currency, price_basis) — the regime bucket is unique."""
 
 from __future__ import annotations
 
-from datetime import date
-
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -19,7 +17,6 @@ def _plan(property_: Property, currency: Currency, **overrides: object) -> RateP
         "property": property_,
         "name": "Rates",
         "currency": currency,
-        "effective_from": date(2026, 1, 1),
     }
     kwargs.update(overrides)
     return RatePlan.objects.create(**kwargs)
@@ -70,9 +67,7 @@ def test_full_clean_reports_the_occupied_regime(property_: Property, gbp: Curren
     """Admin/forms path: `full_clean` surfaces the constraint as a
     non-field error before the database refuses the write."""
     _plan(property_, gbp)
-    duplicate = RatePlan(
-        property=property_, name="Duplicate", currency=gbp, effective_from=date(2026, 1, 1)
-    )
+    duplicate = RatePlan(property=property_, name="Duplicate", currency=gbp)
     with pytest.raises(ValidationError) as excinfo:
         duplicate.full_clean()
     assert "already has an active plan for this currency and price basis" in str(excinfo.value)

@@ -57,8 +57,6 @@ class RatePlanFactory(DjangoModelFactory):
     property = factory.SubFactory(PropertyFactory)
     currency = factory.SubFactory(CurrencyFactory)
     name = factory.Sequence(lambda n: f"Standard rates {n}")
-    effective_from = factory.LazyFunction(_window_from)
-    effective_to = factory.LazyFunction(_window_to)
     is_active = True
 
 

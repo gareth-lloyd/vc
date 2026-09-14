@@ -63,13 +63,6 @@ class PropertyFinance(AuditedModel):
         primary_key=True,
         related_name="finance",
     )
-    season = models.ForeignKey(
-        "pricing.RatePlan",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="+",
-    )
     contact = models.ForeignKey(
         "accounts.Person",
         on_delete=models.PROTECT,

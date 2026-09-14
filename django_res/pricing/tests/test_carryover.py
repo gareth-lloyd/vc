@@ -27,8 +27,6 @@ def anchor_rule(property_: Property, gbp: Currency) -> RateBand:
         property=property_,
         name="Summer 2026",
         currency=gbp,
-        effective_from=date(2026, 1, 1),
-        effective_to=date(2026, 12, 31),
         fallback_nightly=Decimal("120.00"),
     )
     # min-nights lives on the period now (GAP-056); "Peak" is the period label.
@@ -101,7 +99,6 @@ def test_materialise_is_idempotent_across_active_plans_in_the_regime(
         name="Net rates",
         currency=gbp,
         price_basis="net",
-        effective_from=date(2026, 1, 1),
     )
     RatePeriod.objects.create(
         plan=net_plan, name="Spring 2028", date_from=date(2028, 3, 1), date_to=date(2028, 3, 31)
@@ -123,7 +120,6 @@ def test_materialise_refuses_a_target_year_owned_by_withdrawn_rows(
         property=property_,
         name="Retired",
         currency=gbp,
-        effective_from=date(2025, 1, 1),
         is_active=False,
     )
     RatePeriod.objects.create(
@@ -311,8 +307,6 @@ def test_materialise_clips_date_map_collisions(property_: Property, gbp: Currenc
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     RateBand.objects.create(
         period=RatePeriod.objects.create(
@@ -360,8 +354,6 @@ def test_materialise_splits_around_earlier_rule(property_: Property, gbp: Curren
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     RateBand.objects.create(
         period=RatePeriod.objects.create(
@@ -414,8 +406,6 @@ def test_materialise_persists_single_day_sliver(property_: Property, gbp: Curren
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     # Lower pk, spans Feb 29: maps (keep_calendar, +1yr) to [27 Feb - 1 Mar] 2025
     # (span preserved across the lost leap day), claiming 1 Mar first.
@@ -472,8 +462,6 @@ def test_materialise_keeps_wider_party_remainder_on_collision(
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     # Lower pk, party 1-4, spans Feb 29: maps to [25 Feb - 1 Mar] 2025.
     RateBand.objects.create(
@@ -530,8 +518,6 @@ def test_materialise_matches_projection_night_by_night(property_: Property, gbp:
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     # Lower pk, *later* dates — entered first.
     RateBand.objects.create(
@@ -629,8 +615,6 @@ def test_materialise_derives_name_when_segment_mixes_source_periods(
         property=property_,
         name="2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
     )
     RateBand.objects.create(
         period=RatePeriod.objects.create(

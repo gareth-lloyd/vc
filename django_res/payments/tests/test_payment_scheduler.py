@@ -175,8 +175,6 @@ def test_create_for_booking__gap079_deposit_and_balance_reconcile_engine_total(
         property=property_,
         name="GAP-079",
         currency=booking.currency,
-        effective_from=stay_from - timedelta(days=30),
-        effective_to=stay_to + timedelta(days=30),
     )
     period = RatePeriod.objects.create(plan=plan, name="Stay", date_from=stay_from, date_to=stay_to)
     RateBand.objects.create(period=period, min_party=1, max_party=8, nightly=Decimal("1250.00"))

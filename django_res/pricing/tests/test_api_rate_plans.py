@@ -67,20 +67,26 @@ def test_rate_plan_detail_exposes_currency_code(
 def test_create_rate_plan(
     api_client: APIClient, staff: User, property_: Property, gbp: Currency
 ) -> None:
+    """GAP-110: a plan is a date-less regime bucket — no envelope in or out. A
+    client still sending the pre-GAP-110 date pair (the SPA, until U5b) is
+    not rejected: the fields are unknown to the serializer and dropped."""
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/properties/{property_.pk}/rate-plans",
         data={
             "name": "Winter 2027",
             "currency": gbp.pk,
+            "is_active": True,
             "effective_from": "2027-01-01",
             "effective_to": "2027-03-31",
-            "is_active": True,
         },
         format="json",
     )
     assert response.status_code == 201, response.content
     assert RatePlan.objects.filter(name="Winter 2027").exists()
+    payload = response.json()
+    assert "effective_from" not in payload
+    assert "effective_to" not in payload
 
 
 @pytest.mark.django_db
@@ -295,7 +301,7 @@ def test_create_rate_plan_defaults_to_flat(
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/properties/{property_.pk}/rate-plans",
-        data={"name": "New", "currency": gbp.pk, "effective_from": "2027-01-01"},
+        data={"name": "New", "currency": gbp.pk},
         format="json",
     )
     assert response.status_code == 201, response.content
@@ -413,9 +419,7 @@ def test_carry_forward_into_a_year_owned_by_withdrawn_rows_returns_409(
     rather than silently landing nothing."""
     owner = cast(
         RatePlan,
-        RatePlanFactory(
-            property=property_, currency=gbp, effective_from=date(2025, 1, 1), is_active=False
-        ),
+        RatePlanFactory(property=property_, currency=gbp, is_active=False),
     )
     RatePeriod.objects.create(
         plan=owner, name="Owned", date_from=date(2028, 6, 15), date_to=date(2028, 8, 31)
@@ -623,7 +627,7 @@ def test_create_plan_into_an_occupied_regime_rejected_with_guidance(
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/properties/{property_.pk}/rate-plans",
-        data={"name": "Second GBP", "currency": gbp.pk, "effective_from": "2027-01-01"},
+        data={"name": "Second GBP", "currency": gbp.pk},
         format="json",
     )
     assert response.status_code == 400, response.content
@@ -644,7 +648,6 @@ def test_create_plan_in_a_free_regime_is_fine(
             "name": "Net GBP",
             "currency": gbp.pk,
             "price_basis": "net",
-            "effective_from": "2027-01-01",
         },
         format="json",
     )
@@ -711,7 +714,7 @@ def test_create_plan_raced_past_precheck_maps_to_409(
     api_client.force_login(staff)
     response = api_client.post(
         f"/api/v1/properties/{property_.pk}/rate-plans",
-        data={"name": "Second GBP", "currency": gbp.pk, "effective_from": "2027-01-01"},
+        data={"name": "Second GBP", "currency": gbp.pk},
         format="json",
     )
     assert response.status_code == 409, response.content

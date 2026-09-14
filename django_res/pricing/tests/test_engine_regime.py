@@ -48,8 +48,6 @@ def _priced_period(
 def _plan(property_: Property, currency: Currency, **overrides: object) -> RatePlan:
     defaults: dict[str, object] = {
         "name": f"{currency.code} rates",
-        "effective_from": date(2026, 1, 1),
-        "effective_to": date(2026, 12, 31),
         "prices_by_occupancy": True,
     }
     return RatePlan.objects.create(
@@ -64,7 +62,7 @@ def _plan(property_: Property, currency: Currency, **overrides: object) -> RateP
 def test_new_years_day_checkout_prices_on_the_period_ending_31_dec(
     property_: Property, gbp: Currency, plan: RatePlan
 ) -> None:
-    """The plan envelope ends 31 Dec (inclusive) and the stay checks out 1 Jan
+    """The priced period ends 31 Dec (inclusive) and the stay checks out 1 Jan
     (exclusive): the old whole-stay envelope gate refused it, although every
     night is priced."""
     _priced_period(plan, date(2026, 12, 1), date(2026, 12, 31), nightly="100.00")
@@ -149,7 +147,7 @@ def test_unpriced_dates_of_a_partly_priced_year_project_from_the_prior_year(
     property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
 ) -> None:
     """2026 only prices Jun-Aug; an October 2026 stay projects from 2025 instead
-    of failing inside the 2026 envelope as the old gate made it."""
+    of failing on the 2026 plan as the old envelope gate made it."""
     _priced_period(plan, date(2025, 1, 1), date(2025, 12, 31), nightly="150.00", name="2025")
 
     quote = PricingEngine.quote(

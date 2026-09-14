@@ -214,7 +214,6 @@ class TestStayOptionsSearch:
             name="GBP net",
             currency=plan.currency,
             price_basis=PriceBasis.NET,
-            effective_from=date(2026, 1, 1),
         )
         net_period = RatePeriod.objects.create(
             plan=net_plan, name="Net summer", date_from=date(2026, 7, 13), date_to=date(2026, 8, 31)
@@ -650,7 +649,6 @@ class TestWeeklyPrices:
             name="POA net rates",
             currency=plan.currency,
             price_basis=PriceBasis.NET,
-            effective_from=date(2026, 1, 1),
         )
         net_period = RatePeriod.objects.create(
             plan=net_plan, name="Net", date_from=date(2026, 7, 8), date_to=date(2026, 8, 31)

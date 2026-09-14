@@ -58,7 +58,7 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 | Table | Rows | Read by |
 |---|---|---|
 | `VillaFeaturesCategoryMappings` | 392 | feature (first category subquery) |
-| `VillaSeasonDates` | 736 | rate_plan (live window per season → `PropertyService` dates; interim plan envelope until GAP-110 U6a); never a pricing input |
+| `VillaSeasonDates` | 736 | rate_plan (live window per season → `PropertyService` dates only — GAP-110 dropped the plan envelope); never a pricing input |
 | `VillaOccupencyPrice` | 263 | rate_rule (occupancy-band expansion, BUG-013) |
 | `VillaContactRoleMapping` | 335 | property_contact_assignment (role source) |
 | `VillaPayment` | 1 | payment (header join for BookingId) |

@@ -45,7 +45,12 @@ def regime_occupied_message(occupant: RatePlan) -> str:
 
 
 class RatePlan(AuditedModel):
-    """Groups rate cards for a property under a named season/period."""
+    """A property's rate regime in one currency and price basis (GAP-110).
+
+    A date-less bucket: at most one active plan per (property, currency,
+    price basis), holding every year's `RatePeriod` rows. The periods are the
+    only date authority — the engine picks periods first and infers the plan.
+    """
 
     property = models.ForeignKey(
         "properties.Property",
@@ -80,26 +85,15 @@ class RatePlan(AuditedModel):
             "NULL = no fallback (uncovered nights raise NoRateAvailable)."
         ),
     )
-    effective_from = models.DateField()
-    effective_to = models.DateField(null=True, blank=True)
+    # GAP-110: no date envelope — the plan is a date-less regime bucket and
+    # its `RatePeriod` rows are the only date authority.
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
-    # Retry dedupe for the removed `:duplicate` (SMELL-009; GAP-110 dropped
-    # the feature). Orphaned — nothing writes it; dropped with the envelope in
-    # the GAP-110 contract migration.
-    idempotency_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
     class Meta:
-        ordering = ["property", "-effective_from"]
+        ordering = ["property", "pk"]
         constraints = [
-            # FG-010 backstop for the removed `duplicate_rate_plan` pre-check;
-            # orphaned with the field above, dropped in the contract migration.
-            models.UniqueConstraint(
-                fields=["property", "idempotency_key"],
-                condition=~models.Q(idempotency_key=""),
-                name="rateplan_idempotency_key_unique_per_property",
-            ),
             # GAP-110: the regime bucket is unique — one *active* plan per
             # (property, currency, price basis). Retired plans may pile up;
             # their periods still own their dates (`rateperiod_no_overlap`).
@@ -112,7 +106,6 @@ class RatePlan(AuditedModel):
         ]
         indexes = [
             models.Index(fields=["property", "currency", "is_active"]),
-            models.Index(fields=["effective_from", "effective_to"]),
         ]
 
     def __str__(self) -> str:

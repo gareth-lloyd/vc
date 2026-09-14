@@ -134,8 +134,6 @@ def _build_anchor(property_: Property, gbp: Currency, case: Case) -> RatePlan:
         property=property_,
         name="Anchor 2024",
         currency=gbp,
-        effective_from=date(2024, 1, 1),
-        effective_to=date(2024, 12, 31),
         fallback_nightly=Decimal("80.00"),
     )
     for spec in case.periods:

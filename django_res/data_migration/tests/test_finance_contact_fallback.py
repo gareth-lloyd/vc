@@ -19,8 +19,8 @@ from accounts.enums import ContactRole
 from accounts.models import Person, User
 from core.enums import StaffRole
 from data_migration.base import LoadReport
-from data_migration.loaders.finance import PropertyFinanceLoader
-from properties.enums import CommissionCalcType
+from data_migration.loaders.finance import PropertyFinanceLoader, _finance_defaults
+from properties.enums import CommissionCalcType, DepositCalcType, SecurityDepositCalcType
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.finance import PropertyFinance
 from properties.models.geo import Country, Region
@@ -34,7 +34,7 @@ TEMPLATE: dict[str, Any] = {
     "VillaId": None,
     "ContactId": 55,
     "ParentId": None,
-    "CommissionTypeId": 2,
+    "CommissionTypeId": 20,
     "CommissionAmount": Decimal("12.50"),
     "CommissionNote": "Trip fee included",
     "TaxNumber": "GB-123",
@@ -50,7 +50,7 @@ TEMPLATE: dict[str, Any] = {
     "BankAccPostCode": "",
     "BankAccTown": "",
     "PaymentScheduleIsDepositRequired": True,
-    "PaymentScheduleDepositTypeId": 1,
+    "PaymentScheduleDepositTypeId": 10,
     "PaymentScheduleDepositAmount": Decimal("30"),
     "PaymentScheduleIsInterimRequired": False,
     "PaymentScheduleInterimTypeId": 0,
@@ -58,11 +58,22 @@ TEMPLATE: dict[str, Any] = {
     "PaymentScheduleDaysInterimDueBeforeArrival": 0,
     "PaymentScheduleDaysBalanceDueBeforeArrival": 60,
     "SecurityDepositIsRequired": True,
-    "SecurityDepositAmountTypeId": 2,
+    "SecurityDepositAmountTypeId": 20,
     "SecurityDepositAmount": Decimal("500"),
     "SecurityDepositDaysDueBeforeArrival": 14,
     "SecurityDepositDaysRefundedAfterDeparture": 7,
 }
+
+
+def test_finance_defaults_map_legacy_type_codes() -> None:
+    # BUG-028: legacy codes are 10 = Percentage / 20 = Fixed; 0 = unset.
+    d = _finance_defaults(TEMPLATE)
+    assert d["commission_calculation_type"] == CommissionCalcType.FIXED
+    assert d["deposit_calculation_type"] == DepositCalcType.PERCENT
+    assert d["interim_calculation_type"] is None
+    assert d["security_deposit_calculation_type"] == SecurityDepositCalcType.FIXED
+    pct = _finance_defaults({**TEMPLATE, "SecurityDepositAmountTypeId": 10})
+    assert pct["security_deposit_calculation_type"] == SecurityDepositCalcType.PERCENT
 
 
 def _admin() -> User:
@@ -329,7 +340,7 @@ def test_process_row_own_values_beat_the_template(
         "VillaId": 900,
         "ContactId": 55,
         "ParentId": None,
-        "CommissionTypeId": 1,
+        "CommissionTypeId": 10,
         "CommissionAmount": Decimal("0"),  # explicit 0 is an own value
     }
     loader._process_row(own_row, LoadReport(loader=loader.name))

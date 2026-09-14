@@ -48,18 +48,27 @@ from reservations.models.terms import TermsVersion
 
 logger = structlog.get_logger(__name__)
 
+# Legacy calculation-type codes: 10 = Percentage, 20 = Fixed
+# (`ResSystem/Common/Enums.cs:173-177`; `DepositType` seeds in `DbScript.sql`).
+# 0 / NULL mean "not set".
 _COMMISSION_TYPE_MAP = {
-    1: CommissionCalcType.PERCENT,
-    2: CommissionCalcType.FIXED,
+    10: CommissionCalcType.PERCENT,
+    20: CommissionCalcType.FIXED,
 }
 _DEPOSIT_TYPE_MAP = {
-    1: DepositCalcType.PERCENT,
-    2: DepositCalcType.FIXED,
+    10: DepositCalcType.PERCENT,
+    20: DepositCalcType.FIXED,
 }
 _SEC_DEPOSIT_TYPE_MAP = {
-    1: SecurityDepositCalcType.PERCENT,
-    2: SecurityDepositCalcType.FIXED,
+    10: SecurityDepositCalcType.PERCENT,
+    20: SecurityDepositCalcType.FIXED,
 }
+
+
+def _calc_type(mapping: dict[int, Any], value: Any) -> Any:
+    """Map a legacy type code; `None` for unset (NULL/0) or unknown codes."""
+    return mapping.get(value) if value else None
+
 
 _VILLAFINANCE_COLUMNS = (
     "Id, VillaId, ContactId, ParentId, CommissionTypeId, CommissionAmount, "
@@ -95,8 +104,8 @@ def _finance_defaults(row: dict[str, Any]) -> dict[str, Any]:
     (a NULL means the legacy column was unset).
     """
     defaults: dict[str, Any] = {
-        "commission_calculation_type": _COMMISSION_TYPE_MAP.get(
-            row.get("CommissionTypeId") or 0,
+        "commission_calculation_type": _calc_type(
+            _COMMISSION_TYPE_MAP, row.get("CommissionTypeId")
         ),
         "commission_amount": _decimal(row.get("CommissionAmount")),
         "commission_note": (row.get("CommissionNote") or "")[:1000],
@@ -117,8 +126,8 @@ def _finance_defaults(row: dict[str, Any]) -> dict[str, Any]:
             if row.get("PaymentScheduleIsDepositRequired") is not None
             else None
         ),
-        "deposit_calculation_type": _DEPOSIT_TYPE_MAP.get(
-            row.get("PaymentScheduleDepositTypeId") or 0,
+        "deposit_calculation_type": _calc_type(
+            _DEPOSIT_TYPE_MAP, row.get("PaymentScheduleDepositTypeId")
         ),
         "deposit_amount": _decimal(row.get("PaymentScheduleDepositAmount")),
         "interim_required": (
@@ -126,8 +135,8 @@ def _finance_defaults(row: dict[str, Any]) -> dict[str, Any]:
             if row.get("PaymentScheduleIsInterimRequired") is not None
             else None
         ),
-        "interim_calculation_type": _DEPOSIT_TYPE_MAP.get(
-            row.get("PaymentScheduleInterimTypeId") or 0,
+        "interim_calculation_type": _calc_type(
+            _DEPOSIT_TYPE_MAP, row.get("PaymentScheduleInterimTypeId")
         ),
         "interim_amount": _decimal(row.get("PaymentScheduleInterimAmount")),
         "days_interim_due_before_arrival": row.get(
@@ -141,8 +150,8 @@ def _finance_defaults(row: dict[str, Any]) -> dict[str, Any]:
             if row.get("SecurityDepositIsRequired") is not None
             else None
         ),
-        "security_deposit_calculation_type": _SEC_DEPOSIT_TYPE_MAP.get(
-            row.get("SecurityDepositAmountTypeId") or 0,
+        "security_deposit_calculation_type": _calc_type(
+            _SEC_DEPOSIT_TYPE_MAP, row.get("SecurityDepositAmountTypeId")
         ),
         "security_deposit_amount": _decimal(row.get("SecurityDepositAmount")),
         "security_deposit_days_due_before_arrival": row.get(

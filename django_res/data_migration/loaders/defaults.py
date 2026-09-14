@@ -32,6 +32,7 @@ from data_migration.loaders.finance import (
     _COMMISSION_TYPE_MAP,
     _DEPOSIT_TYPE_MAP,
     _SEC_DEPOSIT_TYPE_MAP,
+    _calc_type,
     _decimal,
 )
 from data_migration.loaders.properties import _DAY_MAP
@@ -69,16 +70,16 @@ def _defaults_updates(row: dict[str, Any]) -> dict[str, Any]:
     nights = _decimal(row.get("MinimumNightsRental"))
     put("min_nights_rental", int(nights) if nights is not None else None)
 
-    put("commission_calculation_type", _COMMISSION_TYPE_MAP.get(row.get("CommissionType") or 0))
+    put("commission_calculation_type", _calc_type(_COMMISSION_TYPE_MAP, row.get("CommissionType")))
     put("commission_amount", _decimal(row.get("CommissionAmount")))
 
     if row.get("IsDepositRequired") is not None:
         put("deposit_required", bool(row["IsDepositRequired"]))
-    put("deposit_calculation_type", _DEPOSIT_TYPE_MAP.get(row.get("DepositType") or 0))
+    put("deposit_calculation_type", _calc_type(_DEPOSIT_TYPE_MAP, row.get("DepositType")))
     put("deposit_amount", _decimal(row.get("DepositAmount")))
     if row.get("IsInterimRequired") is not None:
         put("interim_required", bool(row["IsInterimRequired"]))
-    put("interim_calculation_type", _DEPOSIT_TYPE_MAP.get(row.get("InterimType") or 0))
+    put("interim_calculation_type", _calc_type(_DEPOSIT_TYPE_MAP, row.get("InterimType")))
     put("interim_amount", _decimal(row.get("InterimAmount")))
     put("days_interim_due_before_arrival", row.get("DaysInterimDueBeforeArrival"))
     put("days_balance_due_before_arrival", row.get("DaysBalanceDueBeforeArrival"))
@@ -87,7 +88,7 @@ def _defaults_updates(row: dict[str, Any]) -> dict[str, Any]:
         put("security_deposit_required", bool(row["SecurityDepositRequired"]))
     put(
         "security_deposit_calculation_type",
-        _SEC_DEPOSIT_TYPE_MAP.get(row.get("SecurityDepositAmountType") or 0),
+        _calc_type(_SEC_DEPOSIT_TYPE_MAP, row.get("SecurityDepositAmountType")),
     )
     put("security_deposit_amount", _decimal(row.get("SecurityDepositAmount")))
     put(

@@ -27,16 +27,16 @@ def _legacy_row(**overrides: Any) -> dict[str, Any]:
         "Id": 1,
         "AvailabilityStatus": 1,
         "IsBookingsRequirePreApproval": True,
-        "PricesEnteredType": 1,
-        "CurrencyId": None,
-        "CommissionType": 1,
+        "PricesEnteredType": 20,
+        "CurrencyId": 3,
+        "CommissionType": 10,
         "CommissionAmount": Decimal("20.00"),
         "CheckinTime": time(16, 0),
         "CheckOutTime": time(10, 0),
         "ChangeOverDay": 6,
         "MinimumNightsRental": Decimal("7.00"),
         "IsDepositRequired": True,
-        "DepositType": 1,
+        "DepositType": 10,
         "DepositAmount": Decimal("30.00"),
         "IsInterimRequired": False,
         "InterimType": None,
@@ -44,7 +44,7 @@ def _legacy_row(**overrides: Any) -> dict[str, Any]:
         "DaysInterimDueBeforeArrival": 0,
         "DaysBalanceDueBeforeArrival": 60,
         "SecurityDepositRequired": True,
-        "SecurityDepositAmountType": 2,
+        "SecurityDepositAmountType": 20,
         "SecurityDepositAmount": Decimal("500.00"),
         "SecurityDepositCalculateFrom": 1,
         "SecurityDepositDaysDueBeforeArrival": 14,
@@ -112,6 +112,19 @@ def test_negative_numerics_are_dropped_as_junk() -> None:
     )
     assert "commission_amount" not in updates
     assert "days_balance_due_before_arrival" not in updates
+
+
+def test_zero_type_id_is_unset() -> None:
+    # Legacy type codes are 10 = Percentage / 20 = Fixed; 0 means "not set".
+    updates = _defaults_updates(_legacy_row(CommissionType=0, DepositType=None))
+    assert "commission_calculation_type" not in updates
+    assert "deposit_calculation_type" not in updates
+
+
+def test_old_one_two_type_ids_are_not_legacy_codes() -> None:
+    updates = _defaults_updates(_legacy_row(CommissionType=1, SecurityDepositAmountType=2))
+    assert "commission_calculation_type" not in updates
+    assert "security_deposit_calculation_type" not in updates
 
 
 def test_unmapped_type_ids_are_omitted() -> None:

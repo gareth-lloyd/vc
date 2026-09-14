@@ -10,15 +10,18 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+import structlog
 from django.utils.text import slugify
 
-from data_migration.base import BaseLoader
+from data_migration.base import BaseLoader, LoadReport
 from data_migration.declarative import DeclarativeLoader
 from data_migration.loaders._util import legacy_changed_since_sql, legacy_row_deleted
 from data_migration.loaders.sentinels import unknown_country
 from pricing.models.currency import Currency
 from properties.models.features import Feature, FeatureCategory
 from properties.models.geo import Country, NearbyPlaceType, Region
+
+logger = structlog.get_logger(__name__)
 
 
 class RegionLoader(DeclarativeLoader):
@@ -70,31 +73,70 @@ class RegionLoader(DeclarativeLoader):
         return kwargs
 
 
-class CurrencyLoader(DeclarativeLoader):
-    name = "currency"
-    legacy_table = "VillaCurrency"
-    target_model = Currency
-    field_map = {
-        "Name": "name",
-        "Code": "code",
-        "Symbol": "symbol",
-    }
+class CurrencyLoader(BaseLoader):
+    """VillaCurrency -> Currency, one row per ISO code.
 
-    def transform_extra(self, row: dict[str, Any], kwargs: dict[str, Any]) -> dict[str, Any] | None:
-        code = (kwargs.get("code") or "").strip().upper()
-        if len(code) != 3 or not code.isalpha():
-            return None
-        # Legacy has duplicate currency rows (multiple "EUR"). Keep the first
-        # one we saw; let later legacy_ids point at the same Django row by
-        # silently skipping if a different legacy_id already claims the code.
-        existing = Currency.objects.filter(code=code).exclude(legacy_id=str(row["Id"])).first()
-        if existing is not None:
-            return None
-        kwargs["code"] = code
-        kwargs["name"] = (kwargs.get("name") or "").strip()[:64] or code
-        kwargs["symbol"] = (kwargs.get("symbol") or "").strip()[:8]
-        kwargs["is_active"] = not bool(row.get("DeletedAt"))
-        return kwargs
+    Legacy holds duplicate codes: EUR Id 2 (soft-deleted) and Id 3 (live,
+    the default every settings/rate/booking row references). Same claim
+    rules as CountryLoader (GAP-107): deleted rows load retired, live rows
+    claim a code before deleted twins, and a live row displaces a deleted
+    twin's earlier claim (BUG-028).
+    """
+
+    name = "currency"
+    target_model = Currency
+    legacy_query = "SELECT Id, Name, Code, Symbol, DeletedAt, DeletedBy FROM VillaCurrency"
+
+    def __init__(self, since: str | None = None) -> None:
+        super().__init__(since)
+        self._deleted_legacy_ids: set[str] = set()
+
+    def _apply_since(self, query: str) -> str:
+        # VillaCurrency has no UpdatedAt/UpdateAt column, so there is nothing
+        # to delta on; the table is tiny, so `--since` reloads it in full.
+        if self.since:
+            logger.warning("data_migration.currency_since_full_reload", since=str(self.since))
+        return query
+
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        # Live rows first (stable sort; not in SQL — see CountryLoader).
+        self._deleted_legacy_ids = {
+            str(r.get(self.legacy_pk_column)) for r in rows if legacy_row_deleted(r)
+        }
+        super()._load_rows(sorted(rows, key=legacy_row_deleted), report)
+
+    def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
+        legacy_id = row.get(self.legacy_pk_column)
+        code = (row.get("Code") or "").strip().upper()
+        if legacy_id is None or len(code) != 3 or not code.isalpha():
+            report.skipped += 1
+            return
+        legacy_id_str = str(legacy_id)
+        deleted = legacy_row_deleted(row)
+
+        existing = Currency.objects.filter(code=code).first()
+        # Another legacy id already owns this code: leave it, unless it is a
+        # deleted twin's stale claim and this row is live.
+        if existing is not None and existing.legacy_id and existing.legacy_id != legacy_id_str:
+            stale_claim = existing.legacy_id in self._deleted_legacy_ids
+            if deleted or not stale_claim:
+                report.skipped += 1
+                return
+
+        fields = {
+            "name": (row.get("Name") or "").strip()[:64] or code,
+            "symbol": (row.get("Symbol") or "").strip()[:8],
+            "is_active": not deleted,
+            "legacy_id": legacy_id_str,
+        }
+        if existing is None:
+            Currency.objects.create(code=code, **fields)
+            report.created += 1
+            return
+        for k, v in fields.items():
+            setattr(existing, k, v)
+        existing.save()
+        report.updated += 1
 
 
 class NearbyPlaceTypeLoader(DeclarativeLoader):

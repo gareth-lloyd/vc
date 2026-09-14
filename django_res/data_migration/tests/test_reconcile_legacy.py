@@ -24,6 +24,7 @@ from data_migration.management.commands import reconcile_legacy
 from data_migration.management.commands.reconcile_legacy import _Check
 from integrations.enums import SyncProvider
 from integrations.factories import SyncRecordFactory
+from pricing.models.currency import Currency
 from properties.factories import PropertyFactory
 from reservations.factories import EnquiryFactory
 from reservations.models.booking import Booking
@@ -873,3 +874,43 @@ def test_documented_expected_gaps_are_encoded() -> None:
     # GAP-107: the legacy side mirrors PropertyLoader's villa filter, so the
     # 12 extras on unloaded villas (24-Apr-2025 dump) never enter the gap.
     assert by_label["Extra"] == 0
+
+
+@pytest.mark.django_db
+def test_currency_active_check_counts_imported_live_currencies() -> None:
+    """BUG-028: deleted VillaCurrency rows load retired, so the bare total
+    cannot say whether the live rows came in active."""
+    from data_migration.loaders._util import legacy_deleted_sql
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+
+    Currency.objects.create(code="EUR", name="Euro", legacy_id="3")
+    Currency.objects.create(code="GBP", name="Pound", legacy_id="1", is_active=False)
+    Currency.objects.create(code="USD", name="Dollar")  # staff/seeded — not counted
+
+    check = {c.label: c for c in _CHECKS}["Currency (active)"]
+    assert check.loaded_count is not None
+    assert check.loaded_count(check.model) == 1
+    assert check.expected_gap == 0
+    assert legacy_deleted_sql() in check.legacy_query
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("eur_legacy_id", "expected"),
+    [("3", 3), ("2", 2), (None, 0), ("junk", 0), ("absent", 0)],
+)
+def test_currency_eur_check_reports_the_claiming_legacy_id(
+    eur_legacy_id: str | None, expected: int
+) -> None:
+    """BUG-028: EUR must carry the LIVE legacy row's id (3 on the dump). The
+    loaded side must never raise — the reconcile driver has no try/except."""
+    from data_migration.management.commands.reconcile_legacy import _CHECKS
+
+    if eur_legacy_id != "absent":
+        Currency.objects.create(code="EUR", name="Euro", legacy_id=eur_legacy_id)
+
+    check = {c.label: c for c in _CHECKS}["Currency EUR legacy_id (live row)"]
+    assert check.loaded_count is not None
+    assert check.loaded_count(check.model) == expected
+    assert check.expected_gap == 0
+    assert "Code = 'EUR'" in check.legacy_query

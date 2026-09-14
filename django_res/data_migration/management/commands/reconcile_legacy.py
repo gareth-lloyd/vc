@@ -149,6 +149,14 @@ class _Check:
     loaded_count: Callable[[type[Any]], int] | None = None
 
 
+def _eur_legacy_id(model: type[Any]) -> int:
+    """The legacy id stamped on EUR, or 0 when absent/unstamped/non-numeric."""
+    legacy_id = (
+        model._default_manager.filter(code="EUR").values_list("legacy_id", flat=True).first()
+    )
+    return int(legacy_id) if legacy_id and legacy_id.isdigit() else 0
+
+
 _CHECKS: list[_Check] = [
     _Check(
         "SELECT COUNT(*) FROM VillaCountry",
@@ -223,6 +231,27 @@ _CHECKS: list[_Check] = [
         Currency,
         "Currency",
         expected_gap=4,  # junk rows (HTFG/RUPEE/RS) with zero FK references.
+    ),
+    _Check(
+        # BUG-028: deleted VillaCurrency rows load retired, not skipped, so
+        # the bare total above cannot tell whether the live rows came in
+        # active. Dump (24-Apr-2025): 3 live (GBP 1, EUR 3, USD 6).
+        f"SELECT COUNT(*) FROM VillaCurrency WHERE NOT {legacy_deleted_sql()}",
+        Currency,
+        "Currency (active)",
+        loaded_count=lambda m: m._default_manager.filter(
+            legacy_id__isnull=False, is_active=True
+        ).count(),
+    ),
+    _Check(
+        # BUG-028 value invariant: EUR must carry the LIVE legacy row's id
+        # (Id 3 on the dump — every settings/rate/booking row points there),
+        # not the soft-deleted Id 2 twin. A gap names the wrong claimant.
+        f"SELECT ISNULL(MIN(Id), 0) FROM VillaCurrency WHERE Code = 'EUR' "
+        f"AND NOT {legacy_deleted_sql()}",
+        Currency,
+        "Currency EUR legacy_id (live row)",
+        loaded_count=lambda m: _eur_legacy_id(m),
     ),
     _Check("SELECT COUNT(*) FROM VillaNearByLocationType", NearbyPlaceType, "NearbyPlaceType"),
     _Check("SELECT COUNT(*) FROM VillaFeaturesCategory", FeatureCategory, "FeatureCategory"),

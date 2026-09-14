@@ -40,7 +40,9 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: "jsdom",
+    // jsdom + Node-realm globals; see the file header. Never override per file
+    // with `// @vitest-environment jsdom` — that silently selects stock jsdom.
+    environment: "./src/test/jsdomEnvironment.ts",
     setupFiles: ["./src/setupTests.ts"],
     css: false,
   },

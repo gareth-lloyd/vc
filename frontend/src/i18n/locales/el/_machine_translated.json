@@ -74,7 +74,12 @@
     "feature_multi_select.selected_count_other",
     "feature_multi_select.uncategorised",
     "feature_multi_select.empty",
-    "feature_multi_select.remove_label"
+    "feature_multi_select.remove_label",
+    "unsaved.badge",
+    "unsaved.title",
+    "unsaved.description",
+    "unsaved.discard",
+    "unsaved.stay"
   ],
   "dashboard": ["greeting", "hero.arrivals_label", "hero.view_schedule"],
   "properties": [

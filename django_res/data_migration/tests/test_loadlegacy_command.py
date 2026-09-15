@@ -20,6 +20,8 @@ from data_migration.base import LoadReport
 from data_migration.management.commands import loadlegacy
 from data_migration.registry import LOADERS
 
+pytestmark = pytest.mark.django_db
+
 
 class _OkLoader:
     name = "ok"
@@ -138,3 +140,74 @@ def test_since_flag_is_retired() -> None:
 def test_every_registered_loader_constructs_without_arguments() -> None:
     for name, loader_cls in LOADERS.items():
         assert loader_cls().name == name
+
+
+# --- one-shot guard (BUG-029) ---
+
+
+def _legacy_country() -> None:
+    from properties.models.geo import Country
+
+    country, _ = Country.objects.get_or_create(iso2="QA", defaults={"name": "Qatar", "iso3": "QAT"})
+    country.legacy_id = "1"
+    country.save(update_fields=["legacy_id"])
+
+
+def _legacy_currency() -> None:
+    from pricing.models.currency import Currency
+
+    Currency.objects.create(code="EUR", name="Euro", symbol="€", legacy_id="3")
+
+
+def _legacy_property() -> None:
+    from properties.factories import PropertyFactory
+
+    PropertyFactory(legacy_id="900")
+
+
+@pytest.mark.parametrize("seed", [_legacy_country, _legacy_currency, _legacy_property])
+def test_all_refuses_a_db_that_already_holds_legacy_rows(
+    seed: object, monkeypatch: pytest.MonkeyPatch, synced: list[bool]
+) -> None:
+    calls: list[str] = []
+
+    class _Recording(_OkLoader):
+        def load(self) -> LoadReport:
+            calls.append(self.name)
+            return super().load()
+
+    monkeypatch.setattr(loadlegacy, "LOADERS", {"ok": _Recording})
+    seed()  # type: ignore[operator]
+
+    with pytest.raises(CommandError, match="fresh"):
+        _run("--all")
+
+    assert calls == []
+    assert synced == []
+
+
+def test_all_ignores_seeded_rows_without_legacy_id(
+    monkeypatch: pytest.MonkeyPatch, synced: list[bool]
+) -> None:
+    # The country seed migration and blank legacy_ids are not a prior load.
+    from properties.models.geo import Country
+
+    Country.objects.get_or_create(iso2="QA", defaults={"name": "Qatar", "iso3": "QAT"})
+    Country.objects.filter(iso2="QA").update(legacy_id="")
+    monkeypatch.setattr(loadlegacy, "LOADERS", {"ok": _OkLoader})
+
+    _run("--all")
+
+    assert synced == [True]
+
+
+def test_named_loader_still_runs_on_a_loaded_db(
+    monkeypatch: pytest.MonkeyPatch, synced: list[bool]
+) -> None:
+    # Debug aid: only the production `--all` path is guarded.
+    _legacy_country()
+    monkeypatch.setattr(loadlegacy, "LOADERS", {"ok": _OkLoader})
+
+    out, _ = _run("ok")
+
+    assert "ok" in out

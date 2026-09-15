@@ -1,4 +1,10 @@
-"""`./manage.py loadlegacy <name> [...]` or `./manage.py loadlegacy --all`."""
+"""`./manage.py loadlegacy <name> [...]` or `./manage.py loadlegacy --all`.
+
+The cutover is a one-shot (BUG-029): `--all` runs once, into a fresh, migrated
+DB, and refuses a DB that already holds legacy-loaded rows. A late write or a
+failed run is fixed by dropping the DB and reloading from a newer dump. Named
+loaders stay unguarded as a debugging aid; they are not a production path.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +16,20 @@ from core.console import render_table
 from core.refs import sync_quotation_sequence
 from data_migration.base import LoadReport
 from data_migration.registry import LOADERS
+from pricing.models.currency import Currency
+from properties.models.geo import Country
+from properties.models.property import Property
+
+# Loaded by the first loaders (country, currency) and the core entity; none is
+# written with a legacy_id by migrations or seeds.
+_LOADED_PROBES = (Country, Currency, Property)
+
+
+def _holds_legacy_rows() -> bool:
+    return any(
+        model._default_manager.filter(legacy_id__isnull=False).exclude(legacy_id="").exists()
+        for model in _LOADED_PROBES
+    )
 
 
 class Command(BaseCommand):
@@ -36,6 +56,12 @@ class Command(BaseCommand):
 
         names: list[str] = list(options["names"])
         if options["all"]:
+            if _holds_legacy_rows():
+                raise CommandError(
+                    "This database already holds legacy-loaded rows. `loadlegacy --all` is a "
+                    "one-shot into a fresh, migrated database: drop and recreate it, migrate, "
+                    "then load again."
+                )
             names = list(LOADERS.keys())
 
         if not names:

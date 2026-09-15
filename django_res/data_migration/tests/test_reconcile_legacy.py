@@ -864,6 +864,8 @@ def test_documented_expected_gaps_are_encoded() -> None:
     # module is their single source of truth).
     by_label = {c.label: c.expected_gap for c in reconcile_legacy._CHECKS}
     assert by_label["CollectionMembership"] == 308
+    # BUG-030 §6: the England row (`UK`) no longer mints a 24th Country.
+    assert by_label["Country (legacy)"] == -227
     assert by_label["PropertyFinance"] == 1236
     assert by_label["Currency"] == 4
     # Recalibrated 2026-09-14 (BUG-028) against the 24-Apr-2025 prod dump —

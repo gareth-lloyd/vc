@@ -64,7 +64,7 @@ A management platform for **luxury whole-property villa rentals**:
 ## Legacy data carry-over
 
 Legacy data is ported by the loaders in `../django_res/data_migration/`
-(`./manage.py loadlegacy --all`, `reconcile_legacy`, `merge_country`; full
+(`./manage.py loadlegacy --all`, `reconcile_legacy`; full
 playbook in `../django_res/data_migration/CUTOVER.md`).
 [`design/departures.md`](design/departures.md) is the table-by-table mapping
 that migration follows.

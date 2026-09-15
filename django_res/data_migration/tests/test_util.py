@@ -5,7 +5,9 @@ from __future__ import annotations
 import pytest
 
 from data_migration.loaders._util import (
+    LEGACY_COUNTRY_ALIASES,
     LEGACY_REGION_REMAP,
+    country_for_legacy_id,
     legacy_deleted_sql,
     legacy_quotation_no,
     legacy_row_deleted,
@@ -117,3 +119,40 @@ def test_region_for_legacy_id_follows_the_remap() -> None:
     twin = Region.objects.create(country=country, name="Twin", slug="twin", legacy_id="61")
     Region.objects.create(country=country, name="Dup", slug="dup", legacy_id="25")
     assert region_for_legacy_id("25") == twin
+
+
+# --- BUG-030 §6 England alias ---
+
+
+def test_country_alias_table_is_the_england_row() -> None:
+    assert LEGACY_COUNTRY_ALIASES == {"24": "GB"}
+
+
+@pytest.mark.django_db
+def test_country_for_legacy_id_returns_the_stamped_row() -> None:
+    from properties.models.geo import Country
+
+    fr = Country.objects.get(iso2="FR")
+    fr.legacy_id = "42"
+    fr.save(update_fields=["legacy_id"])
+    assert country_for_legacy_id("42") == fr
+    assert country_for_legacy_id("999") is None
+    assert country_for_legacy_id("") is None
+
+
+@pytest.mark.django_db
+def test_country_for_legacy_id_aliases_england_to_gb() -> None:
+    import structlog
+
+    from properties.models.geo import Country
+
+    gb = Country.objects.get(iso2="GB")
+    assert gb.legacy_id != "24"
+    with structlog.testing.capture_logs() as logs:
+        assert country_for_legacy_id("24") == gb
+    assert any(
+        log["event"] == "data_migration.country_aliased"
+        and log["legacy_country_id"] == "24"
+        and log["aliased_to"] == "GB"
+        for log in logs
+    )

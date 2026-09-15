@@ -20,6 +20,26 @@ def test_resolve_iso2_falls_back_to_name_lookup() -> None:
     assert _resolve_iso2("Greece", "") == "GR"
 
 
+def test_resolve_iso2_maps_uk_to_gb() -> None:
+    # BUG-030 §6: legacy "England" carries `UK`, which is not ISO-3166.
+    assert _resolve_iso2("England", "UK") == "GB"
+
+
+def test_resolve_iso2_rejects_an_unknown_two_letter_code() -> None:
+    # BUG-030 §6: any two letters used to be accepted verbatim (minting
+    # `Country(iso2="UK")`); now the code must be a real ISO-3166 code,
+    # otherwise the name decides.
+    assert _resolve_iso2("Greece", "XX") == "GR"
+    assert _resolve_iso2("Dev Country", "DC") is None
+
+
+def test_resolve_iso2_normalises_alpha3_and_numeric_codes() -> None:
+    # `Country.iso2` is varchar(2): a swapped-column "GRC" or a numeric code
+    # must land on the alpha-2 seed row, never be written verbatim.
+    assert _resolve_iso2("Greece", "GRC") == "GR"
+    assert _resolve_iso2("", "826") == "GB"
+
+
 def test_resolve_iso2_returns_none_for_garbage_names() -> None:
     assert _resolve_iso2("ACF", "") is None
     assert _resolve_iso2("", "") is None
@@ -155,3 +175,40 @@ def test_legacy_row_without_iso_attaches_to_unknown_sentinel() -> None:
     sentinel = Country.objects.filter(iso2="XX").get()
     assert sentinel.legacy_id == UNKNOWN_LEGACY_ID
     assert report.skipped == 1 and report.updated == 0
+
+
+@pytest.mark.django_db
+def test_legacy_code_is_not_a_dial_code(villa_country_row: dict[str, object]) -> None:
+    # BUG-030 §5: `VillaCountry.Code` is an ordering/lookup integer (Greece is
+    # 300), not a calling code — the loader must leave `dial_code` alone.
+    seeded = Country.objects.get(iso2="FR")
+    seeded.dial_code = "+33"
+    seeded.save(update_fields=["dial_code"])
+    loader = CountryLoader()
+    loader._process_row({**villa_country_row, "Code": 300}, LoadReport(loader=loader.name))
+    assert Country.objects.get(iso2="FR").dial_code == "+33"
+    select_list = CountryLoader.legacy_query.split("FROM")[0].removeprefix("SELECT")
+    assert "Code" not in [column.strip() for column in select_list.split(",")]
+
+
+@pytest.mark.django_db
+def test_england_row_never_mints_a_uk_country(villa_country_row: dict[str, object]) -> None:
+    # BUG-030 §6: legacy 6 (United Kingdom, no iso, deleted) and 24 (England,
+    # `UK`, deleted) both resolve to GB; 6 claims the seed first (Id order)
+    # and 24 is skipped — `country_for_legacy_id` aliases it (see test_util).
+    loader = CountryLoader()
+    report = LoadReport(loader=loader.name)
+    base = {
+        **villa_country_row,
+        "ShortName1": "",
+        "ShortName2": "",
+        "DeletedAt": datetime(2020, 1, 1),
+    }
+    rows = [
+        {**base, "Id": 6, "Name": "United Kingdom"},
+        {**base, "Id": 24, "Name": "England", "ShortName1": "UK"},
+    ]
+    loader._load_rows(rows, report)
+    assert not Country.objects.filter(iso2="UK").exists()
+    assert Country.objects.get(iso2="GB").legacy_id == "6"
+    assert report.skipped == 1

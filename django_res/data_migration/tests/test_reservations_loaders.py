@@ -229,3 +229,14 @@ def test_enquiry_region_follows_the_legacy_region_remap(db: None) -> None:
     kwargs = EnquiryLoader().transform(_enquiry_row(RegionsId="25"))
     assert kwargs is not None
     assert kwargs["region"] == twin
+
+
+# --- BUG-030 §6: the England alias applies to clients too ---
+
+
+def test_client_under_legacy_england_attaches_to_gb(db: None) -> None:
+    from properties.models.geo import Country
+
+    kwargs = ClientLoader().transform(_client_row(CountryId=24))
+    assert kwargs is not None
+    assert kwargs["country"] == Country.objects.get(iso2="GB")

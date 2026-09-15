@@ -14,11 +14,11 @@ from django.utils.text import slugify
 
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.declarative import DeclarativeLoader
-from data_migration.loaders._util import legacy_row_deleted
+from data_migration.loaders._util import country_for_legacy_id, legacy_row_deleted
 from data_migration.loaders.sentinels import unknown_country
 from pricing.models.currency import Currency
 from properties.models.features import Feature, FeatureCategory
-from properties.models.geo import Country, NearbyPlaceType, Region
+from properties.models.geo import NearbyPlaceType, Region
 
 
 class RegionLoader(DeclarativeLoader):
@@ -47,14 +47,15 @@ class RegionLoader(DeclarativeLoader):
             return None
         legacy_country_id = row.get("CountryId")
         country = (
-            Country.objects.filter(legacy_id=str(legacy_country_id)).first()
-            if legacy_country_id is not None
-            else None
+            country_for_legacy_id(str(legacy_country_id)) if legacy_country_id is not None else None
         )
         if country is None:
             country = unknown_country()
         kwargs["country"] = country
-        base_slug = (kwargs.get("slug") or "").strip() or slugify(kwargs["name"])
+        # BUG-030 §9: legacy slugs carry accents (`andalucía`); `Region.slug`
+        # is a SlugField. An all-non-Latin slug and name (Greek script) fall
+        # through to `region-{Id}` — the legacy value is not a valid slug.
+        base_slug = slugify((kwargs.get("slug") or "").strip()) or slugify(kwargs["name"])
         kwargs["slug"] = (base_slug[:120] + f"-{row['Id']}") if base_slug else f"region-{row['Id']}"
         # Inactive when the region's own row is deleted OR its country is not
         # selectable: CountryLoader (registered first) retires deleted and

@@ -26,10 +26,9 @@ from accounts.services.person_channels import (
     reconcile_primary_phone,
 )
 from data_migration.base import BaseLoader, LoadReport
-from data_migration.loaders._util import region_for_legacy_id
+from data_migration.loaders._util import country_for_legacy_id, region_for_legacy_id
 from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX
 from properties.models.contacts import PropertyContactAssignment
-from properties.models.geo import Country
 from properties.models.property import Property
 from reservations.enums import (
     EnquiryLostReason,
@@ -166,11 +165,7 @@ class ClientLoader(BaseLoader):
         # VillaClientDetails column carries an ANONYMIZED disposition, so only
         # ACTIVE / INACTIVE arise from the import itself.
         status = PersonStatus.ACTIVE if (email or phone) else PersonStatus.INACTIVE
-        country = (
-            Country.objects.filter(legacy_id=str(row["CountryId"])).first()
-            if row.get("CountryId")
-            else None
-        )
+        country = country_for_legacy_id(str(row["CountryId"])) if row.get("CountryId") else None
         return {
             "title": (row.get("Title") or "").strip()[:16],
             "first_name": first or "(unknown)",

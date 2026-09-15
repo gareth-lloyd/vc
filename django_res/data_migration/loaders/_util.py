@@ -18,6 +18,42 @@ logger = structlog.get_logger(__name__)
 # resolves live WP ids and is deliberately untouched.
 LEGACY_REGION_REMAP: dict[str, str] = {"25": "61", "27": "60"}
 
+# BUG-030 §6 — the two loader-side "England is GB" tables (the sheet
+# importers have their own name-keyed `sheets.matching.COUNTRY_ALIASES`).
+#
+# Non-ISO codes legacy stores in `VillaCountry.ShortName1` for a real country.
+LEGACY_ISO2_ALIASES: dict[str, str] = {"UK": "GB"}
+# Legacy `VillaCountry` 24 ("England", ShortName1 `UK`, deleted) duplicates 6
+# ("United Kingdom", no iso code, deleted). Both resolve to GB and only one
+# legacy id can sit on the GB seed row (6 claims it first, in Id order), so
+# `CountryLoader` skips 24 and its FK consumers resolve it here — no
+# post-load `merge_country` step (the retired CUTOVER §7). The other deleted
+# twins, 13 France and 20 India, are deliberately NOT aliased: FR and IN are
+# live, so their regions would load active and move the calibrated
+# `Region (active)` gap — a GAP-108 decision, made on the live dump.
+LEGACY_COUNTRY_ALIASES: dict[str, str] = {"24": "GB"}
+
+
+def country_for_legacy_id(legacy_country_id: str) -> Any:
+    """The loaded `Country` for a legacy `VillaCountry.Id`: the row stamped
+    with that `legacy_id`, else the `LEGACY_COUNTRY_ALIASES` iso2 row, else
+    `None` (callers fall back to `unknown_country()` or leave it null)."""
+    from properties.models.geo import Country
+
+    if not legacy_country_id:
+        return None
+    country = Country.objects.filter(legacy_id=legacy_country_id).first()
+    if country is None:
+        iso2 = LEGACY_COUNTRY_ALIASES.get(legacy_country_id)
+        if iso2 is not None:
+            logger.info(
+                "data_migration.country_aliased",
+                legacy_country_id=legacy_country_id,
+                aliased_to=iso2,
+            )
+            country = Country.objects.filter(iso2=iso2).first()
+    return country
+
 
 def region_for_legacy_id(legacy_region_id: str, **log_context: Any) -> Any:
     """The loaded `Region` for a legacy `VillaRegions.Id`, following

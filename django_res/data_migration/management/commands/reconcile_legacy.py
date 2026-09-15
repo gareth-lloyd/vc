@@ -164,12 +164,20 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaCountry",
         Country,
         "Country (legacy)",
-        # Negative gap: loaded > legacy. Migration properties.0009 pre-seeds
+        # Negative gap: loaded > legacy. Migration properties.0002 pre-seeds
         # 249 canonical ISO-3166 countries (legacy_id NULL); the 23 legacy
         # VillaCountry rows are matched onto that seed by iso2 rather than
-        # adding to it. Plus the unknown_country sentinel. The seeded table
-        # dwarfs the 23 legacy rows, so the gap is structurally negative.
-        expected_gap=-228,
+        # adding to it. Plus the unknown_country `XX` sentinel, created
+        # lazily by the first fallback (the dump's iso-less junk rows always
+        # trigger it). The seeded table dwarfs the 23 legacy rows, so the gap
+        # is structurally negative. BUG-030 §6: 23 - (249 + 1) = -227.
+        # Before, legacy 24 ("England", iso2 `UK`) minted a 250th row
+        # (-228); `_resolve_iso2` now maps `UK` → GB and rejects any non-ISO
+        # code, so no extra Country row is ever created. The dev dump's
+        # "Dev Country" 25 (`DC`, live) is skipped the same way; it is not in
+        # the 23-row prod dump (DRYRUN_LOG) — GAP-108 confirms on the live
+        # dump before pinning for good.
+        expected_gap=-227,
     ),
     _Check(
         # GAP-107: legacy `IsActive = 1` countries that are not soft-deleted
@@ -180,8 +188,9 @@ _CHECKS: list[_Check] = [
         # nowhere / inactive. Calibrated 2026-09-10 (24-Apr-2025 dump): 6/6,
         # gap 0 — all six live rows (GR, IT, FR, MA, ES, KE) seed-match; the
         # only iso2 duplicates (France 3/13, India 11/20) involve deleted
-        # rows. Run before the §7 England → GB merge, which hard-deletes the
-        # `UK` row.
+        # rows. BUG-030 §6: England (24, `UK`) resolves to GB and is skipped
+        # (6 holds the seed); `country_for_legacy_id` aliases its FKs, so
+        # there is no post-load merge step any more.
         f"SELECT COUNT(*) FROM VillaCountry WHERE IsActive = 1 AND NOT {legacy_deleted_sql()}",
         Country,
         "Country (active)",

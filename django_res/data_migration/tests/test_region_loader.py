@@ -104,3 +104,23 @@ def test_legacy_query_selects_deletion_columns() -> None:
     query = RegionLoader().legacy_query
     assert "DeletedAt" in query
     assert "DeletedBy" in query
+
+
+# --- BUG-030 §6 / §9 ---
+
+
+def test_region_under_legacy_england_attaches_to_gb(db: None) -> None:
+    kwargs = _transform(_row(CountryId=24))
+    assert kwargs["country"] == Country.objects.get(iso2="GB")
+
+
+def test_region_slug_is_slugified(france: Country) -> None:
+    # BUG-030 §9: legacy slugs carry accents (`andalucía`); `Region.slug` is a
+    # SlugField, so normalise before suffixing the legacy id.
+    kwargs = _transform(_row(Id=10, Slug="andalucía"))
+    assert kwargs["slug"] == "andalucia-10"
+
+
+def test_region_with_non_latin_slug_and_name_falls_back_to_the_id(france: Country) -> None:
+    kwargs = _transform(_row(Id=61, Slug="πελοπόννησος", Name="Πελοπόννησος"))
+    assert kwargs["slug"] == "region-61"

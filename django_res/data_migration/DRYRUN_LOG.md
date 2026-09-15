@@ -389,6 +389,8 @@ git-tracked `DbScript.sql`, not the prod dump. Measured on the dump:
   Australia and India (11 + 20). iso2 duplicates only involve deleted rows
   (France 3 live / 13 deleted; India 11 / 20 both deleted). England (24,
   iso2 `UK`, deleted) lands as a retired `UK` row for the §7 GB merge.
+  *(2026-09-15, BUG-030 §6: superseded — `UK` now resolves to GB, row 24
+  is skipped and aliased to GB in the loaders; §7 retired.)*
 - **VillaFinance**: 1526 rows (`VillaId` is NOT NULL, so `VillaId IS NOT
   NULL` = every row). `VillaId = 0`: 1089 (413 `ParentId NULL` templates +
   676 parent-child overrides); `VillaId > 0`: 437 on 437 distinct villas — 146

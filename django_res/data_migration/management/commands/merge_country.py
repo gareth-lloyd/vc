@@ -4,11 +4,14 @@ Same pattern as `accounts.models.person.Person.merge`: every FK that
 points at the source country is rewritten to point at the target. Once the
 source has zero references, it's hard-deleted.
 
-Example:
+Usage:
 
-    manage.py merge_country --from-legacy 24 --to-iso2 GB
+    manage.py merge_country --from-legacy <id> --to-iso2 <CC>
 
-Picks the source by `legacy_id='24'`, the target by `iso2='GB'`.
+Picks the source by `legacy_id=<id>` (a legacy row that minted its own
+Country), the target by `iso2=<CC>`. A generic staff tool for a stray
+duplicate; not a cutover step (BUG-030 §6 retired the England → GB merge by
+aliasing the legacy id in the loaders, so no `UK` row exists to merge).
 """
 
 from __future__ import annotations

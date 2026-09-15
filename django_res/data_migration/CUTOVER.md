@@ -570,7 +570,7 @@ is where the dry-run calibration happens), not just here.
 | `VillaClientDetails`      | 1            | One row with neither `FirstName` nor `LastName` (no identity to import). Loads to the `client-` slice of `Person` (GAP-045). |
 | `VillaBookingDetails`     | 0 *(confirmed at 2026-07-05 dry-run)* | **GAP-017**: the legacy side already excludes zero-price rows and rows on deleted bookings; the loaded side counts only imported rows (`legacy_id IS NOT NULL`), so staff-created charge lines never skew it. Error/skip rows widen the gap until fixed: no-rate FX rows, unresolvable non-zero `CurrencyId`, conversions quantising to zero, unresolvable bookings — see [4g](#4g-chargeable-extras--bookingchargeitem-gap-017). |
 | `VillaAvailability` (future days) | 0 | New `availability_block` loader (2026-07-05): future day rows deduped to the latest edit per `(villa, day)` (`ROW_NUMBER()` over `COALESCE(UpdatedAt, CreatedAt), Id`, mirroring the loader), then filtered to statuses 30/40/50/60 (`AvailableDate >= today`), coalesce into `BookingHold(reason=MANUAL)` rows; the check compares future day counts to the summed day-span of loaded `avail-*` holds. Both sides move with "today" — run load and reconcile the same day. Skips (unloaded property / range occupied by an imported booking or staff hold) widen the gap; recalibrate against the final dump if non-zero and explained. |
-| `VillaCountry` (active) | 0 *(calibrated 2026-09-10: 6/6)* | **GAP-107**: legacy `IsActive = 1`, not soft-deleted (`DeletedAt IS NOT NULL OR ISNULL(DeletedBy,'') <> ''` — both legacy conventions) vs migrated countries loaded active (`XX` sentinel excluded by iso2). Deleted countries load **retired** (`is_active=False`), never skipped, so FKs still resolve. Standing shifters (0 on the 24-Apr-2025 dump): a live legacy row `CountryLoader` cannot seed-match (iso-less → skipped and logged as `data_migration.country_without_iso_skipped`; the `XX` sentinel keeps its stable `__unknown__` legacy_id; a second live row on an already-claimed iso2 → skipped). Run **before** [§7](#7-england--gb-merge), which hard-deletes the `UK` row. |
+| `VillaCountry` (active) | 0 *(calibrated 2026-09-10: 6/6)* | **GAP-107**: legacy `IsActive = 1`, not soft-deleted (`DeletedAt IS NOT NULL OR ISNULL(DeletedBy,'') <> ''` — both legacy conventions) vs migrated countries loaded active (`XX` sentinel excluded by iso2). Deleted countries load **retired** (`is_active=False`), never skipped, so FKs still resolve. Standing shifters (0 on the 24-Apr-2025 dump): a live legacy row `CountryLoader` cannot seed-match (iso-less → skipped and logged as `data_migration.country_without_iso_skipped`; the `XX` sentinel keeps its stable `__unknown__` legacy_id; a second live row on an already-claimed iso2 → skipped). BUG-030 §6: England (24, `UK`) resolves to GB and is skipped; its FKs alias to GB, so no post-load merge ([§7](#7-england--gb-merge-retired--bug-030-6) is retired). |
 | `VillaRegion` (imported) | 0 *(calibrated 2026-09-10: 64/64)* | **GAP-107**: non-blank-name legacy regions vs every loaded region with a `legacy_id` (sentinel excluded). Deleted regions load retired, never skipped. With the active slice below this pins the retired count too (retired = imported − active). The bare `VillaRegion` total above it is unchanged by GAP-107 and keeps its pre-existing shifters (blank-name rows skipped; sentinel + staff-created rows on the loaded side). |
 | `VillaRegion` (active) | 0 *(calibrated 2026-09-10: 42/42; 22 retired = 9 own-deleted + 13 under deleted countries)* | **GAP-107**: legacy not-deleted regions under a not-deleted, `IsActive = 1` country vs loaded regions with `is_active=True` (a region is also retired when its country is deleted, `IsActive = 0`, or unresolvable → unknown sentinel). Same seed-match shifters as `VillaCountry (active)`. **Ops:** a reload that retires rows does not reach Zoho (loader pushes are suppressed and nothing downstream changes) — run `zoho_backfill --kinds villa,enquiry,contact` afterwards so Limitless stops offering retired regions. |
 | `VillaSeasonRate` (extras, `IsExTra = 1`) | 0 *(calibrated 2026-09-10: 84/84)* | **GAP-107**: live legacy extras **on villas the property loader loads** (`JOIN VillaMaster`, `DeletedAt IS NULL` on both, non-blank villa name — so the 12 extras on deleted / blank-name villas never enter the gap) vs `pricing.Extra` rows with a `legacy_id` **and `is_active=True`** (a full run retires legacy-deleted extras by flag, mirroring the legacy filter; staff-created extras excluded). Shifters: a no-currency skip, or staff deactivating a ported extra in the SPA. Mapping in [4i](#4i-extras-catalogue--pricingextra-gap-107). |
@@ -918,17 +918,17 @@ overwritten — the same contract as any delta load) and leaves the GAP-070
 fallback rows alone (`create-only`, so they keep their `NULL` marker).
 Idempotent.
 
-## 7. England → GB merge
+## 7. England → GB merge (retired — BUG-030 §6)
 
-After Phase 1.1 added the canonical `GB` row, the legacy "England"
-(iso2 `UK`, legacy_id `24`) row is no longer needed. Merge once:
-
-```bash
-uv run python manage.py merge_country --from-legacy 24 --to-iso2 GB --dry-run   # rolls back, exits 0
-uv run python manage.py merge_country --from-legacy 24 --to-iso2 GB
-```
-
-Output should report `Rewrote N rows and deleted source country.`
+No longer a cutover step. The legacy "England" row (`VillaCountry` 24,
+ShortName1 `UK`, deleted) used to load as a bogus `Country(iso2="UK")` that
+staff then merged into `GB` with `merge_country`. `CountryLoader` now
+validates ISO codes (`UK` → `GB`), so row 24 resolves to GB, is skipped
+(row 6 "United Kingdom" holds the GB seed's `legacy_id`), and every
+`CountryId = 24` consumer (regions, clients) lands on GB through
+`country_for_legacy_id` (`loaders/_util.py`, `LEGACY_COUNTRY_ALIASES`).
+`merge_country` stays as a generic staff tool; nothing in the runbook
+calls it.
 
 ## 8. Image files
 

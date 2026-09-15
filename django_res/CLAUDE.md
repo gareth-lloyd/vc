@@ -76,7 +76,8 @@ must be set for any loader. Full playbook: `data_migration/CUTOVER.md`.
 - `./manage.py loadlegacy --all` — every loader in dependency order; refuses
   a DB that already holds legacy Country/Currency/Property rows.
 - `./manage.py reconcile_legacy` — legacy-vs-loaded row-count table.
-- `./manage.py merge_country --from-legacy <id> --to-iso2 <CC>`.
+- `./manage.py merge_country --from-legacy <id> --to-iso2 <CC>` — generic
+  duplicate-country merge; not a cutover step.
 
 ## Conventions
 

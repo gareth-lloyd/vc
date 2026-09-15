@@ -3,16 +3,21 @@
 Legacy columns of interest (per ResSystem/Database/Data/VillaCountry.cs):
 - Id              → legacy_id
 - Name            → name
-- ShortName1      → iso2  (legacy stored ISO-2 here)
+- ShortName1      → iso2  (legacy stored ISO-2 here; validated against
+                    ISO-3166 with `UK` → `GB`, else the name decides —
+                    BUG-030 §6)
 - ShortName2      → iso3  (legacy stored ISO-3 here)
+- Code            → (not loaded: an ordering/lookup integer, NOT a calling
+                    code — Greece is 300; BUG-030 §5)
 - TaxRate         → default_tax_rate
 - CountryOrder    → sort_order
 - IsActive        → is_active (AND NOT deleted — GAP-107: `DeletedAt` /
                     `DeletedBy` retire the row rather than skipping it, so
-                    FKs onto it still resolve; the one exception is a deleted
-                    row whose iso2 a live legacy row also claims — that
+                    FKs onto it still resolve; the exception is a deleted
+                    row whose iso2 another legacy row already claims — that
                     duplicate is skipped and its `CountryId` consumers fall
-                    to `unknown_country()`)
+                    to `unknown_country()`, unless `LEGACY_COUNTRY_ALIASES`
+                    names it, as it does England 24 → GB)
 
 The 0009 migration pre-seeds the 249 canonical iso2 rows with no
 legacy_id, so this loader merges legacy rows onto them by iso2 (or by
@@ -29,7 +34,7 @@ from typing import Any
 import structlog
 
 from data_migration.base import BaseLoader, LoadReport
-from data_migration.loaders._util import legacy_row_deleted
+from data_migration.loaders._util import LEGACY_ISO2_ALIASES, legacy_row_deleted
 from data_migration.loaders.sentinels import unknown_country
 from properties.models.geo import Country
 
@@ -37,13 +42,18 @@ logger = structlog.get_logger(__name__)
 
 
 def _resolve_iso2(name: str, raw_iso2: str) -> str | None:
-    if raw_iso2 and len(raw_iso2) == 2 and raw_iso2.isalpha():
-        return raw_iso2
+    from django_countries import countries as dc_countries
+
+    # BUG-030 §6: only a real ISO-3166 code counts (legacy "England" is
+    # stored as `UK`, and any other two letters used to mint a bogus row).
+    # `alpha2` also normalises an alpha-3 / numeric spelling ("GRC", "826")
+    # to the alpha-2 the seed is keyed on; unknown → "" → the name decides.
+    iso2 = dc_countries.alpha2(LEGACY_ISO2_ALIASES.get(raw_iso2, raw_iso2))
+    if iso2:
+        return iso2
     # Fallback: name match against django-countries.
     if not name:
         return None
-    from django_countries import countries as dc_countries
-
     needle = name.strip().lower()
     for iso2, canonical_name in dc_countries:
         if str(canonical_name).strip().lower() == needle:
@@ -56,7 +66,7 @@ class CountryLoader(BaseLoader):
     target_model = Country
     legacy_query = (
         "SELECT Id, Name, ShortName1, ShortName2, "
-        "Code, CountryOrder, IsActive, TaxRate, DeletedAt, DeletedBy "
+        "CountryOrder, IsActive, TaxRate, DeletedAt, DeletedBy "
         "FROM VillaCountry ORDER BY Id"
     )
 
@@ -87,8 +97,6 @@ class CountryLoader(BaseLoader):
         raw_iso2 = (row.get("ShortName1") or "").strip().upper()
         iso2 = _resolve_iso2(name, raw_iso2)
 
-        dial_raw = row.get("Code")
-        dial_code = f"+{dial_raw}" if dial_raw else ""
         tax_rate = row.get("TaxRate") or Decimal("0")
         sort_order = row.get("CountryOrder") or 0
         deleted = legacy_row_deleted(row)
@@ -110,7 +118,6 @@ class CountryLoader(BaseLoader):
         canonical_iso3 = dc_countries.alpha3(iso2) or iso2 + "_"
         defaults: dict[str, Any] = {
             "iso3": canonical_iso3,
-            "dial_code": dial_code,
             "default_tax_rate": tax_rate,
             "sort_order": sort_order,
             "is_active": is_active,

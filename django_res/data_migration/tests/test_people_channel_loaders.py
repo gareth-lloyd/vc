@@ -86,6 +86,15 @@ def test_contact_phone_second_primary_is_demoted(contact: Person) -> None:
     assert kwargs["is_primary"] is False
 
 
+def test_contact_phone_rerun_keeps_its_own_primary(contact: Person) -> None:
+    PersonPhone.objects.create(
+        contact=contact, number="+447771950930", is_primary=True, legacy_id="1"
+    )
+    kwargs = ContactPhoneLoader().transform(_phone_row(Id=1, MobileNo="07771950930"))
+    assert kwargs is not None
+    assert kwargs["is_primary"] is True
+
+
 # --- ContactEmailLoader ---
 
 
@@ -108,6 +117,19 @@ def test_contact_email_second_primary_is_demoted_to_other(contact: Person) -> No
     )
     assert kwargs is not None
     assert (kwargs["is_primary"], kwargs["label"]) == (False, EmailLabel.OTHER)
+
+
+def test_contact_email_rerun_keeps_its_own_primary(contact: Person) -> None:
+    # A targeted re-run of a loaded primary must not see itself as the rival
+    # primary and demote itself (reconcile's one-primary invariant would block).
+    PersonEmail.objects.create(
+        contact=contact, email="ada@example.com", is_primary=True, legacy_id="1"
+    )
+    kwargs = ContactEmailLoader().transform(
+        {"Id": 1, "ContactId": 70, "Email": "ada@example.com", "IsPrimary": 1}
+    )
+    assert kwargs is not None
+    assert (kwargs["is_primary"], kwargs["label"]) == (True, EmailLabel.PRIMARY)
 
 
 def test_contact_email_without_at_or_contact_is_skipped(contact: Person) -> None:

@@ -472,8 +472,10 @@ _CHECKS: list[_Check] = [
         # GAP-108 structural invariant (BUG-029's primary-flag flip passed
         # every count): an owner/agent Person with ≥1 loaded email has
         # exactly one primary among them. The partial unique constraint
-        # already rules out two, so this catches zero — ContactEmailLoader
-        # demotes duplicate primaries but never promotes one. Caveat: the
+        # already rules out two, so in practice this catches a contact with
+        # no primary: ContactEmailLoader demotes a rival primary (ignoring
+        # its own row, so a re-run is stable) but never promotes one; it
+        # holds on ResProd only because the legacy flags are clean. Caveat: the
         # loader skips a blank / `@`-less email, so a contact whose legacy
         # primary is that junk row and who has other valid emails loads
         # with none — a real violation to itemise, not a false one. ResProd

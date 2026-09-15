@@ -129,7 +129,11 @@ class ContactEmailLoader(BaseLoader):
         if contact is None:
             return None
         is_primary = bool(row.get("IsPrimary"))
-        if is_primary and PersonEmail.objects.filter(contact=contact, is_primary=True).exists():
+        # Exclude this row's own upsert target so a re-run doesn't demote itself.
+        rival = PersonEmail.objects.filter(contact=contact, is_primary=True).exclude(
+            legacy_id=str(row["Id"])
+        )
+        if is_primary and rival.exists():
             is_primary = False
         # PersonEmail has unique(contact, email); if dup exists, treat as upsert
         # via legacy_id (BaseLoader handles that for us).
@@ -155,7 +159,10 @@ class ContactPhoneLoader(BaseLoader):
             return None
         full = legacy_phone(number, row.get("CountryCode"))  # BUG-030 §17
         is_primary = bool(row.get("IsPrimary"))
-        if is_primary and PersonPhone.objects.filter(contact=contact, is_primary=True).exists():
+        rival = PersonPhone.objects.filter(contact=contact, is_primary=True).exclude(
+            legacy_id=str(row["Id"])
+        )
+        if is_primary and rival.exists():
             is_primary = False
         return {
             "contact": contact,

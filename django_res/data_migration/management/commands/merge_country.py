@@ -83,7 +83,8 @@ class Command(BaseCommand):
                         f"Dry run: would rewrite {total_rewritten} rows then delete source"
                     )
                 )
-                raise CommandError("Dry run — rolling back")
+                transaction.set_rollback(True)
+                return
 
             source.delete()
             self.stdout.write(

@@ -115,10 +115,12 @@ class Command(BaseCommand):
     ) -> dict[tuple[str, str], Person | None]:
         by_name: dict[tuple[str, str], Person | None] = {}
         for index, row in enumerate(rows, start=2):
+            counts = report.row_counts()
             try:
                 with transaction.atomic():
                     person = self._import_contact(row, report)
             except Exception as exc:
+                report.restore_row_counts(counts)  # the row rolled back (BUG-030 §34)
                 report.errors.append((f"{CONTACTS_SHEET}!{index}", repr(exc)))
                 continue
             if person is None:
@@ -188,10 +190,12 @@ class Command(BaseCommand):
         matcher = PropertyMatcher()
         seen: set[str] = set()
         for index, row in enumerate(rows, start=2):
+            counts = report.row_counts()
             try:
                 with transaction.atomic():
                     self._import_stay(row, by_name, matcher, report, seen)
             except Exception as exc:
+                report.restore_row_counts(counts)  # the row rolled back (BUG-030 §34)
                 report.errors.append((f"{HISTORY_SHEET}!{index}", repr(exc)))
 
     def _resolve_person(
@@ -241,7 +245,6 @@ class Command(BaseCommand):
             # reporting the second as an idempotent re-hit.
             report.skipped["duplicate_row"] += 1
             return
-        seen.add(legacy_id)
         _, created = PastStay.objects.get_or_create(
             legacy_id=legacy_id,
             defaults={
@@ -254,6 +257,9 @@ class Command(BaseCommand):
                 "notes": "\n".join(note_lines),
             },
         )
+        # Only once the write succeeded: a rolled-back row must not make an
+        # identical later row look like a duplicate (BUG-030 §34).
+        seen.add(legacy_id)
         if created:
             report.created["past_stay"] += 1
         else:

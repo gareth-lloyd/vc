@@ -123,10 +123,12 @@ class Command(BaseCommand):
         with suppress_zoho_push(), transaction.atomic():
             matcher = PropertyMatcher()
             for index, row in enumerate(rows, start=2):
+                counts = report.row_counts()
                 try:
                     with transaction.atomic():
-                        self._import_row(row, matcher, report)
+                        self._import_row(row, index, matcher, report)
                 except Exception as exc:
+                    report.restore_row_counts(counts)  # the row rolled back
                     report.errors.append((f"{SHEET}!{index}", repr(exc)))
             self.stdout.write(report.render())
             if opts["dry_run"]:
@@ -134,14 +136,14 @@ class Command(BaseCommand):
                 self.stdout.write("[dry-run] rolled back — nothing written.")
 
     def _import_row(
-        self, row: dict[str, Any], matcher: PropertyMatcher, report: SheetReport
+        self, row: dict[str, Any], index: int, matcher: PropertyMatcher, report: SheetReport
     ) -> None:
         first, last, email = _text(row, "First Name"), _text(row, "Last Name"), _text(row, "Email")
         if not first and not last and not email:
             report.skipped["blank_row"] += 1
             return
         if email and "@" not in email:
-            report.errors.append((f"{first} {last}".strip() or email, "invalid email"))
+            report.errors.append((f"{SHEET}!{index}", "invalid email"))
             return
 
         tags, unknown_tags = map_tags(row.get("Tags"))

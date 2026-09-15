@@ -24,6 +24,7 @@ from data_migration.sheets.matching import (
     resolve_region,
     split_tags,
 )
+from properties.enums import PropertyStatus
 from properties.models import Country, Property, Region
 
 pytestmark = pytest.mark.django_db
@@ -76,7 +77,7 @@ def test_html_to_text_flattens_breaks_and_entities() -> None:
 # --- villa matching ----------------------------------------------------------
 
 
-def _property(name: str, display_name: str | None = None) -> Property:
+def _property(name: str, display_name: str | None = None, **fields: object) -> Property:
     country, _ = Country.objects.get_or_create(
         iso2="GR", defaults={"name": "Greece", "iso3": "GRC"}
     )
@@ -84,8 +85,9 @@ def _property(name: str, display_name: str | None = None) -> Property:
     return Property.objects.create(
         name=name,
         display_name=display_name or name,
-        slug=normalise_name(name).replace(" ", "-"),
+        slug=f"{normalise_name(name).replace(' ', '-')}-{Property.objects.count()}",
         region=region,
+        **fields,
     )
 
 
@@ -433,3 +435,72 @@ def test_find_or_create_person_uses_the_customer_first_match() -> None:
     )
 
     assert match.person == customer
+
+
+# --- BUG-030 §33/§35 ---
+
+
+def test_property_matcher_prefers_the_single_live_villa_over_archived_duplicates() -> None:
+    live = _property("Villa Yeraki", status=PropertyStatus.ACTIVE)
+    _property("Villa Yeraki", status=PropertyStatus.ARCHIVED)
+    _property("Yeraki", status=PropertyStatus.ARCHIVED)
+    draft = _property("Villa Olea", status=PropertyStatus.DRAFT)
+    _property("Villa Olea", status=PropertyStatus.ARCHIVED)
+
+    matcher = PropertyMatcher()
+
+    assert matcher.match("Villa Yeraki") == live
+    assert matcher.match("yeraki") == live
+    assert matcher.match("Olea") == draft  # DRAFT is not archived
+
+
+def test_property_matcher_falls_back_to_an_archived_only_name() -> None:
+    old = _property("Villa Kalami", status=PropertyStatus.ARCHIVED)
+    _property("Villa Yeraki", status=PropertyStatus.ACTIVE)
+
+    assert PropertyMatcher().match("Kalami") == old
+
+
+def test_property_matcher_two_live_namesakes_stay_ambiguous() -> None:
+    _property("Villa Yeraki", status=PropertyStatus.ACTIVE)
+    _property("Yeraki", status=PropertyStatus.DRAFT)
+    _property("Villa Yeraki", status=PropertyStatus.ARCHIVED)
+
+    assert PropertyMatcher().match("Yeraki") is None
+
+
+def test_match_person_by_name_never_links_a_single_non_customer() -> None:
+    _person("John", "Smith", kind=PersonKind.CONTACT)
+
+    assert match_person_by_name("John", "Smith") == (None, True)
+
+
+def test_match_person_by_name_links_a_single_customer_beside_contacts() -> None:
+    customer = _person("John", "Smith", kind=PersonKind.CUSTOMER)
+    _person("John", "Smith", kind=PersonKind.CONTACT)
+
+    assert match_person_by_name("John", "Smith") == (customer, False)
+
+
+def test_match_person_by_name_no_namesake_is_not_ambiguous() -> None:
+    assert match_person_by_name("Nobody", "Here") == (None, False)
+
+
+def test_property_matcher_exact_name_beats_a_live_prefix_strip() -> None:
+    archived = _property("Villa Rosa", status=PropertyStatus.ARCHIVED)
+    _property("Rosa", status=PropertyStatus.ACTIVE)
+
+    assert PropertyMatcher().match("Villa Rosa") == archived
+
+
+def test_active_owner_namesake_does_not_hide_a_deactivated_customer() -> None:
+    _person("John", "Smith", kind=PersonKind.CONTACT)
+    customer = _person("John", "Smith", kind=PersonKind.CUSTOMER, status=PersonStatus.INACTIVE)
+
+    match = find_or_create_person(
+        email=None, first_name="John", last_name="Smith", legacy_id="sheet-person-y"
+    )
+
+    assert match.inactive is True
+    assert match.person == customer
+    assert Person.objects.count() == 2

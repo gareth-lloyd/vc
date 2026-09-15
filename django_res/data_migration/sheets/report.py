@@ -25,6 +25,32 @@ class SheetReport:
     unmatched_persons: Counter[str] = field(default_factory=Counter)
     rows_read: int = 0
 
+    def row_counts(self) -> tuple[Counter[str], ...]:
+        """A copy of the per-row counters, taken before a row's savepoint.
+
+        BUG-030 §34: a row that raises is rolled back to its savepoint, so the
+        counts it made before failing must be rolled back too
+        (`restore_row_counts`). `errors` is not part of the snapshot."""
+        return tuple(
+            Counter(c)
+            for c in (
+                self.created,
+                self.updated,
+                self.skipped,
+                self.unmatched_villas,
+                self.unmatched_persons,
+            )
+        )
+
+    def restore_row_counts(self, counts: tuple[Counter[str], ...]) -> None:
+        (
+            self.created,
+            self.updated,
+            self.skipped,
+            self.unmatched_villas,
+            self.unmatched_persons,
+        ) = counts
+
     def render(self) -> str:
         blocks = [f"== {self.name}: {self.rows_read} rows read =="]
         counts = [("created", kind, n) for kind, n in sorted(self.created.items())] + [

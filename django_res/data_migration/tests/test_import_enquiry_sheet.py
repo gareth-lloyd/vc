@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from io import StringIO
 from pathlib import Path
@@ -208,7 +209,7 @@ def test_invalid_email_is_an_error_and_other_rows_continue(tmp_path: Path) -> No
 
     assert Person.objects.count() == 1
     assert Person.objects.get().last_name == "Hopper"
-    assert "invalid email" in out
+    assert re.search(r"Sheet1!2\s+invalid email", out)  # keyed by sheet row (BUG-030 §34)
 
 
 def test_unknown_source_and_ambiguous_region_and_unmatched_villa(tmp_path: Path) -> None:
@@ -290,3 +291,23 @@ def test_phone_is_not_added_to_a_legacy_owner_or_agent_person(tmp_path: Path) ->
 
     assert Person.objects.count() == 1
     assert owner.phones.count() == 0
+
+
+def test_a_row_that_fails_after_its_person_is_counted_counts_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-030 §34: the row's savepoint rolls the person back, so the report
+    must not keep the `created person` it counted before the failure."""
+    from data_migration.management.commands import import_enquiry_sheet
+
+    def _boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("enquiry write failed")
+
+    monkeypatch.setattr(import_enquiry_sheet.Command, "_import_enquiry", _boom)
+    path = _workbook(tmp_path / "e.xlsx", [_row(**{"Enquiry Date": "2019-06-01"})])
+
+    out = _run(path)
+
+    assert Person.objects.count() == 0
+    assert "enquiry write failed" in out
+    assert not re.search(r"created\s+person", out)

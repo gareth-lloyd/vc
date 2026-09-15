@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -295,3 +296,53 @@ def test_identical_history_rows_in_one_run_are_reported_as_duplicates(tmp_path: 
     assert PastStay.objects.count() == 2
     assert "duplicate_row" in out
     assert "exists" not in out
+
+
+def test_a_contact_that_fails_after_its_person_is_counted_counts_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-030 §34: same over-count shape as the enquiry sheet."""
+    from data_migration.management.commands import import_past_bookers
+
+    def _boom(*args: Any, **kwargs: Any) -> bool:
+        raise RuntimeError("note write failed")
+
+    monkeypatch.setattr(import_past_bookers, "append_note_line", _boom)
+    path = _workbook(tmp_path / "b.xlsx", [_contact("Ada", "Lovelace", notes="VIP")], [])
+
+    out = _run(path)
+
+    assert Person.objects.count() == 0
+    assert "note write failed" in out
+    assert not re.search(r"created\s+person", out)
+
+
+def test_a_stay_whose_write_failed_is_not_treated_as_a_duplicate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-030 §34: a rolled-back stay must not stay in the run's `seen` set,
+    or an identical later row is skipped as a duplicate and never written."""
+    real_get_or_create = PastStay.objects.get_or_create
+    calls = {"n": 0}
+
+    def _flaky(**kwargs: Any) -> Any:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("stay write failed")
+        return real_get_or_create(**kwargs)
+
+    monkeypatch.setattr(PastStay.objects, "get_or_create", _flaky)
+    path = _workbook(
+        tmp_path / "b.xlsx",
+        [_contact("Ada", "Lovelace")],
+        [
+            ["Ada", "Lovelace", "BN123", "Yeraki", "Corfu", 2019],
+            ["Ada", "Lovelace", "BN123", "Yeraki", "Corfu", 2019],
+        ],
+    )
+
+    out = _run(path)
+
+    assert PastStay.objects.count() == 1
+    assert "stay write failed" in out
+    assert "duplicate_row" not in out

@@ -34,6 +34,7 @@ from django_countries import countries
 from accounts.enums import PersonKind, PersonStatus, PersonTag
 from accounts.models import Person
 from accounts.services.person_channels import reconcile_primary_email
+from properties.enums import PropertyStatus
 from properties.models import Country, Property, Region
 
 _APOSTROPHES = re.compile(r"['\u2019`]")
@@ -161,37 +162,51 @@ def strip_villa_prefix(normalised: str) -> str:
 
 
 class PropertyMatcher:
-    """Exact-after-normalisation villa-name lookup over every Property.
+    """Exact-after-normalisation villa-name lookup, live villas first.
 
-    The index is built once per run: each Property contributes its ``name`` and
-    ``display_name`` both verbatim-normalised and with a leading "villa"
+    The indexes are built once per run: each Property contributes its ``name``
+    and ``display_name`` both verbatim-normalised and with a leading "villa"
     stripped. A key that maps to more than one Property is ambiguous and never
     matches.
+
+    BUG-030 §33: legacy holds archived duplicates of one villa ("villa yeraki"
+    x34), which made most sheet names ambiguous. So a name is looked up among
+    non-ARCHIVED properties first; only a name with no hit there falls back to
+    every property (a villa that exists only archived still links). The exact
+    name is tried before the "villa"-stripped one. Two live namesakes stay
+    ambiguous.
     """
 
     def __init__(self) -> None:
-        index: dict[str, set[int]] = {}
         self._by_pk: dict[int, Property] = {}
+        self._live_index: dict[str, set[int]] = {}
+        self._index: dict[str, set[int]] = {}
         for prop in Property.objects.all():
             self._by_pk[prop.pk] = prop
+            indexes = [self._index]
+            if prop.status != PropertyStatus.ARCHIVED:
+                indexes.append(self._live_index)
             for raw in (prop.name, prop.display_name):
                 norm = normalise_name(raw)
                 if not norm:
                     continue
                 for key in {norm, strip_villa_prefix(norm)}:
-                    index.setdefault(key, set()).add(prop.pk)
-        self._index = index
+                    for index in indexes:
+                        index.setdefault(key, set()).add(prop.pk)
 
     def match(self, villa_name: Any) -> Property | None:
         norm = normalise_name(villa_name)
         if not norm or "/" in str(villa_name):
             return None
+        # Per key: the exact name before the "villa"-stripped one, and for
+        # each, live villas before all villas.
         for key in (norm, strip_villa_prefix(norm)):
-            pks = self._index.get(key)
-            if pks and len(pks) == 1:
-                return self._by_pk[next(iter(pks))]
-            if pks:
-                return None  # ambiguous
+            for index in (self._live_index, self._index):
+                pks = index.get(key)
+                if pks and len(pks) == 1:
+                    return self._by_pk[next(iter(pks))]
+                if pks:
+                    return None  # ambiguous
         return None
 
 
@@ -288,22 +303,23 @@ def _is_blank(value: Any) -> bool:
 
 
 def match_person_by_name(first: str, last: str) -> tuple[Person | None, bool]:
-    """The no-e-mail rule, shared by both importers: exactly one ACTIVE person
-    with this (first, last) — customers preferred when several — else
-    ``(None, ambiguous)``. ``ambiguous`` is True whenever more than one
-    namesake exists and the customer preference did not single one out (so
-    two owner/agent namesakes are flagged, not silently duplicated)."""
+    """The no-e-mail rule, shared by both importers: exactly one ACTIVE
+    CUSTOMER with this (first, last), else ``(None, ambiguous)``.
+
+    BUG-030 §35: a sheet guest is a customer, so an owner/agent namesake is
+    never linked — not even a single one. ``ambiguous`` is True whenever an
+    ACTIVE namesake exists that did not resolve to one customer (several
+    customers, or only non-customers), so the caller flags it rather than
+    silently linking or duplicating."""
     by_name = list(
         Person.objects.filter(
             status=PersonStatus.ACTIVE, first_name__iexact=first, last_name__iexact=last
         )
     )
-    if len(by_name) <= 1:
-        return (by_name[0] if by_name else None), False
     customers = [p for p in by_name if p.kind == PersonKind.CUSTOMER]
     if len(customers) == 1:
         return customers[0], False
-    return None, True
+    return None, bool(by_name)
 
 
 def match_person_by_email(
@@ -369,7 +385,19 @@ def find_or_create_person(
         existing = match_person_by_email(addr, first_name=first, last_name=last, active_only=False)
     if existing is None and not addr:
         existing, ambiguous = match_person_by_name(first, last)
-        if existing is None and not ambiguous:
+        # A deactivated namesake comes back `inactive` unless the name is
+        # genuinely ambiguous among ACTIVE customers; an active owner/agent
+        # namesake alone (ambiguous for §35) must not hide it.
+        several_active_customers = (
+            ambiguous
+            and Person.objects.filter(
+                status=PersonStatus.ACTIVE,
+                kind=PersonKind.CUSTOMER,
+                first_name__iexact=first,
+                last_name__iexact=last,
+            ).exists()
+        )
+        if existing is None and not several_active_customers:
             existing = (
                 Person.objects.filter(first_name__iexact=first, last_name__iexact=last)
                 .exclude(status=PersonStatus.ACTIVE)

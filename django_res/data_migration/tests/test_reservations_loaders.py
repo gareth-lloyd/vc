@@ -9,7 +9,7 @@ can't catch the duplicate-primary constraint trip a re-run would otherwise cause
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from django.utils import timezone
@@ -18,6 +18,7 @@ from accounts.enums import ContactRole, PersonKind, PersonPreferredMethod, Perso
 from accounts.models import Person
 from data_migration.base import LoadReport
 from data_migration.loaders.reservations import ClientLoader, EnquiryLoader, _role_for
+from reservations.enums import EnquiryLostReason, EnquirySource, EnquiryStatus, LeadStatus
 from reservations.models import Enquiry
 
 
@@ -178,7 +179,7 @@ def _enquiry_db_row(**overrides: object) -> dict[str, object]:
         **_enquiry_row(),
         "Email": "ada@example.com",
         "Status": 0,
-        "EnquiryNo": "E-000001",
+        "EnquiryNo": "1501",  # real shape: bare numerics 1501-2176
         "CreatedAt": datetime(2024, 11, 20, 9, 15),
     }
     base.update(overrides)
@@ -298,3 +299,194 @@ def test_client_without_legacy_created_at_keeps_auto_stamp(db: None) -> None:
     before = timezone.now()
     ClientLoader()._process_row(_client_row(Email="ada@example.com"), LoadReport(loader="client"))
     assert Person.objects.get(legacy_id="client-1").created_at >= before
+
+
+# --- BUG-030 §E: enquiry status, stale leads, person, occupancy, source ---
+
+
+def test_enquiry_reference_keeps_the_bare_numeric_enquiry_no(db: None) -> None:
+    EnquiryLoader()._process_row(_enquiry_db_row(), LoadReport(loader="enquiry"))
+    assert Enquiry.objects.get(legacy_id="1").reference == "1501"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, EnquiryStatus.NEW),
+        (0, EnquiryStatus.NEW),
+        (1, EnquiryStatus.NEW),
+        (2, EnquiryStatus.QUOTE_SENT),  # legacy "Completed": the quote e-mail was sent
+        (3, EnquiryStatus.QUOTE_SENT),
+        (4, EnquiryStatus.PROGRESSING),  # legacy "Opened": a quotation was added
+        (5, EnquiryStatus.DEAD),
+    ],
+)
+def test_enquiry_status_follows_the_legacy_meaning(raw: int | None, expected: str) -> None:
+    kwargs = EnquiryLoader().transform(_enquiry_row(Status=raw))
+    assert kwargs is not None
+    assert kwargs["status"] == expected
+
+
+def test_legacy_enquiry_status_never_maps_to_converted() -> None:
+    """A real VillaEnquire row is never CONVERTED (terminal); only BookingLoader's
+    `booking-` stand-ins are."""
+    for raw in range(10):
+        kwargs = EnquiryLoader().transform(_enquiry_row(Status=raw))
+        assert kwargs is not None
+        assert kwargs["status"] != EnquiryStatus.CONVERTED, raw
+
+
+def test_enquiry_dead_status_carries_unknown_lost_reason() -> None:
+    kwargs = EnquiryLoader().transform(_enquiry_row(Status=5))
+    assert kwargs is not None
+    assert kwargs["lost_reason"] == EnquiryLostReason.UNKNOWN
+
+
+def test_enquiry_query_flags_a_live_quotation() -> None:
+    query = EnquiryLoader.legacy_query
+    assert "FROM VillaEnquire e" in query
+    assert (
+        "CASE WHEN EXISTS (SELECT 1 FROM VillaQuotationMaster q "
+        "WHERE q.EnquireId = e.Id AND q.DeletedAt IS NULL) THEN 1 ELSE 0 END AS HasQuotation"
+    ) in query
+
+
+_NEWEST = datetime(2025, 3, 1, 12, 0)
+
+
+def _load_enquiries(*rows: dict[str, object]) -> dict[str, Enquiry]:
+    report = LoadReport(loader="enquiry")
+    # EnquiryNo is the unique reference: one per row, as in the dump.
+    EnquiryLoader()._load_rows(
+        [{**row, "EnquiryNo": str(1500 + int(str(row["Id"])))} for row in rows], report
+    )
+    assert report.errors == []
+    return {e.legacy_id: e for e in Enquiry.objects.all() if e.legacy_id}
+
+
+def test_stale_enquiry_without_a_quotation_is_parked_dead_and_cold(db: None) -> None:
+    loaded = _load_enquiries(
+        _enquiry_db_row(Id=1, Status=1, CreatedAt=_NEWEST),
+        _enquiry_db_row(Id=2, Status=None, CreatedAt=_NEWEST - timedelta(days=91)),
+    )
+
+    stale = loaded["2"]
+    assert (stale.status, stale.lost_reason, stale.lead_status) == (
+        EnquiryStatus.DEAD,
+        EnquiryLostReason.UNKNOWN,
+        LeadStatus.COLD,
+    )
+    fresh = loaded["1"]
+    assert (fresh.status, fresh.lead_status) == (EnquiryStatus.NEW, LeadStatus.WARM)
+
+
+def test_stale_enquiry_with_a_quotation_keeps_its_mapped_status(db: None) -> None:
+    loaded = _load_enquiries(
+        _enquiry_db_row(Id=1, Status=1, CreatedAt=_NEWEST),
+        _enquiry_db_row(Id=2, Status=4, HasQuotation=1, CreatedAt=_NEWEST - timedelta(days=300)),
+    )
+
+    assert (loaded["2"].status, loaded["2"].lead_status) == (
+        EnquiryStatus.PROGRESSING,
+        LeadStatus.WARM,
+    )
+
+
+def test_stale_cutoff_is_relative_to_the_newest_row_and_exclusive(db: None) -> None:
+    loaded = _load_enquiries(
+        _enquiry_db_row(Id=1, Status=1, CreatedAt=_NEWEST),
+        _enquiry_db_row(Id=2, Status=1, CreatedAt=_NEWEST - timedelta(days=90)),
+        _enquiry_db_row(Id=3, Status=1, CreatedAt=None),
+    )
+
+    assert loaded["2"].status == EnquiryStatus.NEW  # exactly on the cutoff: not stale
+    assert loaded["3"].status == EnquiryStatus.NEW  # undated: no age, no stale rule
+
+
+def test_transform_without_load_rows_applies_no_stale_rule() -> None:
+    kwargs = EnquiryLoader().transform(_enquiry_row(Status=1, CreatedAt=datetime(2001, 1, 1)))
+    assert kwargs is not None
+    assert kwargs["status"] == EnquiryStatus.NEW
+    assert "lead_status" not in kwargs
+
+
+@pytest.mark.parametrize(("raw", "expected"), [(0, 0), (None, 0), (3, 3)])
+def test_enquiry_adults_are_not_fabricated(raw: int | None, expected: int) -> None:
+    kwargs = EnquiryLoader().transform(_enquiry_row(Adult=raw))
+    assert kwargs is not None
+    assert kwargs["adults"] == expected
+
+
+def test_enquiry_links_the_customer_sharing_its_email(db: None) -> None:
+    from accounts.models import PersonEmail
+
+    contact = Person.objects.create(first_name="Ada", last_name="Lovelace", kind=PersonKind.CONTACT)
+    PersonEmail.objects.create(contact=contact, email="ada@example.com", is_primary=True)
+    customer = Person.objects.create(
+        first_name="Ada", last_name="Lovelace", kind=PersonKind.CUSTOMER
+    )
+    PersonEmail.objects.create(contact=customer, email="ada@example.com", is_primary=True)
+
+    kwargs = EnquiryLoader().transform(_enquiry_row(Email="ADA@example.com"))
+
+    assert kwargs is not None
+    assert kwargs["person"] == customer
+
+
+def test_enquiry_person_is_none_without_an_active_match(db: None) -> None:
+    from accounts.models import PersonEmail
+
+    inactive = Person.objects.create(
+        first_name="Ada", last_name="Lovelace", status=PersonStatus.INACTIVE
+    )
+    PersonEmail.objects.create(contact=inactive, email="ada@example.com", is_primary=True)
+
+    assert EnquiryLoader().transform(_enquiry_row(Email="ada@example.com"))["person"] is None  # type: ignore[index]
+    assert EnquiryLoader().transform(_enquiry_row(Email=""))["person"] is None  # type: ignore[index]
+
+
+def test_enquiry_person_needs_agreeing_names(db: None) -> None:
+    from accounts.models import PersonEmail
+
+    spouse = Person.objects.create(first_name="Orlando", last_name="Fraser")
+    PersonEmail.objects.create(contact=spouse, email="fraser@example.com", is_primary=True)
+
+    kwargs = EnquiryLoader().transform(
+        _enquiry_row(Email="fraser@example.com", FirstName="Jane", LastName="Fraser")
+    )
+    assert kwargs is not None
+    assert kwargs["person"] is None
+
+
+@pytest.mark.parametrize(
+    ("country_code", "number", "expected"),
+    [
+        ("", "07919591288", "+447919591288"),  # BUG-030 §17: GB default
+        ("0030", "12345", "+30 12345"),  # invalid number keeps its calling code
+    ],
+)
+def test_enquiry_phone_uses_the_shared_legacy_phone_rule(
+    country_code: str, number: str, expected: str
+) -> None:
+    kwargs = EnquiryLoader().transform(_enquiry_row(CountryCode=country_code, MobileNo=number))
+    assert kwargs is not None
+    assert kwargs["phone"] == expected
+
+
+@pytest.mark.parametrize(
+    ("created_by", "expected"),
+    [
+        ("WEBSITE", EnquirySource.MAIN_WEBSITE),
+        ("Enquire", EnquirySource.MAIN_WEBSITE),
+        (" website ", EnquirySource.MAIN_WEBSITE),
+        (None, EnquirySource.MAIN_WEBSITE),
+        ("", EnquirySource.MAIN_WEBSITE),
+        ("nick@villacollective.com", EnquirySource.OTHER),  # staff-entered
+    ],
+)
+def test_enquiry_site_source_distinguishes_staff_entry(
+    created_by: str | None, expected: str
+) -> None:
+    kwargs = EnquiryLoader().transform(_enquiry_row(CreatedBy=created_by))
+    assert kwargs is not None
+    assert kwargs["site_source"] == expected

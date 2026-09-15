@@ -14,14 +14,12 @@ from __future__ import annotations
 
 from typing import Any
 
-import phonenumbers
-
 from accounts.enums import EmailLabel, PersonPreferredMethod, PersonStatus, PhoneLabel
 from accounts.models import Person, PersonEmail, PersonPhone, User
 from accounts.services.organisations import organisation_for_company_name
 from core.enums import StaffRole
 from data_migration.base import BaseLoader
-from reservations.phone import region_from_calling_code, to_e164
+from data_migration.loaders._util import legacy_phone
 
 # BUG-030 §15: 226/233 legacy `VillaContact.Company` values are the literal
 # placeholder "NA" — not an agency. Compared upper-cased and stripped; the
@@ -155,15 +153,7 @@ class ContactPhoneLoader(BaseLoader):
         contact = Person.objects.filter(legacy_id=str(row["ContactId"])).first()
         if contact is None:
             return None
-        # BUG-030 §17: the calling code anchors the national number (dump
-        # shapes: "0044"+"7770302297", "44"+"07771950930"); a row with no
-        # readable code is a UK number. A number that still fails validation
-        # keeps its calling code (`+30 12345`) so the country isn't lost.
-        cc_region = region_from_calling_code(str(row.get("CountryCode") or ""))
-        full = to_e164(number, region=cc_region or "GB")
-        if cc_region and not full.startswith("+"):
-            full = f"+{phonenumbers.country_code_for_region(cc_region)} {full}"
-        full = full[:32]
+        full = legacy_phone(number, row.get("CountryCode"))  # BUG-030 §17
         is_primary = bool(row.get("IsPrimary"))
         if is_primary and PersonPhone.objects.filter(contact=contact, is_primary=True).exists():
             is_primary = False

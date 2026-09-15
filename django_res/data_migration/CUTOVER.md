@@ -187,7 +187,16 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > `DEAD / lost_reason=UNKNOWN / COLD` with `created_at` back-stamped to the
 > sheet date (the res `EnquiryLoader` back-stamps its rows from legacy
 > `CreatedAt` for the same reason — historically one FULL `loadlegacy enquiry`
-> run repaired rows loaded before 2026-09-02; a fresh one-shot load never needs it). `reconcile_legacy` leaves
+> run repaired rows loaded before 2026-09-02; a fresh one-shot load never needs it).
+> The res `EnquiryLoader` parks its own stale leads the same way (BUG-030
+> §21): a `VillaEnquire` row created more than `STALE_ENQUIRY_DAYS` (90,
+> `data_migration/sheets/constants.py`) before the dump's newest enquiry,
+> with no live quotation, loads `DEAD / UNKNOWN / COLD`; the loader logs
+> the cutoff and the count (`data_migration.enquiry_stale_cutoff`). A legacy
+> enquiry with `Adult` 0 or NULL (54 in the reference dump) loads `adults=0`
+> rather than a made-up 2 (BUG-030 §23): the enquiry form and the quote
+> search require at least one adult, so staff set the party size before
+> editing or quoting such an enquiry. `reconcile_legacy` leaves
 > every `sheet-` row out of its counts. The later `zoho_backfill` contact
 > and enquiry kinds push the sheet people (with their tags — including the
 > new `hnw` / `owner` values) and the ~2.4k DEAD historic enquiries by
@@ -287,8 +296,10 @@ uv run python manage.py dbshell -c \
 
 The Enquiry/Payment/Refund/SecurityDeposit reference sequences (BUG-007) need
 **no** equivalent sync. Payment/Refund/SecurityDeposit loaders set no
-`reference` (all organic), and the imported Enquiry format (`E-{Id:06d}` /
-numeric `EnquiryNo`) is disjoint from the organic `E-{year}-{n}` shape, so an
+`reference` (all organic), and imported Enquiry references are the legacy
+`EnquiryNo` — bare numerics (1501–2176 in the reference dump, equal to the
+`QuotationNo` where quoted; the `E-{Id:06d}` fallback for a blank `EnquiryNo`
+never fires on it) — disjoint from the organic `E-{year}-{n}` shape, so an
 organic reference can never collide with an imported one.
 
 ## 4d. Customers load straight to `Person` (GAP-045)

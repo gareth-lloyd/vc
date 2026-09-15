@@ -9,6 +9,7 @@ from data_migration.loaders._util import (
     LEGACY_REGION_REMAP,
     country_for_legacy_id,
     legacy_deleted_sql,
+    legacy_phone,
     legacy_quotation_no,
     legacy_row_deleted,
     person_for_client,
@@ -156,3 +157,23 @@ def test_country_for_legacy_id_aliases_england_to_gb() -> None:
         and log["aliased_to"] == "GB"
         for log in logs
     )
+
+
+# --- BUG-030 §17: one legacy phone rule for contacts and enquiries ---
+
+
+@pytest.mark.parametrize(
+    ("calling_code", "number", "expected"),
+    [
+        ("0044", "7770302297", "+447770302297"),
+        ("44", "07771950930", "+447771950930"),
+        ("", "07919591288", "+447919591288"),
+        (None, "07919591288", "+447919591288"),
+        ("UK", "07771950930", "+447771950930"),
+        ("0030", "12345", "+30 12345"),
+        ("", " call office ", "call office"),
+        ("44", "", ""),
+    ],
+)
+def test_legacy_phone(calling_code: str | None, number: str, expected: str) -> None:
+    assert legacy_phone(number, calling_code) == expected

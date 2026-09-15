@@ -39,6 +39,11 @@ from accounts.models import Organisation
 from accounts.services.organisations import company_dedup_key, organisation_for_company_name
 from accounts.services.person_channels import reconcile_primary_phone
 from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX, SHEET_LEGACY_PREFIX
+from data_migration.sheets.constants import (
+    HISTORIC_LEAD_STATUS,
+    HISTORIC_LOST_REASON,
+    HISTORIC_STATUS,
+)
 from data_migration.sheets.matching import (
     PropertyMatcher,
     append_note_line,
@@ -52,16 +57,11 @@ from data_migration.sheets.matching import (
 from data_migration.sheets.report import SheetReport
 from data_migration.sheets.xlsx import read_sheet
 from integrations.services.zoho_flow import suppress_zoho_push
-from reservations.enums import EnquiryLostReason, EnquirySource, EnquiryStatus, LeadStatus
+from reservations.enums import EnquirySource
 from reservations.models import Enquiry
 from reservations.phone import to_e164
 
 SHEET = "Sheet1"
-
-#: Historic rows have no outcome column; park them out of the live pipeline.
-HISTORIC_STATUS = EnquiryStatus.DEAD
-HISTORIC_LOST_REASON = EnquiryLostReason.UNKNOWN
-HISTORIC_LEAD_STATUS = LeadStatus.COLD
 
 #: `Source` values that are mailbox exports → `EMAIL_INBOUND`; the rest are
 #: hand-kept lists (Nick, Trello, popop.csv, …) → `OTHER`.

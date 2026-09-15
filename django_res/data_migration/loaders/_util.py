@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import phonenumbers
 import structlog
+
+from reservations.phone import region_from_calling_code, to_e164
 
 logger = structlog.get_logger(__name__)
 
@@ -73,6 +76,22 @@ def region_for_legacy_id(legacy_region_id: str, **log_context: Any) -> Any:
         )
         legacy_region_id = target
     return Region.objects.filter(legacy_id=legacy_region_id).first()
+
+
+def legacy_phone(number: object, calling_code: object) -> str:
+    """BUG-030 §17: one rule for a legacy (calling code, national number) pair.
+
+    The calling code anchors the number (dump shapes: "0044"+"7770302297",
+    "44"+"07771950930"); a row with no readable code is a UK number. A number
+    that still fails validation keeps its calling code (`+30 12345`) so the
+    country isn't lost; with no code it passes through trimmed (`to_e164`).
+    Truncated to the 32-char phone columns.
+    """
+    cc_region = region_from_calling_code(str(calling_code or ""))
+    full = to_e164(str(number or ""), region=cc_region or "GB")
+    if full and cc_region and not full.startswith("+"):
+        full = f"+{phonenumbers.country_code_for_region(cc_region)} {full}"
+    return full[:32]
 
 
 def legacy_row_deleted(row: dict[str, Any]) -> bool:

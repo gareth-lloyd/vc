@@ -20,6 +20,12 @@ branch `feat/legacy-loader`). Judged against `ACCEPTANCE.md`; coverage in
 > at GAP-070's `PropertyDefaults`. Read the below as branch history, not the
 > as-landed state of `main`.
 
+> **ONE-SHOT LOAD (BUG-029, 2026-09-15).** `loadlegacy --since` is retired and
+> in-place second runs are unsupported: `loadlegacy --all` is a one-shot into a
+> fresh, migrated DB and refuses an already-loaded one. The historical
+> "second run / idempotent / byte-identical" checks recorded below predate that
+> decision.
+
 ## Environment
 
 - Legacy: `res-db` container (Azure SQL Edge), DB `NewResSystem` from the

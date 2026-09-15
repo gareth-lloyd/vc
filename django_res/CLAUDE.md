@@ -67,12 +67,14 @@ holds, but allows `seed_dev`; wired via `DJANGO_SETTINGS_MODULE` in
 
 ## Legacy data migration
 
-`data_migration/` ports the legacy SQL Server dump into Postgres; loaders are
-idempotent upserts keyed on `legacy_id`. `LEGACY_DATABASE_URL` (`mssql://…`)
+`data_migration/` ports the legacy SQL Server dump into Postgres as a
+**one-shot** load into a fresh, migrated DB (in-place re-runs are unsupported;
+late writes mean drop, recreate, `migrate` and reload from a newer dump).
+Loaders are upserts keyed on `legacy_id` and must stay deterministic. `LEGACY_DATABASE_URL` (`mssql://…`)
 must be set for any loader. Full playbook: `data_migration/CUTOVER.md`.
 
-- `./manage.py loadlegacy --all` — every loader in dependency order
-  (`--since '<iso-8601>'` for cutover delta loads).
+- `./manage.py loadlegacy --all` — every loader in dependency order; refuses
+  a DB that already holds legacy Country/Currency/Property rows.
 - `./manage.py reconcile_legacy` — legacy-vs-loaded row-count table.
 - `./manage.py merge_country --from-legacy <id> --to-iso2 <CC>`.
 
@@ -87,7 +89,7 @@ on any model with a legacy origin. Migration metadata only — never the
 application lookup key (use `iso2` for Country, `code` for Currency, `slug`
 for Region, …). Examples: `accounts.Contact`, `properties.Country`.
 
-### Loaders are idempotent upserts keyed on `legacy_id`
+### Loaders are upserts keyed on `legacy_id`
 
 Subclass `BaseLoader` (custom transform) or `DeclarativeLoader` (simple
 rename) in `data_migration/loaders/`; one legacy row →

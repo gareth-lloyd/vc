@@ -77,7 +77,8 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
   VillaAvailability narrative (property 133, 2026-07-25 → 08-22) aged out —
   today 0 = 0 trivially.
 - **Count checks cannot see value regressions.** BUG-028's four defects and
-  BUG-029's primary-flag flip all passed. BUG-028 adds the money invariants;
+  BUG-029's primary-flag flip (a re-run-only effect, won't-fix under the
+  one-shot load) all passed. BUG-028 adds the money invariants;
   this ticket adds the structural ones: primary-e-mail count equals loaded-
   e-mail count; zero active `Region`/`Country` rows whose legacy twin is
   deleted (GAP-107 §2 — GAP-107 already added count-parity checks
@@ -88,8 +89,9 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
 ### 3. The runbook describes a loader that no longer exists
 
 - COVERAGE `:7` "60 tables": the dump has 61 and all 61 are classified.
-- CUTOVER §6 "loaders without `UpdatedAt` silently ignore `--since`": they
-  crash (BUG-029 retires the flag; §1 and §6 need rewriting).
+- ✅ CUTOVER §6 "loaders without `UpdatedAt` silently ignore `--since`": they
+  crashed. BUG-029 (2026-09-15) retired the flag and rewrote §1 and §6 (no
+  delta mode; late writes = fresh reload from a newer dump).
 - CUTOVER §4 IsDefault list omits changeover day (27 villas) and says
   currency ×91 (188 — BUG-028 §2/§3); §4c mentions the `E-{Id:06d}` fallback
   that never fires and `/api/quotations` (actual `/api/v1/quotations`);
@@ -105,7 +107,8 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
 - `django_res/CLAUDE.md` cites `reservations.Guest.merge` twice (Guest is
   retired), describes `BookingLoader` as live, and omits the two sheet
   commands and `reconcile_legacy --integrations`.
-- ACCEPTANCE S6 "loaders that ignore `--since` warn loudly"; DRYRUN_LOG
+- ✅ ACCEPTANCE S6 "loaders that ignore `--since` warn loudly" (replaced by
+  the one-shot guard check, BUG-029); DRYRUN_LOG
   `:210` "36/36 rows" vs 33 checks today.
 - COVERAGE claims `VillaConciergeServices` maps to TextChoices (no field
   exists — GAP-109) and that only "298 Sea View" has multiple categories
@@ -178,7 +181,7 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
 
 ## Dependencies
 
-- Sequence after **BUG-028 / BUG-029 / BUG-030** — they move most of the
+- Sequence after **BUG-028 / BUG-029 / BUG-030** (BUG-029 ✅ 2026-09-15) — they move most of the
   constants this ticket pins; do the pinning last on one dry-run.
   **BUG-028 landed 2026-09-14** (DRYRUN_LOG run 4): `RateBand` re-pinned at
   4492 with a zero-residual itemisation. Its dry run gave item 5 a head start:

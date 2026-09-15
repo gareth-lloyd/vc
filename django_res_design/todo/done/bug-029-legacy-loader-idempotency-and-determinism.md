@@ -1,5 +1,33 @@
 # BUG-029 — Legacy loader: re-runs strip primary contacts, `--since` crashes half the loaders, and several outcomes depend on row order
 
+> **✅ RESOLVED (2026-09-15)** — shipped on `feat/bug-029` (U1 a2d7bbc7, U2 d2f67997, U3 c9fa5c88, U4 4a56de05, U5 6fb21f05, U6 docs). **User
+> decision 2026-09-15: `loadlegacy` is a one-shot cutover** into a fresh,
+> migrated DB; in-place second runs are unsupported, and a late write or failed
+> run means drop, recreate, `migrate` and reload from a newer dump.
+> U1 `merge_country --dry-run` rolls back via `transaction.set_rollback(True)`
+> and exits 0. U2 `--since` retired entirely (flag, loader arg, `_apply_since`,
+> per-loader overrides); the extras retire sweep always runs and
+> `property_defaults` no longer skips. U3 per-row savepoints in
+> `availability_block` (`avail-<pid>-<start>`) and `syncrecord_zoho`
+> (`<table>:<Id>`); a `sync_quotation_sequence` failure is a summary row, the
+> summary still prints and the exit is non-zero. U4 deterministic ordering
+> (images, membership, country, region, declarative base, contact-default
+> finance, nearby-place subselect); the country sentinel keeps `__unknown__`
+> and ISO-less junk rows are skipped + logged. U5 `loadlegacy --all` refuses
+> a DB whose Country/Currency/Property already holds a `legacy_id` (no
+> `--force`; named loaders stay unguarded as a debugging aid).
+> **Won't-fix (one-shot makes them moot):** §1 primary e-mail/phone demotion on
+> re-run, §5 the two-run idempotency test, §6 the stale `villa:` regime-plan
+> sweep (and BUG-028's in-place leftovers, e.g. stale `season:<ID>:svc`).
+> **Deviations from the proposed fix:** availability recency is
+> `(COALESCE(UpdatedAt, CreatedAt), Id)` with the blocking-status filter moved
+> after the dedupe (not `Id DESC` — legacy updates rows in place), mirrored by
+> `reconcile_legacy` with `ROW_NUMBER()`; membership uses `ORDER BY
+> VillaMasterId, VillaCollectionId, ISNULL(VillaOrder, 2147483647), Id` (lowest
+> order wins, NULL last) rather than `MIN()`; the one-shot
+> guard (U5) was added; CUTOVER §6 says "fresh reload", not "re-run
+> `loadlegacy --all`".
+
 - **Severity:** 🔴 Bug (a second `loadlegacy --all` — the documented
   rollback / late-write path — silently damages data; the count-only
   idempotency check in `DRYRUN_LOG.md` cannot see it).

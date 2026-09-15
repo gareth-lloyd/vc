@@ -65,7 +65,8 @@ the underlying problem.
   endpoints, then `design/data-model-overview.md` (canonical as-built map) — the
   spec is detailed but has drifted; the code + overview + `todo/` are the truth.
 - Before touching `django_res/data_migration/`, read its `CUTOVER.md`; the
-  package is the executable legacy → Postgres spec and must stay idempotent.
+  package is the executable legacy → Postgres spec; it is a one-shot load into
+  a fresh DB and must stay deterministic.
 - When the spec and code disagree, surface the disagreement to the user; do
   not silently choose one side.
 - Prefer small, incremental, test-backed commits over large landings.

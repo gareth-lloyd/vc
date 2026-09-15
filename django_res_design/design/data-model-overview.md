@@ -105,7 +105,9 @@ Most domain models extend `AuditedModel`. A handful of lookup tables
 ### Legacy migration
 Every importable domain model carries a `legacy_id` field
 (`CharField`, `db_index=True`). Loaders in `django_res/data_migration/` use
-`update_or_create(legacy_id=…)` to stay idempotent. `legacy_id` is metadata,
+`update_or_create(legacy_id=…)`; the load is a one-shot into a fresh DB
+(`loadlegacy --all` refuses an already-loaded one, BUG-029) and must stay
+deterministic. `legacy_id` is metadata,
 never the primary key. Sentinel fallbacks (`unknown_country`,
 `unknown_region`) absorb unresolvable FKs. Legacy soft-deleted lookup rows
 (`Country`, `Region`) load as `is_active=False` rather than being skipped,

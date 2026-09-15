@@ -102,17 +102,17 @@ legacy, gives the same answer (or a documented, deliberate delta).
 
 ## S6 — Process properties: the run itself is trustworthy
 
-- **Idempotency**: a second `loadlegacy --all` immediately after the first
-  converges — reconcile output identical, no duplicate rows, full-replace
-  loaders show clean purge-and-reload, `updated` not `created` for upsert
-  loaders. (This is the property that makes rollback-and-retry safe.)
+- **One-shot guard** (BUG-029): the load is a one-shot into a fresh DB, so a
+  second `loadlegacy --all` on the loaded DB must exit non-zero with the
+  "fresh, migrated database" message and write nothing (no loader runs, no
+  sequence sync). Rollback-and-retry is drop / recreate / `migrate` / reload.
+- **Determinism**: the same dump loaded into two fresh DBs gives the same
+  result — every order-dependent outcome (duplicate resolution, hero image,
+  sentinel `legacy_id`) is pinned by an `ORDER BY` or explicit tie-break —
+  covered by `tests/test_loader_ordering.py` and the loaders' own suites.
 - **Order safety**: `migrate` before `loadlegacy` (load-bearing per
   GAP-045 D5-4c); registry order satisfies every FK dependency — verified by
   the fresh-DB dry run, not by inspection alone.
-- **Delta correctness**: loaders that ignore `--since` (rate_rule,
-  booking_charge_item, lookup tables without `UpdatedAt`) are enumerated and
-  warn loudly; a `--since` pass on the dry-run dump does not corrupt a
-  previously-full-loaded state.
 - **Signal discipline**: side-effect signals that would rewrite imported
   financial data are suppressed for exactly the loader's row loop
   (`resync_on_booking_total_changed`), and reconnected after — verified by a
@@ -140,7 +140,7 @@ Run order at each dry run / the real cutover:
 2. `reconcile_legacy` + `--integrations` → exit zero (S2, S4)
 3. Coverage matrix regeneration against `sys.tables` (S1)
 4. Fidelity + invariant scripts (S3, S4, S5)
-5. Second `loadlegacy --all` → convergence diff (S6)
+5. Second `loadlegacy --all` on the loaded DB → refused, exit non-zero (S6)
 
 Record the results per standard (pass / accepted-loss / blocker) in the
 dry-run log. **Accepted-loss requires**: what is lost, how many rows, why

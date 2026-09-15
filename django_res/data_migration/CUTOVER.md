@@ -19,7 +19,9 @@ calibration evidence.
 - A read-only Azure SQL Edge container holding the latest production dump
   (the `res-db` service in `ResSystem/docker-compose.yml`).
 - The Villa Collective Postgres DB at the target URL — empty, freshly
-  migrated.
+  migrated. `loadlegacy --all` enforces this: it is a **one-shot** (BUG-029)
+  and refuses, before writing anything, a DB whose `Country`, `Currency` or
+  `Property` already carries a legacy `legacy_id`.
 - A staff user authorised to run management commands on the production
   cluster.
 - `LEGACY_DATABASE_URL=mssql://sa:<pw>@<host>:<port>/NewResSystem`
@@ -28,8 +30,8 @@ calibration evidence.
 ## 1. Freeze legacy writes
 
 Per ops procedure — typically by switching the legacy app to maintenance
-mode. Capture the freeze timestamp; this becomes `--since` if a follow-up
-delta load is needed.
+mode. There is no delta mode: a legacy write that lands after the freeze
+means a fresh reload from a newer dump (see [§6](#6-late-writes)).
 
 ## 2. Take the final legacy dump
 
@@ -68,7 +70,8 @@ properties.
 > pricing_rateplan WHERE is_active GROUP BY 1, 2, 3 HAVING count(*) > 1;`.)
 > Remedy: deactivate the extras by hand (keep the one whose periods should
 > price; a retired plan's periods still own their dates — see §5 item 6),
-> then run `migrate`. A fresh DB has nothing to check.
+> then run `migrate`. A fresh DB has nothing to check. _(Historical — in-place
+> only; the one-shot cutover always loads a fresh DB.)_
 
 ```bash
 uv run python manage.py migrate           # applies pending schema migrations
@@ -92,8 +95,9 @@ non-zero `errors` column in the per-loader summary; investigate before
 proceeding. Since 2026-07-05 the command is strict and crash-isolated: a
 loader that raises no longer aborts the run (its failure lands in the
 summary as `<loader crashed>`, remaining loaders still run, the sequence
-sync still happens) and the command **exits non-zero if any loader crashed
-or reported errors** — so "step passes iff exit 0" now holds here too.
+sync still happens — a failing sync is reported as a
+`sync_quotation_sequence` summary row) and the command **exits non-zero if
+any loader crashed or reported errors** — so "step passes iff exit 0" now holds here too.
 
 Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 
@@ -127,23 +131,26 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
     GROSS.
   - **Currencies:** deleted `VillaCurrency` rows load retired; a live row
     claims its code from a deleted twin, so EUR resolves to legacy Id 3.
-    `currency` ignores `--since` (no `UpdatedAt` column; 7-row full reload).
   - **Rate bands:** only `NightlyPrice` / `WeeklyPrice > 0` (or `IsPOA`) are
     prices — `Price` and `0.00` never are. Every imported band loads approved;
     a legacy-unapproved row keeps its precedence and gets
     `Unapproved in legacy (IsApprove=0)` appended to `notes` (a carried-forward
     band copies that note — clear it on review).
-  - In-place re-runs: a season whose rows all became unquotable keeps its
-    stale `season:<ID>:svc` inclusion service and plan until a fresh-DB load
-    (BUG-029). Load the cutover into a fresh DB.
+  - In-place re-runs are **unsupported** (one-shot, BUG-029) — `loadlegacy
+    --all` refuses an already-loaded DB; drop, recreate and reload instead.
 - **`availability_block`** ports future non-available legacy calendar runs
-  into `BookingHold(reason=MANUAL)` rows (see the reconcile table below).
-  Like `rate_rule` it ignores `--since` and full-replaces its own
-  `avail-*` slice per run.
+  into `BookingHold(reason=MANUAL)` rows (see the reconcile table below) and
+  full-replaces its own `avail-*` slice per run. Duplicate `(villa, day)`
+  rows are first deduped to the **latest edit** by
+  `(COALESCE(UpdatedAt, CreatedAt), Id)` — legacy updates rows in place, so
+  `Id` alone is not recency — and only then filtered to the blocking statuses
+  30/40/50/60, so a newer release (status 70) supersedes an older block.
+  Each hold is written under its own savepoint (error id
+  `avail-<villa>-<start>`), so one bad row is reported without aborting the
+  rest; `syncrecord_zoho` does the same per row (error id `<table>:<Id>`).
 
 > **SUPERSEDED 2026-07-29 (import pivot — GAP-089):** the GAP-082 note that
-> stood here required one FULL booking load (`loadlegacy booking`, no
-> `--since`) before the production `zoho_backfill --kinds booking`, because
+> stood here required one FULL booking load (`loadlegacy booking`) before the production `zoho_backfill --kinds booking`, because
 > `BookingLoader` back-stamps `Booking.created_at` from legacy `CreatedAt`
 > (the Zoho payload's `booking_date`, the CRM's historic-import filter).
 > Per the 2026-07-29 Limitless call, historic bookings now arrive via the
@@ -179,8 +186,8 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > (a merely deactivated person is recognised and skipped). Sheet enquiries land
 > `DEAD / lost_reason=UNKNOWN / COLD` with `created_at` back-stamped to the
 > sheet date (the res `EnquiryLoader` back-stamps its rows from legacy
-> `CreatedAt` for the same reason — that needs one FULL `loadlegacy enquiry`
-> run to repair rows loaded before 2026-09-02). `reconcile_legacy` leaves
+> `CreatedAt` for the same reason — historically one FULL `loadlegacy enquiry`
+> run repaired rows loaded before 2026-09-02; a fresh one-shot load never needs it). `reconcile_legacy` leaves
 > every `sheet-` row out of its counts. The later `zoho_backfill` contact
 > and enquiry kinds push the sheet people (with their tags — including the
 > new `hnw` / `owner` values) and the ~2.4k DEAD historic enquiries by
@@ -239,9 +246,8 @@ The `--integrations` flag adds, after the main table:
   is a **blocker** (the command exits non-zero): a loaded row whose `ZohoId` has
   no `SyncRecord` would duplicate on first push. Cutover must not proceed until
   the gap is zero, or the operator records it as an accepted loss with a written
-  justification. (The check compares counts, not values; a full `loadlegacy
-  --all` refreshes every `external_id`, but a value drifted on a delta-only
-  `--since` pass whose `UpdatedAt` did not advance is not caught here.)
+  justification. (The check compares counts, not values; the one-shot
+  `loadlegacy --all` writes every `external_id` from the final dump.)
 - **WordPress surface** (informational only): legacy `VillaBooking.BookingUrl`
   and `VillaSyncDetail` volume. The WordPress backfill is **not built yet** —
   multi-site fan-out needs a `provider_instance` field on `SyncRecord` that
@@ -431,7 +437,7 @@ verbatim):**
   meant). A *non-zero* `CurrencyId` with no matching `Currency` is an error
   row, not a silent fallback.
 - Row currency ≠ booking currency → converted via `FxConverter` at the rate
-  most recent **on/before `booking.date_from`** (pinned so delta re-runs are
+  most recent **on/before `booking.date_from`** (pinned so the load is
   deterministic), quantised to the booking currency, with provenance appended
   to `notes` (`Imported from legacy: 100.00 USD @ 0.8 (as of 2026-06-01).`).
   These bookings' totals **deliberately differ from legacy**, whose blind
@@ -515,15 +521,15 @@ extra is deliberately minimal and **opt-in**:
 | `commissionable` | `True` | GAP-076 default. |
 | `applies_from` / `applies_to` | `NULL` | The legacy dates are the 2022 fold timestamp; porting them would make the engine drop every extra. |
 | `min_party` / `max_party` | `NULL` | |
-| `is_active` | `True` | Only `DeletedAt IS NULL` rows load; a **full** run retires ported extras absent from the result set (see below). |
-| `sort_order` | dense `0..n` per villa in `ID` order, **on the first full load** | Keeps legacy creation order (Zoho orders `extras[]` by it) without the thousands-wide gap that would put every staff-created extra (default `0`) ahead of the ported catalogue. Create-only and ranked over the current result set, so an extra first seen by a later `--since` delta lands at `0` (ties with the oldest); reorder in the SPA. |
+| `is_active` | `True` | Only `DeletedAt IS NULL` rows load; every run retires ported extras absent from the result set (see below). |
+| `sort_order` | dense `0..n` per villa in `ID` order | Keeps legacy creation order (Zoho orders `extras[]` by it) without the thousands-wide gap that would put every staff-created extra (default `0`) ahead of the ported catalogue. Create-only. |
 
-**Re-runs never clobber staff refinements.** Only `name`, `description` and
+**Upserts never clobber staff refinements.** Only `name`, `description` and
 `amount` — the fields legacy can actually change — are refreshed on an
 existing row; `kind`, `calc`, `is_mandatory`, the window, the party bounds,
 `sort_order`, `is_active` and `currency` are create-only, so staff can
-classify and window a ported extra in the SPA and a later delta load keeps
-it. Unlike `rate_rule` this is an upsert, not a full replace.
+classify and window a ported extra in the SPA and a later run keeps it.
+Unlike `rate_rule` this is an upsert, not a full replace.
 
 **Dropped: the legacy discount columns** (`IsDiscount` / `DiscountRate` /
 `DiscountType` / `DiscountApply` / `DiscountNight` on the same table). GAP-009
@@ -532,11 +538,9 @@ reads `DiscountType` into an enum and stops), so there is nothing to port.
 `pricing.Discount` starts empty for migrated villas.
 
 **Retirement:** the loader filters `DeletedAt IS NULL`, so a legacy-deleted
-extra never appears in the result set. A **full** run (no `--since`) sets
+extra never appears in the result set. The retire sweep always runs: it sets
 `is_active=False` on every ported extra missing from the set
-(`data_migration.extras_retired` log event); a `--since` delta sees only
-changed rows, so absence there means "unchanged" and it retires nothing.
-Re-run `extra` without `--since` to pick up deletions after the freeze.
+(`data_migration.extras_retired` log event).
 
 ## 5. Verify with `reconcile_legacy`
 
@@ -565,8 +569,8 @@ is where the dry-run calibration happens), not just here.
 | `VillaContactMapping`     | 1            | Composite legacy_id collapse. |
 | `VillaClientDetails`      | 1            | One row with neither `FirstName` nor `LastName` (no identity to import). Loads to the `client-` slice of `Person` (GAP-045). |
 | `VillaBookingDetails`     | 0 *(confirmed at 2026-07-05 dry-run)* | **GAP-017**: the legacy side already excludes zero-price rows and rows on deleted bookings; the loaded side counts only imported rows (`legacy_id IS NOT NULL`), so staff-created charge lines never skew it. Error/skip rows widen the gap until fixed: no-rate FX rows, unresolvable non-zero `CurrencyId`, conversions quantising to zero, unresolvable bookings — see [4g](#4g-chargeable-extras--bookingchargeitem-gap-017). |
-| `VillaAvailability` (future days) | 0 | New `availability_block` loader (2026-07-05): future non-available day rows (statuses 30/40/50/60, `AvailableDate >= today`) coalesce into `BookingHold(reason=MANUAL)` rows; the check compares future day counts to the summed day-span of loaded `avail-*` holds. Both sides move with "today" — run load and reconcile the same day. Skips (unloaded property / range occupied by an imported booking or staff hold) widen the gap; recalibrate against the final dump if non-zero and explained. |
-| `VillaCountry` (active) | 0 *(calibrated 2026-09-10: 6/6)* | **GAP-107**: legacy `IsActive = 1`, not soft-deleted (`DeletedAt IS NOT NULL OR ISNULL(DeletedBy,'') <> ''` — both legacy conventions) vs migrated countries loaded active (`XX` sentinel excluded by iso2). Deleted countries load **retired** (`is_active=False`), never skipped, so FKs still resolve. Standing shifters (0 on the 24-Apr-2025 dump): a live legacy row `CountryLoader` cannot seed-match (iso-less → absorbed by the `XX` sentinel; a second live row on an already-claimed iso2 → skipped). Run **before** [§7](#7-england--gb-merge), which hard-deletes the `UK` row. |
+| `VillaAvailability` (future days) | 0 | New `availability_block` loader (2026-07-05): future day rows deduped to the latest edit per `(villa, day)` (`ROW_NUMBER()` over `COALESCE(UpdatedAt, CreatedAt), Id`, mirroring the loader), then filtered to statuses 30/40/50/60 (`AvailableDate >= today`), coalesce into `BookingHold(reason=MANUAL)` rows; the check compares future day counts to the summed day-span of loaded `avail-*` holds. Both sides move with "today" — run load and reconcile the same day. Skips (unloaded property / range occupied by an imported booking or staff hold) widen the gap; recalibrate against the final dump if non-zero and explained. |
+| `VillaCountry` (active) | 0 *(calibrated 2026-09-10: 6/6)* | **GAP-107**: legacy `IsActive = 1`, not soft-deleted (`DeletedAt IS NOT NULL OR ISNULL(DeletedBy,'') <> ''` — both legacy conventions) vs migrated countries loaded active (`XX` sentinel excluded by iso2). Deleted countries load **retired** (`is_active=False`), never skipped, so FKs still resolve. Standing shifters (0 on the 24-Apr-2025 dump): a live legacy row `CountryLoader` cannot seed-match (iso-less → skipped and logged as `data_migration.country_without_iso_skipped`; the `XX` sentinel keeps its stable `__unknown__` legacy_id; a second live row on an already-claimed iso2 → skipped). Run **before** [§7](#7-england--gb-merge), which hard-deletes the `UK` row. |
 | `VillaRegion` (imported) | 0 *(calibrated 2026-09-10: 64/64)* | **GAP-107**: non-blank-name legacy regions vs every loaded region with a `legacy_id` (sentinel excluded). Deleted regions load retired, never skipped. With the active slice below this pins the retired count too (retired = imported − active). The bare `VillaRegion` total above it is unchanged by GAP-107 and keeps its pre-existing shifters (blank-name rows skipped; sentinel + staff-created rows on the loaded side). |
 | `VillaRegion` (active) | 0 *(calibrated 2026-09-10: 42/42; 22 retired = 9 own-deleted + 13 under deleted countries)* | **GAP-107**: legacy not-deleted regions under a not-deleted, `IsActive = 1` country vs loaded regions with `is_active=True` (a region is also retired when its country is deleted, `IsActive = 0`, or unresolvable → unknown sentinel). Same seed-match shifters as `VillaCountry (active)`. **Ops:** a reload that retires rows does not reach Zoho (loader pushes are suppressed and nothing downstream changes) — run `zoho_backfill --kinds villa,enquiry,contact` afterwards so Limitless stops offering retired regions. |
 | `VillaSeasonRate` (extras, `IsExTra = 1`) | 0 *(calibrated 2026-09-10: 84/84)* | **GAP-107**: live legacy extras **on villas the property loader loads** (`JOIN VillaMaster`, `DeletedAt IS NULL` on both, non-blank villa name — so the 12 extras on deleted / blank-name villas never enter the gap) vs `pricing.Extra` rows with a `legacy_id` **and `is_active=True`** (a full run retires legacy-deleted extras by flag, mirroring the legacy filter; staff-created extras excluded). Shifters: a no-currency skip, or staff deactivating a ported extra in the SPA. Mapping in [4i](#4i-extras-catalogue--pricingextra-gap-107). |
@@ -653,8 +657,7 @@ one legacy row now maps to **one or more** bands (was: at most one).
 
 Consequences:
 
-- The loader **ignores `--since`** (and logs a warning if passed) —
-  resolution is a function of a regime's whole row set, so every pass is a
+- Resolution is a function of a regime's whole row set, so every pass is a
   full reload (the table is small).
 - Each run is a **full replace**: all legacy-loaded bands + periods are
   purged, then the flattened grid is inserted. Inserting into an empty legacy
@@ -771,39 +774,17 @@ must be made jointly overlap-free under the one EXCLUDE constraint):
    leftover:** a stale `villa:<id>:<CODE>` plan whose villa re-resolved to
    another currency, or lost all its priced rows, is *not* swept — it
    survives as an active, periodless plan (harmless to pricing, visible in
-   the workbench picker); deactivate or delete it by hand (fix tracked in BUG-029 §6).
+   the workbench picker); deactivate or delete it by hand. This only arises on
+   an in-place re-run, which is unsupported (one-shot, BUG-029) — a fresh
+   load never meets it.
 
-## 6. (Optional) Delta load for late writes
+## 6. Late writes
 
-If the freeze in step 1 wasn't perfectly clean, you can run a second pass
-restricted to rows updated after the freeze:
-
-```bash
-uv run python manage.py loadlegacy --all --since '2026-05-13T17:00:00'
-```
-
-Loaders use the legacy `UpdatedAt` column for this filter — a few lookups
-without that column will silently ignore the flag. `rate_rule` also ignores
-it by design: overlap resolution needs the whole regime's (villa + currency)
-row set, so it always does a full reload — as does `rate_plan`, whose
-regroup needs every season of a villa (see "Rate rule overlap resolution"
-above).
-`booking_charge_item` likewise ignores it (with a warning) —
-`VillaBookingDetails` has no `UpdatedAt`, and the removal sweep needs the
-full row set to detect deletions. `property_defaults` **skips entirely** on
-`--since` (with a warning): the loader re-applies the legacy
-`VillaConfigPropertyDefault` singleton onto `PropertyDefaults` (pk=1 — it
-deliberately has no `legacy_id`), and a delta run must not clobber edits
-staff made through `PATCH /property-defaults` during the cutover window.
-`country` and `region` (GAP-107) filter on `UpdateAt OR DeletedAt OR
-CreatedAt` — legacy's `sp_countries` / `sp_regions` stamp a different column
-per action (INSERT / UPDATE / soft-DELETE), so `UpdateAt` alone would miss
-the inserts and the deletions a delta exists to catch. Before GAP-107 a
-delta load on either raised a SQL error (`UpdatedAt` does not exist there).
-A region is only re-evaluated when its *own* row changed: if its parent
-country was deleted after the freeze timestamp, the region keeps the
-`is_active` it loaded with. Re-run `region` without `--since` if that
-window matters.
+There is no delta mode (`--since` was retired in BUG-029): `loadlegacy --all`
+is a one-shot into a fresh DB. If legacy took writes after the freeze in
+step 1, or a run failed or was aborted, drop and recreate the Postgres DB,
+`migrate`, retake the dump (§2–§3), reload with `loadlegacy --all` and re-run
+`reconcile_legacy` (§5) — the same steps as [Rolling back](#rolling-back).
 
 ## 6b. (Optional) Room-attribute backfill from prose (GAP-064/GAP-065/GAP-066)
 
@@ -825,7 +806,7 @@ Emperor) onto `RoomBeds.double_size` (GAP-066 — only for a room with a double
 bed and no curated size yet), and first re-invokes `sync_room_attributes()` so
 the catalog's `implies_property_feature` links attach now that Features exist.
 It never infers absence, never removes assignments, never overwrites curator
-data — safe to re-run any time (e.g. after a delta load). There is no
+data — safe to re-run any time. There is no
 `reconcile_legacy` row for this: no legacy table exists to compare against;
 the command's per-slug and per-size counts are the reconcile signal. (Placement itself
 DOES have a reconcile row — "Room placement (GAP-065)" gates that every
@@ -848,7 +829,7 @@ uv run python manage.py recompute_derived_features
 It reconciles each property's `is_derived=True` `PropertyFeature` links to the
 union of `implies_property_feature` across its rooms — adding implied features,
 removing no-longer-implied ones, and never touching manually curated links.
-Idempotent, so it is safe to re-run after a delta load. `--dry-run` runs the
+Idempotent, so it is safe to re-run. `--dry-run` runs the
 whole sweep inside a rolled-back transaction and reports the counts a real run
 would apply. There is no `reconcile_legacy` row: derived links have no legacy
 source table to compare against — the command's added/removed counts are the
@@ -863,6 +844,10 @@ is the office365 profile for info@villacollective.com; fetch the current
 credentials from the ops secret store, not from the dump.
 
 ## 6e. Unfuse `villa_info` after GAP-091 (only for DBs loaded before 2026-09)
+
+> _(Historical — an in-place named-loader repair of an already-loaded staging
+> DB. The one-shot cutover loads a fresh DB and never needs it; `--since`,
+> referenced below, was retired in BUG-029.)_
 
 Before GAP-091 the property loader fused `VillaMaster.FeatureDescription`
 (the legacy Features page's "Other information description") and
@@ -913,6 +898,10 @@ Two related one-offs after the feature loaders run:
 
 ## 6f. Re-stamp `PropertyFinance.legacy_id` after GAP-107 (only for DBs loaded before 2026-09)
 
+> _(Historical — an in-place named-loader repair of an already-loaded staging
+> DB. The one-shot cutover loads a fresh DB and never needs it; `--since`,
+> referenced below, was retired in BUG-029.)_
+
 Migration `properties.0008` adds `PropertyFinance.legacy_id` as schema only:
 on a DB loaded earlier (staging) every row stays `NULL`, so the §5
 `VillaFinance` check reads `loaded = 0` and BLOCKERs until the per-villa
@@ -935,6 +924,7 @@ After Phase 1.1 added the canonical `GB` row, the legacy "England"
 (iso2 `UK`, legacy_id `24`) row is no longer needed. Merge once:
 
 ```bash
+uv run python manage.py merge_country --from-legacy 24 --to-iso2 GB --dry-run   # rolls back, exits 0
 uv run python manage.py merge_country --from-legacy 24 --to-iso2 GB
 ```
 
@@ -993,6 +983,8 @@ re-seeded any time by:
 2. `uv run python manage.py migrate`
 3. `uv run python manage.py loadlegacy --all`
 
-All loaders are idempotent (upserts keyed on `legacy_id`, or on the
-content-type tuple for `syncrecord_zoho`), so re-running from scratch is
-safe.
+The load is a one-shot: always go through the drop / recreate / `migrate` /
+reload above, never an in-place second `loadlegacy --all` — the command
+refuses a DB that already holds legacy-loaded rows (there is no `--force`).
+Named loaders (`loadlegacy <name>`) are not guarded; they are a debugging aid,
+not a production path.

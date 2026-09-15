@@ -50,7 +50,8 @@
    (id 24, `ShortName1='UK'`) mints `Country(iso2="UK")` beside the seeded
    GB. That is the +1 hidden in `expected_gap=-228` and the whole reason
    CUTOVER §7's `merge_country` step exists; after the merge, any later
-   `loadlegacy country` re-mints it and the check becomes a blocker.
+   `loadlegacy country` re-mints it and the check becomes a blocker (an
+   in-place re-run — unsupported since BUG-029's one-shot guard).
    **Fix:** validate against `django_countries`, map England → GB in
    `_resolve_iso2`, retire §7.
 7. ✅ **Decided otherwise, GAP-107 as built (user decision 2026-09-14:
@@ -227,7 +228,8 @@
     carry thousands of future rows plus 21 on soft-deleted villas (→ skips).
     A proper dry run on the final dump is mandatory; `StartDate/EndDate`
     (55 189 populated) are legacy's own run boundaries and can cross-check
-    the coalescer. (Duplicate-day ordering is BUG-029 §3.)
+    the coalescer. (Duplicate-day ordering: ✅ BUG-029 — latest edit by
+    `(COALESCE(UpdatedAt, CreatedAt), Id)`, status filter after dedupe.)
 
 ### H. Sheet importers (`sheets/matching.py`, `import_*.py`)
 
@@ -269,7 +271,8 @@
 
 ## Dependencies
 
-- **BUG-028** first (currency), **BUG-029** for the ordering fixes it owns.
+- **BUG-028** first (currency), **BUG-029** for the ordering fixes it owns
+  (✅ both landed; BUG-029 2026-09-15).
 - **GAP-107 §2** (deleted regions/countries as inactive) — §7/§8/§10 here
   refine it; land together.
 - **GAP-104** (slug immutability) must know about §1. **GAP-067** (feature

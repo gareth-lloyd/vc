@@ -284,7 +284,9 @@ class EnquiryLoader(BaseLoader):
         # quotation; same `DeletedAt IS NULL` filter as QuotationLoader.
         "CASE WHEN EXISTS (SELECT 1 FROM VillaQuotationMaster q "
         "WHERE q.EnquireId = e.Id AND q.DeletedAt IS NULL) THEN 1 ELSE 0 END AS HasQuotation "
-        "FROM VillaEnquire e"
+        # GAP-108: ResProd `sp_delete_enq` soft-deletes; `vw_villa_enquire`
+        # hides the row (its `DeletedBy` is set in step, 0 disagreements).
+        "FROM VillaEnquire e WHERE e.DeletedAt IS NULL"
     )
 
     # Set by `_load_rows` from the whole dump; `transform` called directly

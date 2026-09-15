@@ -911,7 +911,7 @@ def test_documented_expected_gaps_are_encoded() -> None:
     # The documented carve-outs from CUTOVER.md §5 must live in code (this
     # module is their single source of truth).
     by_label = {c.label: c.expected_gap for c in reconcile_legacy._CHECKS}
-    assert by_label["CollectionMembership"] == 308
+    assert by_label["CollectionMembership"] == 9
     # BUG-030 §6: the England row (`UK`) no longer mints a 24th Country.
     assert by_label["Country (legacy)"] == -227
     # BUG-030 §11: pinned 0 until the GAP-108 dry run executes the SQL.
@@ -1074,8 +1074,26 @@ def test_property_feature_check_counts_manual_links_between_loaded_rows() -> Non
 
 def test_collection_membership_gap_records_its_composition() -> None:
     check = next(c for c in reconcile_legacy._CHECKS if c.label == "CollectionMembership")
-    assert check.expected_gap == 308
+    assert check.expected_gap == 9
     assert "VillaCollection WHERE DeletedAt IS NULL" not in check.legacy_query
+
+
+@pytest.mark.parametrize(
+    ("label", "predicate"),
+    [
+        ("Enquiry", "DeletedAt IS NULL"),
+        ("Room", "ISNULL(IsActive, 0) = 1"),
+        ("Room placement (GAP-065)", "ISNULL(IsActive, 0) = 1"),
+        ("PropertyFeature", "ISNULL(m.IsActive, 0) = 1"),
+        ("CollectionMembership", "ISNULL(IsActive, 0) = 1"),
+        ("PropertyNearbyPlace", "ISNULL(IsActive, 0) = 1"),
+    ],
+)
+def test_soft_delete_filters_mirror_the_loaders(label: str, predicate: str) -> None:
+    """GAP-108: ResProd soft-deletes these rows; each loader filters them
+    out, so the legacy side of its reconcile check must too."""
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == label)
+    assert predicate in check.legacy_query
 
 
 def test_agency_check_excludes_placeholder_companies() -> None:

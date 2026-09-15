@@ -8,6 +8,7 @@ from data_migration.loaders._util import (
     LEGACY_COUNTRY_ALIASES,
     LEGACY_REGION_REMAP,
     country_for_legacy_id,
+    legacy_active_sql,
     legacy_deleted_sql,
     legacy_phone,
     legacy_quotation_no,
@@ -38,6 +39,14 @@ def test_legacy_row_deleted(row: dict[str, object], expected: bool) -> None:
 def test_legacy_deleted_sql_is_the_or_predicate() -> None:
     assert legacy_deleted_sql() == "(DeletedAt IS NOT NULL OR ISNULL(DeletedBy, '') <> '')"
     assert legacy_deleted_sql("r.") == "(r.DeletedAt IS NOT NULL OR ISNULL(r.DeletedBy, '') <> '')"
+
+
+def test_legacy_active_sql_treats_null_as_inactive() -> None:
+    # GAP-108: ResProd's views (`vw_VillaRooms`, `vw_getVillaCollectionsMap`,
+    # `vw_PropertyNearByLocationType`, `fn_get_feature_by_villa`) keep a row
+    # only when `isnull(IsActive,0) = 1` — NULL means inactive.
+    assert legacy_active_sql() == "ISNULL(IsActive, 0) = 1"
+    assert legacy_active_sql("m.") == "ISNULL(m.IsActive, 0) = 1"
 
 
 @pytest.mark.parametrize(

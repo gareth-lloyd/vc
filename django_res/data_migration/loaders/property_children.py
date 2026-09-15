@@ -14,6 +14,7 @@ import structlog
 from django.db import transaction
 
 from data_migration.base import BaseLoader, LoadReport
+from data_migration.loaders._util import legacy_active_sql
 from data_migration.placement_parsing import parse_placement
 from properties.enums import ImageKind
 from properties.models.features import Feature
@@ -30,12 +31,14 @@ class RoomLoader(BaseLoader):
     target_model = Room
     # GAP-065: LEFT JOIN so rooms with a NULL PlacementId still load; the raw
     # placement string is preserved verbatim in `placement_note` (no-loss
-    # guarantee) and parsed into the two location axes.
+    # guarantee) and parsed into the two location axes. GAP-108: inactive
+    # rooms are soft-deleted in ResProd (`vw_VillaRooms`).
     legacy_query = (
         "SELECT r.Id, r.VillaId, r.Name, r.WebsiteDescription, r.VCNotes, r.IsEnsuit, "
         "r.SortOrder, r.BedDouble, r.BedTwinDouble, r.BedTwin, r.BedSingle, r.BedBunk, "
         "r.BedSofa, r.BedChildrens, p.Name AS PlacementName "
-        "FROM VillaRooms r LEFT JOIN VillaRoomsPlacement p ON p.Id = r.PlacementId"
+        "FROM VillaRooms r LEFT JOIN VillaRoomsPlacement p ON p.Id = r.PlacementId "
+        f"WHERE {legacy_active_sql('r.')}"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -174,7 +177,9 @@ class NearbyPlaceLoader(BaseLoader):
         "(SELECT TOP 1 t.Id FROM VillaNearByLocationType t "
         " WHERE t.Code = n.PropertyNearByLocationTypeId ORDER BY t.Id) AS TypeId, "
         "n.Name, n.Description, n.Distance "
-        "FROM VillaNearBy n"
+        # GAP-108: inactive places are soft-deleted in ResProd
+        # (`vw_PropertyNearByLocationType`).
+        f"FROM VillaNearBy n WHERE {legacy_active_sql('n.')}"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -253,12 +258,15 @@ class PropertyFeatureMappingLoader(BaseLoader):
     # new PropertyFeature unique constraint would otherwise reject the dups.
     # The feature's name and deletion ride along for the remap above. LEFT
     # JOIN: a mapping whose FeatureId has no VillaFeatures row (no FK in
-    # legacy) still reaches `_process_row` and is counted as skipped.
+    # legacy) still reaches `_process_row` and is counted as skipped. GAP-108:
+    # an inactive MAPPING is soft-deleted in ResProd (`fn_get_feature_by_villa`)
+    # and filtered, unlike a deleted feature, which is remapped.
     legacy_query = (
         "SELECT m.FeatureId, m.VillaId, MIN(m.MappingOrder) AS MappingOrder, "
         "f.Name AS FeatureName, f.DeletedAt AS FeatureDeletedAt "
         "FROM VillaFeaturesMappings m "
         "LEFT JOIN VillaFeatures f ON f.Id = m.FeatureId "
+        f"WHERE {legacy_active_sql('m.')} "
         "GROUP BY m.FeatureId, m.VillaId, f.Name, f.DeletedAt"
     )
 

@@ -42,7 +42,7 @@ from accounts.models import Organisation, Person, User
 from accounts.models.person import PersonEmail, PersonPhone
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
-from data_migration.loaders._util import legacy_deleted_sql
+from data_migration.loaders._util import legacy_active_sql, legacy_deleted_sql
 from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
 from data_migration.loaders.integrations import SyncRecordZohoLoader, zoho_id_column_exists
 from data_migration.loaders.people import COMPANY_PLACEHOLDERS
@@ -307,7 +307,10 @@ _CHECKS: list[_Check] = [
         "FROM VillaFeaturesMappings m "
         "JOIN VillaFeatures f ON f.Id = m.FeatureId "
         "JOIN VillaMaster v ON v.Id = m.VillaId "
-        "WHERE v.DeletedAt IS NULL AND LTRIM(RTRIM(ISNULL(v.Name, ''))) <> ''"
+        "WHERE v.DeletedAt IS NULL AND LTRIM(RTRIM(ISNULL(v.Name, ''))) <> '' "
+        # GAP-108: inactive mappings are filtered, as in the loader (262 on
+        # ResProd; structural gap stays 0).
+        f"AND {legacy_active_sql('m.')}"
         ") x WHERE x.ResolvedId IS NOT NULL",
         PropertyFeature,
         "PropertyFeature",
@@ -397,41 +400,46 @@ _CHECKS: list[_Check] = [
         "Collection",
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaCollectionsMappings",
+        f"SELECT COUNT(*) FROM VillaCollectionsMappings WHERE {legacy_active_sql()}",
         CollectionMembership,
         "CollectionMembership",
-        # BUG-030 §13 (24-Apr-2025 dump): 308 = 3 duplicate (collection,
-        # villa) pairs + 22 memberships on deleted villas + 283 live
-        # memberships of the five collections deleted together on
-        # 2024-05-28 ("Chef Included" 66, "Exceptional Design" 55, "Walk to
-        # restaurants" 34, "Water Front" 59, "WALK TO THE BEACH" 67), which
-        # CollectionLoader drops (decision 2026-09-11: drop, record here).
-        expected_gap=308,
+        # BUG-030 §13 (24-Apr-2025 dump, before the GAP-108 `IsActive`
+        # filter): 308 = 3 duplicate (collection, villa) pairs + 22
+        # memberships on deleted villas + 283 live memberships of the five
+        # collections deleted together on 2024-05-28, which CollectionLoader
+        # drops (decision 2026-09-11: drop, record here).
+        # GAP-108 on ResProd: 2 206 rows, of which 194 `IsActive = 0` and 921
+        # NULL (= inactive) filtered → 1 091 active; loaded = 1 082 distinct
+        # (villa, collection) pairs on a live collection + loaded villa ⇒ 9.
+        expected_gap=9,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaRooms",
+        f"SELECT COUNT(*) FROM VillaRooms WHERE {legacy_active_sql()}",
         Room,
         "Room",
         # Rooms whose VillaId points at a property that wasn't loaded
         # (soft-deleted or empty-Name VillaMaster) have no parent to attach to.
-        expected_gap=307,
+        # 307 on the 24-Apr dump. GAP-108 on ResProd: 2 714 rooms - 30
+        # inactive = 2 684; 321 of those sit on an unloaded villa.
+        expected_gap=321,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaRooms WHERE PlacementId IS NOT NULL",
+        f"SELECT COUNT(*) FROM VillaRooms WHERE PlacementId IS NOT NULL AND {legacy_active_sql()}",
         Room,
         "Room placement (GAP-065)",
         # No-loss gate: every legacy room with a placement must land with the
-        # raw string preserved in `placement_note`. PLACEHOLDER — recalibrate
-        # at the first cutover dry-run (BUG-013 precedent). The gap has two
-        # legitimate causes to apportion then: (a) rooms whose parent property
-        # wasn't loaded (the 307 slice above, restricted to rows with a
-        # PlacementId); (b) dangling PlacementId → NULL/blank
+        # raw string preserved in `placement_note`. The gap has two
+        # legitimate causes: (a) rooms whose parent property wasn't loaded
+        # (the Room gap above, restricted to rows with a PlacementId);
+        # (b) dangling PlacementId → NULL/blank
         # VillaRoomsPlacement.Name (the LEFT JOIN preserves the room but the
         # note is honestly empty).
         # `placement_note` is API-writable, so count only the legacy slice —
         # a staff-entered note during the cutover window must not shift the
         # gap.
-        expected_gap=0,
+        # GAP-108 on ResProd (active rooms only): 2 409 with a PlacementId;
+        # 61 = (a) on an unloaded villa or (b) blank/dangling placement name.
+        expected_gap=61,  # provisional — pinned in GAP-108 dry run
         loaded_count=lambda m: (
             m._default_manager.exclude(placement_note="").filter(legacy_id__isnull=False).count()
         ),
@@ -444,11 +452,13 @@ _CHECKS: list[_Check] = [
         expected_gap=806,
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaNearBy",
+        f"SELECT COUNT(*) FROM VillaNearBy WHERE {legacy_active_sql()}",
         PropertyNearbyPlace,
         "PropertyNearbyPlace",
         # Parent property unresolved, place type unresolved, or empty name.
-        expected_gap=77,
+        # 77 on the 24-Apr dump. GAP-108 on ResProd: 178 - 1 inactive = 177;
+        # 78 of those hit one of the three skips.
+        expected_gap=78,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
         # GAP-110: a RatePlan is one (villa, currency) regime, not a season,
@@ -604,7 +614,7 @@ _CHECKS: list[_Check] = [
         ),
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaEnquire",
+        "SELECT COUNT(*) FROM VillaEnquire WHERE DeletedAt IS NULL",
         Enquiry,
         "Enquiry",
         # Negative gap: loaded > legacy. Synthesised enquiries created to
@@ -612,7 +622,10 @@ _CHECKS: list[_Check] = [
         # that carried no enquiry of their own (no booking-synth quotations
         # since GAP-108 unregistered the booking loaders). -8 on the 24-Apr dump
         # included 3 BookingLoader.ensure_enquiry rows, hence -5.
-        expected_gap=-5,  # provisional — pinned in GAP-108 dry run
+        # GAP-108 on ResProd: 87 soft-deleted enquiries filtered on both
+        # sides; every live quotation's EnquireId is a live enquiry (0 with
+        # EnquireId 0/NULL/missing/deleted), so no stand-ins ⇒ 0.
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
         # GAP-089: `import_enquiry_sheet` adds ~2.4k historic `sheet-enquiry-`
         # rows with no VillaEnquire twin — leave them out of the comparison.
         loaded_count=lambda m: m._default_manager.exclude(

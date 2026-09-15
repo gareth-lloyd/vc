@@ -37,6 +37,13 @@ def test_collection_query_selects_only_live_collections_with_no_fake_column() ->
     assert "IsActive" not in query  # every loaded collection is active
 
 
+def test_membership_query_selects_only_active_mappings() -> None:
+    # GAP-108: ResProd soft-deletes memberships via `IsActive`; legacy's
+    # `vw_getVillaCollectionsMap` treats NULL as inactive.
+    query = CollectionMembershipLoader.legacy_query
+    assert "FROM VillaCollectionsMappings WHERE ISNULL(IsActive, 0) = 1 ORDER BY" in query
+
+
 def _membership_row(**overrides: object) -> dict[str, object]:
     row: dict[str, object] = {
         "Id": 1,

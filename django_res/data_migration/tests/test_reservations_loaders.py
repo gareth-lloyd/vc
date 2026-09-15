@@ -351,6 +351,12 @@ def test_enquiry_query_flags_a_live_quotation() -> None:
     ) in query
 
 
+def test_enquiry_query_skips_soft_deleted_enquiries() -> None:
+    # GAP-108: ResProd's `sp_delete_enq` soft-deletes (`DeletedAt`); legacy's
+    # `vw_villa_enquire` hides those rows, so the loader must too.
+    assert EnquiryLoader.legacy_query.endswith("FROM VillaEnquire e WHERE e.DeletedAt IS NULL")
+
+
 _NEWEST = datetime(2025, 3, 1, 12, 0)
 
 

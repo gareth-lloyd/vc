@@ -8,6 +8,7 @@ import structlog
 
 from data_migration.base import LoadReport
 from data_migration.loaders.property_children import (
+    NearbyPlaceLoader,
     PropertyFeatureMappingLoader,
     PropertyImageLoader,
     RoomLoader,
@@ -324,6 +325,27 @@ def test_mapping_query_carries_the_feature_name_and_deletion() -> None:
     assert "MIN(m.MappingOrder) AS MappingOrder" in query
     assert "DeletedAt IS NULL" not in query  # deleted features are remapped, not filtered
     assert "LEFT JOIN VillaFeatures f" in query  # orphan FeatureIds still reach the skip path
+
+
+# GAP-108: ResProd soft-deletes these child rows via `IsActive` (`sp_crud_*`
+# DELETE paths set it to 0); legacy views keep only `isnull(IsActive,0) = 1`.
+def test_mapping_query_selects_only_active_mappings() -> None:
+    query = PropertyFeatureMappingLoader.legacy_query
+    assert "LEFT JOIN VillaFeatures f ON f.Id = m.FeatureId WHERE ISNULL(m.IsActive, 0) = 1" in (
+        query
+    )
+
+
+def test_room_query_selects_only_active_rooms() -> None:
+    assert RoomLoader.legacy_query.endswith(
+        "LEFT JOIN VillaRoomsPlacement p ON p.Id = r.PlacementId WHERE ISNULL(r.IsActive, 0) = 1"
+    )
+
+
+def test_nearby_place_query_selects_only_active_places() -> None:
+    assert NearbyPlaceLoader.legacy_query.endswith(
+        "FROM VillaNearBy n WHERE ISNULL(n.IsActive, 0) = 1"
+    )
 
 
 @pytest.mark.django_db

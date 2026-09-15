@@ -16,7 +16,7 @@ from django.db import transaction
 from django.utils.text import slugify
 
 from data_migration.base import BaseLoader, LoadReport
-from data_migration.loaders._util import region_for_legacy_id
+from data_migration.loaders._util import legacy_active_sql, region_for_legacy_id
 from data_migration.loaders.finance import fetch_config_property_default
 from data_migration.loaders.sentinels import (
     unknown_country,
@@ -382,14 +382,18 @@ class CollectionMembershipLoader(BaseLoader):
     """`VillaCollectionsMappings` → CollectionMembership. Rows on a deleted
     collection or an unloaded villa skip (see `CollectionLoader`); duplicate
     (collection, villa) pairs keep the first row in query order. The
-    reconcile gap (308) itemises those three buckets.
+    reconcile gap itemises those buckets.
     """
 
     name = "collection_membership"
     target_model = CollectionMembership
     legacy_query = (
         "SELECT Id, VillaMasterId, VillaCollectionId, VillaOrder, Description "
-        "FROM VillaCollectionsMappings "
+        # GAP-108: inactive (incl. NULL) memberships are soft-deleted in ResProd.
+        # NULL = the pre-soft-delete generation (Ids 2-1984); the admin view
+        # `vw_getVillaCollectionsMap` hides it and `sp_getVillaByCollection`
+        # re-inserts live mappings with IsActive = 1.
+        f"FROM VillaCollectionsMappings WHERE {legacy_active_sql()} "
         # Duplicate pairs keep the lowest VillaOrder (NULL last), then lowest Id.
         "ORDER BY VillaMasterId, VillaCollectionId, ISNULL(VillaOrder, 2147483647), Id"
     )

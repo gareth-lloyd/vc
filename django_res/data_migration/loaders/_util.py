@@ -116,6 +116,17 @@ def legacy_deleted_sql(alias: str = "") -> str:
     return f"({alias}DeletedAt IS NOT NULL OR ISNULL({alias}DeletedBy, '') <> '')"
 
 
+def legacy_active_sql(alias: str = "") -> str:
+    """`IsActive` soft-delete filter (GAP-108), for loader and reconcile SQL.
+
+    ResProd's DELETE paths (`sp_crud_VillaRooms`, `SP_CRUD_VILLA_FEATURES_TAGS`,
+    `SP_CRUD_PropertyNearByLocationType`) set `IsActive = 0`, and its views keep
+    only `isnull(IsActive,0) = 1` — NULL counts as inactive. `alias` as for
+    `legacy_deleted_sql`.
+    """
+    return f"ISNULL({alias}IsActive, 0) = 1"
+
+
 def legacy_currency_for(row: dict[str, Any], prop: Any) -> Any:
     """The GAP-014 currency chain shared by every loader that carries a
     legacy `CurrencyId`: the row's currency when set and known, else the

@@ -134,8 +134,10 @@ def _integration_responses(
         "VillaEnquire WHERE ZohoId": enquire or [],
         "VillaQuotationMaster WHERE ZohoId": quotation or [],
         "BookingUrl": booking_url,
-        "COUNT(*) FROM VillaSyncDetail": syncdetail_rows,
-        "DISTINCT SiteId": syncdetail_sites,
+        # ResProd's table is `VillaSyncDetails` (GAP-108); the full table name
+        # in the key means the old singular name finds no scripted result.
+        "COUNT(*) FROM VillaSyncDetails": syncdetail_rows,
+        "COUNT(DISTINCT SiteId) FROM VillaSyncDetails": syncdetail_sites,
     }
 
 
@@ -568,6 +570,9 @@ def test_integrations_flag_renders_both_sections(monkeypatch: pytest.MonkeyPatch
     assert "VillaMaster.ZohoId" in output
     assert "WordPress external-ID surface" in output
     assert "VillaBooking.BookingUrl" in output
+    assert "VillaSyncDetails (rows)" in output
+    assert "VillaSyncDetails (sites)" in output
+    assert "n/a" not in output  # every WordPress query hit a real table
     # WordPress counts are informational, never a blocker.
     assert "INFO" in output
     assert "BLOCKER" not in output
@@ -929,7 +934,8 @@ def test_documented_expected_gaps_are_encoded() -> None:
     assert by_label["RateBand"] == 4492
     # GAP-108: the blank-name villa left the legacy side (`live_villa_sql`).
     assert by_label["Property"] == 0
-    assert by_label["PropertyContactAssignment"] == 1
+    # GAP-108: (mapping, role) composites on the 3 soft-deleted villas.
+    assert by_label["PropertyContactAssignment"] == 6
     # GAP-107: the legacy side mirrors PropertyLoader's villa filter, so the
     # 12 extras on unloaded villas (24-Apr-2025 dump) never enter the gap.
     assert by_label["Extra"] == 0
@@ -1168,6 +1174,9 @@ def test_agency_check_excludes_placeholder_companies() -> None:
 _COUNTS_ORGANIC_ROWS: dict[str, str] = {
     "Country (legacy)": "the properties.0002 ISO seed has no legacy_id; legacy rows match onto it",
     "Organisation (agency)": "organisation_for_company_name never stamps legacy_id on agencies",
+    "Organisation named NA / N/A / - (must be 0)": (
+        "agencies carry no legacy_id, and a placeholder-named org is a defect whoever wrote it"
+    ),
 }
 
 
@@ -1412,8 +1421,12 @@ _LOADER_CHECKS: dict[str, list[str]] = {
     "feature": ["Feature"],
     "property_defaults": ["PropertyDefaults currency legacy_id (CPD row)"],
     "user": ["User"],
-    "contact": ["Person (owner/agent)", "Organisation (agency)"],
-    "contact_email": ["PersonEmail"],
+    "contact": [
+        "Person (owner/agent)",
+        "Organisation (agency)",
+        "Organisation named NA / N/A / - (must be 0)",
+    ],
+    "contact_email": ["PersonEmail", "Person (owner/agent) primary email count != 1 (must be 0)"],
     "contact_phone": ["PersonPhone"],
     "property": [
         "Property",
@@ -1422,6 +1435,7 @@ _LOADER_CHECKS: dict[str, list[str]] = {
         "PropertySettings",
         "PropertySettings without currency (must be 0)",
         "PropertyDescription",
+        "Property slug containing :// (must be 0)",
     ],
     "collection": ["Collection"],
     "collection_membership": ["CollectionMembership"],
@@ -1575,3 +1589,63 @@ def test_property_defaults_check_reports_the_singleton_currency_legacy_id(
     assert "VillaConfigPropertyDefault ORDER BY Id" in check.legacy_query
     assert check.expected_gap == 0
     assert check.count_loaded() == expected
+
+
+# --- GAP-108 U7: structural invariants ----------------------------------------
+
+
+@pytest.mark.django_db
+def test_primary_email_invariant_counts_legacy_persons_without_exactly_one_primary() -> None:
+    from accounts.factories import PersonEmailFactory, PersonFactory
+
+    one = PersonFactory(legacy_id="1")
+    PersonEmailFactory(contact=one, legacy_id="11")
+    PersonEmailFactory(contact=one, legacy_id="12", is_primary=False)
+    none = PersonFactory(legacy_id="2")
+    PersonEmailFactory(contact=none, legacy_id="21", is_primary=False)  # counted
+    PersonFactory(legacy_id="3")  # no loaded email: nothing to be primary
+    # A staff-added primary on a legacy person is not a loaded email.
+    staff_only = PersonFactory(legacy_id="4")
+    PersonEmailFactory(contact=staff_only, legacy_id="41", is_primary=False)  # counted
+    PersonEmailFactory(contact=staff_only)
+    client = PersonFactory(legacy_id="client-5")  # other slice
+    PersonEmailFactory(contact=client, legacy_id="51", is_primary=False)
+    sheet = PersonFactory(legacy_id="sheet-6")  # other slice
+    PersonEmailFactory(contact=sheet, legacy_id="61", is_primary=False)
+    PersonEmailFactory(contact=PersonFactory(), is_primary=False)  # organic
+
+    check = _check("Person (owner/agent) primary email count != 1 (must be 0)")
+    assert check.model is Person
+    assert check.count_loaded() == 2
+
+
+@pytest.mark.django_db
+def test_slug_invariant_counts_legacy_properties_with_a_url_slug() -> None:
+    PropertyFactory(legacy_id="1", slug="villa-one")
+    PropertyFactory(legacy_id="2", slug="https://villacollective.example/villa-two")  # counted
+    PropertyFactory(slug="http://organic.example")  # organic: out of scope
+
+    check = _check("Property slug containing :// (must be 0)")
+    assert check.model is Property
+    assert check.count_loaded() == 1
+
+
+@pytest.mark.django_db
+def test_placeholder_organisation_invariant_counts_na_names() -> None:
+    from accounts.factories import OrganisationFactory
+
+    for name in ("NA", " n/a ", "-", "Dune Travel", "NAVIGATOR"):
+        OrganisationFactory(name=name, org_type=OrgType.AGENCY)
+
+    check = _check("Organisation named NA / N/A / - (must be 0)")
+    assert check.model is Organisation
+    assert check.count_loaded() == 3
+
+
+def test_property_contact_assignment_check_counts_mapping_role_composites() -> None:
+    """The loader writes one row per (mapping, role) — `<MappingId>-<RoleId or
+    0>` — so the legacy side counts those composites, not bare mappings."""
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "PropertyContactAssignment")
+    assert "LEFT JOIN VillaContactRoleMapping r" in check.legacy_query
+    assert "COUNT(DISTINCT CONCAT(m.Id, '-', ISNULL(r.RoleId, 0)))" in check.legacy_query
+    assert check.expected_gap == 6

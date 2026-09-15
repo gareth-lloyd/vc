@@ -35,7 +35,8 @@ from typing import Any
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.db.models.functions import Trim, Upper
 
 from accounts.enums import OrgType
 from accounts.models import Organisation, Person, User
@@ -322,7 +323,12 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaCurrency",
         Currency,
         "Currency",
-        expected_gap=4,  # junk rows (HTFG/RUPEE/RS) with zero FK references.
+        # Rows CurrencyLoader skips. ResProd 2026-09-15 (7 rows): the three
+        # soft-deleted junk codes that are not 3-letter alphabetic — HTFG (4),
+        # RUPEE (5), RS (7) — plus the soft-deleted EUR twin (2), since the
+        # live EUR (3) claims the code first (BUG-028). Before BUG-028 the
+        # fourth skip was the LIVE EUR, losing to its deleted twin.
+        expected_gap=4,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
         # BUG-028: deleted VillaCurrency rows load retired, not skipped, so
@@ -463,6 +469,35 @@ _CHECKS: list[_Check] = [
         ),
     ),
     _Check(
+        # GAP-108 structural invariant (BUG-029's primary-flag flip passed
+        # every count): an owner/agent Person with ≥1 loaded email has
+        # exactly one primary among them. The partial unique constraint
+        # already rules out two, so this catches zero — ContactEmailLoader
+        # demotes duplicate primaries but never promotes one. Caveat: the
+        # loader skips a blank / `@`-less email, so a contact whose legacy
+        # primary is that junk row and who has other valid emails loads
+        # with none — a real violation to itemise, not a false one. ResProd
+        # 2026-09-15: 0 contacts lack an `IsPrimary` valid email or have two;
+        # both invalid emails (Ids 30, 270) are their contact's only email.
+        "SELECT 0",
+        Person,
+        "Person (owner/agent) primary email count != 1 (must be 0)",
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__isnull=False)
+            .exclude(legacy_id__startswith=CLIENT_LEGACY_PREFIX)
+            .exclude(legacy_id__startswith=SHEET_LEGACY_PREFIX)
+            .annotate(
+                loaded_emails=Count("emails", filter=Q(emails__legacy_id__isnull=False)),
+                loaded_primaries=Count(
+                    "emails", filter=Q(emails__legacy_id__isnull=False, emails__is_primary=True)
+                ),
+            )
+            .filter(loaded_emails__gt=0)
+            .exclude(loaded_primaries=1)
+            .count()
+        ),
+    ),
+    _Check(
         # GAP-046: every distinct (case/space-normalised) VillaContact.Company
         # becomes one Organisation(agency) via organisation_for_company_name, so
         # the loader actually created the orgs (catches a silent "zero orgs"
@@ -484,6 +519,22 @@ _CHECKS: list[_Check] = [
         loaded_count=lambda m: (
             m._default_manager.filter(org_type=OrgType.AGENCY)
             .exclude(legacy_id__startswith=SHEET_LEGACY_PREFIX)
+            .count()
+        ),
+    ),
+    _Check(
+        # GAP-108 structural invariant (BUG-030 §15): `_company_name` maps the
+        # `COMPANY_PLACEHOLDERS` to no agency, so no Organisation may carry
+        # one as its name. Every org type and source counts — agencies carry
+        # no legacy_id, and a placeholder-named org is a defect whoever wrote
+        # it. Postgres TRIM strips spaces only (Python `.strip()` also strips
+        # tabs/newlines), the same caveat as the legacy side above.
+        "SELECT 0",
+        Organisation,
+        "Organisation named NA / N/A / - (must be 0)",
+        loaded_count=lambda m: (
+            m._default_manager.annotate(normalised=Upper(Trim("name")))
+            .filter(normalised__in=COMPANY_PLACEHOLDERS)
             .count()
         ),
     ),
@@ -535,6 +586,18 @@ _CHECKS: list[_Check] = [
         PropertyDescription,
         "PropertyDescription",
         expected_gap=0,  # provisional — pinned in GAP-108 dry run
+    ),
+    _Check(
+        # GAP-108 structural invariant: legacy `VillaMaster.Slug` holds the
+        # WordPress URL (385 of 386 loaded villas on ResProd contain `://`);
+        # `_property_slug` slugifies it. Guards that path and any later write
+        # to an imported property's slug. Organic properties are out of scope.
+        "SELECT 0",
+        Property,
+        "Property slug containing :// (must be 0)",
+        loaded_count=lambda m: m._default_manager.filter(
+            legacy_id__isnull=False, slug__contains="://"
+        ).count(),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaCollection WHERE DeletedAt IS NULL",
@@ -623,16 +686,19 @@ _CHECKS: list[_Check] = [
         # regime plan that actually carries ≥1 legacy period (a plan the band
         # loader couldn't populate is not a loaded villa; staff-created plans
         # never count). Gap = villas the loader couldn't resolve (no Property,
-        # no currency) — structurally ≥ 0. PLACEHOLDER 0: recalibrate at the
-        # first post-GAP-110 dry-run (see CUTOVER.md); the pre-regroup numbers
-        # (710 seasons → 521 plans, gap 67) no longer apply.
+        # no currency) or whose plan got no legacy period — structurally ≥ 0.
+        # The pre-regroup numbers (710 seasons → 521 plans, gap 67) no longer
+        # apply. ResProd 2026-09-15: 346 legacy villas; each is a loaded
+        # Property (same `live_villa_sql`) and `resolve_season_currency`
+        # always ends at the default currency, so 0 unless a regime's bands
+        # all fail to load.
         "SELECT COUNT(DISTINCT s.VillaId) FROM VillaSeason s "
         f"JOIN VillaMaster m ON m.Id = s.VillaId AND {live_villa_sql('m.')} "
         "WHERE s.DeletedAt IS NULL AND EXISTS ("
         f" SELECT 1 FROM VillaSeasonRate r WHERE r.SeasonId = s.ID AND {PRICED_ROW_PREDICATE})",
         RatePlan,
         "RatePlan (villas with a loaded regime)",
-        expected_gap=0,
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
         loaded_count=lambda m: (
             m._default_manager.filter(
                 legacy_id__startswith=PLAN_LEGACY_PREFIX, periods__legacy_id__isnull=False
@@ -643,11 +709,16 @@ _CHECKS: list[_Check] = [
         ),
     ),
     _Check(
-        # SMELL-021: legacy cannot express a NET basis (no such column;
-        # `RatesModel.Calculate()` treats every entered rate as gross), so the
-        # loader stamps GROSS on every imported plan. Legacy side is a constant
-        # 0; any imported plan carrying NET means the stamp regressed to the
-        # model default (or was hand-edited under a legacy_id) — a BLOCKER.
+        # SMELL-021: the loader stamps GROSS on every imported plan. Not
+        # because legacy lacks a NET signal — it has one: `PriceType` 10 = Net
+        # (`Enums.cs:153`) on 2 083 live VillaSeasonRate rows on ResProd
+        # (2026-09-15; 1 887 non-extra on 10 loaded villas, 57 in the priced
+        # universe) — but because the legacy quote path adds the rate row's
+        # `WeeklyPrice / 7` verbatim per night whatever `PriceType` says
+        # (`ResService.cs:1225-1237`), so GROSS reproduces what legacy
+        # charged. Legacy side is a constant 0; any imported plan carrying NET
+        # means the stamp regressed to the model default (or was hand-edited
+        # under a legacy_id) — a BLOCKER.
         "SELECT 0",
         RatePlan,
         "RatePlan non-GROSS basis (must be 0)",
@@ -768,10 +839,22 @@ _CHECKS: list[_Check] = [
         ).count(),
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaContactMapping",
+        # PropertyContactAssignmentLoader writes one row per (mapping, role)
+        # — legacy_id `<MappingId>-<RoleId or 0>` over its LEFT JOIN — so both
+        # sides count those composites (the legacy side counted bare mappings
+        # before GAP-108, and the old "composite collapse" reason was wrong:
+        # the 24-Apr gap of 1 was the mapping on blank-name villa 249). Gap =
+        # composites whose villa or contact did not load. ResProd 2026-09-15:
+        # 466 mappings (23 role-less, 435 with one role, 8 with two) → 474
+        # composites, 0 duplicates; 6 sit on soft-deleted villas 462 (3) and
+        # 505 (2) (test villas) and 510 (1, Neradou); every mapped contact
+        # has a name; blank-name villa 543 has no mapping ⇒ 6.
+        "SELECT COUNT(DISTINCT CONCAT(m.Id, '-', ISNULL(r.RoleId, 0))) "
+        "FROM VillaContactMapping m "
+        "LEFT JOIN VillaContactRoleMapping r ON r.VillaContactMappingId = m.Id",
         PropertyContactAssignment,
         "PropertyContactAssignment",
-        expected_gap=1,  # composite legacy_id collapse.
+        expected_gap=6,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaClientDetails",
@@ -952,15 +1035,15 @@ _CHECKS: list[_Check] = [
         BookingHold,
         "VillaAvailability (future days)",
         # expected_gap = legacy blocking days - loader-written hold days
-        #              = days trimmed under imported bookings / live staff
-        #                holds (the loader logs `trimmed_days`)
+        #              = days trimmed under bookings / unreleased holds that
+        #                exist when the loader runs (it logs `trimmed_days`)
         #              + days on unloaded properties (logged as skips)
         #              + days of runs that errored (`report.errors`).
-        # 0 on the reference dump: its single future run (property 133,
-        # 2026-07-25..2026-08-22, 29 days) has no imported booking under it.
-        # GAP-108 recalibrates on the live dump, where the status-0
-        # whole-calendar blocks (BUG-030 §31) will carry bookings.
-        expected_gap=0,
+        # No legacy booking loads any more (GAP-108) and the sheet importers
+        # run after `loadlegacy`, so on a fresh DB the first term is 0.
+        # ResProd 2026-09-15: 10 258 future blocking days, 0 of them on a
+        # villa outside `live_villa_sql` ⇒ 0.
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
         loaded_count=lambda m: sum(
             (hold.date_to - hold.date_from).days
             for hold in m._default_manager.filter(
@@ -1151,7 +1234,7 @@ class Command(BaseCommand):
                 cursor.execute(query)
                 rows.append((label, str(int(cursor.fetchone()[0])), "INFO"))
             except Exception as exc:
-                # Defensive: a dry-run dump may predate VillaSyncDetail. This
+                # Defensive: a dry-run dump may predate VillaSyncDetails. This
                 # section is informational, so degrade to "n/a" rather than
                 # aborting the whole reconcile.
                 rows.append((label, f"n/a ({type(exc).__name__})", "INFO"))
@@ -1161,10 +1244,12 @@ class Command(BaseCommand):
             "SELECT COUNT(*) FROM VillaBooking "
             "WHERE BookingUrl IS NOT NULL AND LTRIM(RTRIM(BookingUrl)) <> ''",
         )
-        _count("VillaSyncDetail (rows)", "SELECT COUNT(*) FROM VillaSyncDetail")
+        # ResProd names the table `VillaSyncDetails` (the repo's EF entity is
+        # the singular `VillaSyncDetail`): 5 773 rows over 2 sites, 2026-09-15.
+        _count("VillaSyncDetails (rows)", "SELECT COUNT(*) FROM VillaSyncDetails")
         _count(
-            "VillaSyncDetail (sites)",
-            "SELECT COUNT(DISTINCT SiteId) FROM VillaSyncDetail",
+            "VillaSyncDetails (sites)",
+            "SELECT COUNT(DISTINCT SiteId) FROM VillaSyncDetails",
         )
 
         header = ("wordpress source", "legacy count", "status")

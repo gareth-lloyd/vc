@@ -435,10 +435,11 @@ class RatePlanLoader(BaseLoader):
                 "is_active": True,
                 "notes": notes,
                 # SMELL-021: stamped explicitly, not left to the model default.
-                # Legacy has no per-villa NET/GROSS signal — `RatesModel.Calculate()`
-                # always treats the entered rate as the guest-facing gross
-                # (`GrossPrice = getWeeklyPrice`, net derived by subtracting
-                # tax + commission) — so every imported plan is GROSS by rule.
+                # Legacy DOES carry a Net signal (`VillaSeasonRate.PriceType` 10 =
+                # Net: 2 083 live rows on ResProd, 2026-09-15; `RatesModel.Calculate()`
+                # does branch on it), but the quote path adds the rate row's
+                # `WeeklyPrice / 7` verbatim per night (`ResService.cs:1225-1237`),
+                # never `GrossPrice` — so GROSS reproduces what legacy charged.
                 # `reconcile_legacy` pins the invariant (zero non-GROSS legacy plans).
                 "price_basis": PriceBasis.GROSS,
             },

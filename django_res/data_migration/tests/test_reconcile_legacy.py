@@ -104,7 +104,6 @@ def _integration_responses(
     contact: list[str] | None = None,
     enquire: list[str] | None = None,
     quotation: list[str] | None = None,
-    booking: list[str] | None = None,
     booking_url: int = 0,
     syncdetail_rows: int = 0,
     syncdetail_sites: int = 0,
@@ -112,7 +111,7 @@ def _integration_responses(
 ) -> dict[str, object]:
     """Scripted results for the --integrations sections.
 
-    The five continuity values are the legacy Ids returned by
+    The four continuity values are the legacy Ids returned by
     `SELECT Id FROM <table> WHERE ZohoId ...`; the three WordPress values are
     scalar COUNTs. Keys are distinctive query substrings. Every table answers
     the INFORMATION_SCHEMA ZohoId probe with 1 (column present) unless listed
@@ -123,7 +122,6 @@ def _integration_responses(
         "VillaContact",
         "VillaEnquire",
         "VillaQuotationMaster",
-        "VillaBooking",
     )
     probes: dict[str, object] = {
         f"TABLE_NAME = '{table}'": 0 if table in (without_zoho_column or set()) else 1
@@ -135,7 +133,6 @@ def _integration_responses(
         "VillaContact WHERE ZohoId": contact or [],
         "VillaEnquire WHERE ZohoId": enquire or [],
         "VillaQuotationMaster WHERE ZohoId": quotation or [],
-        "VillaBooking WHERE ZohoId": booking or [],
         "BookingUrl": booking_url,
         "COUNT(*) FROM VillaSyncDetail": syncdetail_rows,
         "DISTINCT SiteId": syncdetail_sites,
@@ -647,10 +644,11 @@ def test_blank_external_id_record_does_not_mask_a_missing_id(
 def test_missing_zoho_id_column_is_marked_not_a_blocker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The 24-Apr-2025 prod dump has no ZohoId column on VillaQuotationMaster
-    or VillaBooking. The continuity section must render a clearly-marked
-    "no ZohoId column" row for those tables — never crash, never block —
-    while still checking the tables that do carry the column."""
+    """The 24-Apr-2025 prod dump has no ZohoId column on VillaQuotationMaster.
+    The continuity section must render a clearly-marked "no ZohoId column"
+    row for that table — never crash, never block — while still checking the
+    tables that do carry the column. VillaBooking is not probed at all
+    (GAP-108: bookings are not loaded, so there is no continuity target)."""
     prop = PropertyFactory(legacy_id="10")
     SyncRecordFactory(target=prop, provider=SyncProvider.ZOHO_CRM)
     _zero_zoho_expected_gaps(monkeypatch)
@@ -659,7 +657,7 @@ def test_missing_zoho_id_column_is_marked_not_a_blocker(
         [],
         responses=_integration_responses(
             master=["10"],
-            without_zoho_column={"VillaQuotationMaster", "VillaBooking"},
+            without_zoho_column={"VillaQuotationMaster"},
         ),
     )
 
@@ -667,7 +665,7 @@ def test_missing_zoho_id_column_is_marked_not_a_blocker(
 
     assert "no ZohoId column" in output
     assert "VillaQuotationMaster.ZohoId" in output
-    assert "VillaBooking.ZohoId" in output
+    assert "VillaBooking.ZohoId" not in output
     assert "BLOCKER" not in output
 
 
@@ -684,7 +682,7 @@ def test_missing_zoho_id_column_does_not_mask_real_blockers(
         [],
         responses=_integration_responses(
             master=["10"],
-            without_zoho_column={"VillaQuotationMaster", "VillaBooking"},
+            without_zoho_column={"VillaQuotationMaster"},
         ),
     )
 
@@ -782,28 +780,76 @@ def test_organisation_agency_check_counts_only_agencies(monkeypatch: pytest.Monk
     assert "OK" in output and "BLOCKER" not in output
 
 
+_BOOKING_INVARIANT_LABELS = (
+    "Booking with legacy_id (must be 0)",
+    "Payment with legacy_id (must be 0)",
+    "BookingChargeItem with legacy_id (must be 0)",
+)
+
+
+@pytest.mark.parametrize("label", _BOOKING_INVARIANT_LABELS)
+def test_booking_checks_are_inverted_to_must_be_zero(label: str) -> None:
+    """GAP-089 / GAP-108: the booking, payment and charge-item loaders are
+    unregistered (bookings come from the Past Bookers sheet), so the legacy
+    side is `SELECT 0` and the old legacy-count checks are gone."""
+    _check(label)
+    legacy_queries = " ".join(c.legacy_query for c in reconcile_legacy._CHECKS)
+    assert "VillaBooking" not in legacy_queries
+    assert "VillaPayment" not in legacy_queries
+
+
 @pytest.mark.django_db
-def test_booking_charge_item_check_counts_only_the_legacy_slice(booking: Booking) -> None:
-    """GAP-017: the VillaBookingDetails port must be reconciled. The legacy
-    side excludes zero-price rows (the loader skips them) and details on
-    deleted bookings (mirrors BookingLoader's DeletedAt filter); the loaded
-    side counts only imported rows — staff-created charge items
-    (legacy_id NULL) are the live adjustment mechanism and must not turn the
-    check RED."""
+def test_booking_invariants_count_only_legacy_stamped_rows(booking: Booking) -> None:
+    """Organic rows (legacy_id NULL — sheet imports, staff writes) never count;
+    any row carrying a legacy_id means a booking loader ran."""
+    from decimal import Decimal
+
+    from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
+    from payments.models.payment import Payment
     from reservations.factories import BookingChargeItemFactory
     from reservations.models.charge_item import BookingChargeItem
 
-    check = next(c for c in reconcile_legacy._CHECKS if c.label == "BookingChargeItem")
-    assert check.model is BookingChargeItem
-    assert "VillaBookingDetails" in check.legacy_query
-    assert "b.DeletedAt IS NULL" in check.legacy_query
-    assert "d.Price <> 0" in check.legacy_query
+    booking_check, payment_check, charge_check = (_check(lbl) for lbl in _BOOKING_INVARIANT_LABELS)
+    assert booking_check.model is Booking
+    assert payment_check.model is Payment
+    assert charge_check.model is BookingChargeItem
+    assert booking_check.loaded_count is not None
+    assert payment_check.loaded_count is not None
+    assert charge_check.loaded_count is not None
+
+    assert booking_check.loaded_count(Booking) == 1  # the fixture is loader-minted
+    Booking.objects.filter(pk=booking.pk).update(legacy_id=None)
+    assert booking_check.loaded_count(Booking) == 0
 
     common = {"booking": booking, "currency": booking.currency}
-    BookingChargeItemFactory(legacy_id="31", **common)  # imported
-    BookingChargeItemFactory(legacy_id=None, **common)  # staff-created — excluded
-    assert check.loaded_count is not None
-    assert check.loaded_count(check.model) == 1
+    BookingChargeItemFactory(legacy_id=None, **common)
+    assert charge_check.loaded_count(BookingChargeItem) == 0
+    BookingChargeItemFactory(legacy_id="31", **common)
+    assert charge_check.loaded_count(BookingChargeItem) == 1
+
+    payment_kwargs = {
+        "booking": booking,
+        "status": PaymentStatus.PENDING,
+        "amount": Decimal("10.00"),
+        "currency": booking.currency,
+        "payment_method": PaymentMethod.CARD,
+    }
+    Payment.objects.filter(booking=booking).delete()
+    Payment.objects.create(purpose=PaymentPurpose.BALANCE, legacy_id=None, **payment_kwargs)
+    assert payment_check.loaded_count(Payment) == 0
+    Payment.objects.create(purpose=PaymentPurpose.ADJUSTMENT, legacy_id="d-1", **payment_kwargs)
+    assert payment_check.loaded_count(Payment) == 1
+
+
+@pytest.mark.django_db
+def test_loaded_booking_with_legacy_id_blocks_reconcile(
+    monkeypatch: pytest.MonkeyPatch, booking: Booking
+) -> None:
+    check = _check("Booking with legacy_id (must be 0)")
+    _patch(monkeypatch, [check], responses={"SELECT 0": 0})
+
+    with pytest.raises(CommandError, match="Booking with legacy_id"):
+        _run()
 
 
 @pytest.mark.django_db

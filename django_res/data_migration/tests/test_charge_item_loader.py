@@ -6,6 +6,10 @@ customer-facing manual money lines. The loader ports them as
 `booking_total_changed` payment-schedule resync for the duration of the load:
 imported bookings hold PENDING BALANCE payments (PaymentLoader defaults
 unknown legacy statuses to PENDING) that the resync would otherwise rewrite.
+
+Unregistered (GAP-089, GAP-108): the booking loaders no longer run — bookings
+come from the Past Bookers sheet — so this module is kept only as the
+legacy-schema record for `loaders/bookings.py`.
 """
 
 from __future__ import annotations

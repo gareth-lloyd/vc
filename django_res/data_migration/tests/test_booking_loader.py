@@ -5,6 +5,10 @@ digits as the originating `QVC{QuotationNo}` quotation). The synthesised
 quotation must NOT claim that number — the real QuotationLoader owns it — so it
 stays NULL with a per-booking sentinel reference. A booking with no QuotationNo
 falls to a non-numeric `VC-TMP-…` sentinel, never a bare `VC{int}`.
+
+Unregistered (GAP-089, GAP-108): the booking loaders no longer run — bookings
+come from the Past Bookers sheet — so this module is kept only as the
+legacy-schema record for `loaders/bookings.py`.
 """
 
 from __future__ import annotations

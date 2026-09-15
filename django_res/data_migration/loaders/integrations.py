@@ -13,7 +13,7 @@ the outbound sync engine itself is deferred (`integrations/tasks.py`).
 
 This is deliberately **not** a `BaseLoader` subclass: that contract assumes a
 single legacy query and an upsert keyed on `legacy_id`, whereas this loader
-sweeps five source tables, resolves into five different models, and keys
+sweeps four source tables, resolves into four different models, and keys
 `SyncRecord` on the content-type tuple `(content_type, object_id, provider)`.
 It satisfies the `Loader` protocol (`name`, `load() -> LoadReport`) and reuses
 the same cursor/report helpers so it registers and reports like any other
@@ -26,9 +26,10 @@ actual `SyncRecord` model has no `provider_instance` field (its unique key is
 real model cleanly; `provider_instance` only matters for the WordPress
 multi-site side, which is handled separately.
 
-`VillaArchiveBooking` also carries `ZohoId`, but archived bookings are not
-loaded into `reservations.Booking`, so there is no local target to point at;
-that keep/drop decision is tracked in the audit, not handled here.
+No booking table is swept: the booking loaders are unregistered (GAP-089,
+GAP-108 — bookings come from the Past Bookers sheet), so a `VillaBooking` ZohoId
+has no local target. `VillaArchiveBookings.ZohoId` also exists on the ResProd
+schema but is not loaded either; that keep/drop decision is GAP-098.
 """
 
 from __future__ import annotations
@@ -48,7 +49,6 @@ from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from integrations.enums import SyncDirection, SyncProvider, SyncStatus
 from integrations.models import SyncRecord
 from properties.models.property import Property
-from reservations.models.booking import Booking
 from reservations.models.enquiry import Enquiry
 from reservations.models.quotation import Quotation
 
@@ -58,9 +58,9 @@ logger = structlog.get_logger(__name__)
 def zoho_id_column_exists(cursor: Any, table: str) -> bool:
     """True when `table` carries a `ZohoId` column in the connected legacy DB.
 
-    The 24-Apr-2025 prod dump has no `ZohoId` on `VillaQuotationMaster` or
-    `VillaBooking` (only `VillaContact`, `VillaEnquire`, `VillaMaster` carry
-    it), even though older reference dumps had all five. Probe before querying
+    The 24-Apr-2025 prod dump has no `ZohoId` on `VillaQuotationMaster` (only
+    `VillaContact`, `VillaEnquire`, `VillaMaster` carry it), even though older
+    reference dumps and ResProd have it. Probe before querying
     so both the loader and `reconcile_legacy`'s continuity section can skip
     absent tables instead of crashing mid-run. `table` comes from the
     hard-coded `SPECS` tuple, never user input.
@@ -114,7 +114,6 @@ class SyncRecordZohoLoader:
         _ZohoSpec("VillaContact", Person, has_timestamps=False),
         _ZohoSpec("VillaEnquire", Enquiry, has_timestamps=True),
         _ZohoSpec("VillaQuotationMaster", Quotation, has_timestamps=True),
-        _ZohoSpec("VillaBooking", Booking, has_timestamps=True),
     )
 
     def _query(self, spec: _ZohoSpec) -> str:
@@ -137,8 +136,8 @@ class SyncRecordZohoLoader:
         with legacy_cursor() as cursor:
             for spec in self.SPECS:
                 # Not every dump carries ZohoId on every spec table (the live
-                # prod dump lacks it on VillaQuotationMaster/VillaBooking) —
-                # probe once per table and skip absent ones with a warning
+                # 24-Apr-2025 dump lacks it on VillaQuotationMaster) — probe
+                # once per table and skip absent ones with a warning
                 # rather than crashing the whole backfill.
                 if not zoho_id_column_exists(cursor, spec.table):
                     logger.warning("data_migration.zoho_column_missing", table=spec.table)

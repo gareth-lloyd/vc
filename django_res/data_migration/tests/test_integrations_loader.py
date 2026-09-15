@@ -58,18 +58,19 @@ def test_query_orders_by_id_for_deterministic_duplicate_resolution() -> None:
     )
 
 
-def test_specs_cover_all_five_zoho_tables() -> None:
+def test_specs_cover_the_four_loaded_zoho_tables() -> None:
+    # GAP-108: no VillaBooking spec — bookings are not loaded from the legacy
+    # DB, so a booking ZohoId has no local target.
     tables = {spec.table for spec in SyncRecordZohoLoader.SPECS}
     assert tables == {
         "VillaMaster",
         "VillaContact",
         "VillaEnquire",
         "VillaQuotationMaster",
-        "VillaBooking",
     }
 
 
-# --- ZohoId column probe (live dump has no ZohoId on two of the five tables) ---
+# --- ZohoId column probe (the 24-Apr dump has no ZohoId on VillaQuotationMaster) ---
 
 
 class _FakeLegacyCursor:
@@ -110,9 +111,9 @@ def test_zoho_id_column_probe_hits_information_schema() -> None:
 
 @pytest.mark.django_db
 def test_load_skips_tables_without_zoho_id_column(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The 24-Apr-2025 prod dump has no ZohoId on VillaQuotationMaster or
-    VillaBooking — the loader must skip them with a warning instead of
-    crashing, and still sweep the three tables that do carry the column."""
+    """The 24-Apr-2025 prod dump has no ZohoId on VillaQuotationMaster — the
+    loader must skip it with a warning instead of crashing, and still sweep
+    the three tables that do carry the column."""
     cursor = _FakeLegacyCursor(zoho_tables={"VillaMaster", "VillaContact", "VillaEnquire"})
 
     @contextmanager
@@ -126,9 +127,9 @@ def test_load_skips_tables_without_zoho_id_column(monkeypatch: pytest.MonkeyPatc
 
     selects = [q for q in cursor.queries if q.startswith("SELECT Id, ZohoId")]
     assert len(selects) == 3
-    assert not any("VillaQuotationMaster" in q or "VillaBooking" in q for q in selects)
+    assert not any("VillaQuotationMaster" in q for q in selects)
     missing = [entry for entry in logs if entry["event"] == "data_migration.zoho_column_missing"]
-    assert {entry["table"] for entry in missing} == {"VillaQuotationMaster", "VillaBooking"}
+    assert {entry["table"] for entry in missing} == {"VillaQuotationMaster"}
     assert report.errors == []
 
 
@@ -146,7 +147,7 @@ def test_load_queries_all_tables_when_column_present(monkeypatch: pytest.MonkeyP
         SyncRecordZohoLoader().load()
 
     selects = [q for q in cursor.queries if q.startswith("SELECT Id, ZohoId")]
-    assert len(selects) == 5
+    assert len(selects) == 4
     assert not any(entry["event"] == "data_migration.zoho_column_missing" for entry in logs)
 
 

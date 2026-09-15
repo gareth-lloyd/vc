@@ -8,11 +8,6 @@ from __future__ import annotations
 
 from data_migration.base import Loader
 from data_migration.loaders.availability import AvailabilityBlockLoader
-from data_migration.loaders.bookings import (
-    BookingChargeItemLoader,
-    BookingLoader,
-    PaymentLoader,
-)
 from data_migration.loaders.country import CountryLoader
 from data_migration.loaders.defaults import PropertyDefaultsLoader
 from data_migration.loaders.extras import ExtraLoader
@@ -85,9 +80,9 @@ LOADERS: dict[str, type[Loader]] = {
     ExtraLoader.name: ExtraLoader,
     PropertyContactAssignmentLoader.name: PropertyContactAssignmentLoader,
     # ClientLoader (VillaClientDetails → Person, keyed `client-{id}`) MUST stay
-    # ahead of preferences / finance / booking: those loaders resolve the
-    # customer via `person_for_client`, so the `client-{id}` Persons must already
-    # exist when they run.
+    # ahead of preferences / finance: those loaders resolve the customer via
+    # `person_for_client`, so the `client-{id}` Persons must already exist when
+    # they run.
     ClientLoader.name: ClientLoader,
     EnquiryLoader.name: EnquiryLoader,
     PropertyFinanceLoader.name: PropertyFinanceLoader,
@@ -101,19 +96,18 @@ LOADERS: dict[str, type[Loader]] = {
     # by the dry-run double-run check; see DRYRUN_LOG.md).
     GuestPreferenceTypeLoader.name: GuestPreferenceTypeLoader,
     GuestPreferenceLoader.name: GuestPreferenceLoader,
-    BookingLoader.name: BookingLoader,
-    PaymentLoader.name: PaymentLoader,
-    # Charge lines resolve their parent Booking by legacy_id, so they must
-    # follow BookingLoader; they run after PaymentLoader so legacy payment
-    # rows are already in place when the load (with the booking_total_changed
-    # resync suppressed) writes on top of them.
-    BookingChargeItemLoader.name: BookingChargeItemLoader,
-    # After the booking loaders: the availability-block loader skips any run
-    # whose range an imported booking already occupies, so the imported
-    # occupancy must be in place before it runs.
+    # Booking / Payment / BookingChargeItem loaders (`loaders/bookings.py`) are
+    # deliberately UNREGISTERED (GAP-089, GAP-108): bookings come from the Past
+    # Bookers sheet (`import_past_bookers`), not `VillaBooking`. The modules and
+    # their tests stay as the legacy-schema record; `reconcile_legacy` asserts
+    # no row carrying a legacy_id ever lands in those tables.
+    #
+    # The availability-block loader skips any run whose range an existing
+    # booking already occupies; with no legacy bookings loaded that is only
+    # ever a booking written before it runs.
     AvailabilityBlockLoader.name: AvailabilityBlockLoader,
     # External-ID backfill — registered last so every domain target row
-    # (Property/Person/Enquiry/Quotation/Booking) already carries its
-    # legacy_id when SyncRecord rows are written.
+    # (Property/Person/Enquiry/Quotation) already carries its legacy_id when
+    # SyncRecord rows are written.
     SyncRecordZohoLoader.name: SyncRecordZohoLoader,
 }

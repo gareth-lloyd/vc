@@ -430,7 +430,7 @@ _CHECKS: list[_Check] = [
         # note is honestly empty).
         # `placement_note` is API-writable, so count only the legacy slice —
         # a staff-entered note during the cutover window must not shift the
-        # gap (the BookingChargeItem precedent below).
+        # gap.
         expected_gap=0,
         loaded_count=lambda m: (
             m._default_manager.exclude(placement_note="").filter(legacy_id__isnull=False).count()
@@ -608,10 +608,11 @@ _CHECKS: list[_Check] = [
         Enquiry,
         "Enquiry",
         # Negative gap: loaded > legacy. Synthesised enquiries created to
-        # satisfy the now-mandatory Quotation.enquiry FK — for booking-synth
-        # quotations (BookingLoader.ensure_enquiry) and legacy quotations that
-        # carried no enquiry of their own.
-        expected_gap=-8,
+        # satisfy the now-mandatory Quotation.enquiry FK for legacy quotations
+        # that carried no enquiry of their own (no booking-synth quotations
+        # since GAP-108 unregistered the booking loaders). -8 on the 24-Apr dump
+        # included 3 BookingLoader.ensure_enquiry rows, hence -5.
+        expected_gap=-5,  # provisional — pinned in GAP-108 dry run
         # GAP-089: `import_enquiry_sheet` adds ~2.4k historic `sheet-enquiry-`
         # rows with no VillaEnquire twin — leave them out of the comparison.
         loaded_count=lambda m: m._default_manager.exclude(
@@ -679,16 +680,18 @@ _CHECKS: list[_Check] = [
     _Check(
         "SELECT COUNT(*) FROM VillaQuotationMaster WHERE DeletedAt IS NULL",
         Quotation,
-        "Quotation (legacy + booking-synth)",
-        # Negative gap: BookingLoader synthesises a hidden ACCEPTED quotation per
-        # legacy booking that has no real quotation to satisfy the PROTECT FK.
-        expected_gap=-3,
+        "Quotation",
+        # Was -3 while BookingLoader synthesised a hidden ACCEPTED quotation per
+        # legacy booking; with the booking loaders unregistered (GAP-108) every
+        # loaded quotation has a live legacy twin.
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaQuotationDetails",
         QuotationLine,
-        "QuotationLine (legacy + booking-synth)",
-        expected_gap=-2,  # lines on the booking-synth quotations above.
+        "QuotationLine",
+        # Was -2 (lines on the booking-synth quotations, gone since GAP-108).
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaClientPrefMaster",
@@ -710,33 +713,27 @@ _CHECKS: list[_Check] = [
         # (`data_migration.preference_quotation_unresolved`).
         expected_gap=93,
     ),
+    # Booking / Payment / BookingChargeItem: the loaders are UNREGISTERED
+    # (GAP-089, GAP-108) — bookings come from the Past Bookers sheet, whose
+    # rows carry no legacy_id. Any row stamped with a legacy_id means a
+    # booking loader ran against the legacy DB, which is a blocker. Organic
+    # rows (sheet imports, staff bookings/charge lines/payments) never count.
     _Check(
-        "SELECT COUNT(*) FROM VillaBooking WHERE DeletedAt IS NULL",
+        "SELECT 0",
         Booking,
-        "Booking",
+        "Booking with legacy_id (must be 0)",
+        loaded_count=lambda m: m._default_manager.filter(legacy_id__isnull=False).count(),
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaPaymentDetails d JOIN VillaPayment p ON p.Id = d.PaymentId",
+        "SELECT 0",
         Payment,
-        "Payment",
+        "Payment with legacy_id (must be 0)",
+        loaded_count=lambda m: m._default_manager.filter(legacy_id__isnull=False).count(),
     ),
     _Check(
-        # Zero-price rows are excluded (the loader skips them — the model's
-        # `amount != 0` constraint forbids the write); details on deleted
-        # bookings are excluded to mirror BookingLoader's DeletedAt filter.
-        "SELECT COUNT(*) FROM VillaBookingDetails d"
-        " JOIN VillaBooking b ON b.Id = d.BookingId AND b.DeletedAt IS NULL"
-        " WHERE d.Price <> 0",
+        "SELECT 0",
         BookingChargeItem,
-        "BookingChargeItem",
-        # Placeholder — recalibrate at cutover dry-run (BUG-013 precedent).
-        # Error/skip rows widen this gap until fixed: no FxRate for the
-        # row→booking pair, unresolvable non-zero CurrencyId, conversions
-        # that quantise to zero, and details on unresolvable bookings.
-        expected_gap=0,
-        # Staff-created charge items (legacy_id NULL) are the live adjustment
-        # mechanism and coexist with imports — count only the legacy slice,
-        # or any staff write during the cutover window turns this check RED.
+        "BookingChargeItem with legacy_id (must be 0)",
         loaded_count=lambda m: m._default_manager.filter(legacy_id__isnull=False).count(),
     ),
     _Check(
@@ -886,7 +883,7 @@ class Command(BaseCommand):
         Limitation: this compares counts, not values.
 
         Not every dump carries ZohoId on every spec table (the 24-Apr-2025
-        prod dump lacks it on VillaQuotationMaster/VillaBooking): a table
+        prod dump lacks it on VillaQuotationMaster): a table
         without the column gets a clearly-marked "no ZohoId column" row —
         there is nothing to backfill from, so it is informational, never a
         blocker — and the loader skipped it the same way.

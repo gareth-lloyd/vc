@@ -145,12 +145,20 @@ class _Check:
     model: type[Any]
     label: str
     expected_gap: int = 0
-    # Optional override for the loaded-row count. Defaults to a bare
-    # `model._default_manager.count()`; supply a callable when the model is
-    # partitioned by a `legacy_id` prefix (GAP-045 D5-3: VillaContact and
-    # VillaClientDetails both land in `accounts.Person`, so each check counts
-    # only its own slice). The callable takes the model and returns the count.
+    # Optional override for the loaded-row count. Defaults to the rows the
+    # loader stamped (`legacy_id IS NOT NULL`, GAP-108): organic rows (staff
+    # writes, `createsuperuser`) must never move a gap between dry runs.
+    # Supply a callable when the model is partitioned by a `legacy_id` prefix
+    # (GAP-045 D5-3: VillaContact and VillaClientDetails both land in
+    # `accounts.Person`, so each check counts only its own slice), has no
+    # `legacy_id`, or legitimately counts unstamped rows. The callable takes
+    # the model and returns the count.
     loaded_count: Callable[[type[Any]], int] | None = None
+
+    def count_loaded(self) -> int:
+        if self.loaded_count is not None:
+            return self.loaded_count(self.model)
+        return int(self.model._default_manager.filter(legacy_id__isnull=False).count())
 
 
 def _eur_legacy_id(model: type[Any]) -> int:
@@ -183,6 +191,10 @@ _CHECKS: list[_Check] = [
         # the 23-row prod dump (DRYRUN_LOG) — GAP-108 confirms on the live
         # dump before pinning for good.
         expected_gap=-227,
+        # GAP-108: counts unstamped rows on purpose (whole-table override of
+        # the legacy-rows default) — the gap is defined against the whole
+        # seeded table, not the legacy slice.
+        loaded_count=lambda m: m._default_manager.count(),
     ),
     _Check(
         # GAP-107: legacy `IsActive = 1` countries that are not soft-deleted
@@ -208,7 +220,8 @@ _CHECKS: list[_Check] = [
     # GAP-107 adds no shift to the bare total: deleted regions still load
     # (retired in place, never skipped). Its pre-existing shifters remain —
     # blank-name rows are skipped by the loader, and the loaded side counts
-    # the `unknown-xx` sentinel and staff-created rows.
+    # the `unknown-xx` sentinel (stamped `__unknown__`; staff-created rows
+    # stopped counting with the GAP-108 legacy-rows default).
     _Check("SELECT COUNT(*) FROM VillaRegion", Region, "Region"),
     # The two slices below say WHICH imported rows came in active. Together
     # they pin the retired count too (retired = imported - active on both
@@ -322,7 +335,10 @@ _CHECKS: list[_Check] = [
     ),
     _Check("SELECT COUNT(*) FROM UserMaster WHERE DeletedAt IS NULL", User, "User"),
     _Check(
-        "SELECT COUNT(*) FROM VillaContact WHERE DeletedAt IS NULL",
+        # GAP-108: no `DeletedAt` filter — ContactLoader reads every row and
+        # loads a deleted contact as INACTIVE (0 deleted on ResProd, so no
+        # gap moves).
+        "SELECT COUNT(*) FROM VillaContact",
         Person,
         "Person (owner/agent)",
         # VillaContact owner/agent rows keep the bare legacy_id; GAP-045 D5-3
@@ -331,9 +347,10 @@ _CHECKS: list[_Check] = [
         # `unknown_client` sentinel) or they'd inflate the loaded count and turn
         # this check RED. The `client-` slice is checked separately below.
         # GAP-089: the spreadsheet importers' `sheet-` persons have no legacy
-        # twin either.
+        # twin either. Organic persons (legacy_id NULL) never count.
         loaded_count=lambda m: (
-            m._default_manager.exclude(legacy_id__startswith=CLIENT_LEGACY_PREFIX)
+            m._default_manager.filter(legacy_id__isnull=False)
+            .exclude(legacy_id__startswith=CLIENT_LEGACY_PREFIX)
             .exclude(legacy_id__startswith=SHEET_LEGACY_PREFIX)
             .count()
         ),
@@ -348,8 +365,11 @@ _CHECKS: list[_Check] = [
         # (mirrors the "Person (owner/agent)" slice split above) or every
         # client email shows as a negative gap (dry-run 1: 30 of them). The
         # GAP-089 `sheet-` persons' channels are excluded for the same reason.
+        # GAP-108: only stamped channels on stamped persons — a staff-added
+        # channel, or any channel of an organic person, never counts.
         loaded_count=lambda m: (
-            m._default_manager.exclude(contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX)
+            m._default_manager.filter(legacy_id__isnull=False, contact__legacy_id__isnull=False)
+            .exclude(contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX)
             .exclude(contact__legacy_id__startswith=SHEET_LEGACY_PREFIX)
             .count()
         ),
@@ -358,9 +378,10 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaContactTele",
         PersonPhone,
         "PersonPhone",
-        # Same client- and sheet-slice exclusions as PersonEmail above.
+        # Same slice exclusions and legacy-only filters as PersonEmail above.
         loaded_count=lambda m: (
-            m._default_manager.exclude(contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX)
+            m._default_manager.filter(legacy_id__isnull=False, contact__legacy_id__isnull=False)
+            .exclude(contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX)
             .exclude(contact__legacy_id__startswith=SHEET_LEGACY_PREFIX)
             .count()
         ),
@@ -382,6 +403,8 @@ _CHECKS: list[_Check] = [
         "Organisation (agency)",
         # GAP-089: `import_enquiry_sheet` mints agencies from the sheet's
         # `Trade` column, stamped `sheet-org-…` — no VillaContact twin.
+        # Counts legacy_id NULL rows on purpose: `organisation_for_company_name`
+        # never stamps one, so a staff-created agency does shift this gap.
         loaded_count=lambda m: (
             m._default_manager.filter(org_type=OrgType.AGENCY)
             .exclude(legacy_id__startswith=SHEET_LEGACY_PREFIX)
@@ -631,10 +654,13 @@ _CHECKS: list[_Check] = [
         # EnquireId 0/NULL/missing/deleted), so no stand-ins ⇒ 0.
         expected_gap=0,  # provisional — pinned in GAP-108 dry run
         # GAP-089: `import_enquiry_sheet` adds ~2.4k historic `sheet-enquiry-`
-        # rows with no VillaEnquire twin — leave them out of the comparison.
-        loaded_count=lambda m: m._default_manager.exclude(
-            legacy_id__startswith=SHEET_LEGACY_PREFIX
-        ).count(),
+        # rows with no VillaEnquire twin — leave them out of the comparison,
+        # along with organic (legacy_id NULL) enquiries.
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__isnull=False)
+            .exclude(legacy_id__startswith=SHEET_LEGACY_PREFIX)
+            .count()
+        ),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaFinance WHERE VillaId IS NOT NULL",
@@ -831,11 +857,7 @@ class Command(BaseCommand):
         for check in _CHECKS:
             cursor.execute(check.legacy_query)
             legacy_count = int(cursor.fetchone()[0])
-            loaded_count = (
-                check.loaded_count(check.model)
-                if check.loaded_count is not None
-                else check.model._default_manager.count()
-            )
+            loaded_count = check.count_loaded()
             gap = legacy_count - loaded_count
             ok = gap == check.expected_gap
             if not ok:

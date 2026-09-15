@@ -19,7 +19,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from accounts.enums import OrgType
-from accounts.models import Organisation
+from accounts.models import Organisation, Person
 from data_migration.loaders.integrations import SyncRecordZohoLoader
 from data_migration.management.commands import reconcile_legacy
 from data_migration.management.commands.reconcile_legacy import _Check
@@ -147,7 +147,8 @@ def _run(*args: str) -> str:
 
 @pytest.mark.django_db
 def test_gap_equal_to_expected_is_ok(monkeypatch: pytest.MonkeyPatch) -> None:
-    EnquiryFactory.create_batch(2)  # loaded = 2
+    EnquiryFactory(legacy_id="1")
+    EnquiryFactory(legacy_id="2")  # loaded = 2
     _patch(
         monkeypatch,
         [_Check("SELECT COUNT(*) FROM VillaEnquire", Enquiry, "Enquiry", expected_gap=5)],
@@ -164,7 +165,8 @@ def test_gap_equal_to_expected_is_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_gap_over_expected_is_blocker_and_exits_nonzero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    EnquiryFactory.create_batch(2)  # loaded = 2
+    EnquiryFactory(legacy_id="1")
+    EnquiryFactory(legacy_id="2")  # loaded = 2
     _patch(
         monkeypatch,
         [_Check("SELECT COUNT(*) FROM VillaEnquire", Enquiry, "Enquiry", expected_gap=5)],
@@ -252,8 +254,8 @@ def test_sheet_imported_rows_do_not_move_the_legacy_counts() -> None:
     from data_migration.management.commands.reconcile_legacy import _CHECKS
 
     legacy = PersonFactory(legacy_id="10")
-    PersonEmailFactory(contact=legacy, email="legacy@example.com")
-    PersonPhoneFactory(contact=legacy, number="+441234567890")
+    PersonEmailFactory(contact=legacy, email="legacy@example.com", legacy_id="1")
+    PersonPhoneFactory(contact=legacy, number="+441234567890", legacy_id="1")
     sheet = PersonFactory(legacy_id="sheet-person-0123456789abcdef")
     PersonEmailFactory(contact=sheet, email="sheet@example.com")
     PersonPhoneFactory(contact=sheet, number="+449876543210")
@@ -362,9 +364,10 @@ def test_geo_parity_checks_split_active_from_retired(monkeypatch: pytest.MonkeyP
             imported.legacy_query: 3 + imported.expected_gap,
             active.legacy_query: 1 + active.expected_gap,
             country_active.legacy_query: 1 + country_active.expected_gap,
-            # Bare totals: every loaded Region (5 incl. staff-made + sentinel)
-            # and every Country (the ISO seed + sentinel).
-            "COUNT(*) FROM VillaRegion": 5 + by_label["Region"].expected_gap,
+            # Bare totals: every stamped Region (4: the imported three + the
+            # sentinel; staff-made is organic, GAP-108) and every Country
+            # (the ISO seed + sentinel — the one explicit whole-table count).
+            "COUNT(*) FROM VillaRegion": 4 + by_label["Region"].expected_gap,
             "COUNT(*) FROM VillaCountry": (
                 Country.objects.count() + by_label["Country (legacy)"].expected_gap
             ),
@@ -528,9 +531,9 @@ def test_room_placement_check_counts_preserved_notes(monkeypatch: pytest.MonkeyP
             # Order matters: the fake cursor matches first-substring, and the
             # plain Room needle is a substring of the placement query.
             "PlacementId IS NOT NULL": 2 + placement_check.expected_gap,
-            # The plain Room check counts ALL loaded rooms (4 incl. the
-            # staff-created one) — only the placement check is slice-limited.
-            "COUNT(*) FROM VillaRooms": 4 + by_label["Room"].expected_gap,
+            # The plain Room check counts every legacy room (3; the
+            # staff-created one is organic, GAP-108 default).
+            "COUNT(*) FROM VillaRooms": 3 + by_label["Room"].expected_gap,
         },
     )
     output = _run()
@@ -740,10 +743,13 @@ def test_person_channel_checks_exclude_the_client_slice() -> None:
 
     owner = PersonFactory(legacy_id="10")  # VillaContact slice
     client = PersonFactory(legacy_id="client-55")  # VillaClientDetails slice
-    PersonEmailFactory(contact=owner, email="owner@example.com")
-    PersonEmailFactory(contact=client, email="client@example.com")  # excluded
-    PersonPhoneFactory(contact=owner, number="+44 1")
-    PersonPhoneFactory(contact=client, number="+44 2")  # excluded
+    PersonEmailFactory(contact=owner, email="owner@example.com", legacy_id="1")
+    PersonEmailFactory(contact=client, email="client@example.com", legacy_id="2")  # excluded
+    PersonPhoneFactory(contact=owner, number="+44 1", legacy_id="1")
+    PersonPhoneFactory(contact=client, number="+44 2", legacy_id="2")  # excluded
+    # GAP-108: a staff-added channel on a loaded owner has no legacy twin.
+    PersonEmailFactory(contact=owner, email="staff@example.com", is_primary=False)
+    PersonPhoneFactory(contact=owner, number="+44 3", is_primary=False)
 
     by_label = {c.label: c for c in _CHECKS}
     email_check = by_label["PersonEmail"]
@@ -1149,3 +1155,226 @@ def test_agency_check_excludes_placeholder_companies() -> None:
     side must not count them as a distinct company either."""
     check = next(c for c in reconcile_legacy._CHECKS if c.label == "Organisation (agency)")
     assert "UPPER(LTRIM(RTRIM(Company))) NOT IN ('-', 'N/A', 'NA')" in check.legacy_query
+
+
+# --- GAP-108 U5: loaded counts are legacy rows only ---------------------------
+#
+# Organic rows (legacy_id NULL: staff writes, `createsuperuser`, seeds) must
+# never move a loaded count, or the reconcile gap drifts between dry runs.
+# Checks that legitimately count NULL-legacy_id rows, each with its reason:
+_COUNTS_ORGANIC_ROWS: dict[str, str] = {
+    "Country (legacy)": "the properties.0002 ISO seed has no legacy_id; legacy rows match onto it",
+    "Organisation (agency)": "organisation_for_company_name never stamps legacy_id on agencies",
+}
+
+
+def _has_legacy_id(model: type[object]) -> bool:
+    return any(f.name == "legacy_id" for f in model._meta.get_fields())  # type: ignore[attr-defined]
+
+
+def _organic_property() -> Property:
+    return cast(Property, PropertyFactory())
+
+
+def _organic_customer() -> Person:
+    from accounts.factories import CustomerPersonFactory
+
+    return cast(Person, CustomerPersonFactory())
+
+
+def _organic_booking() -> Booking:
+    from datetime import date
+
+    from pricing.factories import CurrencyFactory
+    from reservations.factories import TermsVersionFactory, make_occupying_booking
+    from reservations.models import TermsVersion
+
+    return make_occupying_booking(
+        property=_organic_property(),
+        person=_organic_customer(),
+        currency=cast(Currency, CurrencyFactory(code="GBP")),
+        terms=cast(TermsVersion, TermsVersionFactory()),
+        date_from=date(2027, 6, 1),
+        date_to=date(2027, 6, 8),
+    )
+
+
+def _organic_row(model: type[object]) -> None:
+    """Create one organic (legacy_id NULL) row of `model`, shaped to hit the
+    check filters where it can (e.g. a NET plan, a 0.00 unapproved band)."""
+    from datetime import UTC, date, datetime
+    from decimal import Decimal
+
+    from accounts.factories import (
+        PersonEmailFactory,
+        PersonFactory,
+        PersonPhoneFactory,
+        UserFactory,
+    )
+    from accounts.models import User
+    from accounts.models.person import PersonEmail, PersonPhone
+    from payments.enums import PaymentMethod, PaymentPurpose, PaymentStatus
+    from payments.models.payment import Payment
+    from pricing.factories import (
+        CurrencyFactory,
+        ExtraFactory,
+        RateBandFactory,
+        RatePeriodFactory,
+        RatePlanFactory,
+    )
+    from pricing.models.extra import Extra
+    from pricing.models.rate import RateBand, RatePlan
+    from properties.enums import ImageKind, PriceBasis
+    from properties.factories import (
+        CollectionFactory,
+        FeatureCategoryFactory,
+        NearbyPlaceTypeFactory,
+        PropertyContactAssignmentFactory,
+        PropertyNearbyPlaceFactory,
+        RegionFactory,
+        RoomFactory,
+    )
+    from properties.models.contacts import PropertyContactAssignment
+    from properties.models.features import (
+        Collection,
+        CollectionMembership,
+        Feature,
+        FeatureCategory,
+    )
+    from properties.models.finance import PropertyFinance
+    from properties.models.geo import Country, NearbyPlaceType, PropertyNearbyPlace, Region
+    from properties.models.images import PropertyImage
+    from properties.models.rooms import Room
+    from reservations.enums import BookingHoldReason
+    from reservations.factories import BookingChargeItemFactory
+    from reservations.models.booking import BookingHold
+    from reservations.models.charge_item import BookingChargeItem
+    from reservations.models.preferences import GuestPreference, GuestPreferenceType
+    from reservations.models.quotation import Quotation, QuotationLine
+
+    def _payment() -> None:
+        booking = _organic_booking()
+        Payment.objects.create(
+            booking=booking,
+            purpose=PaymentPurpose.ADJUSTMENT,
+            status=PaymentStatus.PENDING,
+            amount=Decimal("10.00"),
+            currency=booking.currency,
+            payment_method=PaymentMethod.CARD,
+        )
+
+    def _charge_item() -> None:
+        booking = _organic_booking()
+        BookingChargeItemFactory(booking=booking, currency=booking.currency)
+
+    builders: dict[type[object], object] = {
+        Country: lambda: Country.objects.create(
+            iso2="QZ", iso3="QZZ", name="Organic land", is_active=True
+        ),
+        Region: RegionFactory,
+        Currency: lambda: CurrencyFactory(code="EUR"),
+        NearbyPlaceType: NearbyPlaceTypeFactory,
+        FeatureCategory: FeatureCategoryFactory,
+        Feature: FeatureFactory,
+        User: UserFactory,
+        Person: PersonFactory,
+        PersonEmail: PersonEmailFactory,
+        PersonPhone: PersonPhoneFactory,
+        Property: PropertyFactory,
+        Collection: CollectionFactory,
+        CollectionMembership: lambda: CollectionMembership.objects.create(
+            collection=cast(Collection, CollectionFactory()), property=_organic_property()
+        ),
+        Room: lambda: RoomFactory(placement_note="Ground floor"),
+        PropertyImage: lambda: PropertyImage.objects.create(
+            property=_organic_property(), image="organic.jpg", kind=ImageKind.GALLERY
+        ),
+        PropertyNearbyPlace: PropertyNearbyPlaceFactory,
+        RatePlan: lambda: RatePeriodFactory(plan=RatePlanFactory(price_basis=PriceBasis.NET)),
+        RateBand: lambda: RateBandFactory(nightly=Decimal("0.00"), is_approved=False),
+        Extra: ExtraFactory,
+        PropertyContactAssignment: lambda: PropertyContactAssignmentFactory(
+            contact=PersonFactory()
+        ),
+        Enquiry: EnquiryFactory,
+        PropertyFinance: PropertyFactory,  # `snapshot_defaults` row, all types NULL
+        Quotation: lambda: _organic_booking(),
+        QuotationLine: lambda: _organic_booking(),
+        GuestPreferenceType: lambda: GuestPreferenceType.objects.create(name="Organic pref"),
+        GuestPreference: lambda: GuestPreference.objects.create(
+            person=_organic_customer(),
+            preference_type=GuestPreferenceType.objects.create(name="Organic pref"),
+        ),
+        Booking: _organic_booking,
+        Payment: _payment,
+        BookingChargeItem: _charge_item,
+        BookingHold: lambda: BookingHold.objects.create(
+            property=_organic_property(),
+            date_from=date(2099, 1, 1),
+            date_to=date(2099, 1, 8),
+            expires_at=datetime(2099, 1, 1, tzinfo=UTC),
+            reason=BookingHoldReason.OWNER_BLOCK.value,
+        ),
+    }
+    builder = builders[model]
+    assert callable(builder)
+    builder()
+    assert model._default_manager.filter(legacy_id__isnull=True).exists()  # type: ignore[attr-defined]
+
+
+_LEGACY_ID_CHECK_LABELS = [
+    c.label
+    for c in reconcile_legacy._CHECKS
+    if _has_legacy_id(c.model) and c.label not in _COUNTS_ORGANIC_ROWS
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("label", _LEGACY_ID_CHECK_LABELS)
+def test_organic_row_does_not_move_the_loaded_count(label: str) -> None:
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == label)
+    before = check.count_loaded()
+    _organic_row(check.model)
+    assert check.count_loaded() == before
+
+
+def test_allowlisted_organic_counts_are_real_checks() -> None:
+    labels = {c.label for c in reconcile_legacy._CHECKS}
+    assert set(_COUNTS_ORGANIC_ROWS) <= labels
+    assert all(reason.strip() for reason in _COUNTS_ORGANIC_ROWS.values())
+
+
+def test_default_loaded_count_is_only_used_on_models_with_a_legacy_id() -> None:
+    """The fallback filters `legacy_id__isnull=False`; a check on a model
+    without one must supply its own `loaded_count`."""
+    for check in reconcile_legacy._CHECKS:
+        if check.loaded_count is None:
+            assert _has_legacy_id(check.model), check.label
+
+
+@pytest.mark.django_db
+def test_default_loaded_count_counts_legacy_rows_only() -> None:
+    check = _Check("SELECT COUNT(*) FROM VillaEnquire", Enquiry, "Enquiry")
+    EnquiryFactory(legacy_id="1")
+    EnquiryFactory()
+    assert check.count_loaded() == 1
+
+
+@pytest.mark.django_db
+def test_createsuperuser_leaves_every_loaded_count_unchanged() -> None:
+    """CUTOVER: the first admin is created after the load, then reconcile runs
+    again — it must print the same table."""
+    before = {c.label: c.count_loaded() for c in reconcile_legacy._CHECKS}
+    call_command("createsuperuser", interactive=False, email="admin@example.com", verbosity=0)
+    after = {c.label: c.count_loaded() for c in reconcile_legacy._CHECKS}
+    assert after == before
+
+
+def test_owner_agent_check_counts_deleted_contacts() -> None:
+    """ContactLoader reads every VillaContact row and loads a deleted one as
+    INACTIVE, so the legacy side must not filter on `DeletedAt`."""
+    from data_migration.loaders.people import ContactLoader
+
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "Person (owner/agent)")
+    assert "WHERE" not in ContactLoader.legacy_query
+    assert check.legacy_query == "SELECT COUNT(*) FROM VillaContact"

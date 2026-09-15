@@ -9,7 +9,7 @@ import pytest
 from django.core.management import call_command
 from django.db import IntegrityError
 
-from accounts.enums import OrgType
+from accounts.enums import OrgType, PersonPreferredMethod
 from accounts.factories import OrganisationFactory
 from accounts.models import Organisation, Person
 from data_migration.base import LoadReport
@@ -25,7 +25,7 @@ def _row(**over: Any) -> dict[str, Any]:
         "Company": "Dune Travel",
         "WebsiteUrl": "",
         "Notes": "",
-        "PrefferedMethod": 1,
+        "PrefferedMethod": 10,
         "AddressLine1": "",
         "AddressLine2": "",
         "DeletedAt": None,
@@ -109,3 +109,46 @@ def test_dedupe_reports_clean_when_no_near_duplicates() -> None:
     call_command("dedupe_organisations", stdout=out)
 
     assert "No near-duplicate organisations found." in out.getvalue()
+
+
+# --- BUG-030 §15: placeholder companies are blank, not an "NA" agency ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("company", ["NA", "na", " N/A ", "n/a", "-", " - "])
+def test_loader_placeholder_company_leaves_null_agency(company: str) -> None:
+    kwargs = ContactLoader().transform(_row(Company=company))
+    assert kwargs is not None
+    assert kwargs["agency"] is None
+    assert Organisation.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_loader_company_merely_containing_na_is_still_an_agency() -> None:
+    kwargs = ContactLoader().transform(_row(Company="NA Travel"))
+    assert kwargs is not None
+    assert kwargs["agency"].name == "NA Travel"
+
+
+# --- BUG-030 §16: PrefferedMethod is on the 0/10/20/30/40 scale ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (10, PersonPreferredMethod.EMAIL),
+        (20, PersonPreferredMethod.PHONE),
+        (30, PersonPreferredMethod.PHONE),  # WhatsApp: no enum value, nearest channel
+        (40, PersonPreferredMethod.SMS),
+        (0, PersonPreferredMethod.EMAIL),
+        (None, PersonPreferredMethod.EMAIL),
+        (2, PersonPreferredMethod.EMAIL),  # the old 1/2/3 scale no longer means anything
+    ],
+)
+def test_loader_preferred_method_uses_the_legacy_scale(
+    raw: int | None, expected: PersonPreferredMethod
+) -> None:
+    kwargs = ContactLoader().transform(_row(PrefferedMethod=raw, Company=""))
+    assert kwargs is not None
+    assert kwargs["preferred_method"] == expected

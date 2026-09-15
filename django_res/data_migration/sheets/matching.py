@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
+from django.db.models import Case, Value, When
 from django_countries import countries
 
 from accounts.enums import PersonKind, PersonStatus, PersonTag
@@ -305,6 +306,36 @@ def match_person_by_name(first: str, last: str) -> tuple[Person | None, bool]:
     return None, True
 
 
+def match_person_by_email(
+    addr: str | None,
+    *,
+    first_name: str = "",
+    last_name: str = "",
+    active_only: bool,
+) -> Person | None:
+    """The Person carrying ``addr`` on ANY of their e-mails (not only the
+    primary: a secondary address is still theirs) whose names agree.
+
+    BUG-030 §18: one human can be both a CUSTOMER (`client-`) and a CONTACT
+    (owner/agent) on the same address, so the order is deterministic — ACTIVE
+    first, then CUSTOMER before CONTACT, then oldest pk. ``active_only=False``
+    keeps a deactivated person matchable (the sheet importers report them as
+    `inactive` rather than re-minting them); the legacy EnquiryLoader links
+    only ACTIVE people.
+    """
+    addr = (addr or "").strip().lower()
+    if "@" not in addr:
+        return None
+    candidates = Person.objects.filter(emails__email=addr)
+    if active_only:
+        candidates = candidates.filter(status=PersonStatus.ACTIVE)
+    customer_first = Case(When(kind=PersonKind.CUSTOMER, then=Value(0)), default=Value(1))
+    for candidate in candidates.order_by("status", customer_first, "pk"):
+        if _names_agree(first_name, last_name, candidate.first_name, candidate.last_name):
+            return candidate
+    return None
+
+
 def find_or_create_person(
     *,
     email: str | None,
@@ -335,10 +366,7 @@ def find_or_create_person(
         # come back as `inactive`, not be re-minted from the sheet. (A fully
         # anonymised person has no e-mail or name left to match — see the
         # CUTOVER note on re-runs after an erasure.)
-        for candidate in Person.objects.filter(emails__email=addr).order_by("status"):
-            if _names_agree(first, last, candidate.first_name, candidate.last_name):
-                existing = candidate
-                break
+        existing = match_person_by_email(addr, first_name=first, last_name=last, active_only=False)
     if existing is None and not addr:
         existing, ambiguous = match_person_by_name(first, last)
         if existing is None and not ambiguous:

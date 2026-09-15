@@ -351,6 +351,9 @@ column. `ContactLoader` routes each non-blank company string through
 get-or-creates a deduped `Organisation(org_type=agency)` keyed on a content hash
 of the **case/whitespace-normalised** name (`dedup_key`, never `legacy_id`) and
 links the contact via `Person.agency`. A blank company → `None` → null agency.
+The placeholders `NA`, `N/A` and `-` (any case, stripped; 226/233 rows in the
+reference dump are `NA`) count as blank too (BUG-030 §15, `COMPANY_PLACEHOLDERS`
+in `loaders/people.py`), and the `Organisation (agency)` check excludes them.
 The `get_or_create` runs inside the same per-row savepoint as the `Person`
 write, so a failed contact row rolls its org back too — no orphan organisations.
 
@@ -918,6 +921,37 @@ finance row from the dump (staff edits since the earlier load are
 overwritten — the same contract as any delta load) and leaves the GAP-070
 fallback rows alone (`create-only`, so they keep their `NULL` marker).
 Idempotent.
+
+## 6g. Post-load Person merges (BUG-030 §18)
+
+The legacy data holds the same human twice. The loader keeps both rows
+(the keys are what `reconcile_legacy` counts), so staff fold them by hand
+**after §5 has passed** — never before, because a merge hard-deletes the
+source Person and its `legacy_id` with it.
+
+Merge each source into its survivor with `POST /contacts/{source_id}:merge`
+(admin-only; body `{"target_contact_id": <survivor_id>}`). `Person.merge`
+repoints every FK (bookings, enquiries, quotations, preferences, property
+assignments, channels) before deleting the source. The survivor is the
+`client-` Person, which bookings and preferences reference:
+
+| Source (deleted)       | Survivor         | Why they are one person                              |
+|------------------------|------------------|------------------------------------------------------|
+| `client-4`             | `client-1`       | Same e-mail and name; both referenced by bookings/preferences. |
+| `1` (VillaContact)     | `client-5`       | Same e-mail.                                         |
+| `232` (VillaContact)   | `client-19`      | Same e-mail and name; the contact's property mapping moves to the survivor. |
+
+Find the pks with `Person.objects.filter(legacy_id__in=[...])`. Confirm each
+pair is still the same person on the live dump before merging.
+
+A `reconcile_legacy` re-run after the merges is expected to move these
+counts, and only these:
+
+- `Person (owner/agent)`: gap +2 (contacts 1 and 232 are gone).
+- `Person (client)`: gap +1 (`client-4` is gone).
+- `PersonEmail` / `PersonPhone`: gap + the channels contacts 1 and 232 owned,
+  which now sit on `client-` Persons outside the counted slice (a shared
+  address folds into the survivor's row).
 
 ## 7. England → GB merge (retired — BUG-030 §6)
 

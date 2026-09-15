@@ -1030,3 +1030,10 @@ def test_collection_membership_gap_records_its_composition() -> None:
     check = next(c for c in reconcile_legacy._CHECKS if c.label == "CollectionMembership")
     assert check.expected_gap == 308
     assert "VillaCollection WHERE DeletedAt IS NULL" not in check.legacy_query
+
+
+def test_agency_check_excludes_placeholder_companies() -> None:
+    """BUG-030 §15: the loader maps NA / N/A / - to no agency, so the legacy
+    side must not count them as a distinct company either."""
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "Organisation (agency)")
+    assert "UPPER(LTRIM(RTRIM(Company))) NOT IN ('-', 'N/A', 'NA')" in check.legacy_query

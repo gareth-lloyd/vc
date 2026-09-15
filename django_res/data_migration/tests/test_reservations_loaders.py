@@ -14,7 +14,7 @@ from datetime import datetime
 import pytest
 from django.utils import timezone
 
-from accounts.enums import ContactRole, PersonKind, PersonStatus
+from accounts.enums import ContactRole, PersonKind, PersonPreferredMethod, PersonStatus
 from accounts.models import Person
 from data_migration.base import LoadReport
 from data_migration.loaders.reservations import ClientLoader, EnquiryLoader, _role_for
@@ -240,3 +240,61 @@ def test_client_under_legacy_england_attaches_to_gb(db: None) -> None:
     kwargs = ClientLoader().transform(_client_row(CountryId=24))
     assert kwargs is not None
     assert kwargs["country"] == Country.objects.get(iso2="GB")
+
+
+# --- BUG-030 §17/§19: client phone region, ContactType, CreatedAt ---
+
+
+def test_client_query_selects_contact_type_and_created_at() -> None:
+    assert "ContactType" in ClientLoader.legacy_query
+    assert "CreatedAt" in ClientLoader.legacy_query
+
+
+def test_client_bare_mobile_defaults_to_gb(db: None) -> None:
+    kwargs = ClientLoader().transform(_client_row(MobileNo="07911123456"))
+    assert kwargs is not None
+    assert kwargs["_phone"] == "+447911123456"
+
+
+def test_client_bare_mobile_is_anchored_on_its_country(db: None) -> None:
+    from properties.models.geo import Country
+
+    Country.objects.filter(iso2="GR").update(legacy_id="9")
+    kwargs = ClientLoader().transform(_client_row(CountryId=9, MobileNo="6944123456"))
+    assert kwargs is not None
+    assert kwargs["_phone"] == "+306944123456"
+
+
+@pytest.mark.parametrize(
+    ("contact_type", "expected"),
+    [
+        ("Email", PersonPreferredMethod.EMAIL),
+        ("Mobile", PersonPreferredMethod.PHONE),
+        (" phone ", PersonPreferredMethod.PHONE),
+        ("MOBILE", PersonPreferredMethod.PHONE),
+        ("", PersonPreferredMethod.EMAIL),
+        (None, PersonPreferredMethod.EMAIL),
+        ("Fax", PersonPreferredMethod.EMAIL),
+    ],
+)
+def test_client_contact_type_sets_preferred_method(
+    contact_type: str | None, expected: PersonPreferredMethod
+) -> None:
+    kwargs = ClientLoader().transform(_client_row(ContactType=contact_type, Email="a@b.com"))
+    assert kwargs is not None
+    assert kwargs["preferred_method"] == expected
+
+
+def test_client_created_at_is_backstamped_from_legacy(db: None) -> None:
+    report = LoadReport(loader="client")
+    ClientLoader()._process_row(
+        _client_row(Email="ada@example.com", CreatedAt=datetime(2023, 4, 2, 10, 30)), report
+    )
+    person = Person.objects.get(legacy_id="client-1")
+    assert person.created_at == timezone.make_aware(datetime(2023, 4, 2, 10, 30))
+
+
+def test_client_without_legacy_created_at_keeps_auto_stamp(db: None) -> None:
+    before = timezone.now()
+    ClientLoader()._process_row(_client_row(Email="ada@example.com"), LoadReport(loader="client"))
+    assert Person.objects.get(legacy_id="client-1").created_at >= before

@@ -19,7 +19,7 @@ from typing import Any
 
 from django.utils import timezone
 
-from accounts.enums import ContactRole, PersonKind, PersonStatus
+from accounts.enums import ContactRole, PersonKind, PersonPreferredMethod, PersonStatus
 from accounts.models import Person
 from accounts.services.person_channels import (
     reconcile_primary_email,
@@ -66,6 +66,15 @@ def _role_for(role_id: int | None) -> ContactRole:
     role child fall back to OWNER by design (CUTOVER.md §4f, resolved 2026-07-05).
     """
     return _ROLE_MAP.get(role_id or 0, ContactRole.OWNER)
+
+
+# BUG-030 §19: `VillaClientDetails.ContactType` is a varchar ("Email" /
+# "Mobile"), compared stripped and lower-cased; anything else → EMAIL.
+_CLIENT_CONTACT_TYPE_MAP = {
+    "email": PersonPreferredMethod.EMAIL,
+    "mobile": PersonPreferredMethod.PHONE,
+    "phone": PersonPreferredMethod.PHONE,
+}
 
 
 class PropertyContactAssignmentLoader(BaseLoader):
@@ -140,7 +149,8 @@ class ClientLoader(BaseLoader):
     target_model = Person
     legacy_query = (
         "SELECT Id, Title, FirstName, LastName, MobileNo, Email, "
-        "Notes, CountryId, Town, Postcode, AddressLine1, AddressLine2 "
+        "Notes, CountryId, Town, Postcode, AddressLine1, AddressLine2, "
+        "ContactType, CreatedAt "
         "FROM VillaClientDetails"
     )
 
@@ -155,14 +165,17 @@ class ClientLoader(BaseLoader):
         # client is first-class valid (no longer dropped).
         email_raw = (row.get("Email") or "").strip().lower()
         email = email_raw[:254] if "@" in email_raw else None
-        phone = to_e164((row.get("MobileNo") or "").strip())[:32]
+        country = country_for_legacy_id(str(row["CountryId"])) if row.get("CountryId") else None
+        # BUG-030 §17: anchor a national number on the client's country (never
+        # the `XX` sentinel), else GB — without a region ~26/31 stayed raw.
+        region = country.iso2 if country is not None and country.iso2 != "XX" else "GB"
+        phone = to_e164((row.get("MobileNo") or "").strip(), region=region)[:32]
         # A contactless legacy row maps to INACTIVE (the Guest path's ARCHIVED;
         # the SYNCED status map is ARCHIVED→INACTIVE / ANONYMIZED→ANONYMIZED) —
         # the honest exemption rather than failing the import. No legacy
         # VillaClientDetails column carries an ANONYMIZED disposition, so only
         # ACTIVE / INACTIVE arise from the import itself.
         status = PersonStatus.ACTIVE if (email or phone) else PersonStatus.INACTIVE
-        country = country_for_legacy_id(str(row["CountryId"])) if row.get("CountryId") else None
         return {
             "title": (row.get("Title") or "").strip()[:16],
             "first_name": first or "(unknown)",
@@ -175,6 +188,10 @@ class ClientLoader(BaseLoader):
             "post_code": (row.get("Postcode") or "").strip()[:32],
             "country": country,
             "notes": (row.get("Notes") or "").strip(),
+            "preferred_method": _CLIENT_CONTACT_TYPE_MAP.get(
+                str(row.get("ContactType") or "").strip().lower(),
+                PersonPreferredMethod.EMAIL,
+            ),
             # Transient channel values — popped in _process_row, not Person
             # columns (Person holds email/phone as PersonEmail/PersonPhone rows).
             "_email": email,
@@ -200,6 +217,13 @@ class ClientLoader(BaseLoader):
         # (shared with sync_person_from_guest) — never a blind create on re-run.
         reconcile_primary_email(person, email)
         reconcile_primary_phone(person, phone or "")
+        # BUG-030 §19: back-stamp the legacy CreatedAt (`auto_now_add` ignores
+        # assignment) — same technique as EnquiryLoader/BookingLoader.
+        legacy_created = row.get("CreatedAt")
+        if legacy_created is not None:
+            if timezone.is_naive(legacy_created):
+                legacy_created = timezone.make_aware(legacy_created)
+            Person.objects.filter(pk=person.pk).update(created_at=legacy_created)
         if created:
             report.created += 1
         else:

@@ -14,11 +14,24 @@ from __future__ import annotations
 
 from typing import Any
 
+import phonenumbers
+
 from accounts.enums import EmailLabel, PersonPreferredMethod, PersonStatus, PhoneLabel
 from accounts.models import Person, PersonEmail, PersonPhone, User
 from accounts.services.organisations import organisation_for_company_name
 from core.enums import StaffRole
 from data_migration.base import BaseLoader
+from reservations.phone import region_from_calling_code, to_e164
+
+# BUG-030 §15: 226/233 legacy `VillaContact.Company` values are the literal
+# placeholder "NA" — not an agency. Compared upper-cased and stripped; the
+# `Organisation (agency)` reconcile check excludes the same set.
+COMPANY_PLACEHOLDERS = frozenset({"NA", "N/A", "-"})
+
+
+def _company_name(raw: object) -> str:
+    name = str(raw or "").strip()
+    return "" if name.upper() in COMPANY_PLACEHOLDERS else name
 
 
 class UserLoader(BaseLoader):
@@ -65,10 +78,15 @@ class ContactLoader(BaseLoader):
         "FROM VillaContact"
     )
 
+    # BUG-030 §16: legacy `Preferred_Contact_Method` is 0 / Email=10 /
+    # Phone=20 / WhatsApp=30 / Text=40. WhatsApp has no PersonPreferredMethod
+    # value (2 non-zero rows in the dump), so it takes the nearest channel.
+    # 0/NULL/unknown fall back to EMAIL.
     _method_map = {
-        1: PersonPreferredMethod.EMAIL,
-        2: PersonPreferredMethod.PHONE,
-        3: PersonPreferredMethod.SMS,
+        10: PersonPreferredMethod.EMAIL,
+        20: PersonPreferredMethod.PHONE,
+        30: PersonPreferredMethod.PHONE,
+        40: PersonPreferredMethod.SMS,
     }
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -80,12 +98,12 @@ class ContactLoader(BaseLoader):
         # and link it via `agency` instead of writing the legacy `company` string
         # (dropped in Unit 5b). The get_or_create runs inside this row's savepoint
         # (base._load_rows), so a failed Person write rolls the org back too —
-        # no orphan org. None for a blank company → null agency.
+        # no orphan org. None for a blank or placeholder company → null agency.
         return {
             "title": (row.get("Title") or "").strip()[:16],
             "first_name": first or "(unknown)",
             "last_name": last or "(unknown)",
-            "agency": organisation_for_company_name(row.get("Company")),
+            "agency": organisation_for_company_name(_company_name(row.get("Company"))),
             "website_url": (row.get("WebsiteUrl") or "").strip()[:200],
             "notes": (row.get("Notes") or "").strip(),
             "preferred_method": self._method_map.get(
@@ -137,8 +155,15 @@ class ContactPhoneLoader(BaseLoader):
         contact = Person.objects.filter(legacy_id=str(row["ContactId"])).first()
         if contact is None:
             return None
-        cc = (row.get("CountryCode") or "").strip()
-        full = (f"+{cc.lstrip('+')} {number}" if cc else number)[:32]
+        # BUG-030 §17: the calling code anchors the national number (dump
+        # shapes: "0044"+"7770302297", "44"+"07771950930"); a row with no
+        # readable code is a UK number. A number that still fails validation
+        # keeps its calling code (`+30 12345`) so the country isn't lost.
+        cc_region = region_from_calling_code(str(row.get("CountryCode") or ""))
+        full = to_e164(number, region=cc_region or "GB")
+        if cc_region and not full.startswith("+"):
+            full = f"+{phonenumbers.country_code_for_region(cc_region)} {full}"
+        full = full[:32]
         is_primary = bool(row.get("IsPrimary"))
         if is_primary and PersonPhone.objects.filter(contact=contact, is_primary=True).exists():
             is_primary = False

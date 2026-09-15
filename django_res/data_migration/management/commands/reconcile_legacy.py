@@ -45,6 +45,7 @@ from data_migration.legacy_db import legacy_cursor
 from data_migration.loaders._util import legacy_deleted_sql
 from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
 from data_migration.loaders.integrations import SyncRecordZohoLoader, zoho_id_column_exists
+from data_migration.loaders.people import COMPANY_PLACEHOLDERS
 from data_migration.loaders.pricing import PLAN_LEGACY_PREFIX, PRICED_ROW_PREDICATE
 from data_migration.loaders.sentinels import (
     CLIENT_LEGACY_PREFIX,
@@ -158,6 +159,9 @@ def _eur_legacy_id(model: type[Any]) -> int:
         model._default_manager.filter(code="EUR").values_list("legacy_id", flat=True).first()
     )
     return int(legacy_id) if legacy_id and legacy_id.isdigit() else 0
+
+
+_COMPANY_PLACEHOLDERS_SQL = ", ".join(f"'{p}'" for p in sorted(COMPANY_PLACEHOLDERS))
 
 
 _CHECKS: list[_Check] = [
@@ -366,9 +370,11 @@ _CHECKS: list[_Check] = [
         # space but NOT internal whitespace, so the rare "Dune  Travel" vs
         # "Dune Travel" pair the helper merges shows as a small positive gap —
         # bump expected_gap at the first dry-run if so. Blank companies are
-        # excluded both sides (helper returns None → no org).
+        # excluded both sides (helper returns None → no org), and so are the
+        # BUG-030 §15 placeholders (`COMPANY_PLACEHOLDERS`: 226/233 are "NA").
         "SELECT COUNT(DISTINCT LTRIM(RTRIM(Company))) FROM VillaContact "
-        "WHERE LTRIM(RTRIM(ISNULL(Company, ''))) <> ''",
+        "WHERE LTRIM(RTRIM(ISNULL(Company, ''))) <> '' "
+        f"AND UPPER(LTRIM(RTRIM(Company))) NOT IN ({_COMPANY_PLACEHOLDERS_SQL})",
         Organisation,
         "Organisation (agency)",
         # GAP-089: `import_enquiry_sheet` mints agencies from the sheet's

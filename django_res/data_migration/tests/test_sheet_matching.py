@@ -15,6 +15,7 @@ from data_migration.sheets.matching import (
     find_or_create_person,
     html_to_text,
     map_tags,
+    match_person_by_email,
     match_person_by_name,
     normalise_name,
     parse_sheet_date,
@@ -362,3 +363,73 @@ def test_parse_sheet_date_ignores_a_time_suffix() -> None:
     assert parse_sheet_date("1/6/2019 00:00") == date(2019, 6, 1)
     assert parse_sheet_date("2019-06-01T09:15:00") == date(2019, 6, 1)
     assert parse_sheet_date("31/12/2020") == date(2020, 12, 31)
+
+
+# --- BUG-030 §18: deterministic CUSTOMER-first e-mail match ---
+
+
+def test_match_person_by_email_prefers_the_customer_over_a_contact() -> None:
+    _person("Ada", "Lovelace", "ada@example.com", kind=PersonKind.CONTACT)
+    customer = _person("Ada", "Lovelace", "ada@example.com", kind=PersonKind.CUSTOMER)
+
+    assert match_person_by_email("ADA@example.com ", active_only=True) == customer
+
+
+def test_match_person_by_email_ties_break_on_pk() -> None:
+    first = _person("Ada", "Lovelace", "ada@example.com", kind=PersonKind.CUSTOMER)
+    _person("Ada", "Lovelace", "ada@example.com", kind=PersonKind.CUSTOMER)
+
+    assert match_person_by_email("ada@example.com", active_only=True) == first
+
+
+def test_match_person_by_email_active_only_ignores_inactive_people() -> None:
+    _person("Ada", "Lovelace", "ada@example.com", status=PersonStatus.INACTIVE)
+
+    assert match_person_by_email("ada@example.com", active_only=True) is None
+    assert match_person_by_email("ada@example.com", active_only=False) is not None
+
+
+def test_match_person_by_email_any_status_still_puts_active_first() -> None:
+    _person(
+        "Ada", "Lovelace", "ada@example.com", status=PersonStatus.INACTIVE, kind=PersonKind.CUSTOMER
+    )
+    active = _person("Ada", "Lovelace", "ada@example.com", kind=PersonKind.CONTACT)
+
+    assert match_person_by_email("ada@example.com", active_only=False) == active
+
+
+def test_match_person_by_email_skips_a_namesake_disagreement() -> None:
+    _person("Orlando", "Fraser", "fraser@example.com", kind=PersonKind.CUSTOMER)
+    jane = _person("Jane", "Fraser", "fraser@example.com", kind=PersonKind.CONTACT)
+
+    assert (
+        match_person_by_email(
+            "fraser@example.com", first_name="Jane", last_name="Fraser", active_only=True
+        )
+        == jane
+    )
+    assert match_person_by_email("fraser@example.com", last_name="Smith", active_only=True) is None
+
+
+def test_match_person_by_email_matches_a_non_primary_address() -> None:
+    person = _person("Ada", "Lovelace", "ada@example.com")
+    PersonEmail.objects.create(contact=person, email="ada@work.example", is_primary=False)
+
+    assert match_person_by_email("ada@work.example", active_only=True) == person
+
+
+def test_match_person_by_email_blank_or_invalid_address_is_none() -> None:
+    _person("Ada", "Lovelace", "ada@example.com")
+    assert match_person_by_email("", active_only=False) is None
+    assert match_person_by_email("not-an-email", active_only=False) is None
+
+
+def test_find_or_create_person_uses_the_customer_first_match() -> None:
+    _person("Ada", "Lovelace", "ada@example.com", kind=PersonKind.CONTACT)
+    customer = _person("Ada", "Lovelace", "ada@example.com", kind=PersonKind.CUSTOMER)
+
+    match = find_or_create_person(
+        email="ada@example.com", first_name="Ada", last_name="Lovelace", legacy_id="sheet-person-9"
+    )
+
+    assert match.person == customer

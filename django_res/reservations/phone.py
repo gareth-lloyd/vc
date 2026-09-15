@@ -33,7 +33,7 @@ def to_e164(
     if not trimmed:
         return ""
 
-    parse_region = region or _region_from_calling_code(country_code)
+    parse_region = region or region_from_calling_code(country_code)
 
     try:
         parsed = phonenumbers.parse(trimmed, parse_region)
@@ -45,7 +45,7 @@ def to_e164(
     return trimmed
 
 
-def _region_from_calling_code(country_code: str | None) -> str | None:
+def region_from_calling_code(country_code: str | None) -> str | None:
     """Map a numeric calling code (``"44"``) to an ISO region (``"GB"``)."""
     if not country_code:
         return None

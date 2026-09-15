@@ -166,22 +166,6 @@ def test_apply_updates_singleton_with_currency_and_is_idempotent() -> None:
 
 
 @pytest.mark.django_db
-def test_load_rows_skips_on_since_without_touching_the_singleton() -> None:
-    # Delta runs must not clobber operator edits made through the new
-    # PATCH /property-defaults endpoint during the cutover window.
-    defaults = PropertyDefaults.get_solo()
-    defaults.min_nights_rental = 3
-    defaults.save()
-
-    loader = PropertyDefaultsLoader(since="2026-07-01T00:00:00")
-    report = LoadReport(loader=loader.name)
-    loader._load_rows([_legacy_row()], report)
-
-    assert PropertyDefaults.get_solo().min_nights_rental == 3
-    assert report.skipped == 1 and report.updated == 0
-
-
-@pytest.mark.django_db
 def test_load_rows_empty_table_is_a_skip_not_a_crash() -> None:
     loader = PropertyDefaultsLoader()
     report = LoadReport(loader=loader.name)

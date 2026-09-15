@@ -315,13 +315,6 @@ def test_failing_group_is_isolated_and_reported(
     assert list(RatePlan.objects.values_list("legacy_id", flat=True)) == ["villa:900:EUR"]
 
 
-def test_apply_since_is_a_no_op() -> None:
-    """Regrouping is a function of the villa's whole season set, so a `--since`
-    delta would merge against seasons it can't see: every pass is a full load."""
-    loader = RatePlanLoader(since="2026-01-01T00:00:00")
-    assert loader._apply_since("SELECT 1") == "SELECT 1"
-
-
 # --- GAP-037: Inclusion → PropertyService per season ------------------------
 
 

@@ -10,13 +10,12 @@ opt-in (`is_mandatory=False`).
 
 Two contracts follow from "staff refine kind/calc/window in the SPA":
 
-- **Design fields are create-only.** A re-run (or `--since` delta) refreshes
+- **Design fields are create-only.** An upsert onto an existing row refreshes
   only what legacy can actually change — `name`, `description`, `amount` —
   and never resets `kind`, `calc`, `is_mandatory`, the window, the party
   bounds, `sort_order`, `is_active` or `currency` on an existing row.
-- **A full run retires what legacy deleted.** Ported extras absent from a
-  full (non-`--since`) result set are set `is_active=False`; a `--since`
-  delta cannot see deletions and leaves them alone (CUTOVER.md §4i).
+- **A run retires what legacy deleted.** Ported extras absent from the
+  result set are set `is_active=False` (CUTOVER.md §4i).
 
 `RateBandLoader` excludes these rows from the rate grid; this loader is the
 only reader of them.
@@ -62,8 +61,6 @@ class ExtraLoader(BaseLoader):
             row["SortOrder"] = rank.get(villa, 0)
             rank[villa] = row["SortOrder"] + 1
         super()._load_rows(rows, report)
-        if self.since:
-            return
         seen = {str(r["ID"]) for r in rows if r.get("ID") is not None}
         stale = Extra.objects.filter(legacy_id__isnull=False, is_active=True).exclude(
             legacy_id__in=seen

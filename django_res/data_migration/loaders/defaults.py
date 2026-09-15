@@ -7,12 +7,6 @@ the first legacy row onto `PropertyDefaults.get_solo()` and never writes a
 `legacy_id` (the model has none). Idempotent — re-running re-applies the same
 values.
 
-`--since` SKIPS the loader entirely (with a warning): during the cutover
-window staff may correct the defaults through the new
-`PATCH /property-defaults` endpoint, and a delta run must not clobber those
-edits with the stale legacy row. A full (no `--since`) re-run re-applies
-legacy deliberately.
-
 Deliberately NOT mapped (matching `PropertyLoader._write_settings`, which
 ignores the same legacy columns on VillaMaster):
 - `AvailabilityStatus` / `PricesEnteredType` — the port hardcodes
@@ -24,8 +18,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any
-
-import structlog
 
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.loaders.finance import (
@@ -39,8 +31,6 @@ from data_migration.loaders.finance import (
 from data_migration.loaders.properties import _DAY_MAP
 from pricing.models.currency import Currency
 from properties.models.defaults import PropertyDefaults
-
-logger = structlog.get_logger(__name__)
 
 
 def _defaults_updates(row: dict[str, Any]) -> dict[str, Any]:
@@ -114,22 +104,7 @@ class PropertyDefaultsLoader(BaseLoader):
     target_model = PropertyDefaults
     legacy_query = CPD_QUERY
 
-    def _apply_since(self, query: str) -> str:
-        # Deliberate no-op: the table has no `UpdatedAt` (its audit column is
-        # `Updatedon`), and the skip decision lives in `_load_rows`.
-        return query
-
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
-        if self.since:
-            # Delta runs must not clobber operator edits made through the new
-            # PATCH /property-defaults endpoint during the cutover window.
-            logger.warning(
-                "data_migration.property_defaults_since_skipped",
-                since=str(self.since),
-                reason="singleton re-apply would clobber cutover-window operator edits",
-            )
-            report.skipped += 1
-            return
         if not rows:
             report.skipped += 1
             return

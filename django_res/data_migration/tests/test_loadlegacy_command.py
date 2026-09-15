@@ -18,13 +18,11 @@ from django.core.management.base import CommandError
 
 from data_migration.base import LoadReport
 from data_migration.management.commands import loadlegacy
+from data_migration.registry import LOADERS
 
 
 class _OkLoader:
     name = "ok"
-
-    def __init__(self, since: str | None = None) -> None:
-        self.since = since
 
     def load(self) -> LoadReport:
         return LoadReport(loader=self.name, created=2)
@@ -33,18 +31,12 @@ class _OkLoader:
 class _CrashLoader:
     name = "crash"
 
-    def __init__(self, since: str | None = None) -> None:
-        self.since = since
-
     def load(self) -> LoadReport:
         raise RuntimeError("legacy schema surprise")
 
 
 class _ErrorReportLoader:
     name = "haserrors"
-
-    def __init__(self, since: str | None = None) -> None:
-        self.since = since
 
     def load(self) -> LoadReport:
         report = LoadReport(loader=self.name)
@@ -115,3 +107,14 @@ def test_reported_errors_exit_nonzero_after_summary(
     output = out.getvalue()
     assert "bad row" in output  # summary (incl. error detail) printed first
     assert synced == [True]
+
+
+def test_since_flag_is_retired() -> None:
+    # BUG-029: the load is a one-shot into a fresh DB; there is no delta mode.
+    with pytest.raises(CommandError, match="since"):
+        call_command("loadlegacy", "--all", "--since", "2026-01-01T00:00:00")
+
+
+def test_every_registered_loader_constructs_without_arguments() -> None:
+    for name, loader_cls in LOADERS.items():
+        assert loader_cls().name == name

@@ -51,17 +51,11 @@ def test_query_omits_timestamps_when_absent() -> None:
 def test_query_orders_by_id_for_deterministic_duplicate_resolution() -> None:
     # When two source rows share one ZohoId (VillaMaster 88 & 339), the link
     # must attach to the lowest legacy Id reproducibly — so every fetch is
-    # ordered by Id, including the --since delta path.
-    loader = SyncRecordZohoLoader(since="2026-05-13T17:00:00")
-    assert loader._query(_property_spec()).endswith("ORDER BY Id")
-
-
-def test_query_applies_since_only_to_timestamped_tables() -> None:
-    loader = SyncRecordZohoLoader(since="2026-05-13T17:00:00")
-    assert "UpdatedAt > '2026-05-13T17:00:00'" in loader._query(_property_spec())
-    # VillaContact has no UpdatedAt column → --since is silently ignored
-    # (mirrors the documented behaviour for timestamp-less legacy tables).
-    assert "UpdatedAt" not in loader._query(_contact_spec())
+    # ordered by Id.
+    loader = SyncRecordZohoLoader()
+    assert loader._query(_property_spec()) == (
+        "SELECT Id, ZohoId, CreatedAt, UpdatedAt FROM VillaMaster ORDER BY Id"
+    )
 
 
 def test_specs_cover_all_five_zoho_tables() -> None:

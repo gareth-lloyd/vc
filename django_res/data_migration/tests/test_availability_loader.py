@@ -216,17 +216,11 @@ def test_run_overlapping_imported_booking_is_skipped(booking: Booking) -> None:
     assert report.errors == []
 
 
-def test_since_is_ignored_and_today_is_stamped() -> None:
-    """`--since` is a logged no-op (run coalescing needs the full future
-    window) and `_apply_since` is where load-time "today" lands in the SQL."""
-    loader = AvailabilityBlockLoader(since="2026-01-01T00:00:00")
+def test_legacy_query_stamps_load_time_today() -> None:
+    query = AvailabilityBlockLoader().legacy_query
 
-    query = loader._apply_since(loader.legacy_query)
-
-    today = timezone.localdate().isoformat()
-    assert f"AvailableDate >= '{today}'" in query
-    assert "UpdatedAt" not in query
-    assert "2026-01-01" not in query
+    assert f"AvailableDate >= '{timezone.localdate().isoformat()}'" in query
+    assert "{today}" not in query
 
 
 # --- reconcile check ---

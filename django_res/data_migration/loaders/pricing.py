@@ -352,18 +352,6 @@ class RatePlanLoader(BaseLoader):
         "WHERE s.DeletedAt IS NULL"
     )
 
-    def _apply_since(self, query: str) -> str:
-        # Deliberate no-op: the regroup is a function of the villa's whole
-        # season set, so a `--since` delta would merge against seasons it
-        # can't see. The table is small; every pass is a full reload.
-        if self.since:
-            logger.warning(
-                "data_migration.rate_plan_since_ignored",
-                since=str(self.since),
-                reason="season regroup needs the full row set; full reload",
-            )
-        return query
-
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
         """Group the season rows by (villa, resolved currency), then upsert one
         plan per group inside its own savepoint — one bad group can't abort
@@ -713,18 +701,6 @@ class RateBandLoader(BaseLoader):
         "LEFT JOIN VillaOccupencyPrice o ON o.VillaSeasonRateId = r.ID "
         "WHERE r.DeletedAt IS NULL AND r.IsExTra <> 1"
     )
-
-    def _apply_since(self, query: str) -> str:
-        # Deliberate no-op: overlap resolution is a function of a regime's
-        # whole row set, so a `--since` delta would mis-trim against rows it
-        # can't see. The table is small; every pass is a full reload.
-        if self.since:
-            logger.warning(
-                "data_migration.rate_rule_since_ignored",
-                since=str(self.since),
-                reason="overlap resolution needs the full row set; full reload",
-            )
-        return query
 
     @staticmethod
     def _resolve_plan_key(

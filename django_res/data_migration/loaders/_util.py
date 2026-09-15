@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
-
-from data_migration.base import legacy_datetime_literal
 
 
 def legacy_row_deleted(row: dict[str, Any]) -> bool:
@@ -28,18 +25,6 @@ def legacy_deleted_sql(alias: str = "") -> str:
     `alias` is the table alias including its dot (`"r."`), or empty.
     """
     return f"({alias}DeletedAt IS NOT NULL OR ISNULL({alias}DeletedBy, '') <> '')"
-
-
-def legacy_changed_since_sql(since: datetime) -> str:
-    """`--since` predicate for legacy tables whose `sp_*` write paths stamp
-    a DIFFERENT column per action: INSERT sets `CreatedAt`, UPDATE sets
-    `UpdateAt` (no "d"), soft-DELETE sets only `DeletedAt`. Filtering on
-    `UpdateAt` alone would miss exactly the rows a delta load exists to
-    catch — the inserts and the deletions (GAP-107; `VillaRegion` /
-    `VillaCountry`).
-    """
-    literal = legacy_datetime_literal(since)
-    return f"(UpdateAt > '{literal}' OR DeletedAt > '{literal}' OR CreatedAt > '{literal}')"
 
 
 def legacy_currency_for(row: dict[str, Any], prop: Any) -> Any:

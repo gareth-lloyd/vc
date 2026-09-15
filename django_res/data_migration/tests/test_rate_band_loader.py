@@ -302,12 +302,6 @@ def test_row_to_band_occupancy_band_open_top_clamps_to_capacity(loaded_plan: Rat
     assert (band.min_party, band.max_party) == (6, 8)
 
 
-def test_apply_since_is_a_noop() -> None:
-    """Overlap resolution needs the whole season's row set — no `--since` delta."""
-    loader = RateBandLoader(since="2025-01-01T00:00:00")
-    assert loader._apply_since(loader.legacy_query) == loader.legacy_query
-
-
 @pytest.mark.django_db
 def test_load_rows_double_run_converges(loaded_plan: RatePlan) -> None:
     def rows() -> list[dict[str, object]]:

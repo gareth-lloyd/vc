@@ -187,8 +187,7 @@ class BookingLoader(BaseLoader):
         # so back-stamp via a queryset `.update()` (bypasses auto_now_add,
         # fires no signals). SQL Server datetimes are naive → `make_aware`
         # (USE_TZ, same as the integrations loader). Idempotent: re-runs
-        # rewrite the same value. NOTE a `--since` delta run skips unmodified
-        # rows — repairing earlier loads needs one FULL run (CUTOVER.md).
+        # rewrite the same value.
         legacy_created = row.get("CreatedAt")
         if legacy_created is not None:
             if timezone.is_naive(legacy_created):
@@ -329,17 +328,6 @@ class BookingChargeItemLoader(BaseLoader):
     name = "booking_charge_item"
     target_model = BookingChargeItem
     legacy_query = "SELECT Id, BookingId, CurrencyId, Price, Notes FROM VillaBookingDetails"
-
-    def _apply_since(self, query: str) -> str:
-        # Deliberate no-op: VillaBookingDetails has no UpdatedAt column, and
-        # the removal sweep in `_load_rows` needs the full row set anyway.
-        if self.since:
-            logger.warning(
-                "data_migration.charge_item_since_ignored",
-                since=str(self.since),
-                reason="VillaBookingDetails has no UpdatedAt; full reload",
-            )
-        return query
 
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
         with _suppress_schedule_resync():

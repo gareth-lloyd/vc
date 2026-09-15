@@ -34,9 +34,6 @@ class RoomLoader(BaseLoader):
         "r.BedSofa, r.BedChildrens, p.Name AS PlacementName "
         "FROM VillaRooms r LEFT JOIN VillaRoomsPlacement p ON p.Id = r.PlacementId"
     )
-    # With two tables in the FROM, an unqualified `UpdatedAt` from
-    # `_apply_since` would be ambiguous SQL.
-    since_column = "r.UpdatedAt"
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         prop = Property.objects.filter(legacy_id=str(row.get("VillaId") or "")).first()

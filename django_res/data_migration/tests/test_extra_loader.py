@@ -172,8 +172,8 @@ def test_load_is_idempotent_keyed_on_legacy_id_with_dense_sort_order(
 def test_rerun_refreshes_legacy_fields_but_keeps_staff_refinements(
     villa: Property, eur: Currency, gbp: Currency
 ) -> None:
-    """Staff refine kind/calc/window/activity/currency in the SPA; a re-run
-    (or `--since` delta) may only touch what legacy can change."""
+    """Staff refine kind/calc/window/activity/currency in the SPA; an upsert
+    onto an existing row may only touch what legacy can change."""
     loader = ExtraLoader()
     _load(loader, [_row()])
     Extra.objects.filter(legacy_id="7").update(
@@ -220,19 +220,3 @@ def test_full_run_retires_extras_legacy_deleted_since(villa: Property, eur: Curr
     assert Extra.objects.get(legacy_id="8").is_active is False
     assert Extra.objects.get(legacy_id="7").is_active is True
     assert Extra.objects.get(name="Late check-out").is_active is True
-
-
-@pytest.mark.django_db
-def test_since_delta_never_retires(villa: Property, eur: Currency) -> None:
-    # A delta result set is partial by construction — absence means
-    # "unchanged", not "deleted".
-    _load(ExtraLoader(), [_row(), _row(ID=8, Name="Cot hire")])
-    _load(ExtraLoader(since="2026-01-01T00:00:00"), [_row()])
-    assert Extra.objects.get(legacy_id="8").is_active is True
-
-
-def test_since_uses_legacy_updated_at() -> None:
-    loader = ExtraLoader(since="2026-01-01T00:00:00")
-    assert loader._apply_since(loader.legacy_query).endswith(
-        "AND UpdatedAt > '2026-01-01T00:00:00'"
-    )

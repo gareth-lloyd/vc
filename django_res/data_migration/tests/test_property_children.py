@@ -99,16 +99,6 @@ class TestRoomLoaderPlacement:
         assert (second.created, second.updated) == (0, 1)
         assert Room.objects.filter(legacy_id="1").count() == 1
 
-    def test_since_clause_is_alias_qualified(self) -> None:
-        # `loadlegacy --since` appends a WHERE via `_apply_since`; with the
-        # placement JOIN in the FROM, an unqualified `UpdatedAt` would be
-        # ambiguous SQL. The dict-row tests never execute SQL, so pin the
-        # generated query text itself.
-        loader = RoomLoader(since="2026-01-01T00:00:00")
-        sql = loader._apply_since(loader.legacy_query)
-        assert sql.endswith("WHERE r.UpdatedAt > '2026-01-01T00:00:00'")
-        assert " UpdatedAt >" not in sql.replace("r.UpdatedAt", "")
-
 
 @pytest.mark.django_db
 def test_load_rows_persists_sort_order_from_mapping_order() -> None:

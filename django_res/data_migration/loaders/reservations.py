@@ -251,8 +251,6 @@ class EnquiryLoader(BaseLoader):
         # cutover day" in Customer-360 and Zoho. Same technique as
         # BookingLoader: `auto_now_add` ignores assignment, so a queryset
         # `.update()` after the upsert (naive SQL Server datetime → aware).
-        # Idempotent on rerun; a `--since` delta run skips unmodified rows, so
-        # repairing earlier loads needs one FULL run (CUTOVER.md).
         legacy_created = row.get("CreatedAt")
         if legacy_created is None:
             return

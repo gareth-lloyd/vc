@@ -10,18 +10,15 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-import structlog
 from django.utils.text import slugify
 
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.declarative import DeclarativeLoader
-from data_migration.loaders._util import legacy_changed_since_sql, legacy_row_deleted
+from data_migration.loaders._util import legacy_row_deleted
 from data_migration.loaders.sentinels import unknown_country
 from pricing.models.currency import Currency
 from properties.models.features import Feature, FeatureCategory
 from properties.models.geo import Country, NearbyPlaceType, Region
-
-logger = structlog.get_logger(__name__)
 
 
 class RegionLoader(DeclarativeLoader):
@@ -42,11 +39,6 @@ class RegionLoader(DeclarativeLoader):
         # may point at them) but as `is_active=False` — GAP-102's "retired:
         # readable, not selectable".
         return "SELECT Id, Name, Slug, CountryId, DeletedAt, DeletedBy FROM VillaRegion"
-
-    def _apply_since(self, query: str) -> str:
-        if not self.since:
-            return query
-        return f"{query} WHERE {legacy_changed_since_sql(self.since)}"
 
     def transform_extra(self, row: dict[str, Any], kwargs: dict[str, Any]) -> dict[str, Any] | None:
         # `Region.name` is 128 wide; legacy `Name` is nvarchar(500).
@@ -87,16 +79,9 @@ class CurrencyLoader(BaseLoader):
     target_model = Currency
     legacy_query = "SELECT Id, Name, Code, Symbol, DeletedAt, DeletedBy FROM VillaCurrency"
 
-    def __init__(self, since: str | None = None) -> None:
-        super().__init__(since)
+    def __init__(self) -> None:
+        super().__init__()
         self._deleted_legacy_ids: set[str] = set()
-
-    def _apply_since(self, query: str) -> str:
-        # VillaCurrency has no UpdatedAt/UpdateAt column, so there is nothing
-        # to delta on; the table is tiny, so `--since` reloads it in full.
-        if self.since:
-            logger.warning("data_migration.currency_since_full_reload", since=str(self.since))
-        return query
 
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
         # Live rows first (stable sort; not in SQL — see CountryLoader).

@@ -27,15 +27,6 @@ class Command(BaseCommand):
             action="store_true",
             help="List registered loaders and exit.",
         )
-        parser.add_argument(
-            "--since",
-            default=None,
-            help=(
-                "ISO-8601 datetime. Loaders append "
-                "`AND UpdatedAt > @since` to their legacy query so we only "
-                "fetch rows changed during the cutover window."
-            ),
-        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         if options["list"]:
@@ -56,8 +47,6 @@ class Command(BaseCommand):
                 f"Unknown loader(s): {', '.join(unknown)}. Known: {', '.join(LOADERS) or '(none)'}",
             )
 
-        since = options.get("since")
-
         # Each loader runs in its own try/except so one crash (e.g. a legacy
         # schema surprise) can't abort the run: the remaining loaders still
         # execute, the sequence sync still happens for whatever loaded, and the
@@ -66,7 +55,7 @@ class Command(BaseCommand):
         reports: list[LoadReport] = []
         for name in names:
             try:
-                reports.append(LOADERS[name](since=since).load())
+                reports.append(LOADERS[name]().load())
             except Exception as exc:
                 report = LoadReport(loader=name)
                 report.errors.append(("<loader crashed>", repr(exc)))

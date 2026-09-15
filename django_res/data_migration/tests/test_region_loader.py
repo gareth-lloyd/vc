@@ -104,15 +104,3 @@ def test_legacy_query_selects_deletion_columns() -> None:
     query = RegionLoader().legacy_query
     assert "DeletedAt" in query
     assert "DeletedBy" in query
-
-
-def test_apply_since_sees_inserts_updates_and_deletes() -> None:
-    # Legacy `sp_regions` stamps `CreatedAt` on INSERT, `UpdateAt` (no "d")
-    # on UPDATE and only `DeletedAt` on DELETE — a delta load must see all
-    # three or it is blind to exactly the rows GAP-107 retires.
-    loader = RegionLoader(since="2026-01-01T00:00:00")
-    query = loader._apply_since(loader.legacy_query)
-    assert query.endswith(
-        "FROM VillaRegion WHERE (UpdateAt > '2026-01-01T00:00:00' "
-        "OR DeletedAt > '2026-01-01T00:00:00' OR CreatedAt > '2026-01-01T00:00:00')"
-    )

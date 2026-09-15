@@ -424,20 +424,3 @@ def test_zero_outcomes_drop_a_previously_loaded_line(booking: Booking, usd: Curr
     FxRate.objects.create(base=usd, quote=booking.currency, rate="0.10", as_of=date(2026, 6, 1))
     BookingChargeItemLoader()._process_row(_row(CurrencyId=3, Price=Decimal("0.01")), report)
     assert not BookingChargeItem.objects.filter(legacy_id="31").exists()
-
-
-# ---------------------------------------------------------------------------
-# --since
-# ---------------------------------------------------------------------------
-
-
-def test_since_is_ignored_with_a_warning() -> None:
-    """VillaBookingDetails has no UpdatedAt and the removal sweep needs the
-    full row set — `--since` must not narrow the query (RateBandLoader idiom)."""
-    import structlog.testing
-
-    loader = BookingChargeItemLoader(since="2026-01-01T00:00:00")
-    with structlog.testing.capture_logs() as logs:
-        assert loader._apply_since(loader.legacy_query) == loader.legacy_query
-
-    assert any(log["event"] == "data_migration.charge_item_since_ignored" for log in logs)

@@ -808,10 +808,7 @@ class Command(BaseCommand):
         external_id) must not be counted as a captured external id, or it would
         mask a genuinely missing one.
 
-        Limitation: this compares counts, not values. A full `loadlegacy --all`
-        refreshes every external_id (`update_or_create`), but a value that
-        drifted on a delta-only `--since` load whose `UpdatedAt` did not advance
-        would not be caught here.
+        Limitation: this compares counts, not values.
 
         Not every dump carries ZohoId on every spec table (the 24-Apr-2025
         prod dump lacks it on VillaQuotationMaster/VillaBooking): a table

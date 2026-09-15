@@ -132,17 +132,6 @@ def test_legacy_query_selects_deletion_columns() -> None:
     assert "DeletedBy" in CountryLoader.legacy_query
 
 
-def test_apply_since_sees_inserts_updates_and_deletes() -> None:
-    # Legacy `sp_countries` stamps `CreatedAt` on INSERT, `UpdateAt` (no
-    # "d") on UPDATE and only `DeletedAt` on DELETE.
-    loader = CountryLoader(since="2026-01-01T00:00:00")
-    query = loader._apply_since(loader.legacy_query)
-    assert query.endswith(
-        "FROM VillaCountry WHERE (UpdateAt > '2026-01-01T00:00:00' "
-        "OR DeletedAt > '2026-01-01T00:00:00' OR CreatedAt > '2026-01-01T00:00:00')"
-    )
-
-
 @pytest.mark.django_db
 def test_legacy_row_without_iso_attaches_to_unknown_sentinel() -> None:
     loader = CountryLoader()

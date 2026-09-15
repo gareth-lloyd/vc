@@ -27,7 +27,7 @@ from decimal import Decimal
 from typing import Any
 
 from data_migration.base import BaseLoader, LoadReport
-from data_migration.loaders._util import legacy_changed_since_sql, legacy_row_deleted
+from data_migration.loaders._util import legacy_row_deleted
 from data_migration.loaders.sentinels import unknown_country
 from properties.models.geo import Country
 
@@ -56,24 +56,17 @@ class CountryLoader(BaseLoader):
         "FROM VillaCountry"
     )
 
-    def __init__(self, since: str | None = None) -> None:
-        super().__init__(since)
+    def __init__(self) -> None:
+        super().__init__()
         # legacy ids of the soft-deleted rows in the current run — lets a
         # live row displace an iso2 claim a deleted twin made on an earlier
         # run (see `_process_row`).
         self._deleted_legacy_ids: set[str] = set()
 
-    def _apply_since(self, query: str) -> str:
-        if not self.since:
-            return query
-        return f"{query} WHERE {legacy_changed_since_sql(self.since)}"
-
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
         # Live rows claim an iso2 before deleted duplicates (stable sort, so
         # cursor order is otherwise preserved), so a deleted twin can never
         # stamp its legacy_id onto the ISO seed ahead of the live row.
-        # Sorted here rather than in SQL: `_apply_since` appends a WHERE to
-        # the end of the query, so an ORDER BY there would break `--since`.
         self._deleted_legacy_ids = {
             str(r.get(self.legacy_pk_column)) for r in rows if legacy_row_deleted(r)
         }

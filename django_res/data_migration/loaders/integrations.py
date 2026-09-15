@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, ClassVar
 
 import structlog
@@ -44,7 +43,7 @@ from django.db import models, transaction
 from django.utils import timezone
 
 from accounts.models import Person
-from data_migration.base import LoadReport, legacy_datetime_literal
+from data_migration.base import LoadReport
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from integrations.enums import SyncDirection, SyncProvider, SyncStatus
 from integrations.models import SyncRecord
@@ -78,8 +77,7 @@ class _ZohoSpec:
     """One legacy `ZohoId`-carrying table and the local model it maps to.
 
     `has_timestamps` is False for tables without `CreatedAt`/`UpdatedAt`
-    (only `VillaContact`); those skip the `last_pushed_at` backfill and ignore
-    `--since`.
+    (only `VillaContact`); those skip the `last_pushed_at` backfill.
 
     `expected_gap` is the documented, accepted continuity gap for the table in
     `reconcile_legacy`'s Zoho section (mirrors `_Check.expected_gap` in the
@@ -119,15 +117,9 @@ class SyncRecordZohoLoader:
         _ZohoSpec("VillaBooking", Booking, has_timestamps=True),
     )
 
-    def __init__(self, since: str | None = None) -> None:
-        # Validate up-front so an invalid CLI arg fails fast.
-        self.since: datetime | None = datetime.fromisoformat(since) if since else None
-
     def _query(self, spec: _ZohoSpec) -> str:
         cols = "Id, ZohoId, CreatedAt, UpdatedAt" if spec.has_timestamps else "Id, ZohoId"
         query = f"SELECT {cols} FROM {spec.table}"
-        if self.since and spec.has_timestamps:
-            query = f"{query} WHERE UpdatedAt > '{legacy_datetime_literal(self.since)}'"
         # Deterministic order so that when two source rows share one ZohoId
         # (VillaMaster 88 & 339, see SPECS), the link always attaches to the
         # lowest legacy Id and the duplicate is skipped reproducibly.

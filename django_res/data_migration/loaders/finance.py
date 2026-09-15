@@ -380,8 +380,8 @@ class PropertyFinanceLoader(BaseLoader):
     target_model = PropertyFinance
     legacy_query = f"SELECT {_VILLAFINANCE_COLUMNS} FROM VillaFinance WHERE VillaId IS NOT NULL"
 
-    def __init__(self, since: str | None = None, reference_date: date | None = None) -> None:
-        super().__init__(since)
+    def __init__(self, reference_date: date | None = None) -> None:
+        super().__init__()
         # Rate rows ending before this date don't vote on a villa's commission
         # (D7). Defaults to the load day; recorded in DRYRUN_LOG per run.
         self.reference_date = reference_date or date.today()
@@ -430,8 +430,8 @@ class PropertyFinanceLoader(BaseLoader):
 
     def _cpd(self) -> dict[str, Any]:
         # The global defaults are read from legacy, not from the loaded
-        # PropertyDefaults singleton (operator-editable, skipped under
-        # `--since`). One round trip per load; tests seed the cache.
+        # PropertyDefaults singleton (operator-editable). One round trip per
+        # load; tests seed the cache.
         if not hasattr(self, "_cpd_cache"):
             self._cpd_cache = fetch_config_property_default()
         return self._cpd_cache

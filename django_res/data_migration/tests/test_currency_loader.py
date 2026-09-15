@@ -119,10 +119,3 @@ def test_legacy_query_selects_deletion_columns() -> None:
     query = CurrencyLoader().legacy_query
     assert "DeletedAt" in query
     assert "DeletedBy" in query
-
-
-def test_apply_since_is_a_no_op() -> None:
-    # VillaCurrency has no UpdatedAt/UpdateAt column: a delta WHERE would
-    # error, and the 7-row table is cheap to reload in full.
-    loader = CurrencyLoader(since="2026-01-01T00:00:00")
-    assert loader._apply_since(loader.legacy_query) == loader.legacy_query

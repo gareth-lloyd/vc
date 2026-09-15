@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import pytest
 
 from data_migration.loaders._util import (
-    legacy_changed_since_sql,
     legacy_deleted_sql,
     legacy_quotation_no,
     legacy_row_deleted,
@@ -36,16 +33,6 @@ def test_legacy_row_deleted(row: dict[str, object], expected: bool) -> None:
 def test_legacy_deleted_sql_is_the_or_predicate() -> None:
     assert legacy_deleted_sql() == "(DeletedAt IS NOT NULL OR ISNULL(DeletedBy, '') <> '')"
     assert legacy_deleted_sql("r.") == "(r.DeletedAt IS NOT NULL OR ISNULL(r.DeletedBy, '') <> '')"
-
-
-def test_legacy_changed_since_sql_covers_insert_update_and_delete_stamps() -> None:
-    # Legacy `sp_regions` / `sp_countries` stamp a different column per
-    # action; a delta load must see all three.
-    clause = legacy_changed_since_sql(datetime(2026, 1, 2, 3, 4, 5))
-    assert clause == (
-        "(UpdateAt > '2026-01-02T03:04:05' OR DeletedAt > '2026-01-02T03:04:05' "
-        "OR CreatedAt > '2026-01-02T03:04:05')"
-    )
 
 
 @pytest.mark.parametrize(

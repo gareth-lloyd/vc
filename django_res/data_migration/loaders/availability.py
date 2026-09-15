@@ -166,29 +166,18 @@ class AvailabilityBlockLoader(BaseLoader):
     name = "availability_block"
     target_model = BookingHold
     legacy_pk_column: ClassVar[str] = "PropertyId"
-    # `{today}` is stamped by `_apply_since` at query time — the load window
-    # (and so the loaded block count) is relative to the day the loader runs.
-    legacy_query = (
-        "SELECT PropertyId, AvailableDate, AvailableStatus, Notes, CreatedBy "
-        "FROM VillaAvailability "
-        "WHERE AvailableStatus IN (30, 40, 50, 60) "
-        "AND AvailableDate >= '{today}' "
-        "ORDER BY PropertyId, AvailableDate"
-    )
 
-    def _apply_since(self, query: str) -> str:
-        # Deliberate `--since` no-op (mirrors rate_rule): run coalescing is a
-        # function of the whole future window, so a delta slice would split
-        # runs at the delta boundary and orphan last run's blocks. Every pass
-        # is a full replace of the loader's own slice. This override is also
-        # the query-build seam: it stamps load-time "today" into the template.
-        if self.since:
-            logger.warning(
-                "data_migration.availability_block_since_ignored",
-                since=str(self.since),
-                reason="run coalescing needs the full future window; full reload",
-            )
-        return query.format(today=timezone.localdate().isoformat())
+    @property
+    def legacy_query(self) -> str:  # type: ignore[override]
+        # Load-time "today": the load window (and so the loaded block count)
+        # is relative to the day the loader runs.
+        return (
+            "SELECT PropertyId, AvailableDate, AvailableStatus, Notes, CreatedBy "
+            "FROM VillaAvailability "
+            "WHERE AvailableStatus IN (30, 40, 50, 60) "
+            f"AND AvailableDate >= '{timezone.localdate().isoformat()}' "
+            "ORDER BY PropertyId, AvailableDate"
+        )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:  # pragma: no cover
         raise NotImplementedError("AvailabilityBlockLoader writes runs via _load_rows")

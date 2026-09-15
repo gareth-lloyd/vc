@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
 from django.db import transaction
 
 from data_migration.base import BaseLoader, LoadReport
@@ -20,6 +21,8 @@ from properties.models.geo import NearbyPlaceType, PropertyNearbyPlace
 from properties.models.images import PropertyImage
 from properties.models.property import Property
 from properties.models.rooms import Room, RoomBeds
+
+logger = structlog.get_logger(__name__)
 
 
 class RoomLoader(BaseLoader):
@@ -195,26 +198,101 @@ class NearbyPlaceLoader(BaseLoader):
         }
 
 
+def _normalised_feature_name(name: object) -> str:
+    # Same shape `FeatureLoader` stores (`strip()[:128]`), so a long legacy
+    # name keys the same as its loaded twin. The reconcile T-SQL uses
+    # `LOWER(LTRIM(RTRIM(Name)))` on the full name: it strips spaces only and
+    # folds case by collation, so tabs/NBSP and non-ASCII case can diverge —
+    # GAP-108 itemises any such row on the live dump.
+    return str(name or "").strip()[:128].lower()
+
+
+def _legacy_id_sort_key(legacy_id: str) -> tuple[int, int | str]:
+    return (0, int(legacy_id)) if legacy_id.isdigit() else (1, legacy_id)
+
+
+def _feature_twins_by_name() -> dict[str, str]:
+    """`{normalised name: legacy_id}` over the loaded `Feature` rows, the
+    lowest legacy_id winning a name. `FeatureLoader` runs first, so "loaded"
+    already means live, named and categorised (a catalog tag stamped with a
+    legacy id — `sync_other_information_tags` — also counts as a twin)."""
+    twins: dict[str, str] = {}
+    for raw_legacy_id, name in Feature.objects.filter(legacy_id__isnull=False).values_list(
+        "legacy_id", "name"
+    ):
+        legacy_id = str(raw_legacy_id)
+        key = _normalised_feature_name(name)
+        if key and (
+            key not in twins or _legacy_id_sort_key(legacy_id) < _legacy_id_sort_key(twins[key])
+        ):
+            twins[key] = legacy_id
+    return twins
+
+
 class PropertyFeatureMappingLoader(BaseLoader):
     """Property↔Feature M2M. Writes to the auto-through table directly.
 
     Doesn't need legacy_id on the through model — we resolve both sides and
     rely on the M2M's implicit unique(property, feature) constraint.
+
+    BUG-030 §11: 457 live villa → soft-deleted feature links used to be
+    dropped because `FeatureLoader` skips deleted features. 41 of the 53
+    deleted features have a live twin by normalised name (55 "Sitting room"
+    → 299, on 242 villas), so `_load_rows` remaps a deleted feature to the
+    loaded twin of the same name and then dedupes `(villa, feature)` keeping
+    the lowest `MappingOrder`. A deleted feature with no twin still skips,
+    logged as `data_migration.deleted_feature_unmapped`. The remap lives in
+    Python (not T-SQL) so it is testable without SQL Server; the reconcile
+    check's legacy side applies the same rule in one derived table.
     """
 
     name = "property_feature"
     target_model = Feature  # placeholder; we override _process_row entirely
     # `MIN(MappingOrder)` collapses any duplicate (FeatureId, VillaId) pairs in
     # the legacy data to one row per pair (lowest display position wins) — the
-    # new PropertyFeature unique constraint would otherwise reject the dups. The
-    # existing GROUP BY already groups by the pair, so MIN is a free aggregate.
+    # new PropertyFeature unique constraint would otherwise reject the dups.
+    # The feature's name and deletion ride along for the remap above. LEFT
+    # JOIN: a mapping whose FeatureId has no VillaFeatures row (no FK in
+    # legacy) still reaches `_process_row` and is counted as skipped.
     legacy_query = (
-        "SELECT FeatureId, VillaId, MIN(MappingOrder) AS MappingOrder "
-        "FROM VillaFeaturesMappings GROUP BY FeatureId, VillaId"
+        "SELECT m.FeatureId, m.VillaId, MIN(m.MappingOrder) AS MappingOrder, "
+        "f.Name AS FeatureName, f.DeletedAt AS FeatureDeletedAt "
+        "FROM VillaFeaturesMappings m "
+        "LEFT JOIN VillaFeatures f ON f.Id = m.FeatureId "
+        "GROUP BY m.FeatureId, m.VillaId, f.Name, f.DeletedAt"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         return None  # unused — _process_row overridden
+
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        super()._load_rows(self._remap_deleted_features(rows), report)
+
+    @staticmethod
+    def _remap_deleted_features(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        twins: dict[str, str] | None = None
+        resolved: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in rows:
+            if row.get("FeatureDeletedAt") is not None:
+                if twins is None:
+                    twins = _feature_twins_by_name()
+                twin = twins.get(_normalised_feature_name(row.get("FeatureName")))
+                if twin is None:
+                    logger.info(
+                        "data_migration.deleted_feature_unmapped",
+                        feature_id=str(row.get("FeatureId")),
+                        feature_name=str(row.get("FeatureName") or "").strip(),
+                        villa_id=str(row.get("VillaId")),
+                    )
+                else:
+                    row = {**row, "FeatureId": twin}
+            key = (str(row.get("VillaId") or ""), str(row.get("FeatureId") or ""))
+            current = resolved.get(key)
+            if current is None or int(row.get("MappingOrder") or 0) < int(
+                current.get("MappingOrder") or 0
+            ):
+                resolved[key] = row
+        return list(resolved.values())
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
         prop = Property.objects.filter(legacy_id=str(row.get("VillaId") or "")).first()
@@ -222,15 +300,15 @@ class PropertyFeatureMappingLoader(BaseLoader):
         if prop is None or feature is None:
             report.skipped += 1
             return
-        # `update_or_create` converges `sort_order` on idempotent re-runs (a
-        # cutover-only loader, so no post-go-live user reorder exists to clobber)
-        # and is the residual-dup safety net — it updates rather than tripping
-        # the unique constraint if the in-SQL MIN dedup ever lets one slip.
+        # `update_or_create` is the residual-dup safety net — it updates rather
+        # than tripping the unique constraint if a pair ever slips past the
+        # `_remap_deleted_features` dedupe. A legacy link is a manual link:
+        # `is_derived=False` even when a GAP-067 derived row got there first.
         through = Property.features.through
         _, created = through.objects.update_or_create(
             property_id=prop.pk,
             feature_id=feature.pk,
-            defaults={"sort_order": int(row.get("MappingOrder") or 0)},
+            defaults={"sort_order": int(row.get("MappingOrder") or 0), "is_derived": False},
         )
         if created:
             report.created += 1

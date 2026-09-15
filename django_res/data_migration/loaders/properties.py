@@ -355,11 +355,15 @@ class PropertyLoader(BaseLoader):
 
 
 class CollectionLoader(BaseLoader):
+    """Live `VillaCollection` rows only. Five collections deleted together on
+    2024-05-28 ("Chef Included" 66, "Exceptional Design" 55, "Walk to
+    restaurants" 34, "Water Front" 59, "WALK TO THE BEACH" 67) are dropped
+    with their 283 live memberships — BUG-030 §13 decision (2026-09-11).
+    """
+
     name = "collection"
     target_model = Collection
-    legacy_query = (
-        "SELECT Id, Name, Description, IsActive=1 FROM VillaCollection WHERE DeletedAt IS NULL"
-    )
+    legacy_query = "SELECT Id, Name, Description FROM VillaCollection WHERE DeletedAt IS NULL"
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         name = (row.get("Name") or "").strip()[:128]
@@ -375,6 +379,12 @@ class CollectionLoader(BaseLoader):
 
 
 class CollectionMembershipLoader(BaseLoader):
+    """`VillaCollectionsMappings` → CollectionMembership. Rows on a deleted
+    collection or an unloaded villa skip (see `CollectionLoader`); duplicate
+    (collection, villa) pairs keep the first row in query order. The
+    reconcile gap (308) itemises those three buckets.
+    """
+
     name = "collection_membership"
     target_model = CollectionMembership
     legacy_query = (

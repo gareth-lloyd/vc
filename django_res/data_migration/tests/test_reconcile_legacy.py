@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
 from io import StringIO
+from typing import cast
 
 import pytest
 from django.core.management import call_command
@@ -25,7 +26,8 @@ from data_migration.management.commands.reconcile_legacy import _Check
 from integrations.enums import SyncProvider
 from integrations.factories import SyncRecordFactory
 from pricing.models.currency import Currency
-from properties.factories import PropertyFactory
+from properties.factories import FeatureFactory, PropertyFactory
+from properties.models.property import Property
 from reservations.factories import EnquiryFactory
 from reservations.models.booking import Booking
 from reservations.models.enquiry import Enquiry
@@ -866,6 +868,8 @@ def test_documented_expected_gaps_are_encoded() -> None:
     assert by_label["CollectionMembership"] == 308
     # BUG-030 §6: the England row (`UK`) no longer mints a 24th Country.
     assert by_label["Country (legacy)"] == -227
+    # BUG-030 §11: pinned 0 until the GAP-108 dry run executes the SQL.
+    assert by_label["PropertyFeature"] == 0
     assert by_label["PropertyFinance"] == 1236
     assert by_label["Currency"] == 4
     # Recalibrated 2026-09-14 (BUG-028) against the 24-Apr-2025 prod dump —
@@ -986,3 +990,43 @@ def test_rate_band_value_checks_count_imported_bands_only() -> None:
     assert priced.loaded_count(priced.model) == 2  # type: ignore[misc]
     unapproved = _check("RateBand unapproved imported (must be 0)")
     assert unapproved.loaded_count(unapproved.model) == 1  # type: ignore[misc]
+
+
+@pytest.mark.django_db
+def test_property_feature_check_counts_manual_links_between_loaded_rows() -> None:
+    """BUG-030 §11: the through table gets its own check. Loaded side = manual
+    (`is_derived=False`) links whose property AND feature both carry a
+    legacy_id — GAP-067 derived rows and staff-made links on organic rows
+    never count."""
+    from properties.models.features import Feature, PropertyFeature
+
+    loaded_prop = cast(Property, PropertyFactory(legacy_id="500"))
+    loaded_feature = cast(Feature, FeatureFactory(legacy_id="42"))
+    derived_feature = cast(Feature, FeatureFactory(legacy_id="43"))
+    staff_feature = cast(Feature, FeatureFactory())
+    organic_prop = cast(Property, PropertyFactory())
+    through = Property.features.through
+    through.objects.create(property=loaded_prop, feature=loaded_feature)
+    through.objects.create(property=loaded_prop, feature=derived_feature, is_derived=True)
+    through.objects.create(property=loaded_prop, feature=staff_feature)  # staff-made feature
+    through.objects.create(property=organic_prop, feature=loaded_feature)  # organic villa
+
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "PropertyFeature")
+    assert check.model is PropertyFeature
+    assert check.expected_gap == 0
+    assert "VillaFeaturesMappings" in check.legacy_query
+    # The legacy side applies the same deleted → live-namesake remap as the
+    # loader, in one derived table, and mirrors PropertyLoader's villa filter.
+    assert "LOWER(LTRIM(RTRIM(t.Name))) = LOWER(LTRIM(RTRIM(f.Name)))" in check.legacy_query
+    # The twin's category must be loadable (named), as FeatureLoader requires.
+    assert "LTRIM(RTRIM(ISNULL(c.Name, ''))) <> ''" in check.legacy_query
+    assert "COUNT(DISTINCT CONCAT(x.VillaId, '-', x.ResolvedId))" in check.legacy_query
+    assert "LTRIM(RTRIM(ISNULL(v.Name, ''))) <> ''" in check.legacy_query
+    assert check.loaded_count is not None
+    assert check.loaded_count(check.model) == 1
+
+
+def test_collection_membership_gap_records_its_composition() -> None:
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "CollectionMembership")
+    assert check.expected_gap == 308
+    assert "VillaCollection WHERE DeletedAt IS NULL" not in check.legacy_query

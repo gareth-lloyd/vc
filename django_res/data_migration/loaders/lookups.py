@@ -17,6 +17,7 @@ from data_migration.declarative import DeclarativeLoader
 from data_migration.loaders._util import country_for_legacy_id, legacy_row_deleted
 from data_migration.loaders.sentinels import unknown_country
 from pricing.models.currency import Currency
+from properties.enums import FeatureServiceType
 from properties.models.features import Feature, FeatureCategory
 from properties.models.geo import NearbyPlaceType, Region
 
@@ -161,26 +162,40 @@ class FeatureCategoryLoader(DeclarativeLoader):
         return kwargs
 
 
+# BUG-030 §12: legacy `VillaFeatures.ServiceType` is on the `EServiceType`
+# scale (Unknown=0 / ContactService=10 / PropertyFeature=20) and every live
+# feature stores 20, so it carries nothing. `service_type` derives from the
+# category `Code` instead: 50 "Included Features" and 70 "Services On
+# Request"; everything else is an amenity.
+_SERVICE_TYPE_BY_CATEGORY_CODE = {
+    50: FeatureServiceType.INCLUDED_SERVICE,
+    70: FeatureServiceType.PAID_ADDON,
+}
+
+
 class FeatureLoader(BaseLoader):
     """Maps VillaFeatures → Feature, picking the first category from
     VillaFeaturesCategoryMappings since the new schema demands a single FK.
+    A feature mapped to several categories takes its first mapping (by
+    mapping Id) for both the FK and the derived `service_type`.
     """
 
     name = "feature"
     target_model = Feature
+    # One OUTER APPLY yields the FK and the code from the SAME first mapping
+    # (two separate TOP 1 subqueries could drift apart); `c.Id` breaks a tie
+    # between category rows sharing a Code, and `ORDER BY f.Id` makes a slug
+    # collision between live namesakes resolve to the lowest Id, matching
+    # the reconcile check's `MIN(t.Id)` twin rule (BUG-029 determinism).
     legacy_query = (
-        "SELECT f.Id, f.Name, f.Description, f.ServiceType, f.FeatureOrder, "
-        "(SELECT TOP 1 c.Id FROM VillaFeaturesCategoryMappings m "
+        "SELECT f.Id, f.Name, f.Description, f.FeatureOrder, "
+        "cat.Id AS CategoryId, cat.Code AS CategoryCode "
+        "FROM VillaFeatures f "
+        "OUTER APPLY (SELECT TOP 1 c.Id, c.Code FROM VillaFeaturesCategoryMappings m "
         " JOIN VillaFeaturesCategory c ON c.Code = m.CategoryId "
-        " WHERE m.FeatureId = f.Id ORDER BY m.Id) AS CategoryId "
-        "FROM VillaFeatures f WHERE f.DeletedAt IS NULL"
+        " WHERE m.FeatureId = f.Id ORDER BY m.Id, c.Id) cat "
+        "WHERE f.DeletedAt IS NULL ORDER BY f.Id"
     )
-
-    _service_type_map = {
-        1: "amenity",
-        2: "included_service",
-        3: "paid_addon",
-    }
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         name = (row.get("Name") or "").strip()
@@ -192,12 +207,14 @@ class FeatureLoader(BaseLoader):
         cat = FeatureCategory.objects.filter(legacy_id=str(cat_id)).first()
         if cat is None:
             return None
-        service_type_id = row.get("ServiceType") or 0
+        service_type = _SERVICE_TYPE_BY_CATEGORY_CODE.get(
+            row.get("CategoryCode") or 0, FeatureServiceType.AMENITY
+        )
         return {
             "name": name[:128],
             "slug": slugify(name)[:128] or f"feature-{row['Id']}",
             "description": (row.get("Description") or "").strip(),
-            "service_type": self._service_type_map.get(service_type_id, "amenity"),
+            "service_type": service_type,
             "sort_order": row.get("FeatureOrder") or 0,
             "is_active": True,
             "category": cat,

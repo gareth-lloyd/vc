@@ -15,6 +15,7 @@ import pytest
 
 from data_migration.base import LoadReport
 from data_migration.loaders.lookups import FeatureCategoryLoader, FeatureLoader
+from properties.enums import FeatureServiceType
 from properties.models import Feature, FeatureCategory
 from properties.other_information_catalog import (
     OTHER_INFORMATION_CATEGORY_SLUG,
@@ -28,14 +29,19 @@ pytestmark = pytest.mark.django_db
 _CATEGORY_ROW = {"Id": 8, "Name": "Other Information", "IsActive": True, "Code": 60}
 
 
-def _tag_row(name: str, legacy_id: str, order: int) -> dict[str, Any]:
+def _tag_row(
+    name: str, legacy_id: str, order: int, *, category_code: int | None = 60
+) -> dict[str, Any]:
+    # The real `FeatureLoader` row shape: `CategoryId` is the category's Id
+    # and `CategoryCode` its `Code` (BUG-030 §12). Legacy `ServiceType` is
+    # not selected any more (every live feature stores 20).
     return {
         "Id": int(legacy_id),
         "Name": name,
         "Description": None,
-        "ServiceType": 10,
         "FeatureOrder": order,
         "CategoryId": 8,
+        "CategoryCode": category_code,
     }
 
 
@@ -99,3 +105,37 @@ def test_catalog_after_renamed_loader_row_creates_nothing_for_it() -> None:
     assert created == len(STARTER_TAGS) - 1
     assert not Feature.objects.filter(slug="no-smoking-indoors").exists()
     assert Feature.objects.filter(legacy_id="125").count() == 1
+
+
+# --- BUG-030 §12: service_type derives from the category Code ---
+
+
+@pytest.mark.parametrize(
+    ("category_code", "expected"),
+    [
+        (50, FeatureServiceType.INCLUDED_SERVICE),  # "Included Features"
+        (70, FeatureServiceType.PAID_ADDON),  # "Services On Request"
+        (60, FeatureServiceType.AMENITY),
+        (None, FeatureServiceType.AMENITY),
+    ],
+)
+def test_service_type_derives_from_the_category_code(
+    category_code: int | None, expected: FeatureServiceType
+) -> None:
+    _load_category()
+    kwargs = FeatureLoader().transform(
+        _tag_row("Pool towels", "300", 1, category_code=category_code)
+    )
+    assert kwargs is not None
+    assert kwargs["service_type"] == expected
+
+
+def test_feature_query_selects_the_category_code_not_service_type() -> None:
+    query = FeatureLoader.legacy_query
+    # Both columns come from ONE first-mapping subquery, deterministically.
+    assert "OUTER APPLY (SELECT TOP 1 c.Id, c.Code" in query
+    assert "ORDER BY m.Id, c.Id) cat" in query
+    assert "cat.Id AS CategoryId, cat.Code AS CategoryCode" in query
+    assert query.endswith("ORDER BY f.Id")
+    assert "ServiceType" not in query
+    assert not hasattr(FeatureLoader, "_service_type_map")

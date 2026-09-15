@@ -65,6 +65,7 @@ from properties.models.features import (
     CollectionMembership,
     Feature,
     FeatureCategory,
+    PropertyFeature,
 )
 from properties.models.finance import PropertyFinance
 from properties.models.geo import Country, NearbyPlaceType, PropertyNearbyPlace, Region
@@ -271,6 +272,47 @@ _CHECKS: list[_Check] = [
         Feature,
         "Feature",
     ),
+    _Check(
+        # BUG-030 §11: the through table (the largest loaded table after
+        # images) gets its own check. Legacy side = distinct (villa, feature)
+        # pairs after the loader's remap: a deleted feature resolves to the
+        # lowest-Id live, named, categorised namesake (the T-SQL twin of
+        # `_feature_twins_by_name`), an unmatched one drops out; villas
+        # mirror PropertyLoader's filter (live, named). Loaded side = manual
+        # links whose property AND feature are legacy rows — GAP-067
+        # `recompute_derived_features` (`is_derived=True`) and staff links on
+        # organic rows never count (a staff link between two legacy rows
+        # would). Structural gap 0; known shifters, all itemised by GAP-108
+        # on the live dump: a live feature FeatureLoader skips (blank name,
+        # or its FIRST category mapping unloaded — the T-SQL twin rule only
+        # needs a named category on ANY mapping), a slug collision between
+        # live namesakes (the loader keeps the lowest Id, same as MIN here),
+        # and whitespace/collation differences between Python `.strip()
+        # .lower()` and `LOWER(LTRIM(RTRIM()))`. Pinned 0 pending that dry
+        # run, which is the first execution of this SQL (the reference dump:
+        # 10 031 live pairs + the remapped ones).
+        "SELECT COUNT(DISTINCT CONCAT(x.VillaId, '-', x.ResolvedId)) FROM ("
+        "SELECT m.VillaId, CASE WHEN f.DeletedAt IS NULL THEN f.Id ELSE ("
+        "SELECT MIN(t.Id) FROM VillaFeatures t "
+        "WHERE t.DeletedAt IS NULL AND LTRIM(RTRIM(t.Name)) <> '' "
+        "AND LOWER(LTRIM(RTRIM(t.Name))) = LOWER(LTRIM(RTRIM(f.Name))) "
+        "AND EXISTS (SELECT 1 FROM VillaFeaturesCategoryMappings cm "
+        "JOIN VillaFeaturesCategory c ON c.Code = cm.CategoryId "
+        "WHERE cm.FeatureId = t.Id AND LTRIM(RTRIM(ISNULL(c.Name, ''))) <> '')"
+        ") END AS ResolvedId "
+        "FROM VillaFeaturesMappings m "
+        "JOIN VillaFeatures f ON f.Id = m.FeatureId "
+        "JOIN VillaMaster v ON v.Id = m.VillaId "
+        "WHERE v.DeletedAt IS NULL AND LTRIM(RTRIM(ISNULL(v.Name, ''))) <> ''"
+        ") x WHERE x.ResolvedId IS NOT NULL",
+        PropertyFeature,
+        "PropertyFeature",
+        loaded_count=lambda m: m._default_manager.filter(
+            is_derived=False,
+            property__legacy_id__isnull=False,
+            feature__legacy_id__isnull=False,
+        ).count(),
+    ),
     _Check("SELECT COUNT(*) FROM UserMaster WHERE DeletedAt IS NULL", User, "User"),
     _Check(
         "SELECT COUNT(*) FROM VillaContact WHERE DeletedAt IS NULL",
@@ -352,7 +394,13 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaCollectionsMappings",
         CollectionMembership,
         "CollectionMembership",
-        expected_gap=308,  # legacy duplicates (multiple rows per same pair).
+        # BUG-030 §13 (24-Apr-2025 dump): 308 = 3 duplicate (collection,
+        # villa) pairs + 22 memberships on deleted villas + 283 live
+        # memberships of the five collections deleted together on
+        # 2024-05-28 ("Chef Included" 66, "Exceptional Design" 55, "Walk to
+        # restaurants" 34, "Water Front" 59, "WALK TO THE BEACH" 67), which
+        # CollectionLoader drops (decision 2026-09-11: drop, record here).
+        expected_gap=308,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaRooms",

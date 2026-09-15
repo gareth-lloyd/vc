@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import cast
 
 import pytest
+import structlog
 
 from data_migration.base import LoadReport
 from data_migration.loaders.property_children import (
@@ -16,8 +18,21 @@ from properties.models.property import Property
 from properties.models.rooms import Room
 
 
-def _row(*, FeatureId: object, VillaId: object, MappingOrder: object) -> dict[str, object]:
-    return {"FeatureId": FeatureId, "VillaId": VillaId, "MappingOrder": MappingOrder}
+def _row(
+    *,
+    FeatureId: object,
+    VillaId: object,
+    MappingOrder: object,
+    FeatureName: object = "Feature",
+    FeatureDeletedAt: object = None,
+) -> dict[str, object]:
+    return {
+        "FeatureId": FeatureId,
+        "VillaId": VillaId,
+        "MappingOrder": MappingOrder,
+        "FeatureName": FeatureName,
+        "FeatureDeletedAt": FeatureDeletedAt,
+    }
 
 
 def _room_row(**overrides: object) -> dict[str, object]:
@@ -151,9 +166,9 @@ def test_load_rows_rerun_updates_sort_order_and_reports_updated() -> None:
 
 @pytest.mark.django_db
 def test_load_rows_duplicate_pair_collapses_to_one_row() -> None:
-    """The `update_or_create` backstop: if the in-SQL MIN dedup ever lets a
-    duplicate pair through, the second row updates the first instead of
-    violating the unique constraint."""
+    """Duplicate pairs collapse to one link carrying the lowest MappingOrder
+    (BUG-030 §11: the Python dedupe mirrors the query's `MIN(MappingOrder)`
+    so a remapped twin can never violate the unique constraint)."""
     prop = cast(Property, PropertyFactory(legacy_id="500"))
     feature = cast(Feature, FeatureFactory(legacy_id="42"))
     through = Property.features.through
@@ -171,7 +186,7 @@ def test_load_rows_duplicate_pair_collapses_to_one_row() -> None:
     assert report.errors == []
     links = through.objects.filter(property_id=prop.pk, feature_id=feature.pk)
     assert links.count() == 1
-    assert links.get().sort_order == 7
+    assert links.get().sort_order == 2
 
 
 @pytest.mark.django_db
@@ -184,6 +199,175 @@ def test_load_rows_missing_legacy_id_is_skipped() -> None:
 
     assert (report.created, report.updated, report.skipped) == (0, 0, 1)
     assert Property.features.through.objects.count() == 0
+
+
+# --- BUG-030 §11: deleted features remap to their live namesake ---
+
+_DELETED = datetime(2024, 5, 28, 12, 0)
+
+
+def _feature_remap_setup() -> tuple[Property, Feature]:
+    prop = cast(Property, PropertyFactory(legacy_id="500"))
+    twin = cast(Feature, FeatureFactory(legacy_id="299", name="Sitting room"))
+    return prop, twin
+
+
+@pytest.mark.django_db
+def test_deleted_feature_with_a_live_namesake_lands_on_the_twin() -> None:
+    prop, twin = _feature_remap_setup()
+    loader = PropertyFeatureMappingLoader()
+    report = LoadReport(loader="property_feature")
+
+    loader._load_rows(
+        [
+            _row(
+                FeatureId="55",
+                VillaId="500",
+                MappingOrder=4,
+                FeatureName="  sitting ROOM ",
+                FeatureDeletedAt=_DELETED,
+            )
+        ],
+        report,
+    )
+
+    assert (report.created, report.skipped) == (1, 0)
+    link = Property.features.through.objects.get(property_id=prop.pk)
+    assert link.feature_id == twin.pk
+    assert link.sort_order == 4
+
+
+@pytest.mark.django_db
+def test_villa_carrying_both_the_deleted_and_the_live_feature_gets_one_link() -> None:
+    prop, twin = _feature_remap_setup()
+    loader = PropertyFeatureMappingLoader()
+    report = LoadReport(loader="property_feature")
+
+    loader._load_rows(
+        [
+            _row(FeatureId="299", VillaId="500", MappingOrder=9, FeatureName="Sitting room"),
+            _row(
+                FeatureId="55",
+                VillaId="500",
+                MappingOrder=3,
+                FeatureName="Sitting room",
+                FeatureDeletedAt=_DELETED,
+            ),
+        ],
+        report,
+    )
+
+    assert report.errors == []
+    links = Property.features.through.objects.filter(property_id=prop.pk)
+    assert links.count() == 1
+    assert links.get().feature_id == twin.pk
+    assert links.get().sort_order == 3
+
+
+@pytest.mark.django_db
+def test_two_live_namesakes_resolve_to_the_lowest_legacy_id() -> None:
+    prop, low = _feature_remap_setup()  # legacy_id 299
+    FeatureFactory(legacy_id="1001", name="Sitting Room")
+    loader = PropertyFeatureMappingLoader()
+
+    loader._load_rows(
+        [
+            _row(
+                FeatureId="55",
+                VillaId="500",
+                MappingOrder=1,
+                FeatureName="Sitting room",
+                FeatureDeletedAt=_DELETED,
+            )
+        ],
+        LoadReport(loader="property_feature"),
+    )
+
+    link = Property.features.through.objects.get(property_id=prop.pk)
+    assert link.feature_id == low.pk
+
+
+@pytest.mark.django_db
+def test_deleted_feature_without_a_twin_is_skipped_and_logged() -> None:
+    PropertyFactory(legacy_id="500")
+    loader = PropertyFeatureMappingLoader()
+    report = LoadReport(loader="property_feature")
+
+    with structlog.testing.capture_logs() as logs:
+        loader._load_rows(
+            [
+                _row(
+                    FeatureId="77",
+                    VillaId="500",
+                    MappingOrder=1,
+                    FeatureName="Helipad",
+                    FeatureDeletedAt=_DELETED,
+                )
+            ],
+            report,
+        )
+
+    assert (report.created, report.skipped) == (0, 1)
+    assert Property.features.through.objects.count() == 0
+    assert any(
+        log["event"] == "data_migration.deleted_feature_unmapped"
+        and log["feature_id"] == "77"
+        and log["feature_name"] == "Helipad"
+        for log in logs
+    )
+
+
+def test_mapping_query_carries_the_feature_name_and_deletion() -> None:
+    query = PropertyFeatureMappingLoader.legacy_query
+    assert "f.Name AS FeatureName" in query
+    assert "f.DeletedAt AS FeatureDeletedAt" in query
+    assert "MIN(m.MappingOrder) AS MappingOrder" in query
+    assert "DeletedAt IS NULL" not in query  # deleted features are remapped, not filtered
+    assert "LEFT JOIN VillaFeatures f" in query  # orphan FeatureIds still reach the skip path
+
+
+@pytest.mark.django_db
+def test_mapping_on_a_feature_id_with_no_legacy_row_is_skipped() -> None:
+    PropertyFactory(legacy_id="500")
+    report = LoadReport(loader="property_feature")
+    PropertyFeatureMappingLoader()._load_rows(
+        [_row(FeatureId="9999", VillaId="500", MappingOrder=1, FeatureName=None)], report
+    )
+    assert (report.created, report.skipped) == (0, 1)
+
+
+@pytest.mark.django_db
+def test_long_deleted_feature_name_matches_its_truncated_loaded_twin() -> None:
+    long_name = "Sitting room " * 12  # > 128 chars; FeatureLoader stores name[:128]
+    prop = cast(Property, PropertyFactory(legacy_id="500"))
+    twin = cast(Feature, FeatureFactory(legacy_id="299", name=long_name.strip()[:128]))
+    PropertyFeatureMappingLoader()._load_rows(
+        [
+            _row(
+                FeatureId="55",
+                VillaId="500",
+                MappingOrder=1,
+                FeatureName=long_name,
+                FeatureDeletedAt=_DELETED,
+            )
+        ],
+        LoadReport(loader="property_feature"),
+    )
+    assert Property.features.through.objects.get(property_id=prop.pk).feature_id == twin.pk
+
+
+@pytest.mark.django_db
+def test_legacy_link_promotes_a_derived_row_to_manual() -> None:
+    prop = cast(Property, PropertyFactory(legacy_id="500"))
+    feature = cast(Feature, FeatureFactory(legacy_id="42"))
+    through = Property.features.through
+    through.objects.create(property=prop, feature=feature, is_derived=True)
+    report = LoadReport(loader="property_feature")
+    PropertyFeatureMappingLoader()._load_rows(
+        [_row(FeatureId="42", VillaId="500", MappingOrder=2)], report
+    )
+    assert report.updated == 1
+    assert through.objects.get(property_id=prop.pk, feature_id=feature.pk).is_derived is False
 
 
 def _image_row(**overrides: object) -> dict[str, object]:

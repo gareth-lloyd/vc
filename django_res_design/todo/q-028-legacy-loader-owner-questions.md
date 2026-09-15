@@ -73,3 +73,8 @@
 Record each answer in `design/decisions.md` and on the owning ticket
 (1 → BUG-030 §36; 2, 3 → GAP-109 rows 10/11; 4 → GAP-107 §1; 5 → GAP-110
 U2); retire this file to `reviews/` when all five are answered.
+
+**2026-09-15:** BUG-030 closed with §36 deliberately untouched — the future
+Past Bookers stays still land as `PastStay`. BUG-030 is in `done/`, so the
+answer to question 1 needs its own small ticket against
+`import_past_bookers`.

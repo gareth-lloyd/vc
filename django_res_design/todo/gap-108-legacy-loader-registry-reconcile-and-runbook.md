@@ -64,18 +64,19 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
   Payment use a bare `count()`). A `createsuperuser` before reconcile turns
   User into a blocker; any staff-created row does the same. Three checks
   already scope to `legacy_id__isnull=False`.
-- **No check at all** for `property_feature` (11 955 rows — BUG-030 §11 adds
-  it), `property_defaults`, and the satellites PropertyLocation / Capacity /
+- **No check at all** for ~~`property_feature` (11 955 rows — BUG-030 §11 adds
+  it)~~ (✅ BUG-030 U3 added `PropertyFeature`), `property_defaults`, and the satellites PropertyLocation / Capacity /
   Settings / Description, RoomBeds, PropertyService, RatePeriod,
   BookingGuest. ACCEPTANCE S2 says every loader has a check.
-- **Right numbers, wrong reasons**: CollectionMembership 308 ("duplicates";
-  see BUG-030 §13), PropertyContactAssignment 1 ("composite legacy_id
+- **Right numbers, wrong reasons**: ~~CollectionMembership 308 ("duplicates";
+  see BUG-030 §13)~~ (✅ itemised by BUG-030 U3), PropertyContactAssignment 1 ("composite legacy_id
   collapse"; all 335 are unique — it is the mapping on blank-name villa 249),
-  GuestPreference 93 (BUG-030 §30), Currency 4 (3 junk + the *live* EUR,
+  ~~GuestPreference 93 (BUG-030 §30)~~ (✅ comment rewritten by BUG-030 U6), Currency 4 (3 junk + the *live* EUR,
   BUG-028 §3), Person (owner/agent) filters `DeletedAt IS NULL` while the
   loader loads deleted contacts INACTIVE (masked: 0 deleted in the dump),
   VillaAvailability narrative (property 133, 2026-07-25 → 08-22) aged out —
-  today 0 = 0 trivially.
+  today 0 = 0 trivially (BUG-030 U7 rewrote the comment as a gap rule; the
+  number still needs the live dump).
 - **Count checks cannot see value regressions.** BUG-028's four defects and
   BUG-029's primary-flag flip (a re-run-only effect, won't-fix under the
   one-shot load) all passed. BUG-028 adds the money invariants;
@@ -94,7 +95,7 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
   delta mode; late writes = fresh reload from a newer dump).
 - CUTOVER §4 IsDefault list omits changeover day (27 villas) and says
   currency ×91 (188 — BUG-028 §2/§3); §4c mentions the `E-{Id:06d}` fallback
-  that never fires and `/api/quotations` (actual `/api/v1/quotations`);
+  that never fires (✅ wording fixed by BUG-030 U5) and `/api/quotations` (actual `/api/v1/quotations`);
   §3 says check `VillaMaster` while `drop-and-reseed.sh` prints
   `VillaCountry` and hard-codes `live-db-24-apr.sql`, so it cannot reseed the
   final dump §2 produces; "~2 minutes" measured 157 s (199 s on re-run).
@@ -178,6 +179,45 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
 - Every §3 line corrected; `grep -n "Guest.merge\|--since\|60 tables"` finds
   nothing stale.
 - Quality gate green.
+
+## BUG-030 hand-off (2026-09-15)
+
+BUG-030 changed these reconcile constants and SQL; each is pinned in
+`test_documented_expected_gaps_are_encoded` from the audit numbers, and the
+live dry run confirms or re-pins them:
+
+- `Country (legacy)` **−228 → −227** (no `UK` row). The dev dump also carries
+  a live "Dev Country" (`DC`, Id 25) the prod dump lacks.
+- New `PropertyFeature` check, **0 pinned**. Its T-SQL remap has never run
+  against SQL Server; the dry run is its first execution.
+- `Organisation (agency)` now excludes `NA` / `N/A` / `-` on the legacy side.
+- `VillaAvailability (future days)`: legacy side is
+  `ISNULL(AvailableStatus, 0) IN (0, 6, 30, 40, 50, 60)`; the gap is
+  trimmed days + days on unloaded properties + errored runs (0 pinned).
+- Comments only: CollectionMembership 308, GuestPreference 93, Quotation
+  (booking-synth rows are now ACCEPTED).
+- Constants moved: `HISTORIC_*` and the new `STALE_ENQUIRY_DAYS` (90) live in
+  `data_migration/sheets/constants.py`.
+
+Dry-run checklist from BUG-030 (its "live dry run" acceptance moved here):
+
+- [ ] Slugs contain no `://`; 0 `Organisation(name="NA")`.
+- [ ] `PropertyFeature` check executes and its gap is itemised; read the
+      `data_migration.deleted_feature_unmapped` lines.
+- [ ] 0 enquiries CONVERTED from `VillaEnquire`, 14 PROGRESSING; the
+      `data_migration.enquiry_stale_cutoff` line shows the cutoff and count;
+      enquiries link to the ~28 + 4 matchable Persons.
+- [ ] Quotation lines carry the master's occupancy; quotations back-dated
+      (all 19 real ones EXPIRED).
+- [ ] `data_migration.preference_quotation_unresolved` count (audit: 126).
+- [ ] Availability: status-0 runs load; `trimmed_days` in the summary line
+      explains the gap.
+- [ ] Regions 25/27 remapped (`data_migration.region_remapped`); decide
+      whether **region 47** needs `"47": "61"` if enquiries sit under it.
+- [ ] Decide whether the deleted country twins **13 (France) / 20 (India)**
+      should alias like England (would move `Region (active)`).
+- [ ] After §5 passes, run the CUTOVER §6g Person merges and confirm the
+      counts move exactly as listed there.
 
 ## Dependencies
 

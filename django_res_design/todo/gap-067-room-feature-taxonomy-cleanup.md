@@ -24,6 +24,16 @@
 > split out. Canonical pattern when built: `Person.merge` / `merge_country.py`.
 > Also deferred: GAP-068 starter included-features seed; a live admin hook to
 > recompute when a curator edits `RoomAttribute.implies_property_feature`.
+>
+> **Note (BUG-030 §11/§12, 2026-09-15):** the loader already folds one class of
+> duplicate. `PropertyFeatureMappingLoader` remaps a villa's link to a
+> soft-deleted legacy feature onto its live namesake (normalised name, lowest
+> legacy id wins), dedupes the pair keeping the lowest `MappingOrder`, and
+> logs `data_migration.deleted_feature_unmapped` when no twin exists. Legacy
+> links load `is_derived=False`. `Feature.service_type` now derives from the
+> first category (Code 50 included service, 70 paid add-on, else amenity).
+> Curation still owns the live duplicates (`Aircon` ×5 …) and a new
+> `PropertyFeature` reconcile check counts the links.
 
 - **Severity:** Build + content governance — answers the A1 "enter once" promise,
   supersedes the feature-taxonomy half of **Q-021** (seeding half → GAP-068)

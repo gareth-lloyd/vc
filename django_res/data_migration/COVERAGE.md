@@ -96,7 +96,9 @@ against `sys.tables`, do not chase): `Tags`/`VillaTags`, `VillaSites`,
 
 1. **`VillaAvailability` — 57,389 rows → LOAD (future slice only).**
    Past grid days are display residue; FUTURE non-available runs (statuses
-   30/40/50/60) are real state existing nowhere else. New
+   30/40/50/60, plus 0/NULL "Unknown" and 6 "BookedExt" since BUG-030 §31;
+   runs split around bookings and staff holds) are real state existing
+   nowhere else. New
    `availability_block` loader coalesces them into block rows
    (`avail-{prop}-{start}`), full-replace per run, reconcile check on
    future-day arithmetic. On this stale dump: 1 run (property 133 booked

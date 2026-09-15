@@ -11,6 +11,9 @@
   as the full WordPress URL (`https://www.villacollective.com/<region>/<villa>`,
   294/294 live villas) — BUG-030 §1 fixes the loader to a real slug. Build
   the history table after that lands, or it inherits 294 URL-shaped "slugs".
+  **✅ Landed 2026-09-15 (BUG-030 U1):** the loader now writes
+  `slugify(last URL path segment)` (fallback `slugify(name)`) + `-{Id}`, never
+  doubling an id the segment already ends in — e.g. `agios-isavros-438`.
 - **Files touched (when built):**
   - `django_res/properties/models/property.py:18` — `slug =
     models.SlugField(max_length=255, unique=True)`.

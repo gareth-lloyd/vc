@@ -1,5 +1,28 @@
 # BUG-030 — Legacy loader: data-shape defects across property, geo, feature, people, enquiry, quotation, availability and the sheet importers
 
+> **✅ RESOLVED (2026-09-15)** — shipped on `feat/bug-030` in ten units:
+> U1 property slug/status/region remap `2f1baaf8`; U2 geo (ISO-validated
+> codes, England → GB alias replacing the `merge_country` step, no dial code,
+> slugified region slugs) `04c5cbe9`; U3 features and collections
+> (`service_type` from category, deleted-feature twin remap, `PropertyFeature`
+> check, collection gap itemised) `bc8ca809`; U3b coverage tests for the
+> untested loaders `fcd75374`; U4 people (NA agencies, contact-method scale,
+> E.164 phones, CUSTOMER-first `match_person_by_email`, CUTOVER §6g merges)
+> `2b67e092`; U5 enquiry (status meaning, dump-relative stale leads, person
+> link, no fabricated adults, staff source) `e7e78360`; U6 quotations (master
+> occupancy, back-dated expiry/EXPIRED, notes, dated OTHER stand-ins, booking
+> stand-ins ACCEPTED/CONVERTED, preference-context log) `f27922c2`; U7
+> availability (status 0/NULL and BookedExt block, runs split around
+> occupancy) `b64e17a2`; U8 sheet importers (live villas first, customer-only
+> name match, honest report) `43fe6194`; U9 docs. Decisions recorded in
+> `design/decisions.md`. **Not done here, by decision:** the live dry run
+> (acceptance bullet 2) and the final reconcile pinning moved to **GAP-108**
+> with a checklist; §36 stays with **Q-028**; §7/§10 were GAP-107's. **Open
+> for the owner:** region 47 alias, deleted country twins 13/20, and the
+> booking stand-in enquiries reading `is_converted=false` through the API's
+> `Quotation.objects.real()` prefetch (the first two are on the GAP-108
+> checklist; the third has no ticket yet).
+
 - **Severity:** 🔴 Bug (wrong values, not missing ones — slugs that are
   URLs, an agency called "NA" on 226 people, 457 dropped feature links, 14
   enquiries closed as CONVERTED, quotes for the wrong party size).

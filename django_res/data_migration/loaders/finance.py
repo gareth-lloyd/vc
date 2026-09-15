@@ -571,21 +571,23 @@ class PropertyFinanceLoader(BaseLoader):
             report.updated += 1
 
 
+CONTACT_DEFAULT_FINANCE_QUERY = (
+    f"SELECT {_VILLAFINANCE_COLUMNS} FROM VillaFinance "
+    "WHERE (VillaId IS NULL OR VillaId = 0) "
+    "AND ContactId IS NOT NULL AND ParentId IS NULL "
+    "ORDER BY Id"
+)
+
+
 def _fetch_contact_default_finance() -> dict[str, dict[str, Any]]:
     """Pull all per-contact default VillaFinance rows, keyed by legacy ContactId.
 
     These are rows with `VillaId IS NULL/0, ContactId IS NOT NULL,
-    ParentId IS NULL`. If a contact has multiple such rows, the first one
-    wins.
+    ParentId IS NULL`. If a contact has multiple such rows, the lowest Id wins.
     """
-    query = (
-        f"SELECT {_VILLAFINANCE_COLUMNS} FROM VillaFinance "
-        "WHERE (VillaId IS NULL OR VillaId = 0) "
-        "AND ContactId IS NOT NULL AND ParentId IS NULL"
-    )
     by_contact: dict[str, dict[str, Any]] = {}
     with legacy_cursor() as cursor:
-        cursor.execute(query)
+        cursor.execute(CONTACT_DEFAULT_FINANCE_QUERY)
         for row in rows_as_dicts(cursor):
             cid = str(row["ContactId"])
             by_contact.setdefault(cid, row)

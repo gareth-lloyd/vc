@@ -95,7 +95,9 @@ class PropertyImageLoader(BaseLoader):
         "FROM VillaPropertyImages i "
         "LEFT JOIN VillaPropertyImagesDescription d ON d.Id = ("
         "SELECT MAX(d2.Id) FROM VillaPropertyImagesDescription d2 "
-        "WHERE d2.VillaId = i.VillaId)"
+        "WHERE d2.VillaId = i.VillaId) "
+        # Hero de-duplication keeps the first active hero processed (BUG-029).
+        "ORDER BY i.VillaId, i.Id"
     )
 
     # Slot flag → villa-level caption column, in `_kind_for` precedence order.
@@ -167,7 +169,7 @@ class NearbyPlaceLoader(BaseLoader):
     legacy_query = (
         "SELECT n.Id, n.PropertyId, "
         "(SELECT TOP 1 t.Id FROM VillaNearByLocationType t "
-        " WHERE t.Code = n.PropertyNearByLocationTypeId) AS TypeId, "
+        " WHERE t.Code = n.PropertyNearByLocationTypeId ORDER BY t.Id) AS TypeId, "
         "n.Name, n.Description, n.Distance "
         "FROM VillaNearBy n"
     )

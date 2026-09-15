@@ -30,7 +30,10 @@ class DeclarativeLoader(BaseLoader):
     @property
     def legacy_query(self) -> str:  # type: ignore[override]
         cols = {self.legacy_pk_column, *self.field_map.keys(), *self.fk_map.keys()}
-        return f"SELECT {', '.join(sorted(cols))} FROM {self.legacy_table}"
+        return (
+            f"SELECT {', '.join(sorted(cols))} FROM {self.legacy_table} "
+            f"ORDER BY {self.legacy_pk_column}"
+        )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         kwargs: dict[str, Any] = {}

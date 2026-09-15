@@ -685,9 +685,13 @@ _CHECKS: list[_Check] = [
         # uses GETDATE() at RECONCILE time, so run them the same day — a day
         # crossing between the two ages rows out of the legacy side while
         # they linger in the loaded blocks (a spurious negative gap).
-        "SELECT COUNT(*) FROM VillaAvailability "
-        "WHERE AvailableStatus IN (30, 40, 50, 60) "
-        "AND AvailableDate >= CAST(GETDATE() AS date)",
+        # Duplicate day rows count once, as their latest edit — the same
+        # dedupe-then-filter as `coalesce_runs` (BUG-029).
+        "SELECT COUNT(*) FROM ("
+        "SELECT AvailableStatus, ROW_NUMBER() OVER (PARTITION BY PropertyId, "
+        "CAST(AvailableDate AS date) ORDER BY COALESCE(UpdatedAt, CreatedAt) DESC, Id DESC) AS rn "
+        "FROM VillaAvailability WHERE AvailableDate >= CAST(GETDATE() AS date)"
+        ") latest WHERE rn = 1 AND AvailableStatus IN (30, 40, 50, 60)",
         BookingHold,
         "VillaAvailability (future days)",
         # 0 holds on the 24-Apr-2025 dump: the single future run (property

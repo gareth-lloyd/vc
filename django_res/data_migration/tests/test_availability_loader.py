@@ -98,6 +98,65 @@ def test_coalesce_dedupes_duplicate_day_rows() -> None:
     assert (runs[0].start, runs[0].end) == (date(2026, 7, 1), date(2026, 7, 2))
 
 
+def _dupe(
+    status: int, *, row_id: int, created: datetime, updated: datetime | None
+) -> dict[str, Any]:
+    return _row(
+        Id=row_id,
+        AvailableDate=datetime(2026, 5, 23),
+        AvailableStatus=status,
+        CreatedAt=created,
+        UpdatedAt=updated,
+    )
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_coalesce_duplicate_day_keeps_the_latest_edit(reverse: bool) -> None:
+    """BUG-029 §3: villa 3 / 2025-05-23 carries status 50 at 09:16 and 60 at
+    09:27. Legacy updates rows in place (stamping UpdatedAt), so recency is
+    COALESCE(UpdatedAt, CreatedAt) — not Id — and input order is irrelevant."""
+    rows = [
+        # Lower Id but edited last.
+        _dupe(
+            60, row_id=1, created=datetime(2025, 5, 1, 9, 0), updated=datetime(2025, 5, 23, 9, 27)
+        ),
+        _dupe(50, row_id=2, created=datetime(2025, 5, 23, 9, 16), updated=None),
+    ]
+    (run,) = coalesce_runs(list(reversed(rows)) if reverse else rows)
+    assert run.status == 60
+
+
+def test_coalesce_duplicate_day_same_stamp_breaks_tie_on_highest_id() -> None:
+    stamp = datetime(2025, 5, 23, 9, 0)
+    rows = [
+        _dupe(50, row_id=8, created=stamp, updated=None),
+        _dupe(60, row_id=3, created=stamp, updated=None),
+    ]
+    (run,) = coalesce_runs(rows)
+    assert run.status == 50
+
+
+def test_coalesce_newer_non_blocking_row_releases_the_day() -> None:
+    # The scheduler's expired-hold release writes status 70 over an old hold:
+    # the latest row wins BEFORE non-blocking statuses are dropped.
+    rows = [
+        _dupe(40, row_id=1, created=datetime(2025, 5, 1), updated=None),
+        _dupe(70, row_id=2, created=datetime(2025, 5, 2), updated=None),
+    ]
+    assert coalesce_runs(rows) == []
+
+
+def test_coalesce_drops_non_blocking_statuses() -> None:
+    rows = [
+        *_days(date(2026, 7, 1), 1, AvailableStatus=10),
+        *_days(date(2026, 7, 2), 1, AvailableStatus=30),
+        *_days(date(2026, 7, 3), 1, AvailableStatus=70),
+    ]
+    assert [(r.start, r.end, r.status) for r in coalesce_runs(rows)] == [
+        (date(2026, 7, 2), date(2026, 7, 2), 30)
+    ]
+
+
 def test_coalesce_collects_distinct_day_notes_in_date_order() -> None:
     rows = _days(date(2026, 7, 1), 3)
     rows[0]["Notes"] = "owner away"
@@ -248,6 +307,16 @@ def test_legacy_query_stamps_load_time_today() -> None:
     assert "{today}" not in query
 
 
+def test_legacy_query_fetches_every_status_with_recency_columns() -> None:
+    # The status filter moves after the per-day dedupe, so a newer
+    # non-blocking row can supersede an older block.
+    query = AvailabilityBlockLoader().legacy_query
+
+    assert "AvailableStatus IN" not in query
+    for column in ("Id", "CreatedAt", "UpdatedAt"):
+        assert column in query.split("FROM")[0]
+
+
 # --- reconcile check ---
 
 
@@ -261,7 +330,13 @@ def test_reconcile_check_counts_days_over_the_avail_slice(seeded: Property) -> N
     check = next(c for c in _CHECKS if c.label == "VillaAvailability (future days)")
     assert check.model is BookingHold
     assert "VillaAvailability" in check.legacy_query
-    assert "AvailableStatus IN (30, 40, 50, 60)" in check.legacy_query
+    # Mirrors coalesce_runs: latest edit per (property, day) first, then the
+    # blocking statuses (BUG-029) — a raw count would include superseded rows.
+    assert (
+        "ROW_NUMBER() OVER (PARTITION BY PropertyId, CAST(AvailableDate AS date) "
+        "ORDER BY COALESCE(UpdatedAt, CreatedAt) DESC, Id DESC)"
+    ) in check.legacy_query
+    assert "WHERE rn = 1 AND AvailableStatus IN (30, 40, 50, 60)" in check.legacy_query
     assert check.expected_gap == 0
 
     # Property 133's real run: 2026-07-25..2026-08-22 inclusive = 29 days.

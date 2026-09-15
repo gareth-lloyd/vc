@@ -10,10 +10,7 @@ from accounts.enums import PersonKind, PersonStatus
 from accounts.models import Person
 from properties.models.geo import Country, Region
 
-# `legacy_id` minted on the sentinel rows. Note `CountryLoader` re-points the
-# `unknown_country()` row's legacy_id to whichever iso-less legacy row it
-# absorbed last, so only `unknown_region()` reliably carries this value —
-# identify the country sentinel by `iso2="XX"` instead.
+# `legacy_id` minted on the sentinel rows.
 UNKNOWN_LEGACY_ID = "__unknown__"
 
 # Canonical `legacy_id` prefix for the customer Persons `ClientLoader` writes

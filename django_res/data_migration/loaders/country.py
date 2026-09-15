@@ -26,10 +26,14 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+import structlog
+
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.loaders._util import legacy_row_deleted
 from data_migration.loaders.sentinels import unknown_country
 from properties.models.geo import Country
+
+logger = structlog.get_logger(__name__)
 
 
 def _resolve_iso2(name: str, raw_iso2: str) -> str | None:
@@ -53,7 +57,7 @@ class CountryLoader(BaseLoader):
     legacy_query = (
         "SELECT Id, Name, ShortName1, ShortName2, "
         "Code, CountryOrder, IsActive, TaxRate, DeletedAt, DeletedBy "
-        "FROM VillaCountry"
+        "FROM VillaCountry ORDER BY Id"
     )
 
     def __init__(self) -> None:
@@ -65,7 +69,7 @@ class CountryLoader(BaseLoader):
 
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
         # Live rows claim an iso2 before deleted duplicates (stable sort, so
-        # cursor order is otherwise preserved), so a deleted twin can never
+        # Id order is otherwise preserved), so a deleted twin can never
         # stamp its legacy_id onto the ISO seed ahead of the live row.
         self._deleted_legacy_ids = {
             str(r.get(self.legacy_pk_column)) for r in rows if legacy_row_deleted(r)
@@ -91,15 +95,12 @@ class CountryLoader(BaseLoader):
         is_active = bool(row.get("IsActive")) and not deleted
 
         if iso2 is None:
-            # Map this legacy id onto the unknown sentinel. Multiple legacy
-            # ids may collapse onto it; we keep whichever was attached last.
-            sentinel = unknown_country()
-            if sentinel.legacy_id != legacy_id_str:
-                sentinel.legacy_id = legacy_id_str
-                sentinel.save(update_fields=["legacy_id"])
-                report.updated += 1
-            else:
-                report.skipped += 1
+            # Junk row with no resolvable ISO code: make sure the unknown
+            # sentinel exists (regions fall back to it) but never re-point its
+            # `legacy_id` — "last junk row wins" was order-dependent (BUG-029).
+            unknown_country()
+            logger.info("data_migration.country_without_iso_skipped", legacy_id=legacy_id_str)
+            report.skipped += 1
             return
 
         # Merge onto the canonical row by iso2 (idempotent: writes the

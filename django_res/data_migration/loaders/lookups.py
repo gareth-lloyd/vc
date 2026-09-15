@@ -38,7 +38,7 @@ class RegionLoader(DeclarativeLoader):
         # GAP-107: deleted regions still load (villas, enquiries and people
         # may point at them) but as `is_active=False` — GAP-102's "retired:
         # readable, not selectable".
-        return "SELECT Id, Name, Slug, CountryId, DeletedAt, DeletedBy FROM VillaRegion"
+        return "SELECT Id, Name, Slug, CountryId, DeletedAt, DeletedBy FROM VillaRegion ORDER BY Id"
 
     def transform_extra(self, row: dict[str, Any], kwargs: dict[str, Any]) -> dict[str, Any] | None:
         # `Region.name` is 128 wide; legacy `Name` is nvarchar(500).

@@ -6,6 +6,7 @@ import pytest
 
 from data_migration.base import LoadReport
 from data_migration.loaders.country import CountryLoader, _resolve_iso2
+from data_migration.loaders.sentinels import UNKNOWN_LEGACY_ID
 from properties.models.geo import Country
 
 
@@ -149,5 +150,8 @@ def test_legacy_row_without_iso_attaches_to_unknown_sentinel() -> None:
         },
         report,
     )
+    # BUG-029 §3: the sentinel keeps its stable legacy_id — junk rows used to
+    # overwrite it "last unknown wins", an order-dependent outcome.
     sentinel = Country.objects.filter(iso2="XX").get()
-    assert sentinel.legacy_id == "99"
+    assert sentinel.legacy_id == UNKNOWN_LEGACY_ID
+    assert report.skipped == 1 and report.updated == 0

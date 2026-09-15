@@ -9,10 +9,12 @@ imported bookings), but FUTURE non-available days are real calendar state
 that exists nowhere else in the dump and would otherwise be silently lost.
 
 Strategy:
-- SELECT the non-available statuses (30 Unavailable / 40 On Hold / 50 Booked /
-  60 Booked VC) with `AvailableDate >= today`, where *today* is
+- SELECT every row with `AvailableDate >= today`, where *today* is
   `timezone.localdate()` stamped into the query at load time — the loaded
   count is therefore dump- and day-relative, not a fixed number.
+- De-duplicate to the latest edit per (property, day), THEN keep only the
+  non-available statuses (30 Unavailable / 40 On Hold / 50 Booked /
+  60 Booked VC) — so a newer "Available" row supersedes an older block.
 - Coalesce consecutive days per property into runs, splitting when the status
   changes, and write ONE `BookingHold` per run: source-less, `reason=MANUAL`
   (permitted by `bookinghold_has_source_or_blocking_reason`, and the
@@ -37,7 +39,7 @@ Strategy:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, ClassVar
 
 import structlog
@@ -69,6 +71,9 @@ STATUS_NAMES = {
     70: "Available",
 }
 
+# The statuses that block the calendar — the only ones imported.
+BLOCKING_STATUSES = frozenset({30, 40, 50, 60})
+
 
 @dataclass
 class _Run:
@@ -96,14 +101,23 @@ def _as_date(value: Any) -> date | None:
     return value
 
 
+def _recency(row: dict[str, Any]) -> tuple[datetime, int]:
+    """Latest-edit key for duplicate grid rows. Legacy updates rows in place
+    and stamps `UpdatedAt` (inserts leave it NULL), so `Id` alone is not
+    recency; it only breaks ties."""
+    stamp = row.get("UpdatedAt") or row.get("CreatedAt") or datetime.min
+    return (stamp, int(row.get("Id") or 0))
+
+
 def coalesce_runs(rows: list[dict[str, Any]]) -> list[_Run]:
     """Coalesce per-day grid rows into runs of consecutive same-status days.
 
     Pure function of the row set: rows are sorted here (not trusted from the
-    query) and de-duplicated per (property, day) keep-first — the grid should
-    be unique per day, but a dirty duplicate must merge, not mint a second run
-    with a colliding `legacy_id`. A run breaks on: property change, a calendar
-    gap, or a status change. Day-level `Notes` are collected (distinct,
+    query) and de-duplicated per (property, day) to the latest edit
+    (`_recency`) — the grid should be unique per day, but the dump holds 380
+    duplicate pairs, 208 with differing statuses (BUG-029). Non-blocking
+    statuses are dropped only after that dedupe. A run breaks on: property
+    change, a calendar gap, or a status change. Day-level `Notes` are collected (distinct,
     date order) onto the run; `CreatedBy` is the run's first day's value.
 
     Legacy `Notes` is almost always the day's status code echoed back as a
@@ -116,12 +130,16 @@ def coalesce_runs(rows: list[dict[str, Any]]) -> list[_Run]:
         day = _as_date(row.get("AvailableDate"))
         if day is None or row.get("PropertyId") is None:
             continue
-        keyed.setdefault((int(row["PropertyId"]), day), row)
+        key = (int(row["PropertyId"]), day)
+        if key not in keyed or _recency(row) > _recency(keyed[key]):
+            keyed[key] = row
 
     runs: list[_Run] = []
     current: _Run | None = None
     for (property_id, day), row in sorted(keyed.items()):
         status = int(row.get("AvailableStatus") or 0)
+        if status not in BLOCKING_STATUSES:
+            continue
         if (
             current is None
             or property_id != current.property_id
@@ -176,11 +194,11 @@ class AvailabilityBlockLoader(BaseLoader):
         # Load-time "today": the load window (and so the loaded block count)
         # is relative to the day the loader runs.
         return (
-            "SELECT PropertyId, AvailableDate, AvailableStatus, Notes, CreatedBy "
+            "SELECT Id, PropertyId, AvailableDate, AvailableStatus, Notes, CreatedBy, "
+            "CreatedAt, UpdatedAt "
             "FROM VillaAvailability "
-            "WHERE AvailableStatus IN (30, 40, 50, 60) "
-            f"AND AvailableDate >= '{timezone.localdate().isoformat()}' "
-            "ORDER BY PropertyId, AvailableDate"
+            f"WHERE AvailableDate >= '{timezone.localdate().isoformat()}' "
+            "ORDER BY PropertyId, AvailableDate, Id"
         )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:  # pragma: no cover

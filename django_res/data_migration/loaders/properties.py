@@ -363,7 +363,9 @@ class CollectionMembershipLoader(BaseLoader):
     target_model = CollectionMembership
     legacy_query = (
         "SELECT Id, VillaMasterId, VillaCollectionId, VillaOrder, Description "
-        "FROM VillaCollectionsMappings"
+        "FROM VillaCollectionsMappings "
+        # Duplicate pairs keep the lowest VillaOrder (NULL last), then lowest Id.
+        "ORDER BY VillaMasterId, VillaCollectionId, ISNULL(VillaOrder, 2147483647), Id"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -372,7 +374,7 @@ class CollectionMembershipLoader(BaseLoader):
         if prop is None or coll is None:
             return None
         # Legacy has multiple mapping rows for the same (collection, property)
-        # — keep the first one we saw.
+        # — keep the first in query order (lowest VillaOrder).
         existing = (
             CollectionMembership.objects.filter(property=prop, collection=coll)
             .exclude(legacy_id=str(row["Id"]))

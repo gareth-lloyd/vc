@@ -143,9 +143,10 @@ TERMINAL_BOOKING_STATUSES: tuple[str, ...] = (
 # Status gates for the Clients-directory region aggregation (GAP-047).
 #
 # A region is *quoted* once a real quote has been sent (SENT/ACCEPTED; excludes
-# DRAFT/EXPIRED/CANCELLED). Legacy data has no real quotes — the migration only
-# synthesises `booking-` DRAFT fills — so this correctly leaves legacy clients'
-# quoted regions empty; quotes accrue going forward.
+# DRAFT/EXPIRED/CANCELLED). Legacy quotes load DRAFT or EXPIRED and the
+# migration's synthesised `booking-` fills (ACCEPTED) are excluded by the
+# aggregation, so legacy clients' quoted regions stay empty; quotes accrue
+# going forward.
 QUOTED_STATUSES: tuple[str, ...] = (
     QuotationStatus.SENT.value,
     QuotationStatus.ACCEPTED.value,

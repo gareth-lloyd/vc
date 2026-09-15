@@ -10,11 +10,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from data_migration.base import BaseLoader
+import structlog
+
+from data_migration.base import BaseLoader, LoadReport
 from data_migration.declarative import DeclarativeLoader
 from data_migration.loaders._util import person_for_client
 from reservations.models.preferences import GuestPreference, GuestPreferenceType
 from reservations.models.quotation import Quotation
+
+logger = structlog.get_logger(__name__)
 
 
 class GuestPreferenceTypeLoader(DeclarativeLoader):
@@ -43,6 +47,19 @@ class GuestPreferenceLoader(BaseLoader):
         "FROM ClientPreferenceDetails"
     )
 
+    # BUG-030 §30: most legacy `QuotationMasterId`s point at no quotation
+    # (126/167 in the reference dump). Those rows still load, flattened to
+    # quotation=None; the run logs how many lost their quotation context.
+    _unresolved_quotations = 0
+
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        self._unresolved_quotations = 0
+        super()._load_rows(rows, report)
+        logger.info(
+            "data_migration.preference_quotation_unresolved",
+            count=self._unresolved_quotations,
+        )
+
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         person = person_for_client(row.get("ClientDetailsId"))
         pref_type = GuestPreferenceType.objects.filter(
@@ -55,6 +72,8 @@ class GuestPreferenceLoader(BaseLoader):
             if row.get("QuotationMasterId")
             else None
         )
+        if row.get("QuotationMasterId") and quotation is None:
+            self._unresolved_quotations += 1
         # GAP-045 D5-3: the customer is resolved straight to its unified
         # `Person` (keyed `client-{ClientDetailsId}`) via `person_for_client`,
         # and the dedup is keyed on `person` to match the

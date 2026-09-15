@@ -9,6 +9,7 @@ constraint. Duplicates (same triple) collapse to the first occurrence.
 from __future__ import annotations
 
 import pytest
+import structlog
 
 from data_migration.base import LoadReport
 from data_migration.loaders.preferences import GuestPreferenceLoader
@@ -81,3 +82,26 @@ def test_loader_dedups_distinct_legacy_rows_with_same_triple(_guest_and_pref_typ
     assert GuestPreference.objects.count() == 1
     assert GuestPreference.objects.filter(legacy_id="1").exists()
     assert not GuestPreference.objects.filter(legacy_id="2").exists()
+
+
+@pytest.mark.django_db
+def test_unresolved_quotation_context_loads_flat_and_is_counted(
+    _guest_and_pref_type: None,
+) -> None:
+    """BUG-030 §30: most legacy QuotationMasterIds point at no quotation; the
+    preference still loads (quotation=None) and the run logs how many."""
+    report = LoadReport(loader="guest_preference")
+    with structlog.testing.capture_logs() as logs:
+        GuestPreferenceLoader()._load_rows(
+            [
+                _row(Id=1, QuotationMasterId=541),
+                _row(Id=2, ClientPrefMasterId=7, QuotationMasterId=None),
+            ],
+            report,
+        )
+
+    pref = GuestPreference.objects.get(legacy_id="1")
+    assert pref.quotation is None
+    summary = [e for e in logs if e["event"] == "data_migration.preference_quotation_unresolved"]
+    assert len(summary) == 1
+    assert summary[0]["count"] == 1

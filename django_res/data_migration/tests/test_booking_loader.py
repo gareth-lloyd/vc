@@ -9,7 +9,7 @@ falls to a non-numeric `VC-TMP-…` sentinel, never a bare `VC{int}`.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -18,6 +18,7 @@ from django.utils import timezone
 from data_migration.base import LoadReport
 from data_migration.loaders.bookings import BookingLoader
 from properties.models.property import Property
+from reservations.enums import EnquirySource, EnquiryStatus, QuotationStatus
 from reservations.models.booking import Booking
 
 # The `seeded` fixture (Property + client-55 Person + GBP Currency) lives in
@@ -197,3 +198,42 @@ def test_two_bookings_sharing_quotationno_are_preserved_with_suffix(seeded: Prop
     BookingLoader()._process_row(_row(Id=8, QuotationNo=1805), report)
     second.refresh_from_db()
     assert second.reference == suffixed
+
+
+# --- BUG-030 §F (V-1): the stand-in quotation of a booking was accepted ---
+
+
+@pytest.mark.django_db
+def test_booking_stand_in_quotation_is_accepted_and_selected(seeded: Property) -> None:
+    created = datetime(2025, 1, 5, 9, 30)
+    BookingLoader()._process_row(_row(CreatedAt=created), LoadReport(loader="booking"))
+
+    line = Booking.objects.get(legacy_id="7").quotation_line
+    quotation = line.quotation
+    assert line.is_selected is True
+    assert quotation.status == QuotationStatus.ACCEPTED
+    assert quotation.expires_at == timezone.make_aware(created) + timedelta(days=7)
+    enquiry = quotation.enquiry
+    assert enquiry.status == EnquiryStatus.CONVERTED
+    assert enquiry.is_converted is True
+    # Regression (BUG-030 §24): the booking stand-in keeps its source.
+    assert enquiry.site_source == EnquirySource.AGENT_PORTAL
+
+
+@pytest.mark.django_db
+def test_booking_stand_in_quotation_without_created_at_expires_from_now(seeded: Property) -> None:
+    before = timezone.now()
+    BookingLoader()._process_row(_row(CreatedAt=None), LoadReport(loader="booking"))
+
+    quotation = Booking.objects.get(legacy_id="7").quotation_line.quotation
+    assert quotation.status == QuotationStatus.ACCEPTED
+    assert quotation.expires_at >= before + timedelta(days=7)
+
+
+@pytest.mark.django_db
+def test_booking_stand_in_enquiry_is_dated_from_the_booking(seeded: Property) -> None:
+    created = datetime(2025, 1, 5, 9, 30)
+    BookingLoader()._process_row(_row(CreatedAt=created), LoadReport(loader="booking"))
+
+    enquiry = Booking.objects.get(legacy_id="7").quotation_line.quotation.enquiry
+    assert enquiry.created_at == timezone.make_aware(created)

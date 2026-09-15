@@ -29,11 +29,13 @@ from data_migration.base import BaseLoader, LoadReport
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from data_migration.loaders._util import (
     ensure_enquiry,
+    legacy_aware,
     legacy_currency_for,
     legacy_quotation_no,
     person_for_client,
 )
 from data_migration.loaders.pricing import PRICED_ROW_PREDICATE
+from data_migration.loaders.sentinels import UNKNOWN_CLIENT_LEGACY_ID
 from properties.enums import (
     CommissionCalcType,
     DepositCalcType,
@@ -43,7 +45,7 @@ from properties.enums import (
 from properties.models.contacts import PropertyContactAssignment
 from properties.models.finance import PropertyFinance
 from properties.models.property import Property
-from reservations.enums import QuotationStatus
+from reservations.enums import EnquirySource, QuotationStatus
 from reservations.models.enquiry import Enquiry
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.models.terms import TermsVersion
@@ -613,9 +615,48 @@ class QuotationLoader(BaseLoader):
     # per-detail CurrencyId.
     legacy_query = (
         "SELECT q.Id, q.ClientDetailsId, q.AgentId, q.FromDate, q.ToDate, "
-        "q.EnquireId, q.QuotationNo, q.EnquiryNote, q.DeletedAt "
+        "q.EnquireId, q.QuotationNo, q.EnquiryNote, q.PreferencesNote, q.CreatedAt, "
+        "q.DeletedAt "
         "FROM VillaQuotationMaster q WHERE q.DeletedAt IS NULL"
     )
+
+    def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
+        super()._process_row(row, report)
+        quotation = (
+            Quotation.objects.filter(legacy_id=str(row.get(self.legacy_pk_column)))
+            .select_related("enquiry")
+            .first()
+        )
+        if quotation is None:
+            return
+        # BUG-030 §28: back-stamp the legacy creation date (`auto_now_add`
+        # ignores assignment), as EnquiryLoader/BookingLoader do.
+        if row.get("CreatedAt") is not None:
+            Quotation.objects.filter(pk=quotation.pk).update(
+                created_at=legacy_aware(row["CreatedAt"])
+            )
+        enquiry = quotation.enquiry
+        updates: dict[str, Any] = {}
+        # BUG-030 §22: the quotation chain names the customer of an enquiry
+        # the e-mail match could not link — never the shared unknown-client
+        # sentinel a quotation on an unloaded client falls back to.
+        if enquiry.person_id is None and quotation.person.legacy_id != UNKNOWN_CLIENT_LEGACY_ID:
+            updates["person"] = quotation.person
+        # BUG-030 §29: the master's free-text notes belong with the enquiry.
+        notes = [
+            f"Quotation {quotation.reference} {label} note: {text}"
+            for label, text in (
+                ("enquiry", str(row.get("EnquiryNote") or "").strip()),
+                ("preferences", str(row.get("PreferencesNote") or "").strip()),
+            )
+            if text
+        ]
+        if notes:
+            updates["inbound_message"] = "\n\n".join(
+                part for part in (enquiry.inbound_message.strip(), "\n".join(notes)) if part
+            )
+        if updates:
+            Enquiry.objects.filter(pk=enquiry.pk).update(**updates)
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         person = person_for_client(row.get("ClientDetailsId"))
@@ -632,8 +673,24 @@ class QuotationLoader(BaseLoader):
         enquiry = None
         if row.get("EnquireId"):
             enquiry = Enquiry.objects.filter(legacy_id=str(row["EnquireId"])).first()
-        if enquiry is None:
+        created = legacy_aware(row["CreatedAt"]) if row.get("CreatedAt") is not None else None
+        if enquiry is None and agent is not None:
             enquiry = ensure_enquiry(person, legacy_id=f"q{row['Id']}-autoenquiry", agent=agent)
+        elif enquiry is None:
+            # BUG-030 §24: an agent-less quote was a website/staff quote whose
+            # enquiry was hard-deleted (or never existed) — not agent portal.
+            missing = (
+                f"legacy enquiry {row['EnquireId']} is not in the dump"
+                if row.get("EnquireId")
+                else "it has no legacy enquiry"
+            )
+            enquiry = ensure_enquiry(
+                person,
+                legacy_id=f"q{row['Id']}-autoenquiry",
+                site_source=EnquirySource.OTHER.value,
+                created_at=created,
+                note=f"Stand-in created at import for legacy quotation {row['Id']}: {missing}.",
+            )
         terms = _ensure_default_terms()
         # Carry the legacy QuotationNo forward as the canonical `number` so the
         # booking can derive `VC{number}` from `QVC{number}`. Setting both
@@ -645,6 +702,11 @@ class QuotationLoader(BaseLoader):
         # the public quotation list), but we must NOT claim a `number`: the Id
         # namespace overlaps real QuotationNos and `number` is unique. So the
         # `number` key is set only when a genuine QuotationNo is present.
+        # BUG-030 §28: the 7-day validity runs from the legacy creation date;
+        # a quote already past it loads EXPIRED directly (a plain field write,
+        # no `expire()` side effects), so the sweeper has nothing to flip.
+        expires_at = (created or timezone.now()) + timedelta(days=7)
+        status = QuotationStatus.EXPIRED if expires_at < timezone.now() else QuotationStatus.DRAFT
         qn = legacy_quotation_no(row)
         display = qn if qn is not None else int(row["Id"])
         defaults: dict[str, Any] = {
@@ -655,8 +717,8 @@ class QuotationLoader(BaseLoader):
             # legacy quotation upsert. No `Guest` is touched.
             "person": person,
             "agent": agent,
-            "expires_at": timezone.now() + timedelta(days=7),
-            "status": QuotationStatus.DRAFT,
+            "expires_at": expires_at,
+            "status": status,
             "terms_version": terms,
         }
         if qn is not None:
@@ -668,8 +730,12 @@ class QuotationLineLoader(BaseLoader):
     name = "quotation_line"
     target_model = QuotationLine
     legacy_query = (
-        "SELECT Id, QuotationMasterId, VillaId, FromDate, ToDate, Price, "
-        "CurrencyId, IsManual FROM VillaQuotationDetails"
+        # BUG-030 §27: the party size lives on the master (LEFT JOIN: a line
+        # on a missing master still reaches the skip path).
+        "SELECT d.Id, d.QuotationMasterId, d.VillaId, d.FromDate, d.ToDate, d.Price, "
+        "d.CurrencyId, d.IsManual, m.Adult, m.Children "
+        "FROM VillaQuotationDetails d "
+        "LEFT JOIN VillaQuotationMaster m ON m.Id = d.QuotationMasterId"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -699,8 +765,9 @@ class QuotationLineLoader(BaseLoader):
             "currency": currency,
             "date_from": date_from,
             "date_to": date_to,
-            "adults": 2,
-            "children": 0,
+            # NULL occupancy stays 0 — never a fabricated party (§23/§27).
+            "adults": int(row.get("Adult") or 0),
+            "children": int(row.get("Children") or 0),
             "total": _decimal(row.get("Price")) or Decimal("0"),
             "is_selected": False,
             "is_manual": bool(row.get("IsManual")),

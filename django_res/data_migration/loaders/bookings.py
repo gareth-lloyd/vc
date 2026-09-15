@@ -30,6 +30,7 @@ from core.refs import booking_reference
 from data_migration.base import BaseLoader, LoadReport
 from data_migration.loaders._util import (
     ensure_enquiry,
+    legacy_aware,
     legacy_currency_for,
     legacy_quotation_no,
     person_for_client,
@@ -40,10 +41,11 @@ from payments.models.payment import Payment
 from pricing.models.currency import Currency
 from pricing.services.currency import FxConverter, quantise_money
 from properties.models.property import Property
-from reservations.enums import BookingGuestRole, BookingStatus, QuotationStatus
+from reservations.enums import BookingGuestRole, BookingStatus, EnquiryStatus, QuotationStatus
 from reservations.models.booking import Booking
 from reservations.models.booking_guest import BookingGuest
 from reservations.models.charge_item import BookingChargeItem
+from reservations.models.enquiry import Enquiry
 from reservations.models.quotation import Quotation, QuotationLine
 
 logger = structlog.get_logger(__name__)
@@ -62,7 +64,8 @@ class BookingLoader(BaseLoader):
     """VillaBooking -> Booking (DRAFT status to bypass EXCLUDE).
 
     Synthesises a Quotation+QuotationLine per booking since legacy doesn't
-    link the two. The synthesised quotation is also DRAFT.
+    link the two. The synthesised quotation is ACCEPTED with its line
+    selected, and its stand-in enquiry CONVERTED (BUG-030 §28).
     """
 
     name = "booking"
@@ -112,15 +115,26 @@ class BookingLoader(BaseLoader):
         # `number`/`reference` are unique. So we leave `number` NULL and pin a
         # deterministic per-booking sentinel reference instead. The legacy
         # number is carried forward on the *booking* reference below.
-        enquiry = ensure_enquiry(person, legacy_id=booking_legacy)
+        # BUG-030 §28 (V-1): this stand-in chain is "an enquiry that became a
+        # booking": the enquiry loads CONVERTED and dated from the booking, its
+        # quotation ACCEPTED (the expire sweeper only touches DRAFT/SENT) with
+        # the validity dated from the booking, and the single line selected.
+        # Plain field writes, no state-machine calls. The API read paths
+        # (`Quotation.objects.real()` prefetches) still hide these `booking-`
+        # quotations, so the enquiry's `is_converted` / converted-booking reads
+        # stay false/null there — only the status column says CONVERTED.
+        created = legacy_aware(row["CreatedAt"]) if row.get("CreatedAt") is not None else None
+        enquiry = ensure_enquiry(person, legacy_id=booking_legacy, created_at=created)
+        Enquiry.objects.filter(pk=enquiry.pk).update(status=EnquiryStatus.CONVERTED)
+        validity_from = created or timezone.now()
         quotation, _ = Quotation.objects.update_or_create(
             legacy_id=booking_legacy,
             defaults={
                 "enquiry": enquiry,
                 "person": person,
                 "reference": f"QVC-TMP-{row['Id']}"[:32],
-                "expires_at": timezone.now() + timedelta(days=7),
-                "status": QuotationStatus.DRAFT,
+                "expires_at": validity_from + timedelta(days=7),
+                "status": QuotationStatus.ACCEPTED,
                 "terms_version": terms,
             },
         )
@@ -136,6 +150,7 @@ class BookingLoader(BaseLoader):
                 "children": 0,
                 "total": _decimal(row.get("RentalPrice")) or Decimal("0"),
                 "is_manual": True,
+                "is_selected": True,
             },
         )
 

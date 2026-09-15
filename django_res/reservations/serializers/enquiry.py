@@ -166,9 +166,10 @@ class EnquiryDetailSerializer(EnquiryListSerializer):
         accepted one (the first ACCEPTED quote ordered by ``(created_at, pk)``).
 
         Only meaningful for a CONVERTED enquiry that has an accepted real quote;
-        otherwise ``None``. (Legacy bookings migrate as NEW enquiries with a
-        single synthetic DRAFT quote, so they read null — the metric covers
-        rebuild-era conversions only.)
+        otherwise ``None``. (Legacy bookings migrate as CONVERTED enquiries
+        whose single synthetic ``booking-`` quote is ACCEPTED but hidden by
+        ``.real()``, so they read null — the metric covers rebuild-era
+        conversions only.)
 
         Computed in pure Python over the already-prefetched ``obj.quotations`` —
         the detail prefetch is ``Quotation.objects.real()``, so synthetic

@@ -160,13 +160,31 @@ def person_for_client(legacy_client_id: Any) -> Any:
     return unknown_client()
 
 
-def ensure_enquiry(person: Any, *, legacy_id: str, agent: Any | None = None) -> Any:
+def legacy_aware(value: Any) -> Any:
+    """A legacy SQL Server datetime (naive) made aware in the default zone."""
+    from django.utils import timezone
+
+    return timezone.make_aware(value) if timezone.is_naive(value) else value
+
+
+def ensure_enquiry(
+    person: Any,
+    *,
+    legacy_id: str,
+    agent: Any | None = None,
+    site_source: str | None = None,
+    created_at: Any | None = None,
+    note: str = "",
+) -> Any:
     """Idempotently back-create a minimal Enquiry for a Person (customer).
 
     Mirrors `QuotationService.minimal_enquiry_for` but keyed on `legacy_id` so
     re-running the import doesn't spawn duplicate enquiries. Used where a legacy
     quotation has no resolvable `EnquireId` (now that `Quotation.enquiry` is
-    mandatory). Tagged `AGENT_PORTAL` for conversion-reporting segmentation.
+    mandatory). Tagged `AGENT_PORTAL` by default for conversion-reporting
+    segmentation; BUG-030 §24: an agent-less quotation's stand-in passes
+    `site_source=OTHER`, its quotation's `created_at` (back-stamped past
+    `auto_now_add`) and a provenance `note` (the `inbound_message`).
 
     GAP-045 D5-3: takes the unified `person` (no longer a `Guest`) and sources
     the contact fields off the Person + its PRIMARY email/phone children; the
@@ -188,9 +206,12 @@ def ensure_enquiry(person: Any, *, legacy_id: str, agent: Any | None = None) -> 
             "phone": primary_phone.number if primary_phone else "",
             "contact_method": person.preferred_method,
             "agent": agent,
-            "site_source": EnquirySource.AGENT_PORTAL.value,
+            "site_source": site_source or EnquirySource.AGENT_PORTAL.value,
+            "inbound_message": note,
         },
     )
+    if created_at is not None:
+        Enquiry.objects.filter(pk=enquiry.pk).update(created_at=created_at)
     return enquiry
 
 

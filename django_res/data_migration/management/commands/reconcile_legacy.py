@@ -680,7 +680,7 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaQuotationMaster WHERE DeletedAt IS NULL",
         Quotation,
         "Quotation (legacy + booking-synth)",
-        # Negative gap: BookingLoader synthesises a hidden DRAFT quotation per
+        # Negative gap: BookingLoader synthesises a hidden ACCEPTED quotation per
         # legacy booking that has no real quotation to satisfy the PROTECT FK.
         expected_gap=-3,
     ),
@@ -699,13 +699,15 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM ClientPreferenceDetails",
         GuestPreference,
         "GuestPreference",
-        # Calibrated 2026-07-05: duplicate (person, preference_type,
-        # quotation) triples collapse to the first occurrence (the legacy
-        # table has no unique constraint), plus rows whose client resolves to
-        # the no-identity sentinel path. Added when the double-run
-        # convergence check caught the loader silently under-loading 16
-        # quotation-linked rows (registry-order bug, since fixed — see
-        # registry.py comment).
+        # Calibrated 2026-07-05 (167 legacy rows load as 74). BUG-030 §30:
+        # the gap is quotation-context loss, not bad data — 126 rows carry a
+        # QuotationMasterId with no VillaQuotationMaster row (ids up to 541;
+        # the table's max Id is 20, some are VillaEnquire ids), load with
+        # quotation=None, and then collapse on the (person, preference_type,
+        # NULL) unique triple with each other; the remainder are genuine
+        # duplicate triples (the legacy table has no unique constraint). The
+        # loader logs the unresolved count
+        # (`data_migration.preference_quotation_unresolved`).
         expected_gap=93,
     ),
     _Check(

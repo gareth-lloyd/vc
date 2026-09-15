@@ -258,29 +258,21 @@ def rate_row_finance_by_villa(groups: list[dict[str, Any]]) -> dict[str, RateRow
 
 
 def apply_rate_row_finance(
-    row: dict[str, Any],
-    villa_finance: RateRowFinance | None,
-    *,
-    row_is_villas_own: bool = True,
+    row: dict[str, Any], villa_finance: RateRowFinance | None
 ) -> dict[str, Any]:
-    """BUG-028 D7: a default-flagged or non-positive commission, and an unset
-    non-exempt tax, take the villa's rate-row majority before the CPD rule.
-    An own explicit value is kept — but an owner-contact template is not the
-    villa's own (`row_is_villas_own=False`), so the majority beats it.
+    """BUG-028 D7: the villa's rate-row majority commission and tax replace
+    the row's own values, before the CPD rule. Legacy's quote reads a priced
+    night's rate row first and VillaFinance only when there is none
+    (`quote_price_calc-query.sql:96-146`; owner decision 2026-09-15). A villa
+    whose rows carry no positive commission / tax keeps its own.
     Returns a new dict."""
     out = dict(row)
     if villa_finance is None:
         return out
-    if villa_finance.commission is not None and (
-        not row_is_villas_own
-        or row.get("IsDefaultCommission")
-        or (row.get("CommissionAmount") or 0) <= 0
-    ):
+    if villa_finance.commission is not None:
         out["CommissionTypeId"], out["CommissionAmount"] = villa_finance.commission
         out["IsDefaultCommission"] = False
-    if villa_finance.tax is not None and (
-        not row_is_villas_own or (not row.get("TaxExempt") and (row.get("TaxPercentage") or 0) <= 0)
-    ):
+    if villa_finance.tax is not None:
         out["TaxPercentage"], out["TaxExempt"] = villa_finance.tax
     return out
 
@@ -514,7 +506,6 @@ class PropertyFinanceLoader(BaseLoader):
             apply_rate_row_finance(
                 _strip_default_flags(template) if template is not None else {},
                 self._rate_finance().get(str(prop.legacy_id)),
-                row_is_villas_own=False,
             ),
             self._cpd(),
         )
@@ -546,8 +537,8 @@ class PropertyFinanceLoader(BaseLoader):
         # BUG-028 legacy-exact fill order: the CPD `IsDefault*` / `<= 0` rule
         # runs on the raw row first; the owner template below then fills only
         # what the CPD never covers (bank, tax, notes, NULL types).
-        # D7: the villa's rate-row majority fills default/zero commission and
-        # unset tax before that.
+        # D7: before that, the villa's rate-row majority commission and tax
+        # replace its own values (legacy reads the rate row first).
         resolved = apply_rate_row_finance(row, self._rate_finance().get(str(row["VillaId"])))
         defaults = _finance_defaults(apply_legacy_finance_defaults(resolved, self._cpd()))
         # GAP-070 parity: pre-cutover, a NULL/"" field on a villa's own row

@@ -550,6 +550,31 @@ def test_process_row_flagged_commission_without_rate_rows_uses_cpd(
     assert PropertyFinance.objects.get(property=prop).commission_amount == Decimal("20.00")
 
 
+def test_process_row_own_explicit_commission_loses_to_rate_row_majority(
+    villa_with_owner: tuple[Property, Person],
+) -> None:
+    prop, _contact = villa_with_owner
+    loader = _loader_with_templates({})
+    loader._rate_finance_cache = {"900": _FIFTEEN_PERCENT}
+    own_row: dict[str, Any] = {
+        "Id": 10,
+        "VillaId": 900,
+        "ContactId": None,
+        "ParentId": None,
+        "IsDefaultCommission": False,
+        "CommissionTypeId": 20,
+        "CommissionAmount": Decimal("150"),
+        "TaxExempt": False,
+        "TaxPercentage": Decimal("10"),
+    }
+    loader._process_row(own_row, LoadReport(loader=loader.name))
+
+    finance = PropertyFinance.objects.get(property=prop)
+    assert finance.commission_calculation_type == CommissionCalcType.PERCENT
+    assert finance.commission_amount == Decimal("15.00")
+    assert finance.tax_percentage == Decimal("13")
+
+
 def test_fallback_villa_gets_the_rate_row_majority(
     villa_with_owner: tuple[Property, Person],
 ) -> None:

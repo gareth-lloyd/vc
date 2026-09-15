@@ -113,11 +113,14 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
     runs afterwards and only fills what the CPD never covers (bank, tax,
     notes). A villa with no `VillaFinance` row resolves the same way from its
     owner template, or from an empty row when it has none.
-  - **Per-villa commission / tax (D7):** before the CPD rule, a flagged or
-    `<= 0` commission, and an unset non-exempt tax, take the majority of the
-    villa's priced non-POA rate rows ending on or after `reference_date`
-    (the load day; ties → lowest type, then amount). Villas whose rows
-    disagree are logged (`finance_rate_rows_mixed`) for a human call.
+  - **Per-villa commission / tax (D7):** before the CPD rule, the majority
+    of the villa's priced non-POA rate rows ending on or after
+    `reference_date` (the load day; ties → lowest type, then amount) replaces
+    the villa's own commission and tax — legacy's quote reads the rate row
+    first (`quote_price_calc-query.sql:96-146`). Only positive commissions and
+    positive / exempt taxes vote; a villa without a majority keeps its own.
+    Villas whose rows disagree are logged (`finance_rate_rows_mixed`) for a
+    human call.
   - **Settings** (`:668-686`) are flag-only: a set `IsDefaultSetting*` flag
     takes the CPD currency, changeover day, min nights, check-in/out and
     pre-approval; unflagged values load as stored. `prices_entered_as` stays

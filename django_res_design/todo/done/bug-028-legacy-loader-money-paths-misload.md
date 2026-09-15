@@ -19,8 +19,9 @@
 > gates are `sp_getQuotationData` (`DbScript.sql:47944`, villas need
 > `WeeklyPrice > 0`) and `quote_price_calc-query.sql:96-133` (a `0.00`
 > nightly is absent). **Deviations:** a blank commission type also fills from
-> the CPD; an own explicit commission beats the rate-row majority while
-> legacy's quote calc reads the rate row first (3 villas differ on the dump).
+> the CPD; per-villa commission/tax is a rate-row majority, not per night
+> (legacy's quote reads the rate row first, so the majority beats the own
+> value — owner decision 2026-09-15; 0 rate-row commissions do not vote).
 > **Left open:** villa 249 on the GAP-110 plan/night-parity checks and Room
 > placement 49 (GAP-108); stale season services / plans on in-place re-runs
 > (BUG-029). Decision row in `design/decisions.md`.

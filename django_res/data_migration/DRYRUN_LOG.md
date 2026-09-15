@@ -507,10 +507,15 @@ majority: `10 / 20.00` 182, `10 / 15.00` 8, `10 / 17.00` 3, `10 / 10.00` 1,
 `10 / 16.67` 1, plus two suspect rows — `20 / 20.00` (a fixed EUR 20) and
 `20 / 15000.00`. 11 villas are mixed (logged): 5, 11, 50, 51, 59, 164, 165,
 168, 173, 245, 416. Only 4 villas have both an own explicit commission and
-rate-row commission; 3 of those differ, which is where legacy's quote
-calculation (rate row first, `quote_price_calc-query.sql:96-147`) and D7
-(own first) disagree. Re-measure on the cutover dump with `reference_date` =
-the load day.
+rate-row commission; 3 of those differ (460, 461, 465), only in the type:
+own `0 / 20` (blank type, which the CPD fills to percent) vs rate rows
+`10 / 20.00` — the same 20 %. Owner decision 2026-09-15: the majority beats
+the own value, as legacy's quote does (rate row first,
+`quote_price_calc-query.sql:96-146`). No villa's own tax is set, so tax
+moves nothing. Strict legacy — a 0 rate-row commission also winning — was
+rejected: 33 villas have only 0-commission current rows and would drop from
+20 % to 0 %. Re-measure on the cutover dump with `reference_date` = the load
+day.
 
 ### Side effects to surface at cutover (product-visible)
 

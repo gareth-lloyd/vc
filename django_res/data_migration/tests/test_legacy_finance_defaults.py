@@ -311,8 +311,12 @@ def test_zero_commission_takes_the_majority() -> None:
     assert out["CommissionAmount"] == Decimal("15.00")
 
 
-def test_own_explicit_commission_and_tax_are_kept() -> None:
-    assert apply_rate_row_finance(FINANCE_ROW, MAJORITY) == FINANCE_ROW
+def test_rate_row_majority_beats_own_explicit_commission_and_tax() -> None:
+    # Legacy's quote reads a priced night's rate row before VillaFinance
+    # (quote_price_calc-query.sql:96-146), so the majority wins outright.
+    out = apply_rate_row_finance(FINANCE_ROW, MAJORITY)
+    assert (out["CommissionTypeId"], out["CommissionAmount"]) == (10, Decimal("15.00"))
+    assert (out["TaxPercentage"], out["TaxExempt"]) == (Decimal("13"), False)
 
 
 @pytest.mark.parametrize("own_tax", [None, Decimal("0")])
@@ -321,19 +325,17 @@ def test_unset_tax_takes_the_majority(own_tax: Decimal | None) -> None:
     assert (out["TaxPercentage"], out["TaxExempt"]) == (Decimal("13"), False)
 
 
-def test_exempt_villa_keeps_its_exemption() -> None:
+def test_exempt_villa_loses_its_exemption_to_a_taxed_majority() -> None:
     row = {**FINANCE_ROW, "TaxPercentage": None, "TaxExempt": True}
-    assert apply_rate_row_finance(row, MAJORITY) == row
+    out = apply_rate_row_finance(row, MAJORITY)
+    assert (out["TaxPercentage"], out["TaxExempt"]) == (Decimal("13"), False)
+
+
+def test_villa_without_a_commission_or_tax_majority_keeps_its_own() -> None:
+    no_votes = RateRowFinance(commission=None, tax=None, commission_mixed=False, tax_mixed=False)
+    assert apply_rate_row_finance(FINANCE_ROW, no_votes) == FINANCE_ROW
 
 
 def test_no_rate_rows_changes_nothing() -> None:
     row = {**FINANCE_ROW, "IsDefaultCommission": True}
     assert apply_rate_row_finance(row, None) == row
-
-
-def test_template_row_loses_to_the_majority_even_when_explicit() -> None:
-    out = apply_rate_row_finance(
-        {**FINANCE_ROW, "TaxExempt": True}, MAJORITY, row_is_villas_own=False
-    )
-    assert (out["CommissionTypeId"], out["CommissionAmount"]) == (10, Decimal("15.00"))
-    assert (out["TaxPercentage"], out["TaxExempt"]) == (Decimal("13"), False)

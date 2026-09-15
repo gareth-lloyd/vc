@@ -61,13 +61,10 @@ def _role_for(role_id: int | None) -> ContactRole:
     NULL/absent/unknown code falls back to OWNER (see _ROLE_MAP for why Code,
     not Id).
 
-    CAVEAT (verify before cutover — CUTOVER.md §4f): this loader reads RoleId
-    only from the LEFT-JOINed VillaContactRoleMapping (`r`). The schema doc
-    (07-api-schema-reconciliation.md) notes VillaRoles is also FK'd from the base
-    VillaContactMapping — if a mapping carries its own RoleId with no child role
-    row, it arrives here as None and defaults to OWNER, silently dropping the
-    real role. Count such rows against the legacy dump; if non-zero, source the
-    role via COALESCE(r.RoleId, m.RoleId) in `legacy_query`."""
+    RoleId comes only from the LEFT-JOINed VillaContactRoleMapping (`r`): the
+    live VillaContactMapping has no RoleId column, so the 3/335 mappings with no
+    role child fall back to OWNER by design (CUTOVER.md §4f, resolved 2026-07-05).
+    """
     return _ROLE_MAP.get(role_id or 0, ContactRole.OWNER)
 
 

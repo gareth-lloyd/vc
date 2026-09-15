@@ -13,10 +13,12 @@ Strategy:
   `timezone.localdate()` stamped into the query at load time — the loaded
   count is therefore dump- and day-relative, not a fixed number.
 - De-duplicate to the latest edit per (property, day), THEN keep only the
-  non-available statuses (30 Unavailable / 40 On Hold / 50 Booked /
-  60 Booked VC) — so a newer "Available" row supersedes an older block.
+  blocking statuses (0 Unknown incl. NULL / 6 BookedExt / 30 Unavailable /
+  40 On Hold / 50 Booked / 60 Booked VC) — so a newer "Available" row
+  supersedes an older block.
 - Coalesce consecutive days per property into runs, splitting when the status
-  changes, and write ONE `BookingHold` per run: source-less, `reason=MANUAL`
+  changes, and write one `BookingHold` per run (split around existing
+  occupancy, below): source-less, `reason=MANUAL`
   (permitted by `bookinghold_has_source_or_blocking_reason`, and the
   operator-editable reason so staff can manage imported blocks on the admin
   grid), never-expiring (`expires_at=NULL`), with the legacy status name /
@@ -31,9 +33,13 @@ Strategy:
   keying is impossible — purge every `avail-*` hold, then insert (mirrors
   `RateBandLoader`). The deterministic `legacy_id` is
   `avail-{PropertyId}-{run start ISO date}`.
-- A run whose range is already occupied by an imported booking (or a live
-  non-legacy hold) is SKIPPED with a warning, not errored: the calendar is
-  already blocked, and a duplicate block would double-paint the grid.
+- A run is written around what already occupies the calendar (BUG-030 §31):
+  the ranges of imported bookings (`Booking.objects.occupying`) and every
+  unreleased non-legacy hold are subtracted and each
+  remaining sub-range becomes its own hold, keyed by its own start day. A
+  run fully covered is SKIPPED with a warning, not errored. The days trimmed
+  are logged per run and in total (`trimmed_days`), so the reconcile gap is
+  auditable.
 """
 
 from __future__ import annotations
@@ -62,6 +68,7 @@ AVAILABILITY_LEGACY_PREFIX = "avail-"
 # whatever status a row carried.
 STATUS_NAMES = {
     0: "Unknown",
+    6: "BookedExt",  # AvailabilityStatus row Id 7 carries Code 6
     10: "Available",
     20: "Avail-Enquire",
     30: "Unavailable",
@@ -71,8 +78,12 @@ STATUS_NAMES = {
     70: "Available",
 }
 
-# The statuses that block the calendar — the only ones imported.
-BLOCKING_STATUSES = frozenset({30, 40, 50, 60})
+# The statuses that block the calendar — the only ones imported. BUG-030 §31:
+# 0 "Unknown" (NULL coalesces to it) is how staff entered whole-calendar
+# blocks, and legacy's rate lookup books only a literal "Available" day, so it
+# blocked there; 6 "BookedExt" is an external booking, on a par with 50/60.
+# 20 "Available - Enquire" stays bookable (not decided otherwise).
+BLOCKING_STATUSES = frozenset({0, 6, 30, 40, 50, 60})
 
 
 @dataclass
@@ -162,6 +173,28 @@ def coalesce_runs(rows: list[dict[str, Any]]) -> list[_Run]:
     return runs
 
 
+def free_ranges(
+    date_from: date, date_to: date, occupied: list[tuple[date, date]]
+) -> list[tuple[date, date]]:
+    """The half-open sub-ranges of `[date_from, date_to)` not covered by any
+    of the half-open `occupied` ranges (in any order, may overlap)."""
+    free: list[tuple[date, date]] = []
+    cursor = date_from
+    for start, end in sorted(occupied):
+        if end <= cursor:
+            continue
+        if start >= date_to:
+            break
+        if start > cursor:
+            free.append((cursor, start))
+        cursor = max(cursor, end)
+        if cursor >= date_to:
+            return free
+    if cursor < date_to:
+        free.append((cursor, date_to))
+    return free
+
+
 def _run_notes(run: _Run) -> str:
     status_name = STATUS_NAMES.get(run.status, f"code {run.status}")
     provenance = f"Imported from legacy availability (status {status_name}"
@@ -207,6 +240,7 @@ class AvailabilityBlockLoader(BaseLoader):
     def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
         runs = coalesce_runs(rows)
         created = 0
+        self._trimmed_days = 0
         with transaction.atomic():
             purged, _ = BookingHold.objects.filter(
                 legacy_id__startswith=AVAILABILITY_LEGACY_PREFIX
@@ -217,8 +251,7 @@ class AvailabilityBlockLoader(BaseLoader):
                 # recorded against the run and the remaining runs still load.
                 try:
                     with transaction.atomic():
-                        if self._load_run(run, property_cache, report):
-                            created += 1
+                        created += self._load_run(run, property_cache, report)
                 except Exception as exc:  # isolate one bad run from the rest
                     report.errors.append((_run_legacy_id(run), repr(exc)))
         report.created += created
@@ -229,12 +262,16 @@ class AvailabilityBlockLoader(BaseLoader):
             runs=len(runs),
             created=created,
             skipped=report.skipped,
+            trimmed_days=self._trimmed_days,
         )
+
+    _trimmed_days = 0
 
     def _load_run(
         self, run: _Run, property_cache: dict[str, Property | None], report: LoadReport
-    ) -> bool:
-        """Write one run as a hold; False when it is skipped."""
+    ) -> int:
+        """Write one run as holds around existing occupancy; the hold count
+        (0 when the run is skipped)."""
         key = str(run.property_id)
         if key not in property_cache:
             property_cache[key] = Property.objects.filter(legacy_id=key).first()
@@ -249,37 +286,54 @@ class AvailabilityBlockLoader(BaseLoader):
                 date_from=date_from.isoformat(),
                 date_to=date_to.isoformat(),
             )
-            return False
-        # Skip-not-error when the range is already occupied: the
-        # calendar is blocked either way, and a duplicate block would
-        # double-paint the grid. Post-purge, any surviving hold here
-        # is staff-created or another source's — never our own slice.
-        occupied_by_booking = Booking.objects.occupying(
-            property=prop, date_from=date_from, date_to=date_to
-        ).exists()
-        if (
-            occupied_by_booking
-            or BookingHold.live_overlapping(
-                property=prop, date_from=date_from, date_to=date_to
-            ).exists()
-        ):
-            report.skipped += 1
+            return 0
+        # Write around what already blocks the calendar: a duplicate block
+        # would double-paint the grid, but skipping the whole run (the old
+        # rule) left a whole-calendar block bookable around one booking.
+        # Post-purge, any surviving hold here is staff-created or another
+        # source's — never our own slice.
+        occupied = [
+            (b.date_from, b.date_to)
+            for b in Booking.objects.occupying(property=prop, date_from=date_from, date_to=date_to)
+        ] + [
+            # Every UNRELEASED hold, not just `live_overlapping`: the
+            # `bookinghold_no_overlap_live` exclusion constraint also covers
+            # an expired-but-unreleased hold, which would fail the insert.
+            (h.date_from, h.date_to)
+            for h in BookingHold.objects.filter(
+                property=prop,
+                released_at__isnull=True,
+                date_from__lt=date_to,
+                date_to__gt=date_from,
+            )
+        ]
+        pieces = free_ranges(date_from, date_to, occupied)
+        trimmed = (date_to - date_from).days - sum((end - start).days for start, end in pieces)
+        if trimmed:
             logger.warning(
                 "data_migration.availability_block_range_occupied",
                 property_id=prop.pk,
                 property_legacy_id=key,
                 date_from=date_from.isoformat(),
                 date_to=date_to.isoformat(),
-                by="booking" if occupied_by_booking else "hold",
+                trimmed_days=trimmed,
+                pieces=len(pieces),
             )
-            return False
-        BookingHold.objects.create(
-            property=prop,
-            date_from=date_from,
-            date_to=date_to,
-            expires_at=None,  # never expires — released only by staff
-            reason=BookingHoldReason.MANUAL,
-            notes=_run_notes(run),
-            legacy_id=_run_legacy_id(run),
-        )
-        return True
+        if not pieces:
+            report.skipped += 1
+            self._trimmed_days += trimmed
+            return 0
+        for start, end in pieces:
+            BookingHold.objects.create(
+                property=prop,
+                date_from=start,
+                date_to=end,
+                expires_at=None,  # never expires — released only by staff
+                reason=BookingHoldReason.MANUAL,
+                notes=_run_notes(run),
+                legacy_id=f"{AVAILABILITY_LEGACY_PREFIX}{run.property_id}-{start.isoformat()}",
+            )
+        # Counted only once the run's holds are written: an errored run rolls
+        # back to its savepoint and must not claim trimmed days.
+        self._trimmed_days += trimmed
+        return len(pieces)

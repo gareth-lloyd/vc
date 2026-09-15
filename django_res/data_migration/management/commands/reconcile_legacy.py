@@ -751,19 +751,25 @@ _CHECKS: list[_Check] = [
         # crossing between the two ages rows out of the legacy side while
         # they linger in the loaded blocks (a spurious negative gap).
         # Duplicate day rows count once, as their latest edit — the same
-        # dedupe-then-filter as `coalesce_runs` (BUG-029).
+        # dedupe-then-filter as `coalesce_runs` (BUG-029). Blocking statuses
+        # mirror `BLOCKING_STATUSES` (BUG-030 §31: 0/NULL Unknown and
+        # 6 BookedExt block too).
         "SELECT COUNT(*) FROM ("
         "SELECT AvailableStatus, ROW_NUMBER() OVER (PARTITION BY PropertyId, "
         "CAST(AvailableDate AS date) ORDER BY COALESCE(UpdatedAt, CreatedAt) DESC, Id DESC) AS rn "
         "FROM VillaAvailability WHERE AvailableDate >= CAST(GETDATE() AS date)"
-        ") latest WHERE rn = 1 AND AvailableStatus IN (30, 40, 50, 60)",
+        ") latest WHERE rn = 1 AND ISNULL(AvailableStatus, 0) IN (0, 6, 30, 40, 50, 60)",
         BookingHold,
         "VillaAvailability (future days)",
-        # 0 holds on the 24-Apr-2025 dump: the single future run (property
-        # 133, booked 2026-07-25..2026-08-22, 29 days) sits on a property
-        # that loads. Caveat: future days on UNLOADED properties, or on a
-        # range an imported booking/live hold already occupies (the loader
-        # skips those), would widen this gap — recalibrate at cutover.
+        # expected_gap = legacy blocking days - loader-written hold days
+        #              = days trimmed under imported bookings / live staff
+        #                holds (the loader logs `trimmed_days`)
+        #              + days on unloaded properties (logged as skips)
+        #              + days of runs that errored (`report.errors`).
+        # 0 on the reference dump: its single future run (property 133,
+        # 2026-07-25..2026-08-22, 29 days) has no imported booking under it.
+        # GAP-108 recalibrates on the live dump, where the status-0
+        # whole-calendar blocks (BUG-030 §31) will carry bookings.
         expected_gap=0,
         loaded_count=lambda m: sum(
             (hold.date_to - hold.date_from).days

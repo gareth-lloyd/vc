@@ -7,13 +7,16 @@ from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
+import structlog
 from django.utils import timezone
 
 from data_migration.base import LoadReport
 from data_migration.loaders.availability import (
     AVAILABILITY_LEGACY_PREFIX,
+    STATUS_NAMES,
     AvailabilityBlockLoader,
     coalesce_runs,
+    free_ranges,
 )
 from reservations.enums import BookingHoldReason
 from reservations.models.booking import Booking, BookingHold
@@ -286,10 +289,11 @@ def test_rerun_converges_and_spares_staff_holds(seeded: Property) -> None:
 
 
 @pytest.mark.django_db
-def test_run_overlapping_imported_booking_is_skipped(booking: Booking) -> None:
-    """A run whose range an imported booking already occupies is skipped, not
-    errored — the calendar is blocked either way, and a duplicate block would
-    double-paint the grid. (The `booking` fixture occupies 2026-06-10..17.)"""
+def test_run_fully_covered_by_an_imported_booking_is_skipped(booking: Booking) -> None:
+    """A run whose whole range an imported booking already occupies is skipped,
+    not errored — the calendar is blocked either way, and a duplicate block
+    would double-paint the grid. (The `booking` fixture occupies
+    [2026-06-10, 2026-06-17).)"""
     loader = AvailabilityBlockLoader()
     report = LoadReport(loader=loader.name)
 
@@ -336,7 +340,9 @@ def test_reconcile_check_counts_days_over_the_avail_slice(seeded: Property) -> N
         "ROW_NUMBER() OVER (PARTITION BY PropertyId, CAST(AvailableDate AS date) "
         "ORDER BY COALESCE(UpdatedAt, CreatedAt) DESC, Id DESC)"
     ) in check.legacy_query
-    assert "WHERE rn = 1 AND AvailableStatus IN (30, 40, 50, 60)" in check.legacy_query
+    assert "WHERE rn = 1 AND ISNULL(AvailableStatus, 0) IN (0, 6, 30, 40, 50, 60)" in (
+        check.legacy_query
+    )
     assert check.expected_gap == 0
 
     # Property 133's real run: 2026-07-25..2026-08-22 inclusive = 29 days.
@@ -363,3 +369,151 @@ def test_reconcile_check_counts_days_over_the_avail_slice(seeded: Property) -> N
 
     assert check.loaded_count is not None
     assert check.loaded_count(check.model) == 30
+
+
+# --- BUG-030 §31: status 0 / NULL / BookedExt block; runs split around occupancy ---
+
+
+def test_unknown_and_null_status_coalesce_into_one_blocking_run() -> None:
+    rows = [
+        *_days(date(2026, 7, 1), 2, AvailableStatus=0),
+        *_days(date(2026, 7, 3), 2, AvailableStatus=None),
+    ]
+    assert [(r.start, r.end, r.status) for r in coalesce_runs(rows)] == [
+        (date(2026, 7, 1), date(2026, 7, 4), 0)
+    ]
+
+
+def test_booked_ext_blocks_and_avail_enquire_does_not() -> None:
+    rows = [
+        *_days(date(2026, 7, 1), 1, AvailableStatus=6),
+        *_days(date(2026, 7, 2), 1, AvailableStatus=20),
+    ]
+    assert [(r.start, r.status) for r in coalesce_runs(rows)] == [(date(2026, 7, 1), 6)]
+    assert STATUS_NAMES[6] == "BookedExt"
+
+
+def test_free_ranges_subtracts_occupied_half_open_ranges() -> None:
+    d = date
+    assert free_ranges(d(2026, 6, 1), d(2026, 6, 30), []) == [(d(2026, 6, 1), d(2026, 6, 30))]
+    assert free_ranges(d(2026, 6, 1), d(2026, 6, 30), [(d(2026, 6, 10), d(2026, 6, 17))]) == [
+        (d(2026, 6, 1), d(2026, 6, 10)),
+        (d(2026, 6, 17), d(2026, 6, 30)),
+    ]
+    # Unsorted, overlapping and out-of-window occupancy.
+    assert free_ranges(
+        d(2026, 6, 5),
+        d(2026, 6, 20),
+        [
+            (d(2026, 6, 15), d(2026, 6, 25)),
+            (d(2026, 5, 1), d(2026, 6, 6)),
+            (d(2026, 6, 8), d(2026, 6, 12)),
+            (d(2026, 6, 10), d(2026, 6, 13)),
+        ],
+    ) == [(d(2026, 6, 6), d(2026, 6, 8)), (d(2026, 6, 13), d(2026, 6, 15))]
+    assert free_ranges(d(2026, 6, 5), d(2026, 6, 8), [(d(2026, 6, 1), d(2026, 6, 9))]) == []
+
+
+def _avail_holds() -> list[tuple[str | None, date, date]]:
+    return list(
+        BookingHold.objects.filter(legacy_id__startswith=AVAILABILITY_LEGACY_PREFIX)
+        .order_by("date_from")
+        .values_list("legacy_id", "date_from", "date_to")
+    )
+
+
+@pytest.mark.django_db
+def test_run_with_a_booking_in_the_middle_loads_two_holds(booking: Booking) -> None:
+    loader = AvailabilityBlockLoader()
+    report = LoadReport(loader=loader.name)
+
+    with structlog.testing.capture_logs() as logs:
+        loader._load_rows(_days(date(2026, 6, 5), 16), report)  # 06-05..06-20
+
+    assert _avail_holds() == [
+        ("avail-900-2026-06-05", date(2026, 6, 5), date(2026, 6, 10)),
+        ("avail-900-2026-06-17", date(2026, 6, 17), date(2026, 6, 21)),
+    ]
+    assert (report.created, report.skipped, report.errors) == (2, 0, [])
+    summary = next(e for e in logs if e["event"] == "data_migration.availability_block_loaded")
+    assert summary["trimmed_days"] == 7
+
+
+@pytest.mark.django_db
+def test_run_whose_start_is_booked_is_trimmed(booking: Booking) -> None:
+    loader = AvailabilityBlockLoader()
+    loader._load_rows(_days(date(2026, 6, 12), 9), LoadReport(loader=loader.name))  # ..06-20
+
+    assert _avail_holds() == [("avail-900-2026-06-17", date(2026, 6, 17), date(2026, 6, 21))]
+
+
+@pytest.mark.django_db
+def test_run_whose_end_is_booked_is_trimmed(booking: Booking) -> None:
+    loader = AvailabilityBlockLoader()
+    loader._load_rows(_days(date(2026, 6, 5), 8), LoadReport(loader=loader.name))  # ..06-12
+
+    assert _avail_holds() == [("avail-900-2026-06-05", date(2026, 6, 5), date(2026, 6, 10))]
+
+
+@pytest.mark.django_db
+def test_run_is_trimmed_around_a_live_staff_hold(seeded: Property) -> None:
+    BookingHold.objects.create(
+        property=seeded,
+        date_from=date(2026, 9, 3),
+        date_to=date(2026, 9, 5),
+        reason=BookingHoldReason.MAINTENANCE,
+    )
+    loader = AvailabilityBlockLoader()
+    loader._load_rows(_days(date(2026, 9, 1), 6), LoadReport(loader=loader.name))  # ..09-06
+
+    assert _avail_holds() == [
+        ("avail-900-2026-09-01", date(2026, 9, 1), date(2026, 9, 3)),
+        ("avail-900-2026-09-05", date(2026, 9, 5), date(2026, 9, 7)),
+    ]
+
+
+@pytest.mark.django_db
+def test_whole_calendar_unknown_block_with_one_booking_stays_blocked(booking: Booking) -> None:
+    """The ticket's case: staff blocked a villa's whole calendar with status 0;
+    one booking inside it must not make the rest of the calendar bookable."""
+    from reservations.services.availability import AvailabilityService
+
+    loader = AvailabilityBlockLoader()
+    loader._load_rows(
+        _days(date(2026, 6, 1), 214, AvailableStatus=0), LoadReport(loader=loader.name)
+    )  # 06-01..12-31
+
+    holds = _avail_holds()
+    assert [(f, t) for _, f, t in holds] == [
+        (date(2026, 6, 1), date(2026, 6, 10)),
+        (date(2026, 6, 17), date(2027, 1, 1)),
+    ]
+    assert BookingHold.objects.get(legacy_id="avail-900-2026-06-17").notes.startswith(
+        "Imported from legacy availability (status Unknown"
+    )
+    assert not AvailabilityService.is_available(
+        booking.property, date(2026, 9, 1), date(2026, 9, 8)
+    )
+
+
+@pytest.mark.django_db
+def test_run_is_trimmed_around_an_expired_but_unreleased_hold(seeded: Property) -> None:
+    """The hold-overlap exclusion constraint covers every unreleased hold, not
+    only live ones, so an expired-but-unreleased hold must be cut around too
+    or the insert fails and the whole run is lost."""
+    BookingHold.objects.create(
+        property=seeded,
+        date_from=date(2026, 9, 3),
+        date_to=date(2026, 9, 5),
+        reason=BookingHoldReason.MAINTENANCE,
+        expires_at=timezone.now() - timedelta(days=1),
+    )
+    loader = AvailabilityBlockLoader()
+    report = LoadReport(loader=loader.name)
+    loader._load_rows(_days(date(2026, 9, 1), 6), report)  # ..09-06
+
+    assert report.errors == []
+    assert [(f, t) for _, f, t in _avail_holds()] == [
+        (date(2026, 9, 1), date(2026, 9, 3)),
+        (date(2026, 9, 5), date(2026, 9, 7)),
+    ]

@@ -68,10 +68,19 @@ class Command(BaseCommand):
         # which does not advance quotation_number_seq. Fast-forward it past the
         # imported high-water mark so the first organic quotation after the run
         # doesn't draw a low nextval that collides with an imported QVC{n}.
-        high_water = sync_quotation_sequence()
-        self.stdout.write(
-            self.style.SUCCESS(f"Quotation number sequence synced to high-water mark {high_water}.")
-        )
+        try:
+            high_water = sync_quotation_sequence()
+        except Exception as exc:
+            report = LoadReport(loader="sync_quotation_sequence")
+            report.errors.append(("<sync crashed>", repr(exc)))
+            reports.append(report)
+            self.stderr.write(self.style.ERROR(f"Quotation sequence sync crashed ({exc!r})."))
+        else:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Quotation number sequence synced to high-water mark {high_water}."
+                )
+            )
 
         self._print_summary(reports)
 

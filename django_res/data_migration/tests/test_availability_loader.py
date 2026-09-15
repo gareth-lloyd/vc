@@ -145,6 +145,31 @@ def test_run_loads_as_half_open_manual_hold(seeded: Property) -> None:
 
 
 @pytest.mark.django_db
+def test_write_failure_on_one_run_is_isolated(
+    seeded: Property, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-029 §4: a write-time exception on one run is recorded against that
+    run's legacy_id; the other runs still load."""
+    real_create = BookingHold.objects.create
+
+    def _create(**kwargs: Any) -> BookingHold:
+        if kwargs["date_from"] == date(2026, 7, 1):
+            raise RuntimeError("boom")
+        return real_create(**kwargs)
+
+    monkeypatch.setattr(BookingHold.objects, "create", _create)
+    loader = AvailabilityBlockLoader()
+    report = LoadReport(loader=loader.name)
+
+    loader._load_rows(_days(date(2026, 7, 1), 2) + _days(date(2026, 7, 10), 2), report)
+
+    assert [key for key, _ in report.errors] == ["avail-900-2026-07-01"]
+    assert "boom" in report.errors[0][1]
+    assert report.created == 1
+    assert BookingHold.objects.filter(legacy_id="avail-900-2026-07-10").exists()
+
+
+@pytest.mark.django_db
 def test_loaded_block_blocks_the_availability_engine(seeded: Property) -> None:
     from reservations.services.availability import AvailabilityService
 

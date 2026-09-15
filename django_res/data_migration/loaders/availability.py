@@ -155,6 +155,10 @@ def _run_notes(run: _Run) -> str:
     return provenance
 
 
+def _run_legacy_id(run: _Run) -> str:
+    return f"{AVAILABILITY_LEGACY_PREFIX}{run.property_id}-{run.start.isoformat()}"
+
+
 class AvailabilityBlockLoader(BaseLoader):
     """VillaAvailability (future non-available days) -> BookingHold runs.
 
@@ -191,54 +195,14 @@ class AvailabilityBlockLoader(BaseLoader):
             ).delete()
             property_cache: dict[str, Property | None] = {}
             for run in runs:
-                key = str(run.property_id)
-                if key not in property_cache:
-                    property_cache[key] = Property.objects.filter(legacy_id=key).first()
-                prop = property_cache[key]
-                date_from = run.start
-                date_to = run.end + timedelta(days=1)  # inclusive run -> half-open hold
-                if prop is None:
-                    report.skipped += 1
-                    logger.warning(
-                        "data_migration.availability_block_property_missing",
-                        property_legacy_id=key,
-                        date_from=date_from.isoformat(),
-                        date_to=date_to.isoformat(),
-                    )
-                    continue
-                # Skip-not-error when the range is already occupied: the
-                # calendar is blocked either way, and a duplicate block would
-                # double-paint the grid. Post-purge, any surviving hold here
-                # is staff-created or another source's — never our own slice.
-                occupied_by_booking = Booking.objects.occupying(
-                    property=prop, date_from=date_from, date_to=date_to
-                ).exists()
-                if (
-                    occupied_by_booking
-                    or BookingHold.live_overlapping(
-                        property=prop, date_from=date_from, date_to=date_to
-                    ).exists()
-                ):
-                    report.skipped += 1
-                    logger.warning(
-                        "data_migration.availability_block_range_occupied",
-                        property_id=prop.pk,
-                        property_legacy_id=key,
-                        date_from=date_from.isoformat(),
-                        date_to=date_to.isoformat(),
-                        by="booking" if occupied_by_booking else "hold",
-                    )
-                    continue
-                BookingHold.objects.create(
-                    property=prop,
-                    date_from=date_from,
-                    date_to=date_to,
-                    expires_at=None,  # never expires — released only by staff
-                    reason=BookingHoldReason.MANUAL,
-                    notes=_run_notes(run),
-                    legacy_id=f"{AVAILABILITY_LEGACY_PREFIX}{run.property_id}-{run.start.isoformat()}",
-                )
-                created += 1
+                # Per-run savepoint (BUG-029 §4): a write-time failure is
+                # recorded against the run and the remaining runs still load.
+                try:
+                    with transaction.atomic():
+                        if self._load_run(run, property_cache, report):
+                            created += 1
+                except Exception as exc:  # isolate one bad run from the rest
+                    report.errors.append((_run_legacy_id(run), repr(exc)))
         report.created += created
         logger.info(
             "data_migration.availability_block_loaded",
@@ -248,3 +212,56 @@ class AvailabilityBlockLoader(BaseLoader):
             created=created,
             skipped=report.skipped,
         )
+
+    def _load_run(
+        self, run: _Run, property_cache: dict[str, Property | None], report: LoadReport
+    ) -> bool:
+        """Write one run as a hold; False when it is skipped."""
+        key = str(run.property_id)
+        if key not in property_cache:
+            property_cache[key] = Property.objects.filter(legacy_id=key).first()
+        prop = property_cache[key]
+        date_from = run.start
+        date_to = run.end + timedelta(days=1)  # inclusive run -> half-open hold
+        if prop is None:
+            report.skipped += 1
+            logger.warning(
+                "data_migration.availability_block_property_missing",
+                property_legacy_id=key,
+                date_from=date_from.isoformat(),
+                date_to=date_to.isoformat(),
+            )
+            return False
+        # Skip-not-error when the range is already occupied: the
+        # calendar is blocked either way, and a duplicate block would
+        # double-paint the grid. Post-purge, any surviving hold here
+        # is staff-created or another source's — never our own slice.
+        occupied_by_booking = Booking.objects.occupying(
+            property=prop, date_from=date_from, date_to=date_to
+        ).exists()
+        if (
+            occupied_by_booking
+            or BookingHold.live_overlapping(
+                property=prop, date_from=date_from, date_to=date_to
+            ).exists()
+        ):
+            report.skipped += 1
+            logger.warning(
+                "data_migration.availability_block_range_occupied",
+                property_id=prop.pk,
+                property_legacy_id=key,
+                date_from=date_from.isoformat(),
+                date_to=date_to.isoformat(),
+                by="booking" if occupied_by_booking else "hold",
+            )
+            return False
+        BookingHold.objects.create(
+            property=prop,
+            date_from=date_from,
+            date_to=date_to,
+            expires_at=None,  # never expires — released only by staff
+            reason=BookingHoldReason.MANUAL,
+            notes=_run_notes(run),
+            legacy_id=_run_legacy_id(run),
+        )
+        return True

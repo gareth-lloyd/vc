@@ -109,6 +109,26 @@ def test_reported_errors_exit_nonzero_after_summary(
     assert synced == [True]
 
 
+def test_sequence_sync_failure_still_prints_summary_and_exits_nonzero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BUG-029 §4: the sync used to run outside the isolation — a raise lost
+    # every loader's report.
+    def _broken_sync() -> int:
+        raise RuntimeError("sequence missing")
+
+    monkeypatch.setattr(loadlegacy, "sync_quotation_sequence", _broken_sync)
+    monkeypatch.setattr(loadlegacy, "LOADERS", {"ok": _OkLoader})
+    out, err = StringIO(), StringIO()
+
+    with pytest.raises(CommandError, match="sync_quotation_sequence"):
+        call_command("loadlegacy", "--all", stdout=out, stderr=err)
+
+    output = out.getvalue()
+    assert "ok" in output and "sequence missing" in output
+    assert "high-water mark" not in output
+
+
 def test_since_flag_is_retired() -> None:
     # BUG-029: the load is a one-shot into a fresh DB; there is no delta mode.
     with pytest.raises(CommandError, match="since"):

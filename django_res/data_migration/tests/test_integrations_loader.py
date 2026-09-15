@@ -154,6 +154,37 @@ def test_load_queries_all_tables_when_column_present(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.django_db
+def test_write_failure_on_one_row_is_isolated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BUG-029 §4: one row's write-time exception is recorded as
+    `<table>:<Id>` (Ids collide across the spec tables) and the rest load."""
+    PropertyFactory(legacy_id="10")
+    PropertyFactory(legacy_id="12")
+    loader = SyncRecordZohoLoader()
+    real_process = loader._process_row
+
+    def _process(spec: _ZohoSpec, row: dict[str, Any], report: LoadReport) -> None:
+        real_process(spec, row, report)
+        if row["Id"] == 10:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(loader, "_process_row", _process)
+    report = LoadReport(loader=loader.name)
+    stamp = {"CreatedAt": datetime(2025, 1, 1), "UpdatedAt": None}
+
+    loader._load_rows(
+        [
+            (_property_spec(), {"Id": 10, "ZohoId": "Z10", **stamp}),
+            (_property_spec(), {"Id": 12, "ZohoId": "Z12", **stamp}),
+        ],
+        report,
+    )
+
+    assert [key for key, _ in report.errors] == ["VillaMaster:10"]
+    # Row 10's savepoint rolled back its SyncRecord; row 12's survived.
+    assert list(SyncRecord.objects.values_list("external_id", flat=True)) == ["Z12"]
+
+
+@pytest.mark.django_db
 def test_non_blank_zoho_id_creates_sync_record() -> None:
     prop = cast(Property, PropertyFactory(legacy_id="10"))
     loader = SyncRecordZohoLoader()

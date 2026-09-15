@@ -146,12 +146,24 @@ class SyncRecordZohoLoader:
                 cursor.execute(self._query(spec))
                 fetched.extend((spec, row) for row in rows_as_dicts(cursor))
 
-        with transaction.atomic():
-            for spec, row in fetched:
-                self._process_row(spec, row, report)
+        self._load_rows(fetched, report)
 
         report.duration_s = time.monotonic() - started
         return report
+
+    def _load_rows(
+        self, fetched: list[tuple[_ZohoSpec, dict[str, Any]]], report: LoadReport
+    ) -> None:
+        # Same shape as BaseLoader._load_rows: one transaction, a savepoint per
+        # row. Legacy Ids collide across the spec tables, so errors carry the
+        # table name.
+        with transaction.atomic():
+            for spec, row in fetched:
+                try:
+                    with transaction.atomic():
+                        self._process_row(spec, row, report)
+                except Exception as exc:  # isolate one bad row from the rest
+                    report.errors.append((f"{spec.table}:{row.get('Id')}", repr(exc)))
 
     def _process_row(self, spec: _ZohoSpec, row: dict[str, Any], report: LoadReport) -> None:
         external_id = (row.get("ZohoId") or "").strip()

@@ -211,3 +211,46 @@ def test_named_loader_still_runs_on_a_loaded_db(
     out, _ = _run("ok")
 
     assert "ok" in out
+
+
+# --- pricing summary rebuild (GAP-108) ---
+
+
+def test_run_rebuilds_pricing_summaries_after_loaders(monkeypatch: pytest.MonkeyPatch) -> None:
+    # BaseLoader suppresses the per-edit summary rebuild; the command rebuilds
+    # once after the loaders, so the display cache is never left empty/stale.
+    order: list[str] = []
+
+    class _Recording(_OkLoader):
+        def load(self) -> LoadReport:
+            order.append("load")
+            return super().load()
+
+    def _fake_rebuild() -> int:
+        order.append("rebuild")
+        return 7
+
+    monkeypatch.setattr(loadlegacy, "LOADERS", {"ok": _Recording})
+    monkeypatch.setattr(loadlegacy, "sync_quotation_sequence", lambda: 1)
+    monkeypatch.setattr(loadlegacy, "rebuild_all_summaries", _fake_rebuild)
+
+    out, _ = _run("ok")
+
+    assert order == ["load", "rebuild"]
+    assert "Rebuilt 7 pricing summaries" in out
+
+
+def test_summary_rebuild_failure_still_prints_summary_and_exits_nonzero(
+    monkeypatch: pytest.MonkeyPatch, synced: list[bool]
+) -> None:
+    def _broken() -> int:
+        raise RuntimeError("summary boom")
+
+    monkeypatch.setattr(loadlegacy, "LOADERS", {"ok": _OkLoader})
+    monkeypatch.setattr(loadlegacy, "rebuild_all_summaries", _broken)
+    out, err = StringIO(), StringIO()
+
+    with pytest.raises(CommandError, match="rebuild_summaries"):
+        call_command("loadlegacy", "--all", stdout=out, stderr=err)
+
+    assert "ok" in out.getvalue() and "summary boom" in out.getvalue()

@@ -17,6 +17,7 @@ from core.refs import sync_quotation_sequence
 from data_migration.base import LoadReport
 from data_migration.registry import LOADERS
 from pricing.models.currency import Currency
+from pricing.tasks import rebuild_all_summaries
 from properties.models.geo import Country
 from properties.models.property import Property
 
@@ -107,6 +108,18 @@ class Command(BaseCommand):
                     f"Quotation number sequence synced to high-water mark {high_water}."
                 )
             )
+
+        # BaseLoader suppresses the per-edit summary rebuild (GAP-108) — one
+        # synchronous pass here instead of a Celery task per rate row.
+        try:
+            summaries = rebuild_all_summaries()
+        except Exception as exc:
+            report = LoadReport(loader="rebuild_summaries")
+            report.errors.append(("<rebuild crashed>", repr(exc)))
+            reports.append(report)
+            self.stderr.write(self.style.ERROR(f"Pricing summary rebuild crashed ({exc!r})."))
+        else:
+            self.stdout.write(self.style.SUCCESS(f"Rebuilt {summaries} pricing summaries."))
 
         self._print_summary(reports)
 

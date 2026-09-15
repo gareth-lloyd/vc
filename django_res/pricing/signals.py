@@ -13,6 +13,9 @@ enqueues from a burst of edits are harmless — the rebuild is idempotent.
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from operator import attrgetter
 from typing import Any
 
@@ -23,6 +26,31 @@ from django.dispatch import receiver
 from pricing.models import Extra, RateBand, RatePlan
 from pricing.tasks import rebuild_summary_task
 from properties.signals import connect_villa_child
+
+# Thread-local (Celery prefork workers are processes; runserver threads are
+# isolated) — mirrors `integrations.services.zoho_flow.suppress_zoho_push`.
+_suppression = threading.local()
+
+
+def summary_rebuild_suppressed() -> bool:
+    return bool(getattr(_suppression, "active", False))
+
+
+@contextmanager
+def suppress_summary_rebuild() -> Iterator[None]:
+    """Make the RateBand/RatePlan receivers enqueue nothing for the block.
+
+    Used by `data_migration.BaseLoader` (GAP-108): a full `loadlegacy` would
+    otherwise enqueue one Celery rebuild per loaded rate row. The cutover
+    backfills the cache once afterwards with `manage.py rebuild_summaries`.
+    Restores the prior flag on exit, so nesting is safe.
+    """
+    prior = summary_rebuild_suppressed()
+    _suppression.active = True
+    try:
+        yield
+    finally:
+        _suppression.active = prior
 
 
 def _enqueue_rebuild(property_id: int, currency_id: int) -> None:
@@ -36,7 +64,8 @@ def _enqueue_rebuild(property_id: int, currency_id: int) -> None:
 def _on_raterule_change(sender: type, instance: RateBand, **_: Any) -> None:
     # GAP-056: the band's plan hangs off its RatePeriod. CASCADE delete fires
     # children-first, so the parent period is still present when this runs.
-    if instance.period_id is None:
+    # Suppression is checked first: it also skips the `period.plan` lookup.
+    if summary_rebuild_suppressed() or instance.period_id is None:
         return
     plan = instance.period.plan
     _enqueue_rebuild(plan.property_id, plan.currency_id)
@@ -45,6 +74,8 @@ def _on_raterule_change(sender: type, instance: RateBand, **_: Any) -> None:
 @receiver(post_save, sender=RatePlan)
 @receiver(post_delete, sender=RatePlan)
 def _on_rateplan_change(sender: type, instance: RatePlan, **_: Any) -> None:
+    if summary_rebuild_suppressed():
+        return
     _enqueue_rebuild(instance.property_id, instance.currency_id)
 
 

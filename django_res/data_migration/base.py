@@ -20,6 +20,7 @@ from django.db.models import Model
 
 from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from integrations.services.zoho_flow import suppress_zoho_push
+from pricing.signals import suppress_summary_rebuild
 
 
 @dataclass
@@ -78,7 +79,9 @@ class BaseLoader:
         # `load()` is the envelope every BaseLoader subclass shares (they
         # override `transform`/`_process_row`/`_load_rows`, not `load`), so
         # this wrap covers all loader writes.
-        with suppress_zoho_push():
+        # GAP-108: likewise no per-row `VillaPricingSummary` rebuild enqueue —
+        # the cutover runs `rebuild_summaries` once after the load.
+        with suppress_zoho_push(), suppress_summary_rebuild():
             self._load_rows(rows, report)
 
         report.duration_s = time.monotonic() - started

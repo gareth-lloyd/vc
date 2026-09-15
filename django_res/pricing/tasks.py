@@ -68,6 +68,24 @@ def rebuild_summary(property_id: int, currency_id: int) -> VillaPricingSummary:
     return obj
 
 
+def rebuild_all_summaries() -> int:
+    """Rebuild the summary of every (property, currency) with a RatePlan;
+    returns how many. Run after a legacy load, which suppresses the per-edit
+    rebuild (GAP-108)."""
+    from pricing.models import RatePlan
+
+    pairs = (
+        RatePlan.objects.values_list("property_id", "currency_id")
+        .distinct()
+        .order_by("property_id", "currency_id")
+    )
+    count = 0
+    for property_id, currency_id in pairs:
+        rebuild_summary(property_id=property_id, currency_id=currency_id)
+        count += 1
+    return count
+
+
 def _next_available_date_placeholder(property_id: int) -> date | None:
     """Stub: real implementation requires Booking + BookingHold queries."""
     # TODO: query reservations.Booking + reservations.BookingHold once available.

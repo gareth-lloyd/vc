@@ -4,6 +4,40 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+# BUG-030 §8: legacy `VillaRegion` 25 "The Peloponnesse" and 27 "Midi-Pyrenese"
+# are misspelt twins of 61 "Peloponnese" and 60 "Midi-Pyrenees", retired
+# 2024-11 when the corrected rows were created — no name-level rule can find
+# them, hence the explicit map. The villas filed under the duplicates belong
+# on the live twin. Applied wherever a loader resolves a legacy region id
+# (Property, Enquiry). 47 "The Peloponesse" (same retirement) has no villas
+# and stays unmapped per the ticket decision; the runtime WordPress intake
+# resolves live WP ids and is deliberately untouched.
+LEGACY_REGION_REMAP: dict[str, str] = {"25": "61", "27": "60"}
+
+
+def region_for_legacy_id(legacy_region_id: str, **log_context: Any) -> Any:
+    """The loaded `Region` for a legacy `VillaRegions.Id`, following
+    `LEGACY_REGION_REMAP` (logged, with the caller's context) — `None` when
+    nothing is loaded under that id."""
+    from properties.models.geo import Region
+
+    if not legacy_region_id:
+        return None
+    target = LEGACY_REGION_REMAP.get(legacy_region_id)
+    if target is not None:
+        logger.info(
+            "data_migration.region_remapped",
+            legacy_region_id=legacy_region_id,
+            remapped_to=target,
+            **log_context,
+        )
+        legacy_region_id = target
+    return Region.objects.filter(legacy_id=legacy_region_id).first()
+
 
 def legacy_row_deleted(row: dict[str, Any]) -> bool:
     """True when a legacy row is soft-deleted under EITHER convention.

@@ -216,3 +216,16 @@ def test_enquiry_without_legacy_created_at_keeps_auto_stamp(db: None) -> None:
     EnquiryLoader()._process_row(_enquiry_db_row(CreatedAt=None), report)
 
     assert Enquiry.objects.get(legacy_id="1").created_at >= before
+
+
+# --- BUG-030 §8: the region remap applies to enquiries too ---
+
+
+def test_enquiry_region_follows_the_legacy_region_remap(db: None) -> None:
+    from properties.models.geo import Country, Region
+
+    country = Country.objects.get(iso2="GR")
+    twin = Region.objects.create(country=country, name="Twin", slug="twin", legacy_id="61")
+    kwargs = EnquiryLoader().transform(_enquiry_row(RegionsId="25"))
+    assert kwargs is not None
+    assert kwargs["region"] == twin

@@ -26,9 +26,10 @@ from accounts.services.person_channels import (
     reconcile_primary_phone,
 )
 from data_migration.base import BaseLoader, LoadReport
+from data_migration.loaders._util import region_for_legacy_id
 from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX
 from properties.models.contacts import PropertyContactAssignment
-from properties.models.geo import Country, Region
+from properties.models.geo import Country
 from properties.models.property import Property
 from reservations.enums import (
     EnquiryLostReason,
@@ -272,7 +273,7 @@ class EnquiryLoader(BaseLoader):
         region = None
         region_raw = (row.get("RegionsId") or "").strip()
         if region_raw and "," not in region_raw and region_raw.isdigit():
-            region = Region.objects.filter(legacy_id=region_raw).first()
+            region = region_for_legacy_id(region_raw, legacy_id=str(row["Id"]))
 
         agent = (
             Person.objects.filter(legacy_id=str(row["AgentId"])).first()

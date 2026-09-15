@@ -5,10 +5,12 @@ from __future__ import annotations
 import pytest
 
 from data_migration.loaders._util import (
+    LEGACY_REGION_REMAP,
     legacy_deleted_sql,
     legacy_quotation_no,
     legacy_row_deleted,
     person_for_client,
+    region_for_legacy_id,
 )
 
 
@@ -87,3 +89,31 @@ def test_person_for_client_falls_back_to_unknown_client_sentinel(db: None) -> No
     assert resolved.legacy_id == UNKNOWN_CLIENT_LEGACY_ID
     # Idempotent: a second unresolvable lookup returns the same sentinel row.
     assert person_for_client(998) == resolved == unknown_client()
+
+
+# --- BUG-030 §8 region remap ---
+
+
+def test_region_remap_table_is_the_ticket_decision() -> None:
+    assert LEGACY_REGION_REMAP == {"25": "61", "27": "60"}
+
+
+@pytest.mark.django_db
+def test_region_for_legacy_id_returns_the_row_when_not_remapped() -> None:
+    from properties.models.geo import Country, Region
+
+    country = Country.objects.get(iso2="GR")
+    region = Region.objects.create(country=country, name="Crete", slug="crete", legacy_id="55")
+    assert region_for_legacy_id("55") == region
+    assert region_for_legacy_id("999") is None
+    assert region_for_legacy_id("") is None
+
+
+@pytest.mark.django_db
+def test_region_for_legacy_id_follows_the_remap() -> None:
+    from properties.models.geo import Country, Region
+
+    country = Country.objects.get(iso2="GR")
+    twin = Region.objects.create(country=country, name="Twin", slug="twin", legacy_id="61")
+    Region.objects.create(country=country, name="Dup", slug="dup", legacy_id="25")
+    assert region_for_legacy_id("25") == twin

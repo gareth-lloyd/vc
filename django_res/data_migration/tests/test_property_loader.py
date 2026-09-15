@@ -12,7 +12,7 @@ from data_migration.base import LoadReport
 from data_migration.loaders.properties import PropertyLoader
 from data_migration.loaders.sentinels import unknown_country, unknown_region
 from pricing.models.currency import Currency
-from properties.enums import DescriptionSection, PrefilledChangeOverDay
+from properties.enums import DescriptionSection, PrefilledChangeOverDay, PropertyStatus
 from properties.models.descriptions import PropertyDescription
 from properties.models.geo import Country, Region
 from properties.models.property import Property
@@ -24,7 +24,7 @@ def _row(**overrides: object) -> dict[str, object]:
         "Id": 100,
         "Name": "Casa Test",
         "DisplayName": "Casa Test",
-        "Slug": "casa-test",
+        "Slug": "https://www.villacollective.com/paxos/casa-test-100/",
         "OverView": "",
         "HouseRules": "",
         "FeatureDescription": "",
@@ -423,3 +423,129 @@ def test_load_rows_fetches_cpd_once_up_front_when_a_row_is_flagged(
             LoadReport(loader=loader.name),
         )
     assert calls == [1]
+
+
+# --- BUG-030 §1 slug / §2 status / §8 region remap / unused SELECT columns ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "raw_slug",
+    [
+        "https://www.villacollective.com/paxos/agios-isavros/",
+        "https://www.villacollective.com/paxos/agios-isavros",
+        "agios-isavros",
+    ],
+)
+def test_slug_is_the_last_url_segment_suffixed_with_the_legacy_id(raw_slug: str) -> None:
+    # BUG-030 §1: legacy `Slug` is a full website URL, not a slug. Keep the
+    # last non-empty path segment, slugify it, and suffix `-{Id}`.
+    kwargs = PropertyLoader().transform(_row(Id=438, Slug=raw_slug))
+    assert kwargs is not None
+    assert kwargs["slug"] == "agios-isavros-438"
+
+
+@pytest.mark.django_db
+def test_slug_does_not_double_the_legacy_id_suffix() -> None:
+    kwargs = PropertyLoader().transform(
+        _row(Id=438, Slug="https://www.villacollective.com/paxos/agios-isavros-438/")
+    )
+    assert kwargs is not None
+    assert kwargs["slug"] == "agios-isavros-438"
+
+
+@pytest.mark.django_db
+def test_slug_only_strips_an_exact_legacy_id_suffix() -> None:
+    # Villa 8 carrying villa 438's URL (legacy slugs collide) must not land on
+    # `agios-isavros-438` — the unique slug of villa 438.
+    kwargs = PropertyLoader().transform(
+        _row(Id=8, Slug="https://www.villacollective.com/paxos/agios-isavros-438/")
+    )
+    assert kwargs is not None
+    assert kwargs["slug"] == "agios-isavros-438-8"
+
+
+@pytest.mark.django_db
+def test_slug_unquotes_a_percent_encoded_segment() -> None:
+    kwargs = PropertyLoader().transform(
+        _row(Id=7, Slug="https://www.villacollective.com/paxos/villa-%C3%81rtemis/")
+    )
+    assert kwargs is not None
+    assert kwargs["slug"] == "villa-artemis-7"
+
+
+@pytest.mark.django_db
+def test_slug_never_collapses_to_a_bare_suffix() -> None:
+    kwargs = PropertyLoader().transform(
+        _row(Id=7, Name="Βίλα Άρτεμις", Slug="https://www.villacollective.com/paxos/βίλα-άρτεμις/")
+    )
+    assert kwargs is not None
+    assert kwargs["slug"] == "property-7"
+
+
+@pytest.mark.django_db
+def test_blank_slug_falls_back_to_the_name() -> None:
+    kwargs = PropertyLoader().transform(_row(Id=7, Slug="   ", Name="Villa Ártemis"))
+    assert kwargs is not None
+    assert kwargs["slug"] == "villa-artemis-7"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("raw_slug", ["x" * 400, "x" * 400 + "-7"])
+def test_slug_is_truncated_to_the_column_width_keeping_the_suffix(raw_slug: str) -> None:
+    kwargs = PropertyLoader().transform(_row(Id=7, Slug=raw_slug))
+    assert kwargs is not None
+    assert len(kwargs["slug"]) <= 255
+    assert kwargs["slug"].endswith("-7")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("legacy_status", "expected"),
+    [
+        (1, PropertyStatus.ACTIVE),
+        (2, PropertyStatus.DRAFT),
+        (3, PropertyStatus.DRAFT),  # BUG-030 §2: legacy "Pending" is not archived
+        (4, PropertyStatus.ARCHIVED),
+        (None, PropertyStatus.DRAFT),
+    ],
+)
+def test_status_map(legacy_status: int | None, expected: PropertyStatus) -> None:
+    kwargs = PropertyLoader().transform(_row(ViilaStatus=legacy_status))
+    assert kwargs is not None
+    assert kwargs["status"] == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("legacy_region", "remapped_to"), [(25, "61"), (27, "60")])
+def test_remapped_regions_resolve_to_their_live_twin_and_log(
+    legacy_region: int, remapped_to: str
+) -> None:
+    # BUG-030 §8: legacy regions 25 and 27 are duplicates of 61 and 60.
+    country = Country.objects.get(iso2="GR")
+    twin = Region.objects.create(
+        country=country,
+        name=f"Twin {remapped_to}",
+        slug=f"twin-{remapped_to}",
+        legacy_id=remapped_to,
+    )
+    with structlog.testing.capture_logs() as logs:
+        kwargs = PropertyLoader().transform(_row(Id=100, RegionId=legacy_region))
+    assert kwargs is not None
+    assert kwargs["region"].pk == twin.pk
+    assert any(
+        log["event"] == "data_migration.region_remapped"
+        and log["legacy_region_id"] == str(legacy_region)
+        and log["remapped_to"] == remapped_to
+        and log["legacy_id"] == "100"
+        for log in logs
+    )
+
+
+def test_property_query_drops_the_unused_columns() -> None:
+    for column in (
+        "m.Channel",
+        "m.SettingAvailabilityStatusId",
+        "m.SettingPricesEnteredTypeId",
+    ):
+        assert column not in PropertyLoader.legacy_query

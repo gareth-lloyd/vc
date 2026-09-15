@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import structlog
 from django.db import transaction
 from django.utils.text import slugify
 
 from data_migration.base import BaseLoader, LoadReport
+from data_migration.loaders._util import region_for_legacy_id
 from data_migration.loaders.finance import fetch_config_property_default
 from data_migration.loaders.sentinels import (
     unknown_country,
@@ -41,10 +43,11 @@ from properties.services.location import location_defaults
 logger = structlog.get_logger(__name__)
 
 _PROPERTY_STATUS_MAP = {
-    # VillaStatus.Id → PropertyStatus
+    # VillaStatus.Id → PropertyStatus. 3 ("Pending") is a villa still being
+    # set up, not a retired one — BUG-030 §2 lands it as DRAFT.
     1: PropertyStatus.ACTIVE,
     2: PropertyStatus.DRAFT,
-    3: PropertyStatus.ARCHIVED,
+    3: PropertyStatus.DRAFT,
     4: PropertyStatus.ARCHIVED,
 }
 
@@ -68,7 +71,8 @@ _DAY_MAP = {
 # (VillaMaster flag, VillaMaster setting column, CPD column). Legacy settings
 # substitution is flag-only — no `<= 0` branch (`PropertyService2.cs:668-686`).
 # Availability and prices-entered are not listed: the loader stamps AVAILABLE
-# and GROSS regardless (91 villas store Net but are flagged to the CPD's Gross).
+# and GROSS regardless (BUG-028 §2: 91 villas store Net but are flagged to the
+# CPD's Gross, and the legacy rate screens price everything as gross anyway).
 _SETTING_DEFAULTS = (
     ("IsDefaultSettingCurrencyId", "SettingCurrencyId", "CurrencyId"),
     ("IsDefaultSettingChangeoverDayId", "SettingChangeoverDayId", "ChangeOverDay"),
@@ -92,6 +96,23 @@ def _decimal_or_none(v: Any) -> Decimal | None:
         return None
 
 
+def _property_slug(raw: object, name: str, legacy_id: object) -> str:
+    """BUG-030 §1: legacy `VillaMaster.Slug` is the villa's full website URL
+    (`https://www.villacollective.com/<region>/<slug>/`), so keep only its
+    last non-empty path segment; blank → the name. Suffix `-{Id}` for
+    uniqueness (legacy slugs collide), without doubling a suffix the legacy
+    segment already carries, and fit `Property.slug` (255)."""
+    path = urlsplit(str(raw or "").strip()).path
+    segment = next((part for part in reversed(path.split("/")) if part), "")
+    base = slugify(unquote(segment)) or slugify(name) or "property"
+    suffix = f"-{legacy_id}"
+    # Exact-id match only: `agios-isavros-438` for villa 8 must still become
+    # `agios-isavros-438-8` (legacy slugs collide across villas).
+    if base.rsplit("-", 1)[-1] == str(legacy_id):
+        base = base[: -len(suffix)]
+    return f"{base[: 255 - len(suffix)]}{suffix}"
+
+
 class PropertyLoader(BaseLoader):
     """VillaMaster -> Property (+ Location + Capacity + Settings + Descriptions).
 
@@ -113,11 +134,10 @@ class PropertyLoader(BaseLoader):
         "m.FeatureDescription, m.RoomDescription, m.Notes, "
         "m.LocalityRegion, m.LocalityTown, m.AddressLine1, m.AddressLine2, m.AddressLine3, "
         "m.PostCode, m.LicenceNumber, m.Latitude, m.Longitude, "
-        "m.Channel, m.Guests, m.AdditionalGuests, m.Bedrooms, m.Ensuites, "
+        "m.Guests, m.AdditionalGuests, m.Bedrooms, m.Ensuites, "
         "m.Bathrooms, m.Size, "
         "m.RegionId, m.ViilaStatus, "
-        "m.SettingAvailabilityStatusId, m.SettingIsBookingsRequirePreApproval, "
-        "m.SettingPricesEnteredTypeId, m.SettingCurrencyId, "
+        "m.SettingIsBookingsRequirePreApproval, m.SettingCurrencyId, "
         "m.SettingCheckInTime, m.SettingCheckOutTime, m.SettingChangeoverDayId, "
         "m.SettingMinNightsRental, m.SettingMinNightsRentalNote, "
         f"{', '.join(f'm.{flag}' for flag, _, _ in _SETTING_DEFAULTS)}, "
@@ -134,18 +154,14 @@ class PropertyLoader(BaseLoader):
         if not name:
             return None
 
-        region = Region.objects.filter(legacy_id=str(row.get("RegionId") or "")).first()
+        region = region_for_legacy_id(str(row.get("RegionId") or ""), legacy_id=str(row["Id"]))
         if region is None:
             region = self._sentinel_region()
-
-        # Slug: legacy may be missing/duplicate; suffix with legacy_id.
-        legacy_slug = (row.get("Slug") or "").strip() or slugify(name)
-        slug = f"{legacy_slug[:200]}-{row['Id']}"[:255]
 
         return {
             "name": name,
             "display_name": (row.get("DisplayName") or name)[:255],
-            "slug": slug,
+            "slug": _property_slug(row.get("Slug"), name, row["Id"]),
             "licence_number": (row.get("LicenceNumber") or "").strip()[:128],
             "video_url": (row.get("VodeoUrl") or "").strip()[:200],
             "status": _PROPERTY_STATUS_MAP.get(

@@ -1142,10 +1142,13 @@ def test_every_villa_master_query_uses_the_live_villa_filter() -> None:
     queries = [c.legacy_query for c in reconcile_legacy._CHECKS]
     queries.append(reconcile_legacy.NIGHT_PARITY_QUERY)
     villa_queries = [q for q in queries if "VillaMaster" in q]
-    assert len(villa_queries) == 5
+    # 5 + GAP-108 U6: Location / Capacity / Settings / Description /
+    # RoomBeds / PropertyService.
+    assert len(villa_queries) == 11
     for query in villa_queries:
-        # `FROM VillaMaster WHERE …` (no alias) or `JOIN VillaMaster m ON …`.
-        match = re.search(r"VillaMaster (\w+) ON ", query)
+        # `FROM VillaMaster WHERE …` (no alias), `JOIN VillaMaster m ON …` or
+        # `FROM VillaMaster m LEFT JOIN …`.
+        match = re.search(r"VillaMaster (?!WHERE )(\w+) ", query)
         prefix = f"{match.group(1)}." if match else ""
         assert live_villa_sql(prefix) in query, query
 
@@ -1231,10 +1234,12 @@ def _organic_row(model: type[object]) -> None:
         NearbyPlaceTypeFactory,
         PropertyContactAssignmentFactory,
         PropertyNearbyPlaceFactory,
+        PropertyServiceFactory,
         RegionFactory,
         RoomFactory,
     )
     from properties.models.contacts import PropertyContactAssignment
+    from properties.models.descriptions import PropertyDescription
     from properties.models.features import (
         Collection,
         CollectionMembership,
@@ -1245,6 +1250,7 @@ def _organic_row(model: type[object]) -> None:
     from properties.models.geo import Country, NearbyPlaceType, PropertyNearbyPlace, Region
     from properties.models.images import PropertyImage
     from properties.models.rooms import Room
+    from properties.models.services import PropertyService
     from reservations.enums import BookingHoldReason
     from reservations.factories import BookingChargeItemFactory
     from reservations.models.booking import BookingHold
@@ -1290,6 +1296,8 @@ def _organic_row(model: type[object]) -> None:
             property=_organic_property(), image="organic.jpg", kind=ImageKind.GALLERY
         ),
         PropertyNearbyPlace: PropertyNearbyPlaceFactory,
+        PropertyDescription: PropertyFactory,  # factory OVERVIEW section
+        PropertyService: PropertyServiceFactory,
         RatePlan: lambda: RatePeriodFactory(plan=RatePlanFactory(price_basis=PriceBasis.NET)),
         RateBand: lambda: RateBandFactory(nightly=Decimal("0.00"), is_approved=False),
         Extra: ExtraFactory,
@@ -1378,3 +1386,192 @@ def test_owner_agent_check_counts_deleted_contacts() -> None:
     check = next(c for c in reconcile_legacy._CHECKS if c.label == "Person (owner/agent)")
     assert "WHERE" not in ContactLoader.legacy_query
     assert check.legacy_query == "SELECT COUNT(*) FROM VillaContact"
+
+
+# --- GAP-108 U6: every registered loader has a reconcile check (ACCEPTANCE S2) --
+#
+# Hand-written on purpose: registering a loader (or dropping a check) must
+# force a conscious edit here. Values are `_CHECKS` labels, or one of the
+# `_SECTIONS` sentinels below for coverage that is not a row-count check.
+_NIGHT_PARITY = "[section] RatePeriod night parity"
+_ZOHO_CONTINUITY = "[section] --integrations Zoho continuity"
+_SECTIONS: dict[str, str] = {
+    # RatePeriod rows come out of `flatten_rate_grid` (trims, conflict
+    # splits), so no SQL can count them; the per-villa night-set comparison
+    # is their check.
+    _NIGHT_PARITY: "_night_parity_section",
+    # SyncRecord backfill is only reconciled under `--integrations`.
+    _ZOHO_CONTINUITY: "_zoho_continuity_section",
+}
+_LOADER_CHECKS: dict[str, list[str]] = {
+    "country": ["Country (legacy)", "Country (active)"],
+    "region": ["Region", "Region (imported)", "Region (active)"],
+    "currency": ["Currency", "Currency (active)", "Currency EUR legacy_id (live row)"],
+    "nearby_place_type": ["NearbyPlaceType"],
+    "feature_category": ["FeatureCategory"],
+    "feature": ["Feature"],
+    "property_defaults": ["PropertyDefaults currency legacy_id (CPD row)"],
+    "user": ["User"],
+    "contact": ["Person (owner/agent)", "Organisation (agency)"],
+    "contact_email": ["PersonEmail"],
+    "contact_phone": ["PersonPhone"],
+    "property": [
+        "Property",
+        "PropertyLocation",
+        "PropertyCapacity",
+        "PropertySettings",
+        "PropertySettings without currency (must be 0)",
+        "PropertyDescription",
+    ],
+    "collection": ["Collection"],
+    "collection_membership": ["CollectionMembership"],
+    "room": ["Room", "Room placement (GAP-065)", "RoomBeds"],
+    "property_image": ["PropertyImage"],
+    "nearby_place": ["PropertyNearbyPlace"],
+    "property_feature": ["PropertyFeature"],
+    "rate_plan": [
+        "RatePlan (villas with a loaded regime)",
+        "RatePlan non-GROSS basis (must be 0)",
+        "PropertyService",
+    ],
+    "rate_rule": [
+        "RateBand",
+        "RateBand non-POA priced <= 0 (must be 0)",
+        "RateBand unapproved imported (must be 0)",
+        _NIGHT_PARITY,
+    ],
+    "extra": ["Extra"],
+    "property_contact_assignment": ["PropertyContactAssignment"],
+    "client": ["Person (client)"],
+    "enquiry": ["Enquiry"],
+    "property_finance": ["PropertyFinance", "PropertyFinance NULL calculation type (must be 0)"],
+    "quotation": ["Quotation"],
+    "quotation_line": ["QuotationLine"],
+    "guest_preference_type": ["GuestPreferenceType"],
+    "guest_preference": ["GuestPreference"],
+    "availability_block": ["VillaAvailability (future days)"],
+    "syncrecord_zoho": [_ZOHO_CONTINUITY],
+}
+# Checks that guard unregistered loaders (GAP-108 U1), so no key above owns them.
+_UNREGISTERED_LOADER_CHECKS = set(_BOOKING_INVARIANT_LABELS)
+
+
+def test_every_registered_loader_has_a_reconcile_check() -> None:
+    from data_migration.registry import LOADERS
+
+    assert set(_LOADER_CHECKS) == set(LOADERS)
+    assert all(_LOADER_CHECKS.values())
+    labels = {c.label for c in reconcile_legacy._CHECKS}
+    for loader, checks in _LOADER_CHECKS.items():
+        for label in checks:
+            if label in _SECTIONS:
+                assert hasattr(reconcile_legacy.Command, _SECTIONS[label]), label
+            else:
+                assert label in labels, f"{loader}: {label}"
+
+
+def test_every_reconcile_check_belongs_to_a_loader() -> None:
+    mapped = {label for checks in _LOADER_CHECKS.values() for label in checks}
+    labels = {c.label for c in reconcile_legacy._CHECKS}
+    assert labels - mapped == _UNREGISTERED_LOADER_CHECKS
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("label", ["PropertyLocation", "PropertyCapacity", "PropertySettings"])
+def test_property_satellite_checks_count_one_row_per_loaded_property(label: str) -> None:
+    """PropertyLoader writes location, capacity and settings for every
+    property it loads, so the legacy side is the Property query itself."""
+    by_label = {c.label: c for c in reconcile_legacy._CHECKS}
+    check = by_label[label]
+    PropertyFactory(legacy_id="900")
+    PropertyFactory(legacy_id="901")
+    PropertyFactory()  # organic: its satellites never count
+    assert check.legacy_query == by_label["Property"].legacy_query
+    assert check.expected_gap == 0
+    assert check.count_loaded() == 2
+
+
+@pytest.mark.django_db
+def test_property_description_check_counts_stamped_sections() -> None:
+    from data_migration.loaders._util import live_villa_sql
+    from properties.models.descriptions import PropertyDescription
+
+    PropertyFactory(legacy_id="900")  # factory OVERVIEW row, legacy_id NULL
+    PropertyFactory()
+    PropertyDescription.objects.filter(property__legacy_id="900").update(legacy_id="900-overview")
+
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "PropertyDescription")
+    assert check.model is PropertyDescription
+    assert check.expected_gap == 0
+    # Mirrors the loader: one row per non-blank section, website copy from
+    # the MAX(Id) `VillaPropertyImagesDescription` row, loaded villas only.
+    assert "SELECT MAX(d2.Id) FROM VillaPropertyImagesDescription d2" in check.legacy_query
+    assert live_villa_sql("m.") in check.legacy_query
+    for column in ("OverView", "HouseRules", "FeatureDescription", "RoomDescription", "Notes"):
+        assert f"m.{column}" in check.legacy_query
+    for column in ("WebDesc1", "WebDesc2", "Location1", "Location2"):
+        assert f"d.{column}" in check.legacy_query
+    assert check.count_loaded() == 1
+
+
+@pytest.mark.django_db
+def test_room_beds_check_counts_beds_of_loaded_rooms() -> None:
+    from data_migration.loaders._util import legacy_active_sql, live_villa_sql
+    from properties.factories import RoomFactory
+    from properties.models.rooms import RoomBeds
+
+    RoomFactory(property=PropertyFactory(legacy_id="900"), legacy_id="10")
+    RoomFactory()  # organic room: its beds never count
+
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "RoomBeds")
+    assert check.model is RoomBeds
+    assert legacy_active_sql("r.") in check.legacy_query
+    assert live_villa_sql("m.") in check.legacy_query
+    assert check.count_loaded() == 1
+
+
+@pytest.mark.django_db
+def test_property_service_check_counts_season_inclusion_services() -> None:
+    from data_migration.loaders._util import live_villa_sql
+    from data_migration.loaders.pricing import PRICED_ROW_PREDICATE
+    from properties.factories import PropertyServiceFactory
+    from properties.models.services import PropertyService
+
+    PropertyServiceFactory(legacy_id="season:7:svc")
+    PropertyServiceFactory()  # staff-created service
+
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == "PropertyService")
+    assert check.model is PropertyService
+    assert "s.Inclusion" in check.legacy_query
+    assert PRICED_ROW_PREDICATE in check.legacy_query
+    assert "VillaSeasonDates" in check.legacy_query
+    assert live_villa_sql("m.") in check.legacy_query
+    assert check.count_loaded() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("currency_legacy_id", "expected"), [("3", 3), (None, 0), ("", 0)])
+def test_property_defaults_check_reports_the_singleton_currency_legacy_id(
+    currency_legacy_id: str | None, expected: int
+) -> None:
+    """A value check, not a count: `get_solo()` auto-creates the singleton,
+    so a row count would always pass. The singleton's currency must be the
+    one the CPD row names (legacy `CurrencyId`)."""
+    from properties.models.defaults import PropertyDefaults
+
+    if currency_legacy_id != "":
+        defaults = PropertyDefaults.get_solo()
+        defaults.currency = Currency.objects.create(
+            code="EUR", name="Euro", legacy_id=currency_legacy_id
+        )
+        defaults.save()
+
+    check = next(
+        c
+        for c in reconcile_legacy._CHECKS
+        if c.label == "PropertyDefaults currency legacy_id (CPD row)"
+    )
+    assert check.model is PropertyDefaults
+    assert "VillaConfigPropertyDefault ORDER BY Id" in check.legacy_query
+    assert check.expected_gap == 0
+    assert check.count_loaded() == expected

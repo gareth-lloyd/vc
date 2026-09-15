@@ -60,7 +60,10 @@ from pricing.models.currency import Currency
 from pricing.models.extra import Extra
 from pricing.models.rate import RateBand, RatePeriod, RatePlan
 from properties.enums import PriceBasis
+from properties.models.capacity import PropertyCapacity
 from properties.models.contacts import PropertyContactAssignment
+from properties.models.defaults import PropertyDefaults
+from properties.models.descriptions import PropertyDescription
 from properties.models.features import (
     Collection,
     CollectionMembership,
@@ -71,8 +74,10 @@ from properties.models.features import (
 from properties.models.finance import PropertyFinance
 from properties.models.geo import Country, NearbyPlaceType, PropertyNearbyPlace, Region
 from properties.models.images import PropertyImage
+from properties.models.location import PropertyLocation
 from properties.models.property import Property
-from properties.models.rooms import Room
+from properties.models.rooms import Room, RoomBeds
+from properties.models.services import PropertyService
 from properties.models.settings import PropertySettings
 from reservations.models.booking import Booking, BookingHold
 from reservations.models.charge_item import BookingChargeItem
@@ -161,12 +166,70 @@ class _Check:
         return int(self.model._default_manager.filter(legacy_id__isnull=False).count())
 
 
+def _numeric_legacy_id(legacy_id: str | None) -> int:
+    return int(legacy_id) if legacy_id and legacy_id.isdigit() else 0
+
+
 def _eur_legacy_id(model: type[Any]) -> int:
     """The legacy id stamped on EUR, or 0 when absent/unstamped/non-numeric."""
-    legacy_id = (
+    return _numeric_legacy_id(
         model._default_manager.filter(code="EUR").values_list("legacy_id", flat=True).first()
     )
-    return int(legacy_id) if legacy_id and legacy_id.isdigit() else 0
+
+
+def _defaults_currency_legacy_id(model: type[Any]) -> int:
+    """The legacy id of the PropertyDefaults singleton's currency, or 0 when
+    the singleton / its currency / the stamp is absent. Never `get_solo()`:
+    reconcile must not write."""
+    return _numeric_legacy_id(
+        model._default_manager.filter(pk=1).values_list("currency__legacy_id", flat=True).first()
+    )
+
+
+def _one_per_loaded_property(model: type[Any]) -> int:
+    return int(model._default_manager.filter(property__legacy_id__isnull=False).count())
+
+
+# PropertyLoader writes one location, capacity and settings row per property
+# it loads, so those satellites share the Property check's legacy side.
+_LIVE_VILLAS_QUERY = f"SELECT COUNT(*) FROM VillaMaster WHERE {live_villa_sql()}"
+
+
+def _non_blank_sql(column: str) -> str:
+    # T-SQL LTRIM/RTRIM strip only spaces while the loader's Python `.strip()`
+    # also strips tabs/newlines, so a whitespace-only (non-space) value counts
+    # here but loads nothing — a positive gap. 0 such values on ResProd
+    # (2026-09-15: the T-SQL sum and a Python replay both give 1 049).
+    return f"LEN(LTRIM(RTRIM(ISNULL({column}, '')))) > 0"
+
+
+def _section_case_sql(*columns: str) -> str:
+    """1 when any of `columns` is non-blank (a section the loader writes)."""
+    condition = " OR ".join(_non_blank_sql(c) for c in columns)
+    return f"CASE WHEN {condition} THEN 1 ELSE 0 END"
+
+
+# PropertyLoader `_write_descriptions`: one row per non-blank section — five
+# VillaMaster columns, plus WEB_DESCRIPTION (WebDesc1/2) and LOCATION
+# (Location1/2) from the villa's MAX(Id) VillaPropertyImagesDescription row,
+# over the same villas the loader reads (`live_villa_sql`).
+_DESCRIPTION_SECTIONS = (
+    ("m.OverView",),
+    ("m.HouseRules",),
+    ("m.FeatureDescription",),
+    ("m.RoomDescription",),
+    ("m.Notes",),
+    ("d.WebDesc1", "d.WebDesc2"),
+    ("d.Location1", "d.Location2"),
+)
+_DESCRIPTION_QUERY = (
+    "SELECT ISNULL(SUM("
+    + " + ".join(_section_case_sql(*cols) for cols in _DESCRIPTION_SECTIONS)
+    + "), 0) FROM VillaMaster m "
+    "LEFT JOIN VillaPropertyImagesDescription d ON d.Id = ("
+    "SELECT MAX(d2.Id) FROM VillaPropertyImagesDescription d2 WHERE d2.VillaId = m.Id) "
+    f"WHERE {live_villa_sql('m.')}"
+)
 
 
 _COMPANY_PLACEHOLDERS_SQL = ", ".join(f"'{p}'" for p in sorted(COMPANY_PLACEHOLDERS))
@@ -288,6 +351,19 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaFeatures WHERE DeletedAt IS NULL",
         Feature,
         "Feature",
+    ),
+    _Check(
+        # GAP-108 value check, not a count (`get_solo()` auto-creates the
+        # singleton, so a row count always passes): PropertyDefaultsLoader
+        # applies the FIRST CPD row's `CurrencyId` onto the singleton. A gap
+        # means the loader found no Currency under that id (skipped junk
+        # row) and the singleton kept its old currency, or it never ran.
+        # ResProd: 1 CPD row, CurrencyId 3 (the live EUR) ⇒ 3 = 3.
+        "SELECT ISNULL((SELECT TOP 1 CurrencyId FROM VillaConfigPropertyDefault ORDER BY Id), 0)",
+        PropertyDefaults,
+        "PropertyDefaults currency legacy_id (CPD row)",
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        loaded_count=_defaults_currency_legacy_id,
     ),
     _Check(
         # BUG-030 §11: the through table (the largest loaded table after
@@ -412,13 +488,52 @@ _CHECKS: list[_Check] = [
         ),
     ),
     _Check(
-        f"SELECT COUNT(*) FROM VillaMaster WHERE {live_villa_sql()}",
+        _LIVE_VILLAS_QUERY,
         Property,
         "Property",
         # Was 1 (the blank-Name villa, 249 on the 24-Apr dump) while the
         # legacy side counted it; GAP-108 moved the blank-name skip into
         # `live_villa_sql`, so both sides count the same villas. ResProd:
         # 387 live, 1 blank (543) ⇒ 386.
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+    ),
+    # GAP-108: PropertyLoader writes these three satellites for every loaded
+    # property (`_process_row`), so each is one row per loaded Property —
+    # the same gap as Property (ResProd: 386 live named villas ⇒ 386). A gap
+    # here that Property lacks is a satellite write that failed after the
+    # property row saved. Loaded = satellites of legacy properties only.
+    _Check(
+        _LIVE_VILLAS_QUERY,
+        PropertyLocation,
+        "PropertyLocation",
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        loaded_count=_one_per_loaded_property,
+    ),
+    _Check(
+        _LIVE_VILLAS_QUERY,
+        PropertyCapacity,
+        "PropertyCapacity",
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        loaded_count=_one_per_loaded_property,
+    ),
+    _Check(
+        _LIVE_VILLAS_QUERY,
+        PropertySettings,
+        "PropertySettings",
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        loaded_count=_one_per_loaded_property,
+    ),
+    _Check(
+        # GAP-108: 0 to 7 rows per loaded villa (`_DESCRIPTION_QUERY`). ResProd
+        # 2026-09-15: OVERVIEW 8 + HOUSE_RULES 12 + OTHER_INFORMATION 193 +
+        # ROOMS 127 + FURTHER_INFO 1 + WEB_DESCRIPTION 361 + LOCATION 347 =
+        # 1 049, equal to a Python `.strip()` replay of PropertyLoader's own
+        # query ⇒ 0. Loaded = rows stamped `<VillaId>-<section>`; a staff-
+        # written section (legacy_id NULL) never counts, but a legacy row a
+        # staff edit later blanked still does (no stale-row sweep).
+        _DESCRIPTION_QUERY,
+        PropertyDescription,
+        "PropertyDescription",
         expected_gap=0,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
@@ -470,6 +585,19 @@ _CHECKS: list[_Check] = [
         loaded_count=lambda m: (
             m._default_manager.exclude(placement_note="").filter(legacy_id__isnull=False).count()
         ),
+    ),
+    _Check(
+        # GAP-108: RoomLoader writes one RoomBeds per room it loads. Unlike
+        # the Room check the legacy side is restricted to loaded villas, so
+        # the structural gap is 0. ResProd: 2 684 active rooms - 321 on an
+        # unloaded villa (the Room gap) = 2 363.
+        "SELECT COUNT(*) FROM VillaRooms r "
+        f"JOIN VillaMaster m ON m.Id = r.VillaId AND {live_villa_sql('m.')} "
+        f"WHERE {legacy_active_sql('r.')}",
+        RoomBeds,
+        "RoomBeds",
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        loaded_count=lambda m: m._default_manager.filter(room__legacy_id__isnull=False).count(),
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaPropertyImages",
@@ -528,6 +656,28 @@ _CHECKS: list[_Check] = [
             .exclude(price_basis=PriceBasis.GROSS)
             .count()
         ),
+    ),
+    _Check(
+        # GAP-037 / GAP-108: RatePlanLoader bands each season's non-blank
+        # `Inclusion` as one PropertyService (`season:<ID>:svc`) when the
+        # season is live, on a loaded villa, carries ≥1 priced rate row (else
+        # it mints no plan) and has a live, non-inverted VillaSeasonDates
+        # window (`_live_window` compares dates). Shifters: a group whose
+        # savepoint errors, and whitespace-only (non-space) Inclusion (see
+        # `_non_blank_sql`). ResProd 2026-09-15: 994 live seasons with an
+        # Inclusion, 948 pass every filter.
+        "SELECT COUNT(*) FROM VillaSeason s "
+        f"JOIN VillaMaster m ON m.Id = s.VillaId AND {live_villa_sql('m.')} "
+        f"WHERE s.DeletedAt IS NULL AND {_non_blank_sql('s.Inclusion')} "
+        "AND EXISTS (SELECT 1 FROM VillaSeasonRate r "
+        f"WHERE r.SeasonId = s.ID AND {PRICED_ROW_PREDICATE}) "
+        "AND (SELECT CAST(MIN(d.FromDate) AS date) FROM VillaSeasonDates d "
+        "WHERE d.SeasonId = s.ID AND d.DeletedAt IS NULL) "
+        "<= (SELECT CAST(MAX(d.ToDate) AS date) FROM VillaSeasonDates d "
+        "WHERE d.SeasonId = s.ID AND d.DeletedAt IS NULL)",
+        PropertyService,
+        "PropertyService",
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
         # BUG-013: RateBand now has two legacy sources — parent VillaSeasonRate

@@ -13,6 +13,7 @@ from data_migration.loaders._util import (
     legacy_phone,
     legacy_quotation_no,
     legacy_row_deleted,
+    live_villa_sql,
     person_for_client,
     region_for_legacy_id,
 )
@@ -47,6 +48,16 @@ def test_legacy_active_sql_treats_null_as_inactive() -> None:
     # only when `isnull(IsActive,0) = 1` — NULL means inactive.
     assert legacy_active_sql() == "ISNULL(IsActive, 0) = 1"
     assert legacy_active_sql("m.") == "ISNULL(m.IsActive, 0) = 1"
+
+
+def test_live_villa_sql_requires_live_and_named() -> None:
+    # GAP-108: PropertyLoader skips soft-deleted AND blank-`Name` villas (villa
+    # 249 on the 24-Apr dump, 543 on ResProd); every reconcile query scoped to
+    # "villas that load" shares this one predicate.
+    assert live_villa_sql() == "DeletedAt IS NULL AND LEN(LTRIM(RTRIM(ISNULL(Name, '')))) > 0"
+    assert (
+        live_villa_sql("m.") == "m.DeletedAt IS NULL AND LEN(LTRIM(RTRIM(ISNULL(m.Name, '')))) > 0"
+    )
 
 
 @pytest.mark.parametrize(

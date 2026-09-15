@@ -921,7 +921,8 @@ def test_documented_expected_gaps_are_encoded() -> None:
     # Recalibrated 2026-09-14 (BUG-028) against the 24-Apr-2025 prod dump —
     # itemised decomposition lives on the _CHECKS entry (reconcile_legacy).
     assert by_label["RateBand"] == 4492
-    assert by_label["Property"] == 1
+    # GAP-108: the blank-name villa left the legacy side (`live_villa_sql`).
+    assert by_label["Property"] == 0
     assert by_label["PropertyContactAssignment"] == 1
     # GAP-107: the legacy side mirrors PropertyLoader's villa filter, so the
     # 12 extras on unloaded villas (24-Apr-2025 dump) never enter the gap.
@@ -1067,7 +1068,6 @@ def test_property_feature_check_counts_manual_links_between_loaded_rows() -> Non
     # The twin's category must be loadable (named), as FeatureLoader requires.
     assert "LTRIM(RTRIM(ISNULL(c.Name, ''))) <> ''" in check.legacy_query
     assert "COUNT(DISTINCT CONCAT(x.VillaId, '-', x.ResolvedId))" in check.legacy_query
-    assert "LTRIM(RTRIM(ISNULL(v.Name, ''))) <> ''" in check.legacy_query
     assert check.loaded_count is not None
     assert check.loaded_count(check.model) == 1
 
@@ -1094,6 +1094,54 @@ def test_soft_delete_filters_mirror_the_loaders(label: str, predicate: str) -> N
     out, so the legacy side of its reconcile check must too."""
     check = next(c for c in reconcile_legacy._CHECKS if c.label == label)
     assert predicate in check.legacy_query
+
+
+@pytest.mark.parametrize(
+    ("label", "alias"),
+    [
+        ("Property", ""),
+        ("RatePlan (villas with a loaded regime)", "m."),
+        ("Extra", "m."),
+        ("PropertyFeature", "v."),
+    ],
+)
+def test_villa_scoped_checks_use_the_live_villa_filter(label: str, alias: str) -> None:
+    """GAP-108: every legacy query restricted to villas PropertyLoader loads
+    shares `live_villa_sql` — live AND non-blank `Name` — so a blank-name
+    villa (543 on ResProd) never enters a gap."""
+    from data_migration.loaders._util import live_villa_sql
+
+    check = next(c for c in reconcile_legacy._CHECKS if c.label == label)
+    assert live_villa_sql(alias) in check.legacy_query
+
+
+def test_night_parity_query_excludes_blank_name_villas() -> None:
+    """The fake cursor cannot evaluate SQL, so pin the filter on the text:
+    a blank-name villa's rate rows must not reach the legacy side (it has no
+    Property, so it would read as a villa with every night lost)."""
+    from data_migration.loaders._util import live_villa_sql
+
+    assert f"JOIN VillaMaster m ON m.Id = s.VillaId AND {live_villa_sql('m.')} " in (
+        reconcile_legacy.NIGHT_PARITY_QUERY
+    )
+
+
+def test_every_villa_master_query_uses_the_live_villa_filter() -> None:
+    """A new check reading VillaMaster must not hand-roll a partial filter
+    (e.g. `DeletedAt IS NULL` alone, which counts the blank-name villa)."""
+    import re
+
+    from data_migration.loaders._util import live_villa_sql
+
+    queries = [c.legacy_query for c in reconcile_legacy._CHECKS]
+    queries.append(reconcile_legacy.NIGHT_PARITY_QUERY)
+    villa_queries = [q for q in queries if "VillaMaster" in q]
+    assert len(villa_queries) == 5
+    for query in villa_queries:
+        # `FROM VillaMaster WHERE …` (no alias) or `JOIN VillaMaster m ON …`.
+        match = re.search(r"VillaMaster (\w+) ON ", query)
+        prefix = f"{match.group(1)}." if match else ""
+        assert live_villa_sql(prefix) in query, query
 
 
 def test_agency_check_excludes_placeholder_companies() -> None:

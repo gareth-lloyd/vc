@@ -127,6 +127,15 @@ def legacy_active_sql(alias: str = "") -> str:
     return f"ISNULL({alias}IsActive, 0) = 1"
 
 
+def live_villa_sql(alias: str = "") -> str:
+    """`VillaMaster` rows PropertyLoader loads (GAP-108): live AND a non-blank
+    `Name` (the loader skips a blank one — villa 249 on the 24-Apr-2025 dump,
+    543 on ResProd). Shared by the loader and every reconcile query scoped to
+    loaded villas. `alias` as for `legacy_deleted_sql`.
+    """
+    return f"{alias}DeletedAt IS NULL AND LEN(LTRIM(RTRIM(ISNULL({alias}Name, '')))) > 0"
+
+
 def legacy_currency_for(row: dict[str, Any], prop: Any) -> Any:
     """The GAP-014 currency chain shared by every loader that carries a
     legacy `CurrencyId`: the row's currency when set and known, else the

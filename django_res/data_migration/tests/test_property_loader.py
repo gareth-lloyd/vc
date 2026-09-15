@@ -549,3 +549,11 @@ def test_property_query_drops_the_unused_columns() -> None:
         "m.SettingPricesEnteredTypeId",
     ):
         assert column not in PropertyLoader.legacy_query
+
+
+def test_property_query_filters_to_live_named_villas() -> None:
+    # GAP-108: the blank-name skip lives in SQL too (shared with reconcile via
+    # `live_villa_sql`); `transform`'s `.strip()` guard stays as a backstop.
+    from data_migration.loaders._util import live_villa_sql
+
+    assert PropertyLoader.legacy_query.endswith(f"WHERE {live_villa_sql('m.')}")

@@ -16,7 +16,7 @@ from django.db import transaction
 from django.utils.text import slugify
 
 from data_migration.base import BaseLoader, LoadReport
-from data_migration.loaders._util import legacy_active_sql, region_for_legacy_id
+from data_migration.loaders._util import legacy_active_sql, live_villa_sql, region_for_legacy_id
 from data_migration.loaders.finance import fetch_config_property_default
 from data_migration.loaders.sentinels import (
     unknown_country,
@@ -146,11 +146,13 @@ class PropertyLoader(BaseLoader):
         "LEFT JOIN VillaPropertyImagesDescription d ON d.Id = ("
         "SELECT MAX(d2.Id) FROM VillaPropertyImagesDescription d2 "
         "WHERE d2.VillaId = m.Id) "
-        "WHERE m.DeletedAt IS NULL"
+        f"WHERE {live_villa_sql('m.')}"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         name = (row.get("Name") or "").strip()[:255]
+        # Backstop for `live_villa_sql`: T-SQL LTRIM/RTRIM strip only spaces,
+        # so a tab/newline-only Name still reaches Python.
         if not name:
             return None
 

@@ -10,7 +10,7 @@ documented expectation:
     ...
 
 The list of (legacy_table_or_query, django_model) pairs is explicit so
-gaps mirror loader scope (e.g. VillaMaster's `WHERE DeletedAt IS NULL` is
+gaps mirror loader scope (e.g. VillaMaster's `live_villa_sql` filter is
 mirrored here). `expected_gap` is the documented, accepted loss for that
 table (e.g. VillaFinance override rows with no schema home); this module is
 the single source of truth for those numbers — `CUTOVER.md` points here
@@ -42,7 +42,7 @@ from accounts.models import Organisation, Person, User
 from accounts.models.person import PersonEmail, PersonPhone
 from core.console import render_table
 from data_migration.legacy_db import legacy_cursor
-from data_migration.loaders._util import legacy_active_sql, legacy_deleted_sql
+from data_migration.loaders._util import legacy_active_sql, legacy_deleted_sql, live_villa_sql
 from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
 from data_migration.loaders.integrations import SyncRecordZohoLoader, zoho_id_column_exists
 from data_migration.loaders.people import COMPANY_PLACEHOLDERS
@@ -89,7 +89,7 @@ from reservations.models.quotation import Quotation, QuotationLine
 NIGHT_PARITY_QUERY = (
     "SELECT s.VillaId, r.FromDate, r.ToDate FROM VillaSeasonRate r "
     "JOIN VillaSeason s ON s.ID = r.SeasonId AND s.DeletedAt IS NULL "
-    "JOIN VillaMaster m ON m.Id = s.VillaId AND m.DeletedAt IS NULL "
+    f"JOIN VillaMaster m ON m.Id = s.VillaId AND {live_villa_sql('m.')} "
     f"WHERE {PRICED_ROW_PREDICATE}"
 )
 
@@ -307,7 +307,7 @@ _CHECKS: list[_Check] = [
         "FROM VillaFeaturesMappings m "
         "JOIN VillaFeatures f ON f.Id = m.FeatureId "
         "JOIN VillaMaster v ON v.Id = m.VillaId "
-        "WHERE v.DeletedAt IS NULL AND LTRIM(RTRIM(ISNULL(v.Name, ''))) <> '' "
+        f"WHERE {live_villa_sql('v.')} "
         # GAP-108: inactive mappings are filtered, as in the loader (262 on
         # ResProd; structural gap stays 0).
         f"AND {legacy_active_sql('m.')}"
@@ -389,10 +389,14 @@ _CHECKS: list[_Check] = [
         ),
     ),
     _Check(
-        "SELECT COUNT(*) FROM VillaMaster WHERE DeletedAt IS NULL",
+        f"SELECT COUNT(*) FROM VillaMaster WHERE {live_villa_sql()}",
         Property,
         "Property",
-        expected_gap=1,  # one row with empty Name.
+        # Was 1 (the blank-Name villa, 249 on the 24-Apr dump) while the
+        # legacy side counted it; GAP-108 moved the blank-name skip into
+        # `live_villa_sql`, so both sides count the same villas. ResProd:
+        # 387 live, 1 blank (543) ⇒ 386.
+        expected_gap=0,  # provisional — pinned in GAP-108 dry run
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaCollection WHERE DeletedAt IS NULL",
@@ -472,7 +476,7 @@ _CHECKS: list[_Check] = [
         # first post-GAP-110 dry-run (see CUTOVER.md); the pre-regroup numbers
         # (710 seasons → 521 plans, gap 67) no longer apply.
         "SELECT COUNT(DISTINCT s.VillaId) FROM VillaSeason s "
-        "JOIN VillaMaster m ON m.Id = s.VillaId AND m.DeletedAt IS NULL "
+        f"JOIN VillaMaster m ON m.Id = s.VillaId AND {live_villa_sql('m.')} "
         "WHERE s.DeletedAt IS NULL AND EXISTS ("
         f" SELECT 1 FROM VillaSeasonRate r WHERE r.SeasonId = s.ID AND {PRICED_ROW_PREDICATE})",
         RatePlan,
@@ -571,7 +575,7 @@ _CHECKS: list[_Check] = [
         # GAP-107: the extras catalogue — the `IsExTra = 1` rows the RateBand
         # check above excludes, ported by ExtraLoader (CUTOVER.md §4i). The
         # legacy side mirrors the loader's `DeletedAt IS NULL` AND
-        # PropertyLoader's villa filter (`m.DeletedAt IS NULL` + non-blank
+        # PropertyLoader's villa filter (`live_villa_sql`: live + non-blank
         # name), so extras on villas that never load do not count: on the
         # 24-Apr-2025 dump that is 12 of 96 (11 on soft-deleted villas + 1 on
         # villa 249, the blank-name row) -> 84/84, gap 0, data-independent.
@@ -582,7 +586,7 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaSeasonRate r "
         "JOIN VillaMaster m ON m.Id = r.VillaId "
         "WHERE r.DeletedAt IS NULL AND r.IsExTra = 1 "
-        "AND m.DeletedAt IS NULL AND LTRIM(RTRIM(ISNULL(m.Name, ''))) <> ''",
+        f"AND {live_villa_sql('m.')}",
         Extra,
         "Extra",
         expected_gap=0,

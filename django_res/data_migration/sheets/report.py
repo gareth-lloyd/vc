@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 
 from core.console import render_table
 
+RowCounts = tuple[tuple[Counter[str], ...], dict[str, list[str]]]
+
 
 @dataclass
 class SheetReport:
@@ -23,15 +25,21 @@ class SheetReport:
     errors: list[tuple[str, str]] = field(default_factory=list)
     unmatched_villas: Counter[str] = field(default_factory=Counter)
     unmatched_persons: Counter[str] = field(default_factory=Counter)
+    #: GAP-113: the legacy ids behind a category, so a skip can be looked up
+    #: rather than re-derived.
+    ids: dict[str, list[str]] = field(default_factory=dict)
     rows_read: int = 0
 
-    def row_counts(self) -> tuple[Counter[str], ...]:
-        """A copy of the per-row counters, taken before a row's savepoint.
+    def add_id(self, category: str, legacy_id: str) -> None:
+        self.ids.setdefault(category, []).append(legacy_id)
+
+    def row_counts(self) -> RowCounts:
+        """A copy of the per-row counters and ids, taken before a row's savepoint.
 
         BUG-030 §34: a row that raises is rolled back to its savepoint, so the
-        counts it made before failing must be rolled back too
+        counts (and ids) it made before failing must be rolled back too
         (`restore_row_counts`). `errors` is not part of the snapshot."""
-        return tuple(
+        counters = tuple(
             Counter(c)
             for c in (
                 self.created,
@@ -41,14 +49,18 @@ class SheetReport:
                 self.unmatched_persons,
             )
         )
+        return counters, {category: list(ids) for category, ids in self.ids.items()}
 
-    def restore_row_counts(self, counts: tuple[Counter[str], ...]) -> None:
+    def restore_row_counts(self, counts: RowCounts) -> None:
         (
-            self.created,
-            self.updated,
-            self.skipped,
-            self.unmatched_villas,
-            self.unmatched_persons,
+            (
+                self.created,
+                self.updated,
+                self.skipped,
+                self.unmatched_villas,
+                self.unmatched_persons,
+            ),
+            self.ids,
         ) = counts
 
     def render(self) -> str:
@@ -64,6 +76,14 @@ class SheetReport:
         if self.unmatched_persons:
             blocks.append("Unmatched persons (rows skipped):")
             blocks.append(render_table(("person", "rows"), self.unmatched_persons.most_common()))
+        if self.ids:
+            blocks.append("Ids by category:")
+            blocks.append(
+                render_table(
+                    ("category", "ids"),
+                    [(category, ", ".join(ids)) for category, ids in sorted(self.ids.items())],
+                )
+            )
         if self.errors:
             blocks.append(f"Errors ({len(self.errors)}):")
             blocks.append(render_table(("row", "error"), self.errors))

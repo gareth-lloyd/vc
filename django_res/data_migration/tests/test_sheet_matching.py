@@ -11,6 +11,7 @@ from accounts.models import Person, PersonEmail
 from data_migration.sheets.matching import (
     PropertyMatcher,
     append_note_line,
+    channels_writable,
     fill_blanks,
     find_or_create_person,
     html_to_text,
@@ -504,3 +505,13 @@ def test_active_owner_namesake_does_not_hide_a_deactivated_customer() -> None:
     assert match.inactive is True
     assert match.person == customer
     assert Person.objects.count() == 2
+
+
+@pytest.mark.parametrize(
+    ("legacy_id", "writable"),
+    [(None, True), ("sheet-person-abc", True), ("client-12", True), ("4711", False)],
+)
+def test_channels_writable_only_for_sheet_client_and_hand_made_people(
+    legacy_id: str | None, writable: bool
+) -> None:
+    assert channels_writable(legacy_id) is writable

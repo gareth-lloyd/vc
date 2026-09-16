@@ -38,7 +38,7 @@ from django.utils import timezone
 from accounts.models import Organisation
 from accounts.services.organisations import company_dedup_key, organisation_for_company_name
 from accounts.services.person_channels import reconcile_primary_phone
-from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX, SHEET_LEGACY_PREFIX
+from data_migration.loaders.sentinels import SHEET_LEGACY_PREFIX
 from data_migration.sheets.constants import (
     HISTORIC_LEAD_STATUS,
     HISTORIC_LOST_REASON,
@@ -47,6 +47,7 @@ from data_migration.sheets.constants import (
 from data_migration.sheets.matching import (
     PropertyMatcher,
     append_note_line,
+    channels_writable,
     find_or_create_person,
     html_to_text,
     map_tags,
@@ -89,13 +90,6 @@ def _text(row: dict[str, Any], key: str) -> str:
 def _budget(row: dict[str, Any]) -> str:
     budget = _text(row, "Budget")
     return "" if budget.casefold() in ("", "none-none") else budget
-
-
-def _channels_writable(legacy_id: str | None) -> bool:
-    """Sheet- and client-keyed people (and hand-made ones) may gain a channel;
-    a legacy owner/agent Person (bare VillaContact id) may not, or the
-    PersonPhone reconcile count would drift from VillaContactTele."""
-    return legacy_id is None or legacy_id.startswith((SHEET_LEGACY_PREFIX, CLIENT_LEGACY_PREFIX))
 
 
 class Command(BaseCommand):
@@ -180,7 +174,7 @@ class Command(BaseCommand):
         # Only people the sheets/clients own may gain a channel: a phone added
         # to a legacy owner/agent Person would drift `reconcile_legacy`'s
         # VillaContactTele count.
-        if phone and not person.phones.exists() and _channels_writable(person.legacy_id):
+        if phone and not person.phones.exists() and channels_writable(person.legacy_id):
             reconcile_primary_phone(person, phone)
             changed = True
         if unknown_tags:

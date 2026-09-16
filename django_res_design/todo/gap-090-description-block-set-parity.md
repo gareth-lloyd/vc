@@ -198,7 +198,7 @@ parity break in the copy that sells the villas.
 ## Dependencies
 
 - **Supersedes Q-020** — same question, now answered by the recording; Q-020
-  is marked ⏸ superseded-pending and drops when this lands.
+  was closed into `done/` 2026-09-16 rather than waiting for this to land.
 - **GAP-091** (villa info → tags) removes `villa_info` from this enum;
   the two want sequencing together to avoid a double enum migration.
   *Landed 2026-09-09 (GAP-091 shipped first):* the enum is now `overview /

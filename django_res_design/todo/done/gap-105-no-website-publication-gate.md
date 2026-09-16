@@ -1,5 +1,11 @@
 # GAP-105 — No publication gate for the public website (`status` and `channel` both mean something else)
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-106](../gap-106-res-to-website-push.md)** as
+> §"Merged from GAP-105". The publication gate is consumed only by the website push (unit 4) and waits on the same go-ahead from Nick. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** 🟠 Gap (nothing in the model answers "should this villa have a
   public web page?", so the website push would have to infer it from a field
   that means something else — and get it wrong for white-label, agent-only and

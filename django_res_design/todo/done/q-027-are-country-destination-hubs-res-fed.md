@@ -1,5 +1,11 @@
 # Q-027 — Are country and destination hub pages Res-fed, or marketing pages Mojo owns?
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [Q-026](../q-026-website-field-ownership-matrix.md)** as
+> §"Merged from Q-027". Both are questions for Ben/Dave at Mojo that set the scope of GAP-106's payload; one ticket means one conversation. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** Question (decides whether `Country` needs a slug at all, and
   whether `Region` needs globally-unique ones — a schema question we should
   not answer by accident while building GAP-106).

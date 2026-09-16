@@ -147,9 +147,12 @@ class ContactPastStaySerializer(serializers.ModelSerializer[PastStay]):
     """GAP-089 row for `/contacts/{id}/past-stays`: the sheet facts plus the
     resolved property (when the importer matched the villa name). `property`
     is the bare pk and `property_name` the resolved display name — the same
-    pair the enquiry/quotation/booking serializers expose."""
+    pair the enquiry/quotation/booking serializers expose. GAP-113: the
+    optional archive dates and recorded amount; `currency_code` is null when
+    legacy recorded no currency (the amount is shown as recorded)."""
 
     property_name = serializers.SerializerMethodField()
+    currency_code = serializers.CharField(source="currency.code", read_only=True, allow_null=True)
 
     class Meta:
         model = PastStay
@@ -162,6 +165,10 @@ class ContactPastStaySerializer(serializers.ModelSerializer[PastStay]):
             "destination",
             "year",
             "notes",
+            "date_from",
+            "date_to",
+            "amount",
+            "currency_code",
         ]
         read_only_fields = fields
 

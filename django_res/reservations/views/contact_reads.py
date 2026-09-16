@@ -93,7 +93,7 @@ class ContactCustomerReadViewSet(viewsets.GenericViewSet[Person]):
     def past_stays(self, request: Request, contact_pk: str | None = None) -> Response:
         # GAP-089: sheet-imported historic stays (model Meta orders newest year first).
         person = self._person(contact_pk)
-        qs = person.past_stays.select_related("property")
+        qs = person.past_stays.select_related("property", "currency")
         return self._paginated(qs, ContactPastStaySerializer)
 
     def travel_preferences(self, request: Request, contact_pk: str | None = None) -> Response:

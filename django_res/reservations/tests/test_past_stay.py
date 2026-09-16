@@ -165,9 +165,35 @@ def test_contact_past_stays_lists_rows_with_optional_property(
         "destination": "Corfu",
         "year": 2023,
         "notes": "",
+        "date_from": None,
+        "date_to": None,
+        "amount": None,
+        "currency_code": None,
     }
     assert rows[1]["property"] is None
     assert rows[1]["property_name"] is None
+
+
+def test_contact_past_stays_exposes_dates_and_recorded_amount(
+    api_client: APIClient, staff: User, person: Person, gbp: Currency
+) -> None:
+    _stay(
+        person,
+        year=2025,
+        date_from=date(2025, 8, 3),
+        date_to=date(2025, 8, 10),
+        amount=Decimal("4250.00"),
+        currency=gbp,
+    )
+    _stay(person, year=2018, amount=Decimal("900.00"))  # amount recorded without a currency
+    api_client.force_login(staff)
+
+    rows = api_client.get(f"/api/v1/contacts/{person.pk}/past-stays").json()["results"]
+
+    assert [(r["date_from"], r["date_to"], r["amount"], r["currency_code"]) for r in rows] == [
+        ("2025-08-03", "2025-08-10", "4250.00", "GBP"),
+        (None, None, "900.00", None),
+    ]
 
 
 def test_contact_past_stays_requires_staff(api_client: APIClient, person: Person) -> None:

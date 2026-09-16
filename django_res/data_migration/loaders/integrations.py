@@ -112,7 +112,20 @@ class SyncRecordZohoLoader:
             expected_gap=1,
         ),
         _ZohoSpec("VillaContact", Person, has_timestamps=False),
-        _ZohoSpec("VillaEnquire", Enquiry, has_timestamps=True),
+        _ZohoSpec(
+            "VillaEnquire",
+            Enquiry,
+            has_timestamps=True,
+            # GAP-108, pinned on ResProd (13-Aug-2026): the same shape as
+            # VillaMaster above. VillaEnquire 1267 and 1268 are distinct
+            # enquiries sharing one ZohoId (577032000009062002), so both load
+            # but only one can hold the external-ID link (1267, the lower
+            # legacy Id, forced by the ORDER BY Id in `_query`). 2 228
+            # enquiries carry a ZohoId; 2 227 SyncRecords result. Accepted,
+            # like VillaMaster's, until the CRM source is corrected — the
+            # loader logs it as `data_migration.zoho_id_duplicate`.
+            expected_gap=1,
+        ),
         _ZohoSpec("VillaQuotationMaster", Quotation, has_timestamps=True),
     )
 

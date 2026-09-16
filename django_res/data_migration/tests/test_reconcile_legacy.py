@@ -242,8 +242,9 @@ def test_person_checks_count_their_own_legacy_id_slice(monkeypatch: pytest.Monke
     assert owner_check.loaded_count(owner_check.model) == 2
     # client slice = the one real client row (excludes owner/agent AND sentinel).
     assert client_check.loaded_count(client_check.model) == 1
-    # The client check keeps the documented no-name gap.
-    assert client_check.expected_gap == 1
+    # The client check keeps the documented no-name gap (GAP-108 re-pinned it
+    # on ResProd: 184 clients name nobody on their own row OR their enquiry).
+    assert client_check.expected_gap == 184
 
 
 @pytest.mark.django_db
@@ -366,12 +367,15 @@ def test_geo_parity_checks_split_active_from_retired(monkeypatch: pytest.MonkeyP
             imported.legacy_query: 3 + imported.expected_gap,
             active.legacy_query: 1 + active.expected_gap,
             country_active.legacy_query: 1 + country_active.expected_gap,
-            # Bare totals: every stamped Region (4: the imported three + the
-            # sentinel; staff-made is organic, GAP-108) and every Country
-            # (the ISO seed + sentinel — the one explicit whole-table count).
-            "COUNT(*) FROM VillaRegion": 4 + by_label["Region"].expected_gap,
+            # Bare totals: every stamped Region (3 — staff-made is organic
+            # (GAP-108) and the `unknown-xx` sentinel is excluded here too
+            # (GAP-108 U8c), since it has no legacy twin by construction) and
+            # every Country (the ISO seed, the one explicit whole-table count;
+            # the XX sentinel is excluded there too since GAP-108 U8c).
+            "COUNT(*) FROM VillaRegion": 3 + by_label["Region"].expected_gap,
             "COUNT(*) FROM VillaCountry": (
-                Country.objects.count() + by_label["Country (legacy)"].expected_gap
+                Country.objects.exclude(iso2="XX").count()
+                + by_label["Country (legacy)"].expected_gap
             ),
         },
     )
@@ -700,22 +704,38 @@ def test_missing_zoho_id_column_does_not_mask_real_blockers(
 
 @pytest.mark.django_db
 def test_calibrated_zoho_expected_gap_passes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """VillaMaster's calibrated continuity expected_gap=1 (the Temenos
-    duplicate pair — legacy 88 & 339 share one ZohoId, only the first loaded
-    row gets the SyncRecord) must pass without blocking, and the continuity
-    table must show the expected column like the main table does."""
+    """The two calibrated continuity gaps (both expected_gap=1) must pass
+    without blocking, and the continuity table must show the expected column
+    like the main table does.
+
+    Each is a pair of DISTINCT legacy rows sharing one ZohoId, so both load but
+    only the lower legacy Id can hold the external-ID link: VillaMaster 88 &
+    339 (the Temenos villas) and, since GAP-108's ResProd dry run, VillaEnquire
+    1267 & 1268.
+    """
+    from reservations.factories import EnquiryFactory
+
     first = PropertyFactory(legacy_id="88")
     PropertyFactory(legacy_id="339")  # duplicate "Temenos" — no SyncRecord
     SyncRecordFactory(target=first, provider=SyncProvider.ZOHO_CRM)
-    _patch(monkeypatch, [], responses=_integration_responses(master=["88", "339"]))
+    first_enquiry = EnquiryFactory(legacy_id="1267")
+    EnquiryFactory(legacy_id="1268")  # shares 1267's ZohoId — no SyncRecord
+    SyncRecordFactory(target=first_enquiry, provider=SyncProvider.ZOHO_CRM)
+    _patch(
+        monkeypatch,
+        [],
+        responses=_integration_responses(master=["88", "339"], enquire=["1267", "1268"]),
+    )
 
     output = _run("--integrations")
 
     assert "BLOCKER" not in output
-    # Pin the calibrated value where it is used, not just in the SPECS tuple.
-    master_spec = next(s for s in SyncRecordZohoLoader.SPECS if s.table == "VillaMaster")
-    assert master_spec.expected_gap == 1
-    assert all(s.expected_gap == 0 for s in SyncRecordZohoLoader.SPECS if s.table != "VillaMaster")
+    # Pin the calibrated values where they are used, not just in the SPECS tuple.
+    by_table = {s.table: s for s in SyncRecordZohoLoader.SPECS}
+    assert by_table["VillaMaster"].expected_gap == 1
+    assert by_table["VillaEnquire"].expected_gap == 1
+    assert by_table["VillaContact"].expected_gap == 0
+    assert by_table["VillaQuotationMaster"].expected_gap == 0
     # The continuity table shows an expected column (header printed once for
     # the section, alongside the main table's own).
     zoho_section = output.split("Zoho external-ID continuity:")[1]
@@ -899,7 +919,7 @@ def test_property_finance_check_counts_only_rows_with_a_legacy_twin() -> None:
     """GAP-107: the GAP-070 owner-contact fallback mints `PropertyFinance`
     rows with no `VillaFinance` twin (legacy_id NULL), and `snapshot_defaults`
     mints one per organically-created property. Neither may move the
-    documented 1236 gap, so the loaded side counts only stamped rows."""
+    documented 1239 gap, so the loaded side counts only stamped rows."""
     from properties.models.finance import PropertyFinance
 
     # PropertyFactory snapshots a finance row per property (the real
@@ -913,7 +933,7 @@ def test_property_finance_check_counts_only_rows_with_a_legacy_twin() -> None:
     check = next(c for c in reconcile_legacy._CHECKS if c.label == "PropertyFinance")
     assert check.model is PropertyFinance
     assert "VillaFinance" in check.legacy_query
-    assert check.expected_gap == 1236
+    assert check.expected_gap == 1239
     assert check.loaded_count is not None
     assert check.loaded_count(check.model) == 1
 
@@ -921,24 +941,73 @@ def test_property_finance_check_counts_only_rows_with_a_legacy_twin() -> None:
 def test_documented_expected_gaps_are_encoded() -> None:
     # The documented carve-outs from CUTOVER.md §5 must live in code (this
     # module is their single source of truth).
+    # GAP-108 pinned every one of these on the ResProd dry run (13-Aug-2026
+    # data, loaded 2026-09-16); each carries its itemised derivation on the
+    # `_CHECKS` entry, and `reconcile_legacy --integrations` exits 0 with them.
+    # A gap that changes here is either a loader change or a newer dump — say
+    # which in the commit, and re-derive rather than nudging the number.
     by_label = {c.label: c.expected_gap for c in reconcile_legacy._CHECKS}
-    assert by_label["CollectionMembership"] == 9
-    # BUG-030 §6: the England row (`UK`) no longer mints a 24th Country.
-    assert by_label["Country (legacy)"] == -227
-    # BUG-030 §11: pinned 0 until the GAP-108 dry run executes the SQL.
-    assert by_label["PropertyFeature"] == 0
-    assert by_label["PropertyFinance"] == 1236
-    assert by_label["Currency"] == 4
-    # Recalibrated 2026-09-14 (BUG-028) against the 24-Apr-2025 prod dump —
-    # itemised decomposition lives on the _CHECKS entry (reconcile_legacy).
-    assert by_label["RateBand"] == 4492
-    # GAP-108: the blank-name villa left the legacy side (`live_villa_sql`).
-    assert by_label["Property"] == 0
-    # GAP-108: (mapping, role) composites on the 3 soft-deleted villas.
-    assert by_label["PropertyContactAssignment"] == 6
-    # GAP-107: the legacy side mirrors PropertyLoader's villa filter, so the
-    # 12 extras on unloaded villas (24-Apr-2025 dump) never enter the gap.
-    assert by_label["Extra"] == 0
+    assert by_label == {
+        # Structural, not losses: the loaded side is bigger than the legacy one.
+        "Country (legacy)": -225,  # the 249 seeded ISO countries (XX excluded)
+        # Legacy junk the loaders refuse.
+        "Currency": 4,  # 3 non-alphabetic codes + the soft-deleted EUR twin
+        "PersonEmail": 2,  # '' and 'tbc'
+        "PersonPhone": 8,  # 7 blank + 1 whose ContactId matches no contact
+        "GuestPreference": 201,  # duplicate/collapsing triples + 2 dangling FKs
+        # Rows on villas, quotations or contacts that deliberately never load.
+        "CollectionMembership": 9,
+        "Room": 321,
+        "Room placement (GAP-065)": 61,
+        "PropertyImage": 839,  # all on the 35 soft-deleted villas
+        "PropertyNearbyPlace": 78,
+        "PropertyContactAssignment": 6,
+        "PropertyFinance": 1239,  # 413 templates + 676 villa-less + 150 deleted
+        "Person (client)": 184,  # name on neither the client nor its enquiry
+        "QuotationLine": 345,  # deleted/orphan masters + two test villas
+        # Pricing: the flattener's own bookkeeping, not lost rate rows.
+        "RateBand": 462,  # 495 shadowed - 8 occ fallbacks - 25 #seg fragments
+        # Everything else reconciles exactly.
+        "Country (active)": 0,
+        "Region": 0,
+        "Region (imported)": 0,
+        "Region (active)": 0,
+        "Currency (active)": 0,
+        "Currency EUR legacy_id (live row)": 0,
+        "NearbyPlaceType": 0,
+        "FeatureCategory": 0,
+        "Feature": 0,
+        "PropertyDefaults currency legacy_id (CPD row)": 0,
+        "PropertyFeature": 0,
+        "User": 0,
+        "Person (owner/agent)": 0,
+        "Person (owner/agent) primary email count != 1 (must be 0)": 0,
+        "Organisation (agency)": 0,
+        "Organisation named NA / N/A / - (must be 0)": 0,
+        "Property": 0,
+        "PropertyLocation": 0,
+        "PropertyCapacity": 0,
+        "PropertySettings": 0,
+        "PropertyDescription": 0,
+        "Property slug containing :// (must be 0)": 0,
+        "Collection": 0,
+        "RoomBeds": 0,
+        "RatePlan (villas with a loaded regime)": 0,
+        "RatePlan non-GROSS basis (must be 0)": 0,
+        "PropertyService": 0,
+        "RateBand non-POA priced <= 0 (must be 0)": 0,
+        "RateBand unapproved imported (must be 0)": 0,
+        "Extra": 0,
+        "Enquiry": 0,
+        "PropertyFinance NULL calculation type (must be 0)": 0,
+        "PropertySettings without currency (must be 0)": 0,
+        "Quotation": 0,
+        "GuestPreferenceType": 0,
+        "Booking with legacy_id (must be 0)": 0,
+        "Payment with legacy_id (must be 0)": 0,
+        "BookingChargeItem with legacy_id (must be 0)": 0,
+        "VillaAvailability (future days)": 0,
+    }
 
 
 @pytest.mark.django_db
@@ -1149,8 +1218,9 @@ def test_every_villa_master_query_uses_the_live_villa_filter() -> None:
     queries.append(reconcile_legacy.NIGHT_PARITY_QUERY)
     villa_queries = [q for q in queries if "VillaMaster" in q]
     # 5 + GAP-108 U6: Location / Capacity / Settings / Description /
-    # RoomBeds / PropertyService.
-    assert len(villa_queries) == 11
+    # RoomBeds / PropertyService; + GAP-108 U8c: RateBand, whose legacy query
+    # now counts the loader's own source universe rather than every rate row.
+    assert len(villa_queries) == 12
     for query in villa_queries:
         # `FROM VillaMaster WHERE …` (no alias), `JOIN VillaMaster m ON …` or
         # `FROM VillaMaster m LEFT JOIN …`.
@@ -1542,6 +1612,36 @@ def test_room_beds_check_counts_beds_of_loaded_rooms() -> None:
     assert legacy_active_sql("r.") in check.legacy_query
     assert live_villa_sql("m.") in check.legacy_query
     assert check.count_loaded() == 1
+
+
+def test_rate_band_check_counts_the_loaders_source_universe() -> None:
+    """GAP-108 U8c replaced this query: it used to count every non-extra,
+    non-deleted VillaSeasonRate row, most of which no loader reads. It must
+    now count exactly the loader's source universe, and it must do so by
+    composing the loaders' OWN predicates — a hand-rolled copy is how the two
+    sides drift apart and the pinned gap silently stops meaning anything."""
+    from data_migration.loaders._util import live_villa_sql
+    from data_migration.loaders.pricing import (
+        PRICED_ROW_PREDICATE,
+        VALID_OCCUPANCY_BAND_PREDICATE,
+    )
+
+    query = next(c for c in reconcile_legacy._CHECKS if c.label == "RateBand").legacy_query
+
+    # Priced rows only, on a live season of a villa PropertyLoader loads.
+    assert query.count(PRICED_ROW_PREDICATE) == 2
+    assert query.count("JOIN VillaSeason s ON s.ID = r.SeasonId AND s.DeletedAt IS NULL") == 2
+    assert query.count(f"JOIN VillaMaster m ON m.Id = s.VillaId AND {live_villa_sql('m.')}") == 2
+    # Occupancy parents are replaced by their valid children, counted once each:
+    # the first subquery excludes such parents, the second counts the children.
+    assert query.count(VALID_OCCUPANCY_BAND_PREDICATE) == 2
+    assert "NOT (ISNULL(r.IsOccupationPrice, 0) = 1 AND EXISTS" in query
+    # The flag is nullable, and both halves must read it NULL-safely: a bare
+    # `r.IsOccupationPrice = 1` makes the NOT evaluate UNKNOWN on a NULL, so
+    # the row falls out of both subqueries while the loader still loads it.
+    # (`PRICED_ROW_PREDICATE` has its own bare `= 1`, hence the count of 2
+    # rather than an absence check.)
+    assert query.count("ISNULL(r.IsOccupationPrice, 0) = 1") == 2
 
 
 @pytest.mark.django_db

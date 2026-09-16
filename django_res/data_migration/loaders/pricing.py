@@ -260,6 +260,16 @@ PRICED_ROW_PREDICATE = (
     "  WHERE o.VillaSeasonRateId = r.ID AND o.OccupencyPrice > 0)))"
 )
 
+# The T-SQL twin of the band-validity guard inside `_prepare_occupancy_rows`
+# below (a `VillaOccupencyPrice` row aliased `o`): a child band is only a band
+# if its party range is positive and ordered and it carries a real price.
+# `reconcile_legacy`'s RateBand check counts the same source universe as this
+# loader, so it imports this rather than restating it — keep the two in step,
+# and if the Python guard changes, change this string in the same commit.
+VALID_OCCUPANCY_BAND_PREDICATE = (
+    "o.OccupencyFrom > 0 AND o.OccupencyTo >= o.OccupencyFrom AND o.OccupencyPrice > 0"
+)
+
 # The season-level currency inputs to `resolve_season_currency`, against a
 # `VillaSeason` aliased `s`. `SEASON_CURRENCY_SUBSELECT`: the season's own most
 # recent non-NULL/non-zero rate row. `VILLA_CURRENCY_SUBSELECT`: same across ALL
@@ -528,6 +538,8 @@ def _prepare_occupancy_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 if frm is None or to is None:
                     continue
                 frm, to = int(frm), int(to)
+                # Keep in step with `VALID_OCCUPANCY_BAND_PREDICATE` above,
+                # which reconcile_legacy uses to count this same universe.
                 if frm <= 0 or to <= 0 or frm > to:
                     continue
                 price = _positive(row.get("OccupencyPrice"))

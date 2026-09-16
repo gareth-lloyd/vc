@@ -47,7 +47,11 @@ from data_migration.loaders._util import legacy_active_sql, legacy_deleted_sql, 
 from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
 from data_migration.loaders.integrations import SyncRecordZohoLoader, zoho_id_column_exists
 from data_migration.loaders.people import COMPANY_PLACEHOLDERS
-from data_migration.loaders.pricing import PLAN_LEGACY_PREFIX, PRICED_ROW_PREDICATE
+from data_migration.loaders.pricing import (
+    PLAN_LEGACY_PREFIX,
+    PRICED_ROW_PREDICATE,
+    VALID_OCCUPANCY_BAND_PREDICATE,
+)
 from data_migration.loaders.sentinels import (
     CLIENT_LEGACY_PREFIX,
     SHEET_LEGACY_PREFIX,
@@ -97,6 +101,27 @@ NIGHT_PARITY_QUERY = (
     "JOIN VillaSeason s ON s.ID = r.SeasonId AND s.DeletedAt IS NULL "
     f"JOIN VillaMaster m ON m.Id = s.VillaId AND {live_villa_sql('m.')} "
     f"WHERE {PRICED_ROW_PREDICATE}"
+)
+
+# GAP-108 — the RateBand check's legacy universe. Same row set the loaders
+# see: priced, non-extra, live rate rows on a live season of a loaded villa
+# (`_RB_SRC` + `PRICED_ROW_PREDICATE`), with every occupancy-flagged parent
+# replaced by its VALID VillaOccupencyPrice children. The validity rule is
+# imported (`VALID_OCCUPANCY_BAND_PREDICATE`), not restated, so it cannot drift
+# from the Python guard in `_prepare_occupancy_rows` that defines it.
+# A parent whose children are ALL junk keeps counting as itself here, which
+# matches the loader passing it through as a plain base-weekly row — but only
+# when the parent has a price of its own. A priceless `IsOccupationPrice` parent
+# admitted by `PRICED_ROW_PREDICATE` solely because some child has a positive
+# price, whose every child is out of range, is counted here and then dropped by
+# `_row_to_band` for want of a price: it is neither loaded nor shadowed, so it
+# would break the itemisation identity below by one. Zero such rows on ResProd
+# (it is the `_row_to_band` rejection term); look here first if a recalibration
+# on a newer dump comes up one short.
+_RB_SRC = (
+    "FROM VillaSeasonRate r "
+    "JOIN VillaSeason s ON s.ID = r.SeasonId AND s.DeletedAt IS NULL "
+    f"JOIN VillaMaster m ON m.Id = s.VillaId AND {live_villa_sql('m.')} "
 )
 
 Span = tuple[date, date]
@@ -242,23 +267,32 @@ _CHECKS: list[_Check] = [
         Country,
         "Country (legacy)",
         # Negative gap: loaded > legacy. Migration properties.0002 pre-seeds
-        # 249 canonical ISO-3166 countries (legacy_id NULL); the 23 legacy
+        # 249 canonical ISO-3166 countries (legacy_id NULL); the legacy
         # VillaCountry rows are matched onto that seed by iso2 rather than
-        # adding to it. Plus the unknown_country `XX` sentinel, created
-        # lazily by the first fallback (the dump's iso-less junk rows always
-        # trigger it). The seeded table dwarfs the 23 legacy rows, so the gap
-        # is structurally negative. BUG-030 §6: 23 - (249 + 1) = -227.
+        # adding to it. The seeded table dwarfs them, so the gap is
+        # structurally negative.
+        # GAP-108 U8c: the `unknown_country` XX sentinel is EXCLUDED, as it is
+        # on `Country (active)` below and on the Region checks. It is minted
+        # lazily by the first unresolvable-country fallback, so baking it into
+        # the constant would turn this check RED on a dump whose every
+        # VillaCountry row resolves to an ISO code. Excluded by `iso2`, not
+        # `legacy_id`: CountryLoader re-points the sentinel's legacy_id onto a
+        # real legacy row.
         # Before, legacy 24 ("England", iso2 `UK`) minted a 250th row
         # (-228); `_resolve_iso2` now maps `UK` → GB and rejects any non-ISO
-        # code, so no extra Country row is ever created. The dev dump's
-        # "Dev Country" 25 (`DC`, live) is skipped the same way; it is not in
-        # the 23-row prod dump (DRYRUN_LOG) — GAP-108 confirms on the live
-        # dump before pinning for good.
-        expected_gap=-227,
+        # code, so no extra Country row is ever created.
+        # GAP-108 pinned on ResProd (13-Aug-2026): 24 legacy rows — the 23 of
+        # the old dump plus Id 25 `Sync_Country`, a soft-deleted sync artefact
+        # created and deleted on 26-Apr-2025 (just after that dump) whose name
+        # resolves to no ISO code, so `_resolve_iso2` rejects it like England
+        # — against the 249 seeded rows ⇒ 24 - 249 = -225. The constant tracks
+        # the SEED, so it only moves when properties.0002 does or when legacy
+        # gains/loses a VillaCountry row.
+        expected_gap=-225,
         # GAP-108: counts unstamped rows on purpose (whole-table override of
         # the legacy-rows default) — the gap is defined against the whole
-        # seeded table, not the legacy slice.
-        loaded_count=lambda m: m._default_manager.count(),
+        # seeded table, not the legacy slice — but never the XX sentinel.
+        loaded_count=lambda m: m._default_manager.exclude(iso2="XX").count(),
     ),
     _Check(
         # GAP-107: legacy `IsActive = 1` countries that are not soft-deleted
@@ -282,11 +316,24 @@ _CHECKS: list[_Check] = [
         ),
     ),
     # GAP-107 adds no shift to the bare total: deleted regions still load
-    # (retired in place, never skipped). Its pre-existing shifters remain —
-    # blank-name rows are skipped by the loader, and the loaded side counts
-    # the `unknown-xx` sentinel (stamped `__unknown__`; staff-created rows
-    # stopped counting with the GAP-108 legacy-rows default).
-    _Check("SELECT COUNT(*) FROM VillaRegion", Region, "Region"),
+    # (retired in place, never skipped), and blank-name rows are skipped by the
+    # loader (0 of them on ResProd, so the bare total matches).
+    # GAP-108: the `unknown-xx` sentinel (stamped `UNKNOWN_LEGACY_ID`) is
+    # excluded here, as it already is on the two slices below. It is minted
+    # lazily by the first FK fallback — ResProd mints it for villa 570 — so
+    # counting it made this check read -1 for a row that has no legacy twin by
+    # construction. Staff-created rows stopped counting with the GAP-108
+    # legacy-rows default.
+    _Check(
+        "SELECT COUNT(*) FROM VillaRegion",
+        Region,
+        "Region",
+        loaded_count=lambda m: (
+            m._default_manager.filter(legacy_id__isnull=False)
+            .exclude(legacy_id=UNKNOWN_LEGACY_ID)
+            .count()
+        ),
+    ),
     # The two slices below say WHICH imported rows came in active. Together
     # they pin the retired count too (retired = imported - active on both
     # sides), so a single misclassification cannot hide inside the total;
@@ -328,7 +375,7 @@ _CHECKS: list[_Check] = [
         # RUPEE (5), RS (7) — plus the soft-deleted EUR twin (2), since the
         # live EUR (3) claims the code first (BUG-028). Before BUG-028 the
         # fourth skip was the LIVE EUR, losing to its deleted twin.
-        expected_gap=4,  # provisional — pinned in GAP-108 dry run
+        expected_gap=4,
     ),
     _Check(
         # BUG-028: deleted VillaCurrency rows load retired, not skipped, so
@@ -368,7 +415,7 @@ _CHECKS: list[_Check] = [
         "SELECT ISNULL((SELECT TOP 1 CurrencyId FROM VillaConfigPropertyDefault ORDER BY Id), 0)",
         PropertyDefaults,
         "PropertyDefaults currency legacy_id (CPD row)",
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
         loaded_count=_defaults_currency_legacy_id,
     ),
     _Check(
@@ -449,6 +496,10 @@ _CHECKS: list[_Check] = [
         # GAP-089 `sheet-` persons' channels are excluded for the same reason.
         # GAP-108: only stamped channels on stamped persons — a staff-added
         # channel, or any channel of an organic person, never counts.
+        # Pinned on ResProd (13-Aug-2026): 319 legacy rows, 317 loaded. The 2
+        # skips are the rows `ContactEmailLoader.transform` rejects for having
+        # no `@` — Id 30 (empty string) and Id 270 (the literal `tbc`).
+        expected_gap=2,
         loaded_count=lambda m: (
             m._default_manager.filter(legacy_id__isnull=False, contact__legacy_id__isnull=False)
             .exclude(contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX)
@@ -461,6 +512,10 @@ _CHECKS: list[_Check] = [
         PersonPhone,
         "PersonPhone",
         # Same slice exclusions and legacy-only filters as PersonEmail above.
+        # Pinned on ResProd (13-Aug-2026): 259 legacy rows, 251 loaded. The 8
+        # skips are 7 blank numbers plus Id 221, whose `ContactId` matches no
+        # VillaContact row, so it has no person to hang on.
+        expected_gap=8,
         loaded_count=lambda m: (
             m._default_manager.filter(legacy_id__isnull=False, contact__legacy_id__isnull=False)
             .exclude(contact__legacy_id__startswith=CLIENT_LEGACY_PREFIX)
@@ -548,7 +603,7 @@ _CHECKS: list[_Check] = [
         # legacy side counted it; GAP-108 moved the blank-name skip into
         # `live_villa_sql`, so both sides count the same villas. ResProd:
         # 387 live, 1 blank (543) ⇒ 386.
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
     ),
     # GAP-108: PropertyLoader writes these three satellites for every loaded
     # property (`_process_row`), so each is one row per loaded Property —
@@ -559,21 +614,21 @@ _CHECKS: list[_Check] = [
         _LIVE_VILLAS_QUERY,
         PropertyLocation,
         "PropertyLocation",
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
         loaded_count=_one_per_loaded_property,
     ),
     _Check(
         _LIVE_VILLAS_QUERY,
         PropertyCapacity,
         "PropertyCapacity",
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
         loaded_count=_one_per_loaded_property,
     ),
     _Check(
         _LIVE_VILLAS_QUERY,
         PropertySettings,
         "PropertySettings",
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
         loaded_count=_one_per_loaded_property,
     ),
     _Check(
@@ -587,7 +642,7 @@ _CHECKS: list[_Check] = [
         _DESCRIPTION_QUERY,
         PropertyDescription,
         "PropertyDescription",
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
     ),
     _Check(
         # GAP-108 structural invariant: legacy `VillaMaster.Slug` holds the
@@ -618,7 +673,7 @@ _CHECKS: list[_Check] = [
         # GAP-108 on ResProd: 2 206 rows, of which 194 `IsActive = 0` and 921
         # NULL (= inactive) filtered → 1 091 active; loaded = 1 082 distinct
         # (villa, collection) pairs on a live collection + loaded villa ⇒ 9.
-        expected_gap=9,  # provisional — pinned in GAP-108 dry run
+        expected_gap=9,
     ),
     _Check(
         f"SELECT COUNT(*) FROM VillaRooms WHERE {legacy_active_sql()}",
@@ -628,7 +683,7 @@ _CHECKS: list[_Check] = [
         # (soft-deleted or empty-Name VillaMaster) have no parent to attach to.
         # 307 on the 24-Apr dump. GAP-108 on ResProd: 2 714 rooms - 30
         # inactive = 2 684; 321 of those sit on an unloaded villa.
-        expected_gap=321,  # provisional — pinned in GAP-108 dry run
+        expected_gap=321,
     ),
     _Check(
         f"SELECT COUNT(*) FROM VillaRooms WHERE PlacementId IS NOT NULL AND {legacy_active_sql()}",
@@ -646,7 +701,7 @@ _CHECKS: list[_Check] = [
         # gap.
         # GAP-108 on ResProd (active rooms only): 2 409 with a PlacementId;
         # 61 = (a) on an unloaded villa or (b) blank/dangling placement name.
-        expected_gap=61,  # provisional — pinned in GAP-108 dry run
+        expected_gap=61,
         loaded_count=lambda m: (
             m._default_manager.exclude(placement_note="").filter(legacy_id__isnull=False).count()
         ),
@@ -661,7 +716,7 @@ _CHECKS: list[_Check] = [
         f"WHERE {legacy_active_sql('r.')}",
         RoomBeds,
         "RoomBeds",
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
         loaded_count=lambda m: m._default_manager.filter(room__legacy_id__isnull=False).count(),
     ),
     _Check(
@@ -669,7 +724,11 @@ _CHECKS: list[_Check] = [
         PropertyImage,
         "PropertyImage",
         # Images for an unloaded parent property, or rows with an empty filename.
-        expected_gap=806,
+        # Pinned on ResProd (13-Aug-2026): 19 071 legacy rows, 18 232 loaded.
+        # All 839 skips sit on the 35 soft-deleted villas `live_villa_sql`
+        # excludes — 0 are empty filenames and 0 are on a live villa, so no
+        # loaded property loses an image.
+        expected_gap=839,
     ),
     _Check(
         f"SELECT COUNT(*) FROM VillaNearBy WHERE {legacy_active_sql()}",
@@ -678,7 +737,7 @@ _CHECKS: list[_Check] = [
         # Parent property unresolved, place type unresolved, or empty name.
         # 77 on the 24-Apr dump. GAP-108 on ResProd: 178 - 1 inactive = 177;
         # 78 of those hit one of the three skips.
-        expected_gap=78,  # provisional — pinned in GAP-108 dry run
+        expected_gap=78,
     ),
     _Check(
         # GAP-110: a RatePlan is one (villa, currency) regime, not a season,
@@ -700,7 +759,7 @@ _CHECKS: list[_Check] = [
         f" SELECT 1 FROM VillaSeasonRate r WHERE r.SeasonId = s.ID AND {PRICED_ROW_PREDICATE})",
         RatePlan,
         "RatePlan (villas with a loaded regime)",
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
         loaded_count=lambda m: (
             m._default_manager.filter(
                 legacy_id__startswith=PLAN_LEGACY_PREFIX, periods__legacy_id__isnull=False
@@ -750,47 +809,57 @@ _CHECKS: list[_Check] = [
         "WHERE d.SeasonId = s.ID AND d.DeletedAt IS NULL)",
         PropertyService,
         "PropertyService",
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
     ),
     _Check(
-        # BUG-013: RateBand now has two legacy sources — parent VillaSeasonRate
-        # rows (→ simple / base-weekly fallback rules) AND child
-        # VillaOccupencyPrice bands on occupancy-flagged parents (→ one band
-        # rule each). Count both so the legacy side mirrors the loader's source
-        # universe; children on non-occupancy parents are ignored by the loader
-        # (`IsOccupationPrice` gate), so they're excluded here too.
-        "SELECT "
-        "(SELECT COUNT(*) FROM VillaSeasonRate "
-        " WHERE DeletedAt IS NULL AND IsExTra <> 1) "
-        "+ (SELECT COUNT(*) FROM VillaOccupencyPrice o "
-        " JOIN VillaSeasonRate r ON r.ID = o.VillaSeasonRateId "
-        " WHERE r.DeletedAt IS NULL AND r.IsExTra <> 1 AND r.IsOccupationPrice = 1)",
+        # BUG-013: RateBand has two legacy sources — parent VillaSeasonRate rows
+        # (→ simple / base-weekly fallback rules) AND child VillaOccupencyPrice
+        # bands on occupancy-flagged parents (→ one band rule each).
+        # GAP-108 REPLACED this query. It used to count every non-extra,
+        # non-deleted VillaSeasonRate row whatever its price or season, which on
+        # ResProd is 39 868 against 6 633 loaded — a gap of 33 235 that is 28 721
+        # priceless rows plus rows on deleted seasons and villas, i.e. rows no
+        # loader ever looks at and legacy itself cannot quote (BUG-028: both
+        # ResProd quote procs require a NightlyPrice). Counting them measured
+        # nothing and buried the terms that do move. The query now counts the
+        # loader's actual source universe (`_RB_SRC`), which is set-equal to it:
+        # replaying the pipeline, every one of the 7 095 rows ends up either
+        # loaded or shadowed, and nothing else reaches the flattener.
+        # `ISNULL(r.IsOccupationPrice, 0)`: the flag is nullable in the ResProd
+        # schema, and a bare `NOT (r.IsOccupationPrice = 1 AND ...)` evaluates
+        # UNKNOWN on a NULL, dropping the row from BOTH subqueries while the
+        # loader (a falsy `parent.get(...)`) loads it as a base-weekly row.
+        f"SELECT (SELECT COUNT(*) {_RB_SRC}"
+        f" WHERE {PRICED_ROW_PREDICATE} AND NOT (ISNULL(r.IsOccupationPrice, 0) = 1 AND EXISTS"
+        f"  (SELECT 1 FROM VillaOccupencyPrice o"
+        f"   WHERE o.VillaSeasonRateId = r.ID AND {VALID_OCCUPANCY_BAND_PREDICATE})))"
+        f" + (SELECT COUNT(*) {_RB_SRC}"
+        f"   JOIN VillaOccupencyPrice o ON o.VillaSeasonRateId = r.ID"
+        f"   WHERE {PRICED_ROW_PREDICATE} AND ISNULL(r.IsOccupationPrice, 0) = 1"
+        f"   AND {VALID_OCCUPANCY_BAND_PREDICATE})",
         RateBand,
         "RateBand",
-        # Recalibrated 2026-09-14 (BUG-028, post-GAP-110) against the
-        # 24-Apr-2025 prod dump (DRYRUN_LOG run 4; replayed through the
-        # loader's own pipeline, zero residual). Legacy 7333 = 7082
-        # VillaSeasonRate parents + 251 occupancy children; loaded 2841 =
-        # 2593 simple + 12 #seg fragments + 235 occ-* bands + 1 occ-fb-* gap
-        # fallback. Itemised:
-        #   + 1154  rows outside the loader's source query (deleted/dangling
-        #           season or deleted villa — GAP-110 moved that filter into
-        #           SQL; run 1 counted them among "no RatePlan")
-        #   +  108  occupancy-banded parents replaced by their band expansion
-        #   + 3099  priceless non-POA rows (BUG-028: only NightlyPrice /
-        #           WeeklyPrice > 0 or IsPOA count — 792 of these are
-        #           Price-only or 0.00 rows that used to load)
-        #   +    9  rows on live seasons with no regime plan
-        #   +  106  synthetic gap fallbacks emptied by capacity (bands
-        #           already cover 1..cap)
-        #   +  136  flattener-shadowed sources (cross-season within a regime
-        #           since GAP-110)
-        #   -  108  synthetic occ-fb-* fallback rows added by expansion
-        #   -   12  #seg fragments added by the flattener
-        # Junk dates / invalid occ children / resolver drops: all 0 on this
-        # dump. Recalibrate on a newer dump — the mix (especially priceless
-        # rows and unloaded seasons) moves with the data, not the code.
-        expected_gap=4492,
+        # Pinned on ResProd (13-Aug-2026) by replaying the loader's own pipeline;
+        # zero residual. Legacy 7 095 = 6 398 non-occupancy parents + 697 valid
+        # occupancy children (302 parents replaced). Loaded 6 633. Itemised:
+        #   + 495  flattener-shadowed sources — a band that won no (date x party)
+        #          cell because a higher-precedence sibling on the same regime
+        #          plan covered it whole (481 parents + 14 occupancy children)
+        #   -   8  synthetic `occ-fb-*` gap fallbacks the occupancy expansion
+        #          adds for a party range the villa's own bands leave uncovered
+        #   -  25  `#seg` fragments the flattener adds when one source survives
+        #          in more than one flat cell
+        #   = 462
+        # Cross-checks: 7 095 - 495 = 6 600 loaded sources; + 8 = 6 608, the
+        # loader's `created`; + 25 = 6 633 rows.
+        # NOT terms, so don't hunt for them: the loader's `skipped` (16 seasons
+        # with no regime plan + 293 synthetic fallbacks emptied by the property's
+        # capacity) counts rows this universe never contained; `party_clipped`
+        # narrows a bracket without dropping a band. Zero on this dump but each
+        # would move the constant: resolver `dropped`, flattener `invalid_spans`
+        # (which `_load_rows` does not currently surface — a source lost there
+        # would break this identity silently), and `_row_to_band` rejections.
+        expected_gap=462,
     ),
     _Check(
         # BUG-028: legacy quotes treat a 0.00 (or negative) price as absent, so
@@ -856,7 +925,7 @@ _CHECKS: list[_Check] = [
         "LEFT JOIN VillaContactRoleMapping r ON r.VillaContactMappingId = m.Id",
         PropertyContactAssignment,
         "PropertyContactAssignment",
-        expected_gap=6,  # provisional — pinned in GAP-108 dry run
+        expected_gap=6,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaClientDetails",
@@ -865,10 +934,17 @@ _CHECKS: list[_Check] = [
         # GAP-045 D5-3: VillaClientDetails now loads to Person directly (keyed
         # `client-{id}`), not Guest. Count only that slice, excluding the
         # `unknown_client` sentinel (minted only when a downstream row references
-        # a skipped client — its presence must not move this count). The single
-        # legacy row with neither FirstName nor LastName is still skipped
-        # (expected_gap=1).
-        expected_gap=1,
+        # a skipped client — its presence must not move this count).
+        # Pinned on ResProd (13-Aug-2026): 1 215 legacy rows, 1 031 loaded. The
+        # gap is the rows that name nobody on EITHER side — only 111 clients
+        # carry their own name, and GAP-108 U8b borrows the name of the lowest-Id
+        # named live enquiry reached through the client's quotations for 920 more
+        # (from ~Nov-2025 the legacy app stopped writing a name onto the client
+        # row). The remaining 184 have no name anywhere to take: test accounts,
+        # `info@`-style shared addresses and rows whose quotations reach no named
+        # enquiry. `ClientLoader.transform` returns None for them rather than
+        # minting a nameless Person.
+        expected_gap=184,
         loaded_count=lambda m: (
             m._default_manager.filter(legacy_id__startswith=CLIENT_LEGACY_PREFIX)
             .exclude(legacy_id=UNKNOWN_CLIENT_LEGACY_ID)
@@ -887,7 +963,7 @@ _CHECKS: list[_Check] = [
         # GAP-108 on ResProd: 87 soft-deleted enquiries filtered on both
         # sides; every live quotation's EnquireId is a live enquiry (0 with
         # EnquireId 0/NULL/missing/deleted), so no stand-ins ⇒ 0.
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
         # GAP-089: `import_enquiry_sheet` adds ~2.4k historic `sheet-enquiry-`
         # rows with no VillaEnquire twin — leave them out of the comparison,
         # along with organic (legacy_id NULL) enquiries.
@@ -901,15 +977,15 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM VillaFinance WHERE VillaId IS NOT NULL",
         PropertyFinance,
         "PropertyFinance",
-        # 1236 = legacy rows the per-villa pass does not port, itemised at
-        # the GAP-107 dry-run (2026-09-10, 24-Apr-2025 dump; DRYRUN_LOG.md):
-        #   1526  `VillaId IS NOT NULL` (= every row; the column is NOT NULL)
-        #  -1089  `VillaId = 0`: 413 contact-default templates (`ParentId`
-        #         NULL) + 676 parent-child overrides with no villa
-        #  - 146  `VillaId > 0` on soft-deleted villas
-        #  -   1  `VillaId > 0` on villa 249, the blank-name row the
-        #         property loader skips (the `Property` gap of 1)
-        #  = 290  stamped per-villa rows (311 override rows with `VillaId > 0`
+        # 1239 = legacy rows the per-villa pass does not port. Pinned on
+        # ResProd (13-Aug-2026); zero residual:
+        #   1597  `VillaId IS NOT NULL` (= every row; the column is NOT NULL)
+        #  - 413  `VillaId = 0`, `ParentId` NULL: contact-default templates
+        #  - 676  `VillaId = 0`, `ParentId` set: parent-child overrides with
+        #         no villa of their own
+        #  - 150  `VillaId > 0` on a villa `live_villa_sql` excludes
+        #         (soft-deleted or blank-named)
+        #  =  358  stamped per-villa rows (override rows with `VillaId > 0`
         #         ARE ported as the villa's own row — do not exclude ParentId)
         # Loaded side (GAP-107): only rows the per-villa pass stamped with
         # `legacy_id` = `VillaFinance.Id`. The GAP-070 owner-contact fallback
@@ -920,7 +996,7 @@ _CHECKS: list[_Check] = [
         # §6f). Stale caveat: a stamped row whose legacy twin was later
         # hard-deleted keeps its legacy_id (no sweep, `VillaFinance` has no
         # `DeletedAt`) — recalibrate on a fresh load of a newer dump.
-        expected_gap=1236,
+        expected_gap=1239,
         loaded_count=lambda m: m._default_manager.filter(legacy_id__isnull=False).count(),
     ),
     _Check(
@@ -962,14 +1038,31 @@ _CHECKS: list[_Check] = [
         # Was -3 while BookingLoader synthesised a hidden ACCEPTED quotation per
         # legacy booking; with the booking loaders unregistered (GAP-108) every
         # loaded quotation has a live legacy twin.
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        # Pinned on ResProd (13-Aug-2026): 1 550 = 1 550. It was 9 until GAP-108
+        # U8b — the 9 quotations with `ClientDetailsId` 0 used to be dropped for
+        # want of a customer and now resolve one through their enquiry.
+        expected_gap=0,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaQuotationDetails",
         QuotationLine,
         "QuotationLine",
         # Was -2 (lines on the booking-synth quotations, gone since GAP-108).
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        # Pinned on ResProd (13-Aug-2026): 8 035 legacy rows, 7 690 loaded.
+        # Every one of the 345 is the single FK-resolution skip in `transform`
+        # (`quotation is None or prop is None`); zero residual:
+        #   206  line on a soft-deleted VillaQuotationMaster, which
+        #        `QuotationLoader` never loads
+        #    79  orphan line whose `QuotationMasterId` matches no master row at
+        #        all (173 distinct dangling ids; legacy has no FK here)
+        #    53  line on a LIVE loaded quote pointing at a villa that does not
+        #        load — all of them villa 462 or 505, the two deleted test
+        #        villas, so no real villa loses a line
+        #     7  line with `VillaId` 0/NULL, so nothing to price against
+        # No line is lost to dates or currency any more: after GAP-108 U8b fills
+        # a missing stay date from the master, both date guards and the currency
+        # guard fire 0 times.
+        expected_gap=345,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaClientPrefMaster",
@@ -980,16 +1073,26 @@ _CHECKS: list[_Check] = [
         "SELECT COUNT(*) FROM ClientPreferenceDetails",
         GuestPreference,
         "GuestPreference",
-        # Calibrated 2026-07-05 (167 legacy rows load as 74). BUG-030 §30:
-        # the gap is quotation-context loss, not bad data — 126 rows carry a
-        # QuotationMasterId with no VillaQuotationMaster row (ids up to 541;
-        # the table's max Id is 20, some are VillaEnquire ids), load with
-        # quotation=None, and then collapse on the (person, preference_type,
-        # NULL) unique triple with each other; the remainder are genuine
-        # duplicate triples (the legacy table has no unique constraint). The
-        # loader logs the unresolved count
-        # (`data_migration.preference_quotation_unresolved`).
-        expected_gap=93,
+        # Pinned on ResProd (13-Aug-2026): 836 legacy rows, 635 loaded. Every
+        # skip is a collapse onto the `unique_person_preference` triple
+        # (person, preference_type, quotation) or a dangling FK; zero residual:
+        #   149  exact duplicate legacy rows — same client, type AND quotation;
+        #        the legacy table has no unique constraint and its screen
+        #        re-saves (one client wrote the same VIP note 25 times)
+        #    38  different unloaded client ids collapsing onto the one
+        #        unknown-client sentinel, all with quotation=NULL (legacy's
+        #        hard-coded placeholder id 1 and test accounts)
+        #    12  same client, two DIFFERENT unresolved quotations, both
+        #        flattened to quotation=NULL and so merged (3 of them belong to
+        #        a real named customer; the rest to a dangling client id)
+        #     2  dangling ClientPrefMasterId 12 and 13 — VillaClientPrefMaster
+        #        has 11 rows, max Id 11
+        # Order-independent (skips = rows - distinct triples), so the constant
+        # holds even though `legacy_query` has no ORDER BY. The loader's
+        # `data_migration.preference_quotation_unresolved` count (47 here) is a
+        # CAUSE spread across these buckets, not a bucket: 9 of the 47 load with
+        # quotation=NULL, 38 are among the skips.
+        expected_gap=201,
     ),
     # Booking / Payment / BookingChargeItem: the loaders are UNREGISTERED
     # (GAP-089, GAP-108) — bookings come from the Past Bookers sheet, whose
@@ -1045,7 +1148,7 @@ _CHECKS: list[_Check] = [
         # run after `loadlegacy`, so on a fresh DB the first term is 0.
         # ResProd 2026-09-15: 10 258 future blocking days, 0 of them on a
         # villa outside `live_villa_sql` ⇒ 0.
-        expected_gap=0,  # provisional — pinned in GAP-108 dry run
+        expected_gap=0,
         loaded_count=lambda m: sum(
             (hold.date_to - hold.date_from).days
             for hold in m._default_manager.filter(

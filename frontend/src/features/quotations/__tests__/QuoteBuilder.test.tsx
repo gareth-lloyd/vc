@@ -112,6 +112,21 @@ beforeEach(() => {
   // The criteria form's country/region dropdowns fetch the geo lookups on
   // mount; none of these tests care about the option lists.
   server.use(...geoLookupHandlers);
+  // The summary header reads the linked client for its tags (GAP-116); an
+  // untagged first-timer keeps these tests' text queries unambiguous.
+  server.use(
+    http.get(`/api/v1/contacts/${enquiry.person}`, () =>
+      HttpResponse.json({
+        id: enquiry.person,
+        first_name: "Ada",
+        last_name: "Lovelace",
+        is_repeat_customer: false,
+        tags: [],
+        emails: [],
+        phones: [],
+      }),
+    ),
+  );
 });
 afterEach(() => {
   useAuthStore.getState().clear();

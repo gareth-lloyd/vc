@@ -267,3 +267,12 @@ def test_notes_count_as_appended_only_as_whole_lines() -> None:
     assert notes_pending(_stay(Notes="BN1063 Paid"), target) is True
     target.notes = "Paid deposit by card\nPaid"
     assert notes_pending(_stay(Notes="BN1063 Paid"), target) is False
+
+
+def test_the_email_holder_is_not_name_checked() -> None:
+    # Michael / Mike Hobbs: a nickname is the same guest.
+    holder = _person("Mike", "Hobbs", email="tom@example.com")
+
+    [result] = classify([_stay(Notes="", FirstName="Michael", LastName="Hobbs")])
+
+    assert (result.category, result.email_person) == ("create", holder)

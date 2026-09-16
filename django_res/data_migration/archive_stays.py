@@ -305,8 +305,12 @@ class _SheetStays:
 
 def _email_person(addr: str) -> Person | None:
     """The address's only holder, when that holder is an ACTIVE CUSTOMER.
-    Names are not compared: re-keys carry surname typos (Coppersmith), and a
-    shared address (any second holder) is left to the name tier instead."""
+
+    Names are not compared: re-keys carry surname typos (Coppersmith) and
+    nicknames (Michael / Mike Hobbs, Sir Cosmo / Cosmo), and a household or PA
+    sharing the address keeps the stay on the record the sheet already uses
+    (Elizabeth's stays on Jeremy Courtenay-Stamp's). A shared address (any
+    second holder) is left to the name tier instead."""
     if not addr:
         return None
     holders = list(Person.objects.filter(emails__email=addr).distinct()[:2])

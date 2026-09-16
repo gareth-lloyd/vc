@@ -3,6 +3,12 @@
 - **Severity:** 🟢 Gap (cutover fidelity). Each row is a one-line
   home-or-drop call; the ticket exists so none of them is decided by
   omission. Nothing here changes a guest price.
+- **Rows 18–20 added 2026-09-16 (GAP-108).** Three columns the **ResProd**
+  schema added since the 24-Apr-2025 dump, found while re-deriving
+  `COVERAGE.md`. They are here so they are dropped by decision rather than by
+  omission — the same reason the rest of this table exists. (`VillaFinance.
+  SecurityDepositPaymentMethod`, found in the same pass, got its own ticket,
+  **GAP-115**, because its codes cannot be decoded from anything we hold.)
 - **Source:** 2026-09-11 legacy-loader audit — every registered loader's
   `legacy_query` diffed against `INFORMATION_SCHEMA.COLUMNS` on the
   24-Apr-2025 dump, then each ignored column counted for non-default values
@@ -41,6 +47,9 @@ fixture, and (where a count is derivable) a reconcile line.
 | 15 | `VillaSeasonRate.Name` (57 differ from the season name) / `IsAvailable` (3 False) / `TotalNight` (all 0) | 1 339 / 3 / 0 | rate_rule | **Drop** — a band has no name in the new model; `IsAvailable` false on 3 past rows. Record. |
 | 16 | `VillaFeaturesMappings.CategoryId` (per-assignment category) / `Description` (per-villa tag override) | 535 | property_feature | Already noted in COVERAGE "Notes" as a GAP-067 follow-up — **no action here**; listed so the table is complete. |
 | 17 | `VillaContactMapping.RoleMappingId` (selected, unused) / `VillaMaster.Channel`, `SettingAvailabilityStatusId`, `SettingPricesEnteredTypeId` (selected, unused or hardcoded) | — | assignment / property | **Tidy** — drop from the SELECTs (BUG-030 §4). |
+| 18 | `VillaMaster.AvailabilityType` / `.AvailabilityValue` — **new in the ResProd schema**; across the 387 non-deleted villas `AvailabilityType` is NULL ×222, 1 ×102, 2 ×63 | 165 | property | **Decide** — the two codes are not decoded and there is no lookup table; ask the legacy developer before choosing. Likely **Drop** with the distribution recorded, but not by omission. |
+| 19 | `VillaContactMapping.IsCC` — **new in ResProd**; marks a contact as copied on correspondence | 2 of 466 | assignment | **Drop** — 2 rows, and the new system models correspondence recipients per message, not per mapping. Record. |
+| 20 | `VillaQuotationMaster.IsUnbrandedVilla` — **new in ResProd** | 87 | quotation | **Decide** — CHECK-005 lists `is_unbranded` as dropped from the Zoho quote payload, so a home may already be wanted there; settle both together. |
 
 ## Acceptance
 

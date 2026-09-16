@@ -26,10 +26,26 @@ branch `feat/legacy-loader`). Judged against `ACCEPTANCE.md`; coverage in
 > "second run / idempotent / byte-identical" checks recorded below predate that
 > decision.
 
-## Environment
+## Environment (current — runs 5 onwards)
+
+- Legacy: `res-db` container (Azure SQL Edge), DB **`ResProd`**, restored from
+  `ResSystem/NewResSystem_2026Aug13.bak` (13-Aug-2026 production data, 73
+  tables, 545 `VillaMaster` rows).
+  `LEGACY_DATABASE_URL='mssql://sa:ResLocal%212026@localhost:11433/ResProd'`
+- Reseed: `.claude-tmp/drop-and-reseed.sh <dump-file> [db-name]` — takes the
+  dump path and target DB name, restores a `.bak` with `RESTORE … WITH MOVE`,
+  and prints the `VillaMaster` count as its landing check (`CUTOVER.md` §3).
+- Target: a **fresh** `villacollective_gap108b`/`c`/`d` on localhost:55432
+  (villa/villa), migrated then loaded once — `loadlegacy --all` is a one-shot
+  (BUG-029), so every re-run is a new DB.
+- Ad-hoc legacy SQL: as below, but `-d ResProd` and with `-b` (without it a
+  T-SQL error still exits 0).
+
+## Environment (runs 1–4 — historical)
 
 - Legacy: `res-db` container (Azure SQL Edge), DB `NewResSystem` from the
-  24-Apr-2025 prod dump, survived in the `ressystem_res-db-data` volume.
+  24-Apr-2025 prod dump (`live-db-24-apr.sql`, since deleted), survived in the
+  `ressystem_res-db-data` volume.
   Start: `docker compose -f <main-repo>/ResSystem/docker-compose.yml up -d db`
   (service is `db`, container `res-db`). Port 11433.
   `LEGACY_DATABASE_URL='mssql://sa:ResLocal%212026@localhost:11433/NewResSystem'`
@@ -213,7 +229,9 @@ duplicate-triple collapse, calibrated).
 
 Run 3 (fresh DB, after reorder): single pass loads **74** preferences
 (93 skipped duplicates — matches calibration exactly); reconcile exit 0,
-**36/36 rows OK**; second load creates rows ONLY in the two by-design
+**36/36 rows OK** *(36 was the whole of `_CHECKS` on 2026-07-05; it is **54**
+today — see run 5. Read this as that run's result, not the current size of the
+table.)*; second load creates rows ONLY in the two by-design
 full-replace loaders (rate_rule 3501 + availability_block 1), 0 errors;
 second reconcile exit 0 and **byte-identical** to the first.
 ACCEPTANCE S2 (green reconcile, calibrated gaps, every loader checked) and
@@ -281,6 +299,9 @@ resolved; implementing decision 4 surfaced a further latent loader bug.
 
 ## Coverage blockers (see COVERAGE.md §BLOCKERS)
 
+*(All resolved in the 2026-07-05/06 verdicts above — kept for history. Row
+counts here are the 24-Apr-2025 dump's.)*
+
 - `VillaAvailability` 57,389 rows — **no loader, no decision**; with only 3
   legacy bookings, current availability state lives ONLY here. Product
   decision needed (import future-dated non-available days as blocks?).
@@ -303,6 +324,12 @@ resolved; implementing decision 4 surfaced a further latent loader bug.
   CUTOVER.md to be updated.
 
 ## Still to do after fix queue
+
+*(The 2026-07-05 queue — **closed**, kept for history. The load+reconcile ran
+green in runs 2–5; the idempotency / second-run items are void under the
+one-shot rule (BUG-029, banner above), which also retired `--since` and the
+`_apply_since` work below; CUTOVER.md was rewritten wholesale in GAP-108
+Unit 9.)*
 
 - Re-run full load+reconcile to green.
 - Idempotency: second `loadlegacy --all`, diff reconcile + row counts.
@@ -533,3 +560,79 @@ day.
 - Imported bands are all approved; 470 carry the legacy-unapproved marker
   in notes for staff review.
 - Commission on all 291 finance rows is now 20 % (was NULL type / 0 on 68).
+
+## Run 5 — 2026-09-15/16 (GAP-108 registry + reconcile + runbook, feat/gap-108)
+
+**First run against `ResProd`** — the 13-Aug-2026 production database restored
+from `ResSystem/NewResSystem_2026Aug13.bak` (545 `VillaMaster` rows, 73 tables).
+The 24-Apr-2025 dump every earlier run used is gone, so **no figure from runs
+1–4 carries over**: the gaps below were all re-derived here. Fresh
+`villacollective_gap108b` / `c` / `d`, each migrated then loaded exactly once
+(`loadlegacy --all` is a one-shot, BUG-029).
+
+### Registry: 34 → 31 loaders
+
+`BookingLoader`, `PaymentLoader` and `BookingChargeItemLoader` are
+**unregistered** (GAP-089/GAP-108): historic bookings arrive from the Past
+Bookers sheet (`import_past_bookers`), not `VillaBooking`. The modules and their
+tests stay as the legacy-schema record, and three inverted checks —
+`Booking` / `Payment` / `BookingChargeItem with legacy_id (must be 0)` — assert
+that no row carrying a `legacy_id` ever lands in those tables.
+
+### Results
+
+- **`loadlegacy --all` → exit 0, all 31 loaders 0 errors.** Wall time
+  **~7 minutes** (416.9 s measured; 6m16s and 6m56s on the two later loads) —
+  the "~2 minutes" quoted before GAP-108 was the much smaller 24-Apr dump.
+- **The run rebuilds the pricing summaries itself**, synchronously after the
+  loaders and the sequence sync: `Rebuilt 359 pricing summaries.`
+  (`loadlegacy.py:112-122`, crash-isolated into the report as a
+  `<rebuild crashed>` row). `rebuild_summaries` is the manual recovery path,
+  not a step anyone has to remember.
+- **No Celery worker needed.** `LLEN celery` is **0 before and after** the
+  load: `BaseLoader.load()` wraps every row loop in `suppress_zoho_push()` +
+  `suppress_summary_rebuild()`, so nothing is enqueued in the first place.
+  (The ticket's "4 086 / 7 577 messages per load" was measured before that
+  suppression landed.)
+- **`AuditLog` after one load: 72 009 rows** — propertyimage 18 232,
+  propertyfeature 13 359, quotationline 7 556, rateband 6 633, person 6 252,
+  rateperiod 6 222, enquiry 5 081. Expected, and the bulk of the load's write
+  volume; size the transaction log for it.
+- **`reconcile_legacy --integrations` → exit 0.** Re-measured on
+  `villacollective_gap108d` at HEAD on 2026-09-16: **54/54 row-count rows OK**,
+  the `RatePeriod` night-parity section reports **0 villas** ("every villa's
+  loaded periods cover exactly its legacy nights"), and all four Zoho
+  continuity rows OK. Running `createsuperuser --noinput` first changes
+  nothing — the loaded side now defaults to `legacy_id IS NOT NULL`, so staff
+  rows and the sheet imports cannot move a gap.
+- **15 of the 54 checks are non-zero**, each itemised to zero residual in its
+  `_Check` comment and mirrored in `CUTOVER.md` §5: `Country (legacy)` −225,
+  `Currency` 4, `PersonEmail` 2, `PersonPhone` 8, `CollectionMembership` 9,
+  `Room` 321, `Room placement (GAP-065)` 61, `PropertyImage` 839,
+  `PropertyNearbyPlace` 78, `RateBand` 462, `PropertyContactAssignment` 6,
+  `Person (client)` 184, `PropertyFinance` 1239, `QuotationLine` 345,
+  `GuestPreference` 201.
+- **Q-025 / `Room placement` closed.** The gap run 2 raised as a blocker and
+  runs 3–4 carried forward is now pinned at 61 with its derivation (rooms on
+  unloaded villas, plus dangling `PlacementId`s whose
+  `VillaRoomsPlacement.Name` is blank), not a placeholder.
+- **`RateBand` re-derived, not re-nudged.** The check's *legacy query* was
+  wrong: it counted a 39 868-row universe that was never the loader's input, so
+  both numbers ever documented against it (3805, then 4492) are dead. Real
+  universe 7 095, loaded 6 633, gap **462**.
+- **Zoho continuity:** `VillaMaster` gap 1 (the Temenos pair, decision 1
+  above), `VillaEnquire` gap 1, `VillaQuotationMaster` gap 0, and
+  `VillaContact` **0 external ids on ResProd** — there is no contact
+  continuity to capture at all, so every contact push starts fresh.
+
+### Side effects to surface at cutover (product-visible)
+
+- `VillaAvailability (future days)` is gap 0, but **both sides move with
+  "today"**: the loader filters at load time and the check queries `GETDATE()`
+  at reconcile time, so load and reconcile in one sitting or a day crossing
+  shows a spurious negative gap. `PropertyFinanceLoader.reference_date` (the
+  load day) has the same property.
+- 178 distinct (villa, collection) pairs exist only as `IsActive IS NULL`
+  rows and do not load — legacy's own `isnull(IsActive,0) = 1` convention
+  hides them from the legacy UI too. If a collection looks thin after
+  cutover, that is why; reinstating them is a product decision.

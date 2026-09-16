@@ -11,13 +11,18 @@ previous one cannot.
 
 ## S1 — Coverage: every legacy table is accounted for
 
-Every table in the legacy `NewResSystem` database must be in exactly one of
-these buckets, recorded in the coverage matrix (`COVERAGE.md`):
+Every table in the legacy production database (`ResProd`, the 13-Aug-2026
+snapshot — 73 tables) must be in exactly one of these buckets, recorded in the
+coverage matrix (`COVERAGE.md`):
 
 1. **Loaded** — a registered loader reads it (as primary source or join).
 2. **Deliberately dropped** — with a written justification (junk, dead
    feature, no schema home *and* no information content worth preserving).
-3. **Blocker** — anything not in buckets 1–2. Unclassified tables fail
+3. **Deferred** — real information we are knowingly not loading *yet*, where a
+   **named open ticket owns the decision** (e.g. `VillaArchiveBookings` →
+   GAP-113). A deferral without a ticket id is a blocker, not a deferral:
+   the ticket is the whole difference between "decided later" and "forgotten".
+4. **Blocker** — anything not in buckets 1–3. Unclassified tables fail
    acceptance; "we forgot it existed" is the failure mode this standard
    exists to catch.
 
@@ -34,16 +39,22 @@ check, enforcing calibrated `expected_gap` values. Standards:
 - The command **exits zero** on the final cutover dump. Any unexplained gap
   is a blocker.
 - **No placeholder gaps.** Every `expected_gap` in `_CHECKS` has been
-  calibrated against a recent dump, with the gap's composition *itemised*
-  (e.g. "1236 = 413 contact-default mirrors + 676 parent-child overrides"),
-  not just asserted as a number. A gap we can't decompose is a gap we don't
-  understand.
+  calibrated against a recent dump, with the gap's composition *itemised* to
+  zero residual (e.g. `PropertyFinance` 1239 = 413 contact-default templates
+  + 676 parent-child overrides + 150 rows on villas the property loader
+  excludes), not just asserted as a number. A gap we can't decompose is a gap
+  we don't understand.
 - **Every loader has a check.** A loader without a reconcile row can
   silently load zero rows; the `Organisation (agency)` check exists for
-  exactly this reason. Loaders whose output is not 1:1 with a legacy table
-  (expansions, synthesised rows) need a check written in terms of the
-  loader's own arithmetic (e.g. parents + valid bands + gap fallbacks −
-  drops).
+  exactly this reason. All 31 registered loaders carry one bar
+  `syncrecord_zoho`, whose row lives in the `--integrations` section.
+  Loaders whose output is not 1:1 with a legacy table (expansions,
+  synthesised rows) need a check written in terms of the loader's own
+  arithmetic (e.g. `RateBand`: surviving flattener sources + synthetic
+  occupancy fallbacks − multi-cell fragments). The converse holds too — a
+  **retired** loader gets an inverted check: `Booking` / `Payment` /
+  `BookingChargeItem with legacy_id (must be 0)` pin the three loaders
+  GAP-089/GAP-108 unregistered.
 - Per-loader `errors` and `skipped` counts from `loadlegacy --all` are zero
   or itemised-and-accepted.
 
@@ -58,38 +69,47 @@ sample check must pass against the live dump:
   legacy → new through the documented transform. Zero unexplained
   mismatches.
 - **Aggregate invariants** (catch what sampling misses):
-  - Money: per-currency sums of booking `RentalPrice`, payment amounts,
-    charge-item amounts (`Σ legacy = Σ loaded + Σ itemised drops/conversions`).
-    FX-converted charge items are itemised, never lost in the aggregate.
+  - Money: per-currency sums of quotation-line amounts, rate-band prices and
+    the per-villa finance figures
+    (`Σ legacy = Σ loaded + Σ itemised drops`). Bookings, payments and charge
+    items left the migration with GAP-089/GAP-108 — they arrive from the Past
+    Bookers sheet (`import_past_bookers`), so they carry no legacy money for
+    this standard to reconcile.
   - Dates: min/max of arrival/departure, season spans per property.
   - Text: non-null/non-blank counts for descriptions, notes, references
     (catches encoding truncation and over-eager stripping).
-- **Reference continuity**: every imported quotation/booking keeps its exact
-  legacy number (`QVC{n}`/`VC{n}`); enquiry references keep their legacy
-  shape; sequences are fast-forwarded past the imported high-water mark so
-  the first organic row cannot collide.
+- **Reference continuity**: every imported quotation keeps its exact legacy
+  number (`QVC{n}` — no bookings are imported, so there is no `VC{n}` side);
+  enquiry references keep their legacy shape; the quotation sequence is
+  fast-forwarded past the imported high-water mark (`sync_quotation_sequence`,
+  whose line `loadlegacy` prints) so the first organic row cannot collide.
 
 ## S4 — Relational integrity: the graph survives
 
-- **No orphans**: every loaded child resolves its parent (booking → property,
-  quotation line → quotation, charge item → booking, …). Sentinel fallbacks
+- **No orphans**: every loaded child resolves its parent (quotation line →
+  quotation, room → property, rate band → rate plan, …). Sentinel fallbacks
   (`unknown_country`, `unknown_client`, …) are counted and itemised — a
   sentinel count that jumps between dry runs is a regression even when row
   counts hold.
 - **External-ID continuity** (Zoho): `reconcile_legacy --integrations` gap is
   zero — every *loaded* row that carried a legacy `ZohoId` has a
   `SyncRecord`. This is unrecoverable after legacy decommission, so it blocks.
-- **Cross-table consistency**: denormalised pointers agree with their source
-  tables (e.g. `Booking.guest` ↔ LEAD `BookingGuest` row exists, 1:1).
+- **Cross-table consistency**: denormalised pointers and required satellites
+  agree with their source tables — mechanised as `SELECT 0` invariants in
+  `_CHECKS` (e.g. `PropertySettings without currency`,
+  `Person (owner/agent) primary email count != 1`), one row per loaded
+  `Property` for location / capacity / settings.
 
 ## S5 — Behavioural parity: the numbers legacy showed are reproducible
 
 The strongest form of evidence: the new system, asked the same question as
 legacy, gives the same answer (or a documented, deliberate delta).
 
-- **Booking totals**: for every imported booking, new
-  `balance_due + Σ charge_items` equals legacy `RentalPrice + Σ details` —
-  except the itemised FX-converted set, whose delta is per-row explainable.
+- **Booking totals — no longer a migration standard.** `loadlegacy` imports
+  no bookings, payments or charge items (GAP-089/GAP-108 unregistered those
+  three loaders; the `… with legacy_id (must be 0)` invariants pin it), so
+  there is no legacy booking total for the new system to reproduce. Parity
+  for what *is* imported is the quote sample below.
 - **Quote parity sample**: for a sample of (property, week, party-size)
   tuples that legacy priced, the new engine returns the same weekly rate —
   except where the rate-overlap resolution deliberately changed an
@@ -113,17 +133,26 @@ legacy, gives the same answer (or a documented, deliberate delta).
 - **Order safety**: `migrate` before `loadlegacy` (load-bearing per
   GAP-045 D5-4c); registry order satisfies every FK dependency — verified by
   the fresh-DB dry run, not by inspection alone.
-- **Signal discipline**: side-effect signals that would rewrite imported
-  financial data are suppressed for exactly the loader's row loop
-  (`resync_on_booking_total_changed`), and reconnected after — verified by a
-  test, not just code review.
-- **No leakage**: synthesised rows (`legacy_id` prefix `booking-`) do not
-  appear in public API list endpoints.
+- **Signal discipline**: `BaseLoader.load()` wraps every loader's row loop in
+  `suppress_zoho_push()` + `suppress_summary_rebuild()` (`base.py:84`), so a
+  load pushes nothing to Zoho and enqueues no Celery task — `LLEN celery`
+  reads 0 both before *and* after the run, and no worker is needed.
+  `loadlegacy` then rebuilds the pricing summaries itself in one synchronous
+  pass (`Rebuilt N pricing summaries.`, crash-isolated into the summary
+  table); `rebuild_summaries` is the manual recovery path, not a required
+  step. Detail in `CUTOVER.md` §4a. Verified by a test, not just code review.
+- **No leakage**: nothing in the load mints the synthesised `legacy_id`
+  prefix `booking-` any more — only the now-unregistered `BookingLoader` did —
+  so the `.real()` manager method every quotation queryset goes through
+  (`SYNTHETIC_LEGACY_PREFIX`, `reservations/models/quotation.py`; used by
+  `QuotationViewSet`) should be a no-op. The guard stays regardless. A non-empty
+  `Quotation.objects.filter(legacy_id__startswith="booking-")` means a booking
+  loader ran; the smoke test is in `CUTOVER.md` §9.
 
 ## S7 — Recoverability: nothing time-critical is lost
 
-Some data exists *only* in the legacy DB and dies with it (step 10 of the
-runbook). Before decommission:
+Some data exists *only* in the legacy DB and dies with it (`CUTOVER.md` §10,
+retire the legacy container). Before decommission:
 
 - Zoho external IDs captured (S4).
 - The final dump is archived to the retention store **before** the container
@@ -136,7 +165,8 @@ runbook). Before decommission:
 
 Run order at each dry run / the real cutover:
 
-1. `loadlegacy --all` → per-loader errors/skips table (S2, S6)
+1. `loadlegacy --all` (~7 min on ResProd) → all 31 loaders `0` in the errors
+   column, plus the `Rebuilt N pricing summaries.` line (S2, S6)
 2. `reconcile_legacy` + `--integrations` → exit zero (S2, S4)
 3. Coverage matrix regeneration against `sys.tables` (S1)
 4. Fidelity + invariant scripts (S3, S4, S5)

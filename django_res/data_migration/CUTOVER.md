@@ -827,6 +827,19 @@ than a tautology:
   around imported bookings and unreleased staff holds. **Both sides move with
   "today" — run the load and the reconcile on the same day.**
 
+**A known, deliberate inconsistency no count check can see:**
+`Person`, `Enquiry` and `Quotation` all have `created_at` back-stamped from
+their legacy `CreatedAt` (BUG-030 §28 — `auto_now_add` ignores assignment, so
+each loader re-`update()`s the row), but **`QuotationLine.created_at` is the
+load day** on every row. This is not an oversight in the loader:
+`VillaQuotationDetails` **has no `CreatedAt` column**, so there is nothing on
+the line to back-stamp from. The consequence is narrow but real — a line looks
+newer than the quotation that owns it, so any report ordering or ageing
+*lines* by `created_at` will bucket the entire legacy history into cutover day.
+If that matters, the fix is to stamp each line from its parent quotation's
+`CreatedAt` (in legacy a line is created with its master, on the same screen);
+it moves no counts and no money, so it is safe to do later on a reload.
+
 ### `RatePeriod` night parity
 
 Printed as its own table after the row counts. For every villa it compares the

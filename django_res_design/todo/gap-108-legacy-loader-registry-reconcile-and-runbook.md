@@ -111,10 +111,17 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
 - ✅ ACCEPTANCE S6 "loaders that ignore `--since` warn loudly" (replaced by
   the one-shot guard check, BUG-029); DRYRUN_LOG
   `:210` "36/36 rows" vs 33 checks today.
-- COVERAGE claims `VillaConciergeServices` maps to TextChoices (no field
-  exists — GAP-109) and that only "298 Sea View" has multiple categories
-  (50/229 live features do).
-- SMELL-021's "legacy has no NET/GROSS signal" is wrong (1 931 Net rows;
+- COVERAGE claims `VillaConciergeServices` maps to TextChoices and that only
+  "298 Sea View" has multiple categories (50/229 live features do).
+  **Corrected while fixing it (2026-09-16):** the TextChoices claim is half
+  right — `reservations.ConciergeTier` *does* exist, on
+  `BookingConciergeItem.tier`; what has no home is the **property-level**
+  `VillaMaster.ConciergeService` (383 of 386 live villas), which is GAP-109
+  row 10. And the multi-category figure on ResProd is **55 of 236** live
+  features, not 50/229 — the 24-Apr-2025 numbers. (The "eight categories on
+  298 Sea View" was raw mapping rows; only 7 resolve to a real category.)
+- SMELL-021's "legacy has no NET/GROSS signal" is wrong (1 931 Net rows on the
+  24-Apr-2025 dump; **2 083** live `PriceType = 10` rows on ResProd;
   the GROSS stamp is still the right outcome because legacy quotes
   `WeeklyPrice` verbatim). Note it on the done ticket and in `pricing.py:285-290`.
 - GAP-107 §2 "71 vs 57" → 64 rows / 12 deleted / 10 orphans / 42 clean.
@@ -166,8 +173,9 @@ PENDING; method hardcoded CARD vs real SCHEDULED) — moot once unregistered.
 
 ## Acceptance
 
-- `loadlegacy --all` runs 30 loaders; `Booking`/`Payment`/`BookingChargeItem`
-  counts are 0 on a fresh load.
+- `loadlegacy --all` runs ~~30~~ **31** loaders (the ticket's arithmetic was
+  off by one: the registry held 34, not 33, before the three unregistrations);
+  `Booking`/`Payment`/`BookingChargeItem` counts are 0 on a fresh load.
 - `reconcile_legacy` exits 0 on the dump with no PLACEHOLDER markers left,
   every constant explained in its comment, a check for every registered
   loader, and the value invariants green.

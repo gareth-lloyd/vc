@@ -67,15 +67,30 @@ holds, but allows `seed_dev`; wired via `DJANGO_SETTINGS_MODULE` in
 
 ## Legacy data migration
 
-`data_migration/` ports the legacy SQL Server dump into Postgres as a
-**one-shot** load into a fresh, migrated DB (in-place re-runs are unsupported;
-late writes mean drop, recreate, `migrate` and reload from a newer dump).
-Loaders are upserts keyed on `legacy_id` and must stay deterministic. `LEGACY_DATABASE_URL` (`mssql://…`)
+`data_migration/` ports the legacy SQL Server database (`ResProd`) into
+Postgres as a **one-shot** load into a fresh, migrated DB (in-place re-runs are
+unsupported; late writes mean drop, recreate, `migrate` and reload from a newer
+dump). Loaders are upserts keyed on `legacy_id` and must stay deterministic. `LEGACY_DATABASE_URL` (`mssql://…`)
 must be set for any loader. Full playbook: `data_migration/CUTOVER.md`.
 
-- `./manage.py loadlegacy --all` — every loader in dependency order; refuses
-  a DB that already holds legacy Country/Currency/Property rows.
-- `./manage.py reconcile_legacy` — legacy-vs-loaded row-count table.
+- `./manage.py loadlegacy --all` — all 31 registered loaders
+  (`data_migration/registry.py`) in dependency order; refuses a DB that already
+  holds legacy Country/Currency/Property rows. The run ends with
+  `sync_quotation_sequence` and a synchronous pricing-summary rebuild, each
+  crash-isolated into the summary table.
+- `BaseLoader.load()` wraps every loader write in `suppress_zoho_push()` +
+  `suppress_summary_rebuild()`, so a load enqueues no Celery work and needs no
+  worker running.
+- `./manage.py reconcile_legacy` — legacy-vs-loaded row-count table;
+  `--integrations` adds Zoho external-ID continuity (missing ids are a
+  blocker) plus an informational WordPress surface.
+- `./manage.py import_enquiry_sheet --file …` and
+  `./manage.py import_past_bookers --file …` — the two spreadsheet imports
+  (GAP-089) that the res DB can't supply: 2017-2024 enquiry history, and
+  past-booker contacts plus their `PastStay` rows. Both take `--dry-run`.
+- `./manage.py rebuild_summaries` — manual recovery path only: `loadlegacy`
+  already rebuilds the pricing summaries at the end of its own run
+  (`loadlegacy.py:112-122`), so reach for this when that rebuild crashed.
 - `./manage.py merge_country --from-legacy <id> --to-iso2 <CC>` — generic
   duplicate-country merge; not a cutover step.
 
@@ -88,7 +103,7 @@ Patterns already in the code. New work should mirror them.
 `legacy_id = CharField(max_length=64, null=True, blank=True, db_index=True)`
 on any model with a legacy origin. Migration metadata only — never the
 application lookup key (use `iso2` for Country, `code` for Currency, `slug`
-for Region, …). Examples: `accounts.Contact`, `properties.Country`.
+for Region, …). Examples: `accounts.Person`, `properties.Country`.
 
 ### Loaders are upserts keyed on `legacy_id`
 
@@ -108,15 +123,19 @@ the row — helpers in `data_migration/loaders/sentinels.py`
 
 The `_meta.related_objects` walk, always inside `transaction.atomic()`,
 skipping `rel.many_to_many` (the through-model FK is rewritten separately).
-References: `accounts.Contact.merge`, `reservations.Guest.merge`,
+References: `accounts.Person.merge`, `accounts.Organisation.merge`,
 `merge_country`.
 
 ### Synthesised rows must not leak into public APIs
 
 `BookingLoader` synthesises Quotation/QuotationLine rows with `legacy_id`
-prefixed `booking-` (to satisfy the PROTECT FK chain). Any viewset surfacing
-those models must `.exclude(legacy_id__startswith="booking-")` in
-`get_queryset()` — see `QuotationViewSet`.
+prefixed `booking-` (to satisfy the PROTECT FK chain). It, `PaymentLoader` and
+`BookingChargeItemLoader` are **unregistered** (GAP-089/GAP-108 — bookings come
+from `import_past_bookers`, not `VillaBooking`; `loaders/bookings.py` and its
+tests survive only as the legacy-schema record), so a current load writes no
+such rows — but the guard stays: every queryset surfacing those models goes
+through `.real()` (`SYNTHETIC_LEGACY_PREFIX`, `reservations/models/quotation.py`),
+never a bare `Model.objects.all()`. See `QuotationViewSet`.
 
 ### Reference numbers — `db_default` sequence, not a `save()` override
 
@@ -155,7 +174,7 @@ must create the matching `BookingGuest(role=LEAD)` row inside the same
 `transaction.atomic`. Deleting a LEAD while its booking exists raises
 `LeadGuestProtectedError`; to swap LEAD, demote the old one to `CO_TRAVELLER`
 and create the new LEAD atomically. References:
-`BookingService.create_from_quotation_line`, `BookingLoader._process_row`,
+`BookingService.create_from_quotation_line`,
 `reservations.factories.make_occupying_booking`.
 
 ### Booking money adjustments are charge lines, not rental-figure edits
@@ -185,7 +204,7 @@ signals. (`queryset.delete()` is the exception: the collector skips its
 fast path whenever a model has `pre_delete`/`post_delete` receivers, so a
 tracked model still gets one tombstone per row.) A bulk write to a *tracked*
 model must either go through a `.save()` loop or write an explicit audit row. The merge
-FK rewrites (`Contact.merge` / `Guest.merge`) use `.update()` by design and
+FK rewrites (`Person.merge` / `Organisation.merge`) use `.update()` by design and
 summarise what moved onto the deletion row via `core.audit.record_merge`
 (destination pk + per-relation counts, FG-016) rather than auditing each row.
 `RunPython` data migrations are the other sanctioned exception — a backfill
@@ -229,8 +248,9 @@ and the paginator COUNT. Reference: `_with_amount_paid` in
 
 ### Test fixtures — `get_or_create` for canonical countries
 
-Migration `properties.0009` pre-seeds 249 ISO-3166 countries. Fixtures must
-use `Country.objects.get_or_create(iso2=…, defaults=…)` — never `.create`,
+Migration `properties/0002_seed_countries` pre-seeds 249 ISO-3166 countries
+(every `django_countries` entry). Fixtures must use
+`Country.objects.get_or_create(iso2=…, defaults=…)` — never `.create`,
 which violates the iso2 unique constraint against the seed.
 
 ### Realistic test data — `factory-boy` factories + `seed_dev`

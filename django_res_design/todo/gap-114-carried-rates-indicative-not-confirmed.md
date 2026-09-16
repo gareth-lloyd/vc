@@ -1,0 +1,75 @@
+# GAP-114 — `VillaSeason.CarriedRates`: 6 864 quotable rate rows the owner has not confirmed
+
+- **Severity:** 🟠 Gap (money-facing). The new system quotes carried-forward
+  2027 rates exactly as if the owner had confirmed them; legacy flags them so
+  staff know they are indicative. Nothing in the rebuild carries that flag,
+  so the caveat is lost at cutover.
+- **Source:** GAP-108 planning + dry run, ResProd (13-Aug-2026), re-measured
+  2026-09-16. Deferred from GAP-108 by decision 5 ("load as normal, note in
+  COVERAGE, follow-up ticket on indicative-rate display").
+- **Files touched:** `pricing` models (a flag on the rate card or its rules),
+  `data_migration/loaders/pricing.py` (`RatePlanLoader`/`RateBandLoader`),
+  the quote surface (`pricing/services/engine.py` output and the SPA quote
+  builder), `COVERAGE.md`, `CUTOVER.md` §5.
+
+## What the flag means
+
+When staff roll a villa's season forward they copy the previous season's rate
+grid into the new one. `VillaSeason.CopyFrom` records the source season and
+`CarriedRates = 1` marks the copy as **carried over, not confirmed by the
+owner**. It is a staff-facing "treat this price as provisional" marker.
+
+Measured on ResProd 2026-09-16 (live seasons, `DeletedAt IS NULL`):
+
+| | |
+|---|---|
+| Seasons flagged `CarriedRates` | **198**, across **187** villas |
+| …of which named "Season 2027" / "Low Season 2027" / "High Season 2027" | 175 |
+| …named "Season 2026" | 23 |
+| Every flagged season has a `CopyFrom` source | 198 / 198 |
+| Live rate rows hanging off them (`DeletedAt IS NULL`, excluding `IsExTra`) | 8 137 |
+| …dated today or later, i.e. **quotable** | **6 864** |
+| Latest `ToDate` | 2028-06-03 |
+
+So this is next season's price list for most of the portfolio, and it is
+live in the quote engine.
+
+## The problem
+
+`RateBandLoader` reads `VillaSeasonRate` rows and ports them into the rate
+grid; nothing reads `CarriedRates`, and the new model has nowhere to put it.
+A 2027 quote therefore comes out of the engine indistinguishable from a 2026
+quote built on owner-confirmed rates. The risk is not a wrong number — the
+number is the one legacy holds — it is a **quote issued at a price nobody has
+agreed to**, with no signal to the person sending it.
+
+## Proposed fix
+
+1. **Carry the flag.** The natural home is the rate card (`RateCard`, the
+   season's analogue), not the individual rule — the flag is a property of
+   the copied season. A nullable `rates_confirmed_at` is richer than a bool
+   and answers "who confirmed, when"; a plain `is_indicative` is cheaper.
+   Pick one and record it in `design/decisions.md`.
+2. **Load it** in `RatePlanLoader`, with a transform test on a dict fixture,
+   and a reconcile count so the 198 cannot silently become 0.
+3. **Surface it.** A quote built wholly or partly from indicative rates says
+   so — on the quote builder, and on anything that renders a price to a
+   customer. Decide with the business whether an indicative quote may be
+   *sent* at all, or only viewed internally; that answer belongs in
+   `decisions.md` before the UI work starts.
+
+## Acceptance
+
+- The flag lands with a transform test and a reconcile check pinning it.
+- The quote surface distinguishes indicative from confirmed pricing, per the
+  recorded business decision.
+- `COVERAGE.md` records `CarriedRates` as loaded rather than dropped, and
+  `CUTOVER.md` §5 drops it from the expected-loss list.
+
+## Dependencies
+
+- Touches the same loader as SMELL-021 (price basis) and BUG-028's per-rate
+  money columns; sequence after those rather than alongside, to keep the
+  rate-grid diff readable.
+- The display half needs the SPA quote builder, so it can land after the
+  model + loader half.

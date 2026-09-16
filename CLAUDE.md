@@ -24,7 +24,7 @@ this file stays principles-only.
 5. **No soft delete.** No `SoftDeleteModel` / `deleted_at`. Lifecycle via a
    `status` enum, an `is_active` bool, an `archived_at` timestamp, or a hard
    delete with an `AuditLog` trail (canonical pattern:
-   `accounts.Contact.merge`).
+   `accounts.Person.merge`).
 
 ## Quality gate (non-negotiable)
 

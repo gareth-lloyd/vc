@@ -75,9 +75,16 @@
 >   regions with live twins are **remapped** (25→61, 27→60; user decision
 >   2026-09-11), not left in an inactive region. The invariant "zero active
 >   Region/Country whose legacy twin is deleted" is added by GAP-108.
-> - **§3 finance** — explained and pinned by GAP-108: the gap is **1235** =
->   one owner-contact fallback row (villa 463); fallback rows carry no marker,
->   so the constant is pinned with its derivation. Closed here.
+> - **§3 finance** — explained and pinned by GAP-108. The 1235/1236 figures
+>   above are the 24-Apr-2025 dump's; on **ResProd** (13-Aug-2026) the pinned
+>   gap is **1239**, itemised to a zero residual on the `_Check`: 1597 legacy
+>   rows − 413 contact-default templates (`VillaId = 0`, `ParentId` NULL)
+>   − 676 parent-child overrides with no villa of their own − 150 rows on
+>   villas `live_villa_sql` excludes = 358 stamped per-villa rows. Note the
+>   correction to the old reasoning: override rows with `VillaId > 0` **are**
+>   ported as the villa's own row, so `ParentId` is not an exclusion.
+>   `PropertyFinance.legacy_id` (added here) is what makes the count stable.
+>   Closed.
 
 - **Severity:** 🟠 Gap (cutover fidelity). Backend `data_migration/` only.
 - **Source:** 2026-09-10 sweep of `todo/` for loader follow-ups. Pulls together

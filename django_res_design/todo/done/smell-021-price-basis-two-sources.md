@@ -18,7 +18,19 @@
 >   legacy schema — so *every* legacy plan is GROSS by rule, not by accident.
 >   The feared "NET legacy villa imports as GROSS" case is structurally
 >   impossible; no NET-import test exists because there is no NET input to
->   test. `reconcile_legacy` gains an invariant check (`SELECT 0` vs imported
+>   test.
+>   ⚠️ **CORRECTION (GAP-108, 2026-09-16) — the reason above is wrong; the
+>   outcome is right.** Legacy *does* carry a Net signal:
+>   `VillaSeasonRate.PriceType = 10` means Net, on **2 083 live rows** on
+>   ResProd (111 of them priced non-extra rows), and `RatesModel.Calculate()`
+>   genuinely branches on it. So "no NET input exists" is false and the
+>   "structurally impossible" claim does not hold. GROSS is still the correct
+>   stamp, for a different and better reason: the **quote path** adds the rate
+>   row's `WeeklyPrice / 7` verbatim per night (`ResService.cs:1225-1237`) and
+>   never reads `GrossPrice`, so what legacy actually charged the guest is the
+>   entered figure — which is what GROSS means. The corrected reasoning now
+>   sits at the stamp itself (`data_migration/loaders/pricing.py:447-454`).
+>   `reconcile_legacy` gains an invariant check (`SELECT 0` vs imported
 >   plans carrying non-GROSS basis → BLOCKER on stamp regression; staff-created
 >   NET plans excluded) + CUTOVER.md expected-gap row.
 > - **Unit 3** — `prices_entered_as` marked non-authoritative at the field:

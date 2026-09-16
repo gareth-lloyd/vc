@@ -25,17 +25,20 @@ represent two WP rows for the same (villa) target — the second collides on
 `unique(content_type, object_id, provider)`. So WordPress needs a model +
 migration change before any loader can run.
 
-## Legacy data shape (verified in `ResSystem/`)
+## Legacy data shape (verified on `ResProd`)
 
 External ids live in three places:
 
 | Legacy source | Column(s) | Notes |
 |---|---|---|
 | `VillaBooking` | `BookingUrl` | The WP booking-confirmation URL. Legacy stores only the URL, not the post id. |
-| `VillaConcierge` | `Slug` | Per-booking concierge page slug. |
-| `VillaSyncDetail` | whole table | The normalised per-site sync table — the real source of truth. |
+| `VillaConcierges` | `Slug` | Per-booking concierge page slug. (Plural on `ResProd`, like the sync table.) |
+| `VillaSyncDetails` | whole table | The normalised per-site sync table — the real source of truth. |
 
-`VillaSyncDetail` columns (per `ResSystem/Database/Data/VillaSyncDetail.cs`):
+The table is the **plural** `VillaSyncDetails` on `ResProd`; the singular
+`VillaSyncDetail` names nothing in any dump (a probe spelled that way silently
+degraded to "n/a" until GAP-108 U7 fixed it). Columns (read off the live
+`ResProd` schema; the repo's EF entity for it is no longer in `ResSystem/`):
 
 - `SiteId` (int) → intended `SyncRecord.provider_instance`
 - `ModuleId` (int) → which kind of thing was synced (see map below)
@@ -45,7 +48,10 @@ External ids live in three places:
 - `Process` (string?) → free-form legacy status
 - `CreatedAt` / `UpdatedAt`
 
-### `ModuleId` → entity (legacy `ResModule`, `CommonProperties.cs:77`)
+### `ModuleId` → entity (legacy `ResModule`)
+
+The `ResSystem/` copy in the repo no longer carries that enum, but these 15 ids
+are exactly the set present in `ResProd.VillaSyncDetails`.
 
 ```
 BOOKING            = 1     COUNTRY            = 10    REGION             = 20
@@ -80,41 +86,52 @@ They are cheap and read-only.
 -- 1. How many sites are actually in play?
 SELECT COUNT(DISTINCT SiteId) AS sites,
        COUNT(*)               AS rows_total
-FROM VillaSyncDetail;
+FROM VillaSyncDetails;
 
 -- 2. Volume per module — which modules are even used, and how heavily?
 SELECT ModuleId, COUNT(*) AS rows, COUNT(SyncId) AS with_post_id
-FROM VillaSyncDetail
+FROM VillaSyncDetails
 GROUP BY ModuleId
 ORDER BY rows DESC;
 
 -- 3. Multi-site fan-out: is the same (module,row) really synced to >1 site?
 --    If this is ~0, multi-site is moot and Option B is safe.
 SELECT TOP 20 ModuleId, ModulePrimaryId, COUNT(DISTINCT SiteId) AS sites
-FROM VillaSyncDetail
+FROM VillaSyncDetails
 GROUP BY ModuleId, ModulePrimaryId
 HAVING COUNT(DISTINCT SiteId) > 1
 ORDER BY sites DESC;
 
 -- 4. Rows that carry a usable post id (the thing worth preserving).
 SELECT COUNT(*) AS with_post_id
-FROM VillaSyncDetail
+FROM VillaSyncDetails
 WHERE SyncId IS NOT NULL;
 
--- 5. Bookings with a URL but NO VillaSyncDetail row (the defensive case
+-- 5. Bookings with a URL but NO VillaSyncDetails row (the defensive case
 --    08-integrations.md warns about — legacy didn't always write the table).
 SELECT COUNT(*) AS booking_urls_without_syncdetail
 FROM VillaBooking b
 WHERE b.BookingUrl IS NOT NULL AND LTRIM(RTRIM(b.BookingUrl)) <> ''
   AND NOT EXISTS (
-    SELECT 1 FROM VillaSyncDetail s
+    SELECT 1 FROM VillaSyncDetails s
     WHERE s.ModuleId = 1 /* BOOKING */ AND s.ModulePrimaryId = b.Id
   );
 ```
 
 The `reconcile_legacy --integrations` WordPress section already prints (1),
-the BookingUrl volume, and total `VillaSyncDetail` rows as an informational
+the BookingUrl volume, and total `VillaSyncDetails` rows as an informational
 surface, so the operator sees the magnitude even before this deeper dig.
+
+**Measured on `ResProd` (13-Aug-2026 database, run 2026-09-16):**
+
+- (1) **5 773** rows over **2** sites.
+- (3) **2 856** `(ModuleId, ModulePrimaryId)` pairs are synced to more than one
+  site — multi-site fan-out is real, not hypothetical.
+- (4) **5 773** rows carry a `SyncId` — every row has a post id.
+- (2) the spread is villa-facet heavy: `VILLA` 784, `VILLA_FEATURES` 762,
+  `VILLA_ROOMS` 750, `VILLA_DESCRIPTION` 726, `VILLA_IMAGES` 706,
+  `VILLA_COLLECTION` 682, `BOOKING` 502, `FEATURE` 472, then a long tail down
+  to `FLYWIRE` 1.
 
 ## The decision
 
@@ -124,12 +141,12 @@ surface, so the operator sees the magnitude even before this deeper dig.
    default="")` and `meta = JSONField(default=dict)`; change the unique
    constraint to `(content_type, object_id, provider, provider_instance)`
    (Zoho keeps `provider_instance=""`, so existing Zoho rows are unaffected).
-2. `SyncRecordWordPressLoader`: iterate `VillaSyncDetail`, resolve
+2. `SyncRecordWordPressLoader`: iterate `VillaSyncDetails`, resolve
    `ModuleId`→model and `ModulePrimaryId`→local pk via `legacy_id`, upsert
    `SyncRecord(provider=WORDPRESS_SITE, provider_instance=str(SiteId),
    external_id=str(SyncId), external_url=VillaUrl,
    meta={"legacy_process": Process})`. Backfill `BookingUrl` / concierge
-   `Slug` for rows with no `VillaSyncDetail` entry.
+   `Slug` for rows with no `VillaSyncDetails` entry.
 3. Decide, per the "no clean target" modules above, to **skip** them
    (recommended — they re-sync from the parent villa) and record the skip in
    the loader report.
@@ -142,8 +159,7 @@ and (4) shows a meaningful number of post ids worth preserving.
 
 ### Option B — descope WP multi-site for the M1 capture
 
-If queries (3)/(4) show little/no fan-out and few post ids (likely, since WP
-re-publish is cheap and the M1 site list may be a single site), do **not**
+If queries (3)/(4) show little/no fan-out and few post ids, do **not**
 change the model. Instead, capture only what's losslessly representable now:
 store the single most-recent `(booking, BookingUrl)` per booking as
 `SyncRecord(provider=WORDPRESS_SITE, external_id="", external_url=BookingUrl)`
@@ -163,3 +179,10 @@ historical post ids — and only if they turn out to exist in quantity *and*
 the future WP sync turns out to need them. Building Option A now (a migration
 on a shared table) ahead of that evidence is premature. Capture Zoho cleanly
 now (done); make the WP call with live counts in hand.
+
+The counts are now in hand (see *Measured on `ResProd`* above) and they point
+the other way: 2 856 fan-out pairs and a post id on every one of the 5 773
+rows. Option B's premise — little fan-out, few post ids — does not hold, so
+the default no longer applies and the A-vs-B call is open. It is still a
+judgement call, not a fact: the cost is a migration on a shared integrations
+table, against post ids only a v1.1+ outbound sync would ever use.

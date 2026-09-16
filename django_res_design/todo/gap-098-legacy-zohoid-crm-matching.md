@@ -4,13 +4,24 @@
   legacy-synced estate; no round-trip identity).
 - **Source:** 2026-09-01 review of Limitless' parse functions against our
   payload builders.
-- **2026-09-11 loader audit (dump facts):** `VillaContact.ZohoId` is **blank
-  on all 233 rows** — there is no legacy contact continuity to preserve, and
-  every contact push will INSERT on first sync regardless of this ticket.
-  Real coverage is `VillaMaster` 75 loaded (112 raw, 36 on deleted villas, 1
-  Temenos duplicate) and `VillaEnquire` 44; `VillaQuotationMaster` /
-  `VillaBooking` have no column. GAP-108 trims `SPECS` and CUTOVER §4b to
-  match.
+- **2026-09-16 ResProd dry run (supersedes the 2026-09-11 dump figures
+  below):** `VillaContact.ZohoId` **carries the column but every value is
+  blank**, so the headline conclusion stands — there is no legacy contact
+  continuity to preserve, and every contact push INSERTs on first sync
+  regardless of this ticket. The rest has moved: `VillaMaster` 112 raw / 76
+  matched / 75 loaded (`expected_gap=1`, the 88/339 shared-`ZohoId` pair);
+  `VillaEnquire` **2 228** raw / 2 228 matched / 2 227 loaded (`expected_gap=1`,
+  enquiries 1267/1268 sharing one id); and — reversing the old claim —
+  **`VillaQuotationMaster` DOES have a `ZohoId`, with 1 601 non-blank values**
+  and gap 0. `VillaBooking` has the column too (190 non-blank) — it drops out
+  of `SPECS` because its **loader is unregistered** (GAP-089), not because the
+  schema lacks it. So `SPECS` is four tables, not five, and **no** ResProd spec
+  table is missing the column.
+- **2026-09-11 loader audit (24-Apr-2025 dump, history):** `VillaContact.ZohoId`
+  blank on all 233 rows; `VillaMaster` 75 loaded (112 raw, 36 on deleted
+  villas, 1 Temenos duplicate); `VillaEnquire` 44; `VillaQuotationMaster` /
+  `VillaBooking` believed to have no column. GAP-108 trimmed `SPECS` and
+  rewrote CUTOVER §4b to match the ResProd facts above.
 - **Files touched:**
   - `django_res/data_migration/loaders/integrations.py:100–120, 165` — the
     `SyncRecordZohoLoader` and its `_ZohoSpec` table list; legacy `ZohoId` →

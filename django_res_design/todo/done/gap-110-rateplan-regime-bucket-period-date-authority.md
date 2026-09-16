@@ -69,13 +69,37 @@
 > column without a throwaway default. Q-022's tier is not carried (no field
 > exists). Manual `/demo-worktree` browser check was not run.
 >
-> **Open follow-ups — NOT ticked (dump-dependent; no `LEGACY_DATABASE_URL`
-> here), recorded in `CUTOVER.md` §5 items 3–5:**
-> - ⬜ Loader: ~276 plans on the 24-Apr dump; zero cross-plan period
->   collisions; **reconcile expected-gap calibration** for the villa-level
->   `RatePlan` check (placeholder `0`) and the `VillaSeasonRate` row count.
-> - ⬜ **Night-parity invariant** gap 0 with any residue itemised per villa.
-> - ⬜ **Legacy-quote sample** reproduces on the 37 cross-season overlap villas.
+> **Open follow-ups — ✅ ALL THREE CLOSED by GAP-108's ResProd dry run
+> (2026-09-16), which had the `LEGACY_DATABASE_URL` this ticket lacked. They
+> were recorded in `CUTOVER.md` §5 items 3–5; see `DRYRUN_LOG.md` run 5:**
+> - ✅ Loader / **reconcile expected-gap calibration**. The villa-level
+>   `RatePlan` check's placeholder is gone; the `VillaSeasonRate` check needed
+>   its legacy SQL **replaced**, not recalibrated — the old query counted a
+>   universe the loader never reads. Legacy side 7 095, gap **462** = 495
+>   shadowed bands − 8 occupancy-fallback − 25 `#seg`, each itemised on the
+>   `_Check`. `test_documented_expected_gaps_are_encoded` now pins the whole
+>   `_CHECKS` gap map as one dict, so none of this can drift silently again.
+> - ✅ **Night-parity invariant** — gap 0 on ResProd. No residue to itemise.
+> - ✅ **Legacy-quote sample** (`.claude-tmp/gap110-quote-sample.py`, now
+>   committed): 558 lines sampled on the overlap villas, **526 exact**, 0
+>   changeover-shifted, and every one of the 32 non-exact lines explained:
+>   - **28 `PartyOutOfRange`** — the party exceeds the top of the villa's
+>     occupancy grid (= `Property` capacity; there are no holes *inside* any
+>     grid). This is the known departure in `09-departures.md` #2 — legacy
+>     ignores `PartySize` — surfacing where staff quoted over capacity, e.g.
+>     villa 51 quoted for 16 guests against a cap of 6. Re-priced at the grid
+>     top they reproduce legacy on 10 of 11 villa/quote cases.
+>   - **1 `NoRateAvailable`** — villa 418 quote 4280, night 2027-01-02
+>     uncovered at a USD→EUR card switch; legacy filled it from
+>     `SettingNightlyPrice` (the SMELL-007 / GAP-008 `fallback_nightly` path).
+>   - **3 band-drift mismatches** — the occupancy band was edited *after* the
+>     quote was issued. The villa 92 / quote 4642 residue (legacy 12 750 vs
+>     engine 17 500) that survives re-pricing at the grid top is the same
+>     class, not a fourth case.
+>   **No engine or loader bug, and nothing quotes a wrong price** — every
+>   non-exact case refuses rather than inventing a number. So the ticket's
+>   unticked "one-plan stays quote identically before and after" line is now
+>   evidenced against the old engine, not just against the projection.
 >
 > **Deferred (out of scope, own tickets):** BUG-028 §3 currency-resolution fix
 > (loader uses today's chain); `segment` on `RatePlan` for agent-vs-direct
@@ -414,13 +438,14 @@ stay's nights; group by plan.
   `test_carryover.py::test_materialise_writes_real_rows_for_target_year`
   asserts one plan in the regime, `test_materialise_is_idempotent*`,
   `test_api_rate_plans.py::test_carry_forward_creates_editable_plan_for_future_year`)
-- ⬜ **OPEN — dump-dependent, not run (no `LEGACY_DATABASE_URL`):** Loader:
-  ~276 plans on the 24-Apr dump; zero cross-plan period
-  collisions; night-parity invariant gap 0 with any residue explained;
-  legacy-quote sample reproduces on the 37 overlap villas. (`reconcile_legacy`
-  — the checks exist and are unit-tested against fake cursors; their
-  `expected_gap` values are placeholders until the first post-GAP-110
-  dry-run. See `CUTOVER.md` §5 items 3–5.)
+- ✅ **CLOSED by GAP-108's ResProd dry run, 2026-09-16** (this ticket had no
+  `LEGACY_DATABASE_URL`): zero cross-plan period collisions; night-parity gap
+  **0**, no residue; the legacy-quote sample runs clean on the overlap villas
+  — 558 lines, 526 exact, 32 explained, 0 quoting a wrong price. Every
+  `expected_gap` placeholder is now a pinned constant with an itemised
+  zero-residual derivation, and the `VillaSeasonRate` check's legacy SQL was
+  replaced rather than recalibrated. Detail in the banner at the top of this
+  ticket; `CUTOVER.md` §5 items 3–5 are discharged.
 - ✅ Workbench: plan form has no date fields; coverage lane shows unpriced
   days across the visible year; carry-forward leaves the user on the same
   plan. (vitest — `RatePlanFormDialog.test.tsx` "… and no dates",

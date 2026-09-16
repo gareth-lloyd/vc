@@ -11,8 +11,11 @@ from __future__ import annotations
 
 from typing import Literal
 
+from django.db.models import QuerySet
+
 from accounts.enums import PersonStatus
 from accounts.models import Person
+from data_migration.loaders.sentinels import SHEET_LEGACY_PREFIX
 from data_migration.sheets.matching import match_person_by_email
 from reservations.models import Enquiry
 
@@ -22,6 +25,16 @@ Category = Literal[
 
 # `EnquiryLoader` stores this for a nameless row, after it has matched.
 ANON_FIRST_NAME = "(anon)"
+
+
+def unlinked_legacy_enquiries() -> QuerySet[Enquiry]:
+    """Customer-less enquiries `EnquiryLoader` wrote — never a sheet enquiry
+    (always linked) nor one taken after go-live (legitimately anonymous)."""
+    return (
+        Enquiry.objects.filter(person__isnull=True, legacy_id__isnull=False)
+        .exclude(legacy_id__startswith=SHEET_LEGACY_PREFIX)
+        .order_by("pk")
+    )
 
 
 def classify_enquiry(enquiry: Enquiry) -> tuple[Category, Person | None]:

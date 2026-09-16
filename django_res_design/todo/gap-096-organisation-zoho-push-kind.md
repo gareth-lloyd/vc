@@ -4,6 +4,13 @@
   stale; blocks the agency half of the contact mapping).
 - **Source:** 2026-09-01 review of Limitless' `limitless_upsert_villa` and
   `limitless_parse_res_contact` against our payloads.
+- **Status:** design **settled 2026-09-16** on the dedicated `organisation`
+  kind below; the endpoint was **requested from Limitless by email on
+  2026-09-16**, asked alongside GAP-103's `region` endpoint (one
+  conversation, two URLs — coordination cost is per-conversation, not per
+  endpoint). The res half is **not** gated on their reply: see "Landing
+  order". The rejected alternative is recorded under "Considered
+  alternatives" so it is not re-litigated.
 - **Files touched (when built):**
   - `django_res/integrations/apps.py:131` — where `Person` registers as the
     `contact` kind; `Organisation` would register alongside it.
@@ -12,9 +19,13 @@
     lift it to a `build_organisation_payload`.
   - `django_res/properties/services/zoho_payload.py` —
     `_organisation_summary` (the villa-embedded copy).
-  - `django_res/integrations/services/zoho_flow.py:82` — `ZOHO_FLOW_KINDS`
-    + the `ZOHO_FLOW_WEBHOOKS` setting (a new webhook URL is needed from
-    Limitless).
+  - `django_res/integrations/services/zoho_flow.py:41` — `ZOHO_FLOW_KINDS`.
+  - `django_res/villacollective/settings/base.py:248` +
+    `settings/test.py:78` — the `ZOHO_FLOW_WEBHOOKS` key (empty default) and
+    `.env.example`; `integrations/tests/test_zoho_flow.py:172` asserts the
+    kinds and the setting's keys match, so both move together.
+  - `django_res/integrations/management/commands/zoho_backfill.py:51` —
+    `KIND_ORDER`.
 
 ## Problem
 
@@ -52,8 +63,16 @@ Register `Organisation` as its own kind, mirroring the `contact` pattern:
 - Payload from the existing `_agency_payload` shape (`RES_ID`, `id`, `name`,
   `org_type`, `email`, `phone`, address block, `country`, `website_url`,
   `notes`, `status`), plus `created_at`/`updated_at`.
-- New `ZOHO_FLOW_WEBHOOKS["organisation"]` URL — needs Limitless to stand up
-  the endpoint, so this is a coordinated landing, not a solo one.
+- New `ZOHO_FLOW_WEBHOOKS["organisation"]` key, **defaulting to `""`**.
+  Requested from Limitless 2026-09-16; the URL is set per environment once
+  they hand it over.
+- **Fatten the villa-embedded copy.** `_organisation_summary`
+  (`properties/services/zoho_payload.py:146`) sends 6 keys — RES_ID, id,
+  name, org_type, email, phone — so the Account the villa flow creates today
+  is missing address, country, website, notes and status. Lift it to the
+  `_agency_payload` shape. This is a one-function change with no
+  coordination: it completes the Account during the transition and is worth
+  landing first, on its own.
 - Extend `zoho_backfill` ordering: organisation **before** contact and villa,
   so the Account exists before anything looks it up.
 - **Villa before booking**, for the same reason (added 2026-09-02, off the
@@ -75,6 +94,55 @@ No erasure concern: `OrgStatus` has no ANONYMIZED member by design (an
 organisation is not a data subject — see `accounts/enums.py`), so the
 GAP-095 question does not extend here.
 
+## Landing order — the res half is not blocked
+
+`webhook_url()` returns `""` for an unset kind and `enqueue_zoho_push`
+no-ops on a falsy URL (`integrations/services/zoho_flow.py:185,275`), so
+this ticket lands **dark**: registration, payload builder, backfill stage
+and every test below can merge behind an empty default, and nothing reaches
+Zoho until the env var is set. "Waiting on Limitless" gates the *switch-on*,
+not the build. Tests drive the path with `override_settings`, as the other
+kinds' tests do.
+
+Sequence: (1) fatten `_organisation_summary` — no coordination; (2) register
+the kind + builder + backfill stage, dark; (3) set the URL when it arrives
+and run `zoho_backfill --kinds organisation`; (4) their two Flow follow-ups.
+
+## Considered alternatives
+
+**Rejected 2026-09-16: no new kind — enrich the embedded copies and replace
+`_organisation_changed`'s fan-out with a single "carrier" push** (one
+non-anonymized agent by pk, else one `property_assignments` villa by pk).
+It meets the one-push criterion and needs no new endpoint, but it loses four
+things the dedicated kind gives:
+
+- **No `SyncRecord` per organisation** — no PENDING/IN_SYNC/ERROR state, no
+  `push_pending` sweep coverage (the sweep iterates `registered_zoho_models`),
+  so a failed push leaves an org silently stale. Also degrades GAP-097 and
+  GAP-028 before they are built.
+- **No `zoho_backfill --kinds organisation`** — orgs could only be replayed
+  by proxy, via contacts and villas, with incomplete coverage.
+- **Coverage by accident, not by existence** — an org with no agents and no
+  villa assignment never reaches the CRM; one whose only agent is ANONYMIZED
+  is unpushable (`is_anonymized_person` no-ops the enqueue).
+- **Two writers to Accounts, permanently** — the villa flow's inline create
+  would stay alongside the contact flow's. CHECK-004 item 7 is that exact
+  pattern going wrong on Contacts.
+
+Also: the villa-carrier branch would add org edits as another villa-push
+trigger, and CHECK-003 item 3 has villa re-pushes possibly re-creating rooms
+subform rows. Keep as the fallback **only** if Limitless decline the
+endpoint; the payload enrichment above is its foundation either way.
+
+**Rejected: alias `organisation` onto the existing contact webhook**,
+branching on the GAP-102 `_meta.kind` discriminator. Res-side identical, no
+new endpoint — but a Zoho Flow webhook trigger pins its payload schema from
+a sample, so Limitless would have to re-sample the contact Flow against a
+union of two shapes and branch before any mapping. Comparable effort to a
+new Flow, more fragile (a missed branch feeds an organisation into the
+Contact mapping), and it collapses two object types into one execution log
+and one zapikey.
+
 ## Acceptance
 
 - Saving an `Organisation` enqueues an `organisation` push. (test)
@@ -83,15 +151,29 @@ GAP-095 question does not extend here.
   in that order. (test)
 - Renaming an organisation results in exactly ONE push, not one per villa it
   manages. (test — this is the whole point)
+- The villa-embedded `organisation` object carries the same fields as the
+  contact payload's `agency` object. (test, one per module — the duplication
+  is deliberate, per the GAP-102 geo precedent, and a single test would let
+  one copy drift)
+- With `ZOHO_FLOW_WEBHOOKS["organisation"] == ""`, saving an Organisation
+  writes no `SyncRecord` and dispatches nothing. (test — this is what makes
+  the dark landing safe)
 - A villa's management-company Account is found by lookup, not created by the
   villa flow. (verified Zoho-side, CHECK-003)
 
 ## Dependencies
 
-- **Blocked on a webhook URL from Limitless** — same coordination shape as
-  the villa/booking kinds in GAP-082.
+- **Webhook URL requested from Limitless 2026-09-16** (same coordination
+  shape as the villa/booking kinds in GAP-082), bundled with GAP-103's
+  `region` endpoint. Gates switch-on and the Zoho-side acceptance item only —
+  see "Landing order". Awaiting their estimate.
 - **CHECK-003** item 2 — picking the *right* management company is
   orthogonal and can land first; this ticket changes where the Account comes
   from, not which one is chosen.
 - **CHECK-001** — the agency half of the contact mapping is blocked on this.
+  Note no res-side change can unblock it alone: `limitless_upsert_villa` is
+  the only path into the Accounts module, and an agency has no villa, so the
+  Account cannot exist until Limitless write to it from somewhere else.
+- **GAP-103** — asked in the same email, same pattern; if they quote both,
+  land them together.
 - **GAP-046** — the Organisation model this pushes.

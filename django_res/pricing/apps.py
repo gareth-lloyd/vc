@@ -63,6 +63,8 @@ class PricingConfig(AppConfig):
                 "is_poa",
                 "is_locked",
                 "is_approved",
+                # GAP-114: confirming indicative rates is an owner sign-off.
+                "is_indicative",
             ],
         )
         track(

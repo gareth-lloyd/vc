@@ -11,8 +11,10 @@ from decimal import Decimal
 from typing import cast
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
 
+from core.models import AuditLog
 from pricing.factories import RatePeriodFactory, RatePlanFactory
 from pricing.models import RateBand, RatePeriod, RatePlan
 
@@ -107,6 +109,33 @@ def test_raterule_same_party_allowed_across_periods() -> None:
     RateBand.objects.create(period=early, min_party=1, max_party=8, nightly=Decimal("100"))
     other = RateBand.objects.create(period=late, min_party=1, max_party=8, nightly=Decimal("150"))
     assert other.pk is not None
+
+
+@pytest.mark.django_db
+def test_rateband_is_confirmed_by_default() -> None:
+    """GAP-114: bands are owner-confirmed unless explicitly marked indicative."""
+    band = RateBand.objects.create(
+        period=_period(), min_party=1, max_party=8, nightly=Decimal("100")
+    )
+    band.refresh_from_db()
+    assert band.is_indicative is False
+
+
+@pytest.mark.django_db
+def test_rateband_confirming_indicative_rates_is_audited() -> None:
+    """GAP-114: who confirmed a band's rates, and when, comes from the audit trail."""
+    band = RateBand.objects.create(
+        period=_period(), min_party=1, max_party=8, nightly=Decimal("100"), is_indicative=True
+    )
+
+    band.is_indicative = False
+    band.save()
+
+    ct = ContentType.objects.get_for_model(RateBand)
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(band.pk))
+    flag_rows = [r for r in rows if "is_indicative" in r.field_diffs]
+    assert flag_rows, "expected an AuditLog row capturing the is_indicative change"
+    assert flag_rows[-1].field_diffs["is_indicative"] == [True, False]
 
 
 def test_ratecard_is_gone() -> None:

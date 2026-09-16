@@ -298,6 +298,10 @@ class RateBand(AuditedModel):
     is_poa = models.BooleanField(default=False)
     is_locked = models.BooleanField(default=False)
     is_approved = models.BooleanField(default=True)
+    # GAP-114: rates copied forward but not yet confirmed by the owner (legacy
+    # VillaSeason.CarriedRates; carry-forward writes True). Quotes still price
+    # from these bands — staff just see an "indicative rates" warning.
+    is_indicative = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
     legacy_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 

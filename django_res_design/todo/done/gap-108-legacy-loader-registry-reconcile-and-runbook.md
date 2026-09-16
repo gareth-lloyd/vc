@@ -1,5 +1,58 @@
 # GAP-108 — Legacy loader: unregister the dead booking loaders, make `reconcile_legacy` prove what it claims, and bring the runbook back to the code
 
+> **✅ RESOLVED (2026-09-16)** — shipped on `feat/gap-108`; fast-forwarded into
+> local `main` (unpushed) at close-out. 13 commits:
+> 31a903de U1 unregister `Booking`/`Payment`/`BookingChargeItem` (34 → **31**
+> loaders) with their three checks **inverted** to `… with legacy_id (must be
+> 0)`, so "we load no bookings" is now mechanised rather than asserted;
+> 0387357a U2 `suppress_summary_rebuild()` in `BaseLoader.load()` + one
+> synchronous rebuild at the end of `loadlegacy` (and `rebuild_summaries` as the
+> manual recovery path) — `LLEN celery` is 0 after a load, no worker needed;
+> 8211c20b U3 `legacy_active_sql()` — ResProd soft-deletes enquiries, rooms,
+> features, collection memberships and nearby places, on legacy's
+> **NULL-is-inactive** convention; 271e31b7 U4 `live_villa_sql()` shared by
+> `PropertyLoader` and the six villa-scoped reconcile queries; 82b0582f U5
+> loaded counts default to `legacy_id__isnull=False` so an organic row can no
+> longer mask a loader that loaded nothing (allowlist of 2, with reasons);
+> 4e3e8f76 U6 a check for **every** registered loader + the coverage test that
+> keeps it that way; f8613f7d U7 structural invariants and the right reasons on
+> the gaps; 8797bc9b U7 follow-up; 7a1b3023 U8b, cd3656e2 U8c, c2183132 U8d the
+> dry run and its fixes; 5d5299e4 U9 runbook; 860a39bd U10 the remaining docs.
+>
+> **The headline:** every `expected_gap` is now pinned to the **ResProd**
+> (13-Aug-2026) dry run and *itemised to zero residual* — no placeholders, no
+> uncomposed numbers. `reconcile_legacy` exits 0 at **54/54** checks with night
+> parity 0, and is unchanged by a `createsuperuser`. `_CHECKS` went 44 → 54.
+>
+> **Three findings worth carrying forward**, all raised by the dry run rather
+> than the audit that opened this ticket:
+> - The audit's own figures were stale: "30 loaders" was **31**, Room placement
+>   49 was **61**, `PropertyFinance` 1235/1236 was **1239** (= 413 contact
+>   templates + 676 parent-child overrides + 150 rows on excluded villas).
+> - `RateBand`'s legacy-side SQL was counting rows the loader never reads
+>   (28 721 priceless, 3 730 on dead seasons/villas), so its "gap" measured
+>   nothing. Replaced with the loader's own arithmetic; gap **462**, decomposed.
+> - Post-Nov-2025 legacy writes stopped naming `VillaClientDetails`, so
+>   **1 423 of 1 541** quotations were landing on the `UNKNOWN_CLIENT`
+>   sentinel. U8b recovers the customer from the linked enquiry (user-approved
+>   2026-09-15/16). This was invisible to row counts — every row loaded.
+>
+> **Deliberately not fixed here** (tickets own them): GAP-112 post-load customer
+> relink for the 321 sheet-born quotations; GAP-113 `VillaArchiveBookings`
+> (272 live stays, 7 ending today or later); GAP-114 `CarriedRates` (6 864
+> quotable rows legacy flags as copied-forward-not-confirmed); GAP-115
+> `SecurityDepositPaymentMethod` codes nothing we hold decodes; GAP-109 rows
+> 18-20 for three ResProd columns no loader reads. `QuotationLine.created_at`
+> stays the load day — `VillaQuotationDetails` has no `CreatedAt` — documented
+> in `CUTOVER.md` §5. `WORDPRESS_BACKFILL.md`'s Option A-vs-B is **open**: B's
+> premise is measurably false (2 856 module/id pairs fan out to >1 site).
+>
+> Also discharged: GAP-110's three dump-dependent follow-ups (night parity 0,
+> every placeholder pinned, 558-line quote sample — 526 exact, 32 explained, no
+> engine or loader bug); SMELL-021's "no NET signal exists" corrected (`PriceType
+> = 10` on 2 083 live rows) while its GROSS conclusion stands for a better
+> reason; Q-025's residual placeholder.
+
 - **Severity:** 🟠 Gap (cutover process). Backend `data_migration/` + docs.
 - **Source:** 2026-09-11 legacy-loader audit; live `loadlegacy --all` +
   `reconcile_legacy` on scratch DB `villacollective_loaderaudit`

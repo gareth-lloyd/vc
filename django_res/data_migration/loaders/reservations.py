@@ -157,23 +157,50 @@ class ClientLoader(BaseLoader):
     transient `_email`/`_phone`); `_process_row` does the multi-row write
     (Person + the two reconciled children), so the children can't be expressed by
     the BaseLoader single-upsert path.
+
+    GAP-108 U8b — the enquiry-name fallback. From ~Nov-2025 the legacy app stopped
+    writing a name onto VillaClientDetails: those rows carry only `Email` and
+    `CreatedBy`, and the customer's name lives on the `VillaEnquire` behind the
+    client's quotation. Skipping them dropped the great majority of the clients and
+    stranded their quotations/preferences on the `unknown_client()` sentinel, so
+    `legacy_query` OUTER APPLYs the name of the lowest-Id named LIVE enquiry
+    reachable through the client's live quotations, and `transform` uses it when the
+    client's own name is blank. Lowest Id (not "newest", not "any") because the load
+    is one-shot and must be reproducible: a handful of clients reach more than one
+    distinct name, and the tie has to break the same way on every run.
     """
 
     name = "client"
     target_model = Person
     legacy_query = (
-        "SELECT Id, Title, FirstName, LastName, MobileNo, Email, "
-        "Notes, CountryId, Town, Postcode, AddressLine1, AddressLine2, "
-        "ContactType, CreatedAt "
-        "FROM VillaClientDetails"
+        "SELECT c.Id, c.Title, c.FirstName, c.LastName, c.MobileNo, c.Email, "
+        "c.Notes, c.CountryId, c.Town, c.Postcode, c.AddressLine1, c.AddressLine2, "
+        "c.ContactType, c.CreatedAt, "
+        "n.EnquiryFirstName, n.EnquiryLastName "
+        "FROM VillaClientDetails c "
+        "OUTER APPLY ("
+        "SELECT TOP 1 e.FirstName AS EnquiryFirstName, e.LastName AS EnquiryLastName "
+        "FROM VillaQuotationMaster q "
+        "JOIN VillaEnquire e ON e.Id = q.EnquireId AND e.DeletedAt IS NULL "
+        "WHERE q.ClientDetailsId = c.Id AND q.DeletedAt IS NULL "
+        "AND LEN(LTRIM(RTRIM(ISNULL(e.FirstName,'') + ISNULL(e.LastName,'')))) > 0 "
+        "ORDER BY e.Id"
+        ") n"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
         first = (row.get("FirstName") or "").strip()[:128]
         last = (row.get("LastName") or "").strip()[:128]
         if not (first or last):
-            # No identity at all — nothing worth importing (the documented
-            # no-name gap; reconcile_legacy carries expected_gap=1 for it).
+            # GAP-108: the post-Nov-2025 nameless client — borrow the name from
+            # the enquiry behind its quotation (see the class docstring). Only
+            # the NAME is borrowed; email/phone/country/address stay the
+            # client's own.
+            first = (row.get("EnquiryFirstName") or "").strip()[:128]
+            last = (row.get("EnquiryLastName") or "").strip()[:128]
+        if not (first or last):
+            # No identity on either side — nothing worth importing (the
+            # documented no-name gap).
             return None
         # Email is optional; absence is None, never a synthetic. A phone-only
         # client is first-class valid (no longer dropped).

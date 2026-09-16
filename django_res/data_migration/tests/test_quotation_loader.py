@@ -15,6 +15,7 @@ from accounts.models import Person
 from data_migration.base import LoadReport
 from data_migration.loaders.finance import QuotationLineLoader, QuotationLoader
 from data_migration.loaders.reservations import ClientLoader
+from data_migration.loaders.sentinels import UNKNOWN_CLIENT_LEGACY_ID
 from pricing.models.currency import Currency
 from properties.models.geo import Country, Region
 from properties.models.property import Property
@@ -329,3 +330,131 @@ def test_quotation_never_links_an_enquiry_to_the_unknown_client(_guest_and_curre
     assert Quotation.objects.filter(legacy_id="10").exists()  # loaded on the sentinel
     enquiry.refresh_from_db()
     assert enquiry.person is None
+
+
+# --- GAP-108 U8b: quotation person falls back to its enquiry's person ---
+
+
+@pytest.mark.django_db
+def test_quotation_with_no_client_id_takes_its_enquiry_person(_guest_and_currency: None) -> None:
+    """`ClientDetailsId = 0` used to skip the whole quotation; the customer is
+    named on the enquiry behind it."""
+    grace = Person.objects.create(first_name="Grace", last_name="Hopper")
+    _enquiry(person=grace)
+    kwargs = QuotationLoader().transform(_row(ClientDetailsId=0, EnquireId=15))
+    assert kwargs is not None
+    assert kwargs["person"] == grace
+
+
+@pytest.mark.django_db
+def test_quotation_on_a_missing_client_prefers_the_enquiry_person(
+    _guest_and_currency: None,
+) -> None:
+    grace = Person.objects.create(first_name="Grace", last_name="Hopper")
+    _enquiry(person=grace)
+    kwargs = QuotationLoader().transform(_row(ClientDetailsId=999, EnquireId=15))
+    assert kwargs is not None
+    assert kwargs["person"] == grace
+
+
+@pytest.mark.django_db
+def test_quotation_prefers_its_own_client_over_the_enquiry_person(
+    _guest_and_currency: None,
+) -> None:
+    _enquiry(person=Person.objects.create(first_name="Grace", last_name="Hopper"))
+    kwargs = QuotationLoader().transform(_row(ClientDetailsId=55, EnquireId=15))
+    assert kwargs is not None
+    assert kwargs["person"] == Person.objects.get(legacy_id="client-55")
+
+
+@pytest.mark.django_db
+def test_quotation_with_no_client_and_no_enquiry_person_loads_on_the_sentinel(
+    _guest_and_currency: None,
+) -> None:
+    """Neither side names the customer — the row LOADS on the sentinel rather
+    than being dropped (it used to be skipped outright)."""
+    _enquiry(person=None)
+    QuotationLoader()._process_row(
+        _row(ClientDetailsId=0, EnquireId=15, CreatedAt=_CREATED), LoadReport(loader="quotation")
+    )
+    quotation = Quotation.objects.get(legacy_id="10")
+    assert quotation.person.legacy_id == UNKNOWN_CLIENT_LEGACY_ID
+
+
+@pytest.mark.django_db
+def test_quotation_with_no_customer_and_no_enquiry_is_skipped(_guest_and_currency: None) -> None:
+    """The enquiry fallback must never mint a stand-in enquiry ON the shared
+    sentinel — `_process_row` guards the linked-enquiry path for the same
+    reason. With no client and no enquiry there is no customer to import."""
+    assert QuotationLoader().transform(_row(ClientDetailsId=999, EnquireId=0)) is None
+    assert QuotationLoader().transform(_row(ClientDetailsId=0, EnquireId=0)) is None
+
+
+def test_quotation_query_is_deterministically_ordered() -> None:
+    """The enquiry fallback reads `Enquiry.person`, which `_process_row`
+    back-fills for an earlier quotation on the same enquiry — so the row order
+    is part of the result and cannot be left to the server."""
+    assert QuotationLoader.legacy_query.rstrip().endswith("ORDER BY q.Id")
+
+
+# --- GAP-108 U8b: a dateless quotation line inherits the master's dates ---
+
+
+def test_line_query_carries_the_master_dates() -> None:
+    query = QuotationLineLoader.legacy_query
+    assert "m.FromDate AS MasterFromDate" in query
+    assert "m.ToDate AS MasterToDate" in query
+
+
+@pytest.mark.django_db
+def test_line_with_null_dates_inherits_the_master_dates(_guest_and_currency: None) -> None:
+    _quotation_and_property()
+    kwargs = QuotationLineLoader().transform(
+        _line_row(
+            FromDate=None,
+            ToDate=None,
+            MasterFromDate=date(2026, 7, 1),
+            MasterToDate=date(2026, 7, 8),
+        )
+    )
+    assert kwargs is not None
+    assert kwargs["date_from"] == date(2026, 7, 1)
+    assert kwargs["date_to"] == date(2026, 7, 8)
+
+
+@pytest.mark.django_db
+def test_line_half_dated_keeps_the_date_it_has(_guest_and_currency: None) -> None:
+    """Only the missing half is filled — a real legacy date is never replaced."""
+    _quotation_and_property()
+    kwargs = QuotationLineLoader().transform(
+        _line_row(
+            ToDate=None,
+            MasterFromDate=date(2026, 7, 1),
+            MasterToDate=date(2026, 7, 8),
+        )
+    )
+    assert kwargs is not None
+    assert kwargs["date_from"] == date(2026, 6, 10)  # its own
+    assert kwargs["date_to"] == date(2026, 7, 8)  # the master's
+
+
+@pytest.mark.django_db
+def test_line_keeps_its_own_dates_over_the_master(_guest_and_currency: None) -> None:
+    _quotation_and_property()
+    kwargs = QuotationLineLoader().transform(
+        _line_row(MasterFromDate=date(2026, 7, 1), MasterToDate=date(2026, 7, 8))
+    )
+    assert kwargs is not None
+    assert kwargs["date_from"] == date(2026, 6, 10)
+    assert kwargs["date_to"] == date(2026, 6, 17)
+
+
+@pytest.mark.django_db
+def test_line_with_no_dates_on_either_side_is_skipped(_guest_and_currency: None) -> None:
+    _quotation_and_property()
+    assert (
+        QuotationLineLoader().transform(
+            _line_row(FromDate=None, ToDate=None, MasterFromDate=None, MasterToDate=None)
+        )
+        is None
+    )

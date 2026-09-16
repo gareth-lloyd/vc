@@ -32,10 +32,13 @@ from data_migration.loaders._util import (
     legacy_aware,
     legacy_currency_for,
     legacy_quotation_no,
-    person_for_client,
 )
 from data_migration.loaders.pricing import PRICED_ROW_PREDICATE
-from data_migration.loaders.sentinels import UNKNOWN_CLIENT_LEGACY_ID
+from data_migration.loaders.sentinels import (
+    CLIENT_LEGACY_PREFIX,
+    UNKNOWN_CLIENT_LEGACY_ID,
+    unknown_client,
+)
 from properties.enums import (
     CommissionCalcType,
     DepositCalcType,
@@ -608,6 +611,26 @@ def _ensure_default_terms() -> TermsVersion:
 
 
 class QuotationLoader(BaseLoader):
+    """VillaQuotationMaster -> reservations.Quotation.
+
+    GAP-108 U8b — the customer resolution order is client → enquiry → sentinel.
+    `person_for_client` returns None for `ClientDetailsId = 0` and the
+    `unknown_client()` sentinel when the client row never loaded; from ~Nov-2025
+    ResProd stopped naming VillaClientDetails rows (the name moved to
+    VillaEnquire), so both cases are common and both have a real, named customer
+    one hop away — on the quotation's own enquiry. We therefore fall back to the
+    enquiry's `person` before the sentinel, and a quotation whose enquiry names
+    nobody either now LOADS on the sentinel instead of being skipped (a skipped
+    quotation is silent data loss; the sentinel is visible and reconcilable).
+    A quotation with **no enquiry at all** and no client still skips: the
+    `ensure_enquiry` stand-in would otherwise be minted ON the sentinel, the one
+    thing `_process_row` guards against below (0 such rows on ResProd).
+
+    `ORDER BY q.Id` is load-bearing, not tidiness: the fallback READS
+    `Enquiry.person`, which `_process_row` back-fills from an earlier quotation
+    on the same enquiry, so unordered rows would resolve differently run to run.
+    """
+
     name = "quotation"
     target_model = Quotation
     # No currency here: the header has none (GAP-014, legacy parity) — each
@@ -617,7 +640,7 @@ class QuotationLoader(BaseLoader):
         "SELECT q.Id, q.ClientDetailsId, q.AgentId, q.FromDate, q.ToDate, "
         "q.EnquireId, q.QuotationNo, q.EnquiryNote, q.PreferencesNote, q.CreatedAt, "
         "q.DeletedAt "
-        "FROM VillaQuotationMaster q WHERE q.DeletedAt IS NULL"
+        "FROM VillaQuotationMaster q WHERE q.DeletedAt IS NULL ORDER BY q.Id"
     )
 
     def _process_row(self, row: dict[str, Any], report: LoadReport) -> None:
@@ -659,9 +682,6 @@ class QuotationLoader(BaseLoader):
             Enquiry.objects.filter(pk=enquiry.pk).update(**updates)
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        person = person_for_client(row.get("ClientDetailsId"))
-        if person is None:
-            return None
         agent = (
             Person.objects.filter(legacy_id=str(row["AgentId"])).first()
             if row.get("AgentId")
@@ -670,9 +690,26 @@ class QuotationLoader(BaseLoader):
         # `Quotation.enquiry` is mandatory. Resolve the legacy EnquireId to its
         # imported Enquiry; for agent-direct quotes (EnquireId 0/NULL/unresolved)
         # back-create a minimal one, mirroring legacy `sp_quotationMaster`.
+        # Resolved BEFORE the customer: GAP-108's fallback reads its `person`.
         enquiry = None
         if row.get("EnquireId"):
             enquiry = Enquiry.objects.filter(legacy_id=str(row["EnquireId"])).first()
+        # GAP-108 U8b: client → enquiry → sentinel (see the class docstring).
+        # The client lookup is direct rather than `person_for_client`, which
+        # mints the sentinel eagerly — here it must stay the last resort.
+        person = (
+            Person.objects.filter(
+                legacy_id=f"{CLIENT_LEGACY_PREFIX}{row['ClientDetailsId']}"
+            ).first()
+            if row.get("ClientDetailsId")
+            else None
+        )
+        if person is None and enquiry is not None:
+            person = enquiry.person
+        if person is None:
+            if enquiry is None:
+                return None
+            person = unknown_client()
         created = legacy_aware(row["CreatedAt"]) if row.get("CreatedAt") is not None else None
         if enquiry is None and agent is not None:
             enquiry = ensure_enquiry(person, legacy_id=f"q{row['Id']}-autoenquiry", agent=agent)
@@ -727,13 +764,26 @@ class QuotationLoader(BaseLoader):
 
 
 class QuotationLineLoader(BaseLoader):
+    """VillaQuotationDetails -> reservations.QuotationLine.
+
+    GAP-108 U8b — a line whose own FromDate/ToDate are NULL inherits the master
+    quotation's dates. ResProd (13-Aug-2026) has 109 live VillaQuotationDetails
+    rows in that shape whose master IS dated; they were dropped outright, losing
+    a priced option from an otherwise-dated quote. The dates come down the
+    existing LEFT JOIN to the master rather than from the loaded `Quotation`,
+    because `Quotation` has no date columns at all (only its lines do) — the
+    master row is the only place they exist, and the join was already there.
+    """
+
     name = "quotation_line"
     target_model = QuotationLine
     legacy_query = (
         # BUG-030 §27: the party size lives on the master (LEFT JOIN: a line
         # on a missing master still reaches the skip path).
+        # GAP-108: the master's dates ride along as the dateless-line fallback.
         "SELECT d.Id, d.QuotationMasterId, d.VillaId, d.FromDate, d.ToDate, d.Price, "
-        "d.CurrencyId, d.IsManual, m.Adult, m.Children "
+        "d.CurrencyId, d.IsManual, m.Adult, m.Children, "
+        "m.FromDate AS MasterFromDate, m.ToDate AS MasterToDate "
         "FROM VillaQuotationDetails d "
         "LEFT JOIN VillaQuotationMaster m ON m.Id = d.QuotationMasterId"
     )
@@ -747,6 +797,11 @@ class QuotationLineLoader(BaseLoader):
             return None
         date_from = row.get("FromDate")
         date_to = row.get("ToDate")
+        # GAP-108: fill a missing end from the master's stay dates (see the
+        # class docstring) — per field, so a half-dated line keeps the date it
+        # does have; a line with dates on neither side stays skipped.
+        date_from = date_from or row.get("MasterFromDate")
+        date_to = date_to or row.get("MasterToDate")
         if not (date_from and date_to):
             return None
         if hasattr(date_from, "date"):

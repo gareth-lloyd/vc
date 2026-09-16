@@ -98,6 +98,69 @@ def test_client_with_no_name_is_skipped() -> None:
     assert ClientLoader().transform(_client_row(FirstName="", LastName="")) is None
 
 
+# --- GAP-108 U8b: the nameless-client → enquiry-name fallback ---
+
+
+def test_nameless_client_takes_the_name_off_its_enquiry(db: None) -> None:
+    """From ~Nov-2025 ResProd writes VillaClientDetails with Email/CreatedBy only;
+    the customer's name lives on the VillaEnquire behind the client's quotation."""
+    kwargs = ClientLoader().transform(
+        _client_row(
+            FirstName="",
+            LastName="",
+            Email="ada@example.com",
+            MobileNo="07911123456",
+            EnquiryFirstName="Ada",
+            EnquiryLastName="Lovelace",
+        )
+    )
+    assert kwargs is not None
+    assert (kwargs["first_name"], kwargs["last_name"]) == ("Ada", "Lovelace")
+    # The client's OWN contact details still win — only the name is borrowed.
+    assert kwargs["_email"] == "ada@example.com"
+    assert kwargs["_phone"] == "+447911123456"
+
+
+def test_nameless_client_keeps_its_own_country(db: None) -> None:
+    from properties.models.geo import Country
+
+    kwargs = ClientLoader().transform(
+        _client_row(FirstName="", LastName="", CountryId=24, EnquiryFirstName="Ada")
+    )
+    assert kwargs is not None
+    assert kwargs["country"] == Country.objects.get(iso2="GB")
+
+
+def test_nameless_client_with_no_enquiry_name_is_still_skipped() -> None:
+    assert (
+        ClientLoader().transform(
+            _client_row(FirstName="", LastName="", EnquiryFirstName=None, EnquiryLastName="   ")
+        )
+        is None
+    )
+
+
+def test_named_client_ignores_the_enquiry_fallback() -> None:
+    kwargs = ClientLoader().transform(
+        _client_row(EnquiryFirstName="Grace", EnquiryLastName="Hopper")
+    )
+    assert kwargs is not None
+    assert (kwargs["first_name"], kwargs["last_name"]) == ("Ada", "Lovelace")
+
+
+def test_client_query_applies_the_lowest_id_named_live_enquiry() -> None:
+    query = ClientLoader.legacy_query
+    assert "OUTER APPLY" in query
+    assert "e.FirstName AS EnquiryFirstName" in query
+    assert "e.LastName AS EnquiryLastName" in query
+    # Live quotations, live enquiries, a name on the enquiry, lowest Id wins —
+    # the one-shot load must be deterministic.
+    assert "q.DeletedAt IS NULL" in query
+    assert "e.DeletedAt IS NULL" in query
+    assert "ORDER BY e.Id" in query
+    assert "n.EnquiryFirstName, n.EnquiryLastName" in query
+
+
 @pytest.mark.django_db
 def test_client_loader_writes_person_keyed_client_with_primary_children(db: None) -> None:
     """The loader writes a `client-{Id}` Person plus PRIMARY email/phone children."""

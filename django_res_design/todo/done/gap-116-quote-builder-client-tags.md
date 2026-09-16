@@ -1,14 +1,32 @@
 # GAP-116 — Quote builder does not show the client's tags
 
+> **✅ RESOLVED (2026-09-16)** — shipped on `feat/gap-116`; fast-forwarded into
+> local `main` (unpushed) at close-out. 5a253e7b: `EnquirySummaryHeader` reads
+> the linked client via `useContact(enquiry.person ?? undefined)` (disabled
+> when no person; same query key as the rail's `CustomerProfilePanel`) and
+> renders the existing read-only `RepeatBadge` + `TagChips` in its title row,
+> as the Proposed fix said. No serializer change, no new import-boundary edge
+> (`quotations → contacts` was already sanctioned). Both components return
+> `null` when empty, so no person / no tags / first-time customer / loading /
+> a failed read add no markup. vitest: tag chips, Repeat badge, no badge for a
+> first-time customer, no request without a person (spy handler — MSW's
+> `onUnhandledRequest: "error"` does **not** fail a vitest test, so absence
+> tests must prove it), no extra markup for an untagged first-timer, header
+> intact on a 404 contact read; `QuoteBuilder.test.tsx` gained a contacts
+> handler for its linked person. Guest-facing output is untouched:
+> `EnquirySummaryHeader` renders only in `QuoteBuilder`. `RepeatBadge` shows
+> its "N bookings" count text beside the reference; a compact variant was not
+> built (KISS) — revisit only if it reads badly in use.
+
 - **Severity:** 🟡 Gap (frontend). The tags exist and render elsewhere; the
   builder is the one screen where the sales team quotes without them.
 - **Source:** Owner request, 2026-09-16 ("show client tags on quote
   builder"). Two resolved tickets left this deferred, and no open ticket
   picked it up:
-  - [GAP-040](done/gap-040-customer-tags-taxonomy.md) banner: "**Deferred:**
+  - [GAP-040](gap-040-customer-tags-taxonomy.md) banner: "**Deferred:**
     read-only chips on the enquiry/quote client block". The original source
     was the mockup's **New Quote → client block**.
-  - [GAP-042](done/gap-042-customer-360-profile-view.md) banner: "**Deferred:**
+  - [GAP-042](gap-042-customer-360-profile-view.md) banner: "**Deferred:**
     … quote-builder inline embed (no rail)".
 - **Files touched (when built):**
   - `frontend/src/features/quotations/components/EnquirySummaryHeader.tsx`:

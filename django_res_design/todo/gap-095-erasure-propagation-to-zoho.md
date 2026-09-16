@@ -1,4 +1,11 @@
-# GAP-095 — Erasure does not propagate to Zoho CRM
+# GAP-095 — Guest data retention & erasure: the retention policy is unset, and erasure does not propagate to Zoho CRM
+
+> **Scope widened 2026-09-16 (todo consolidation):** absorbs **Q-010**
+> (guest data retention / GDPR — keep-forever-and-anonymise-on-request vs
+> auto-anonymise N years after the last booking) — see §"Merged from Q-010"
+> at the end. Q-010 decides *when* a person is anonymised; the body below
+> decides *how* that reaches the CRM. Two decisions, two parties (the owner
+> for the policy, Limitless for the mechanism), one ticket.
 
 - **Severity:** 🟠 Gap (compliance-adjacent; open design question spanning
   both sides of the integration). No code change until the mechanism is
@@ -113,12 +120,39 @@ roughly:
 
 ## Dependencies
 
-- **Q-010** (guest data retention / GDPR) — the retention policy this serves.
-  Q-010 asks *when* we anonymize; this asks *how* that reaches downstream
-  systems. Neither is answerable alone.
+- **Retention policy** (was Q-010, now §"Merged from Q-010" below) — the
+  policy this serves: it asks *when* we anonymize; this asks *how* that
+  reaches downstream systems. Neither is answerable alone.
 - **GAP-081** (outbound push) established the ANONYMIZED-skip and the
   enquiry-payload blanking that this ticket revisits.
 - **GAP-040** — the special-category tags that make add-only tagging a
   compliance problem rather than a tidiness one.
 - **Blocked on a decision with Limitless** (raised 2026-09-01; candidate
   agenda item for the next call). Not actionable until (a)/(b)/(c) is chosen.
+
+---
+
+## Merged from Q-010 — Guest data retention / GDPR
+
+> _Folded in 2026-09-16 (todo consolidation). The standalone ticket is closed as
+> [Q-010](done/q-010-guest-data-retention.md); the text below is that ticket as it stood, headings
+> demoted one level. A reference to Q-010 elsewhere now means this section._
+
+- **Severity:** Question
+- **Source:** `product-design/06-verification.md` open question 10
+- **Blocks:** `POST /guests/{id}:anonymize` endpoint, retention sweeper
+
+### Question
+
+`04-rest-api-surface.md` §2.17 lists `POST /guests/{id}:anonymize`.
+Confirm retention policy:
+
+- Default keep-forever, anonymise on request?
+- Auto-anonymise N years after last booking? (If so, what N — 3? 5?
+  7?)
+
+### Follow-up once answered
+
+- Anonymise service (already designed via `Contact.merge` pattern).
+- Sweeper Celery beat if auto-anonymise is in scope.
+- Document in `01-accounts.md`.

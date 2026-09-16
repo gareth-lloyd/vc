@@ -91,6 +91,8 @@ def test_pricing_quote_bulk_returns_all_requests(
     quotes = response.json()["quotes"]
     assert len(quotes) == 2
     assert all(q["available"] for q in quotes)
+    # GAP-114: every quote says whether it priced on owner-unconfirmed rates.
+    assert all(q["is_indicative"] is False for q in quotes)
 
 
 @pytest.mark.django_db

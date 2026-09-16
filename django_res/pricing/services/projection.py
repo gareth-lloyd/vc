@@ -346,6 +346,8 @@ class RateProjectionService:
                         nightly=apply_uplift(rule.nightly, factor),
                         weekly=apply_uplift(rule.weekly, factor),
                         is_poa=rule.is_poa,
+                        # GAP-114: a guide built from carried rates is still unconfirmed.
+                        is_indicative=rule.is_indicative,
                     )
                 )
             bands_by_period[period_id] = proj_bands

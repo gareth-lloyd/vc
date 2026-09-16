@@ -162,6 +162,9 @@ class PricingEngine:
         lines: list[QuoteLine] = []
         chosen_periods: dict[int, RatePeriod] = {}
         winning_period: RatePeriod | None = None
+        # GAP-114: any priced night on a carried (owner-unconfirmed) band makes
+        # the whole quote indicative. Fallback nights have no band — never count.
+        is_indicative = False
         for night in stay_nights:
             # Distinguish "no band for this night at all" from "bands exist
             # for this night but none match the party size". The legacy
@@ -214,6 +217,7 @@ class PricingEngine:
                 )
             )
             chosen_periods[period.pk] = period
+            is_indicative = is_indicative or rule.is_indicative
             if winning_period is None:  # first real (non-fallback) night
                 winning_period = period
 
@@ -385,6 +389,9 @@ class PricingEngine:
             # into the booking snapshot.
             "is_projected": context.is_projected,
             "projection": context.projection,
+            # GAP-114: staff-only warning — priced (wholly or partly) on rates
+            # copied forward but not yet confirmed by the owner.
+            "is_indicative": is_indicative,
             # Plan/card metadata the quote builder renders on each result line.
             # All in memory already — adding them costs no extra queries.
             # `inclusion` is derived from the property's date-banded
@@ -431,6 +438,7 @@ class PricingEngine:
             total_before_reduction=total_before_reduction,
             changeover_shifted_from=changeover_shifted_from,
             is_projected=context.is_projected,
+            is_indicative=is_indicative,
             breakdown=breakdown,
         )
 

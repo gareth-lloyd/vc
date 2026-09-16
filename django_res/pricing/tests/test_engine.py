@@ -1678,3 +1678,81 @@ def test_discount_applies_to_reduced_subtotal(
     assert quote.total == Decimal("945.00")
     # Before-total: un-reduced subtotal minus the SAME discount amount.
     assert quote.total_before_reduction == Decimal("1295.00")
+
+
+# --- GAP-114: indicative (carried, owner-unconfirmed) rates ------------------
+
+
+@pytest.mark.django_db
+def test_quote_on_confirmed_rates_is_not_indicative(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        party=4,
+        currency=gbp,
+    )
+    assert quote.is_indicative is False
+    assert quote.breakdown["is_indicative"] is False
+
+
+@pytest.mark.django_db
+def test_quote_is_indicative_when_any_night_uses_an_indicative_band(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
+) -> None:
+    """Wholly *or partly* on carried rates: one indicative night of seven flags it."""
+    carried = _rule(
+        plan,
+        date_from=date(2026, 9, 1),
+        date_to=date(2026, 9, 30),
+        nightly=Decimal("180.00"),
+        is_indicative=True,
+    )
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 8, 26),
+        date_to=date(2026, 9, 2),  # Aug 26-31 confirmed, Sep 1 indicative
+        party=4,
+        currency=gbp,
+    )
+    assert [ln.band_id for ln in quote.lines] == [rule.pk] * 6 + [carried.pk]
+    assert quote.is_indicative is True
+    assert quote.breakdown["is_indicative"] is True
+
+
+@pytest.mark.django_db
+def test_fallback_nights_never_make_a_quote_indicative(
+    property_: Property, gbp: Currency, plan: RatePlan, rule: RateBand
+) -> None:
+    plan.fallback_nightly = Decimal("150.00")
+    plan.save(update_fields=["fallback_nightly"])
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2026, 8, 30),
+        date_to=date(2026, 9, 2),  # Sep 1 priced by the fallback
+        party=4,
+        currency=gbp,
+    )
+    assert any(ln.band_id is None for ln in quote.lines)
+    assert quote.is_indicative is False
+
+
+@pytest.mark.django_db
+def test_projected_quote_from_indicative_anchor_is_also_indicative(
+    property_: Property, gbp: Currency, rule: RateBand
+) -> None:
+    """A guide built from a carried grid is both projected and indicative."""
+    rule.is_indicative = True
+    rule.save(update_fields=["is_indicative"])
+    quote = PricingEngine.quote(
+        property=property_,
+        date_from=date(2028, 7, 4),
+        date_to=date(2028, 7, 11),
+        party=4,
+        currency=gbp,
+    )
+    assert quote.is_projected is True
+    assert quote.is_indicative is True
+    assert quote.breakdown["is_indicative"] is True

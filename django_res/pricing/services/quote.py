@@ -96,4 +96,7 @@ class Quote:
     # prior year's rates — a guide rate, not a confirmed price. The provenance
     # lives in `breakdown["projection"]`.
     is_projected: bool = False
+    # GAP-114: True when any priced (non-fallback) night used a band whose
+    # rates were carried forward but not confirmed by the owner.
+    is_indicative: bool = False
     breakdown: dict[str, Any] = field(default_factory=dict)

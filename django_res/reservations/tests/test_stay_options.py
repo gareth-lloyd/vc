@@ -161,6 +161,7 @@ class TestStayOptionsSearch:
         )
         assert result["available"] is True
         assert result["total"] == "1400.00"
+        assert result["is_indicative"] is False  # GAP-114: via the breakdown spread
         assert result["date_from"] == "2026-07-04"
         assert result["stay_options"] == [
             {

@@ -250,6 +250,7 @@
     "stays_more_one": "+{{count}} more past stay not shown",
     "stays_more_other": "+{{count}} more past stays not shown",
     "stays_year_unknown": "Year unknown",
+    "stays_amount_as_recorded": "{{amount}} as recorded",
     "empty": "No customer linked."
   }
 }

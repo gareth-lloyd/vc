@@ -282,7 +282,9 @@ export const contactBookingHistoryResponseSchema = paginated(contactBookingHisto
 // GAP-089: `/contacts/{id}/past-stays` — historic stays from the spreadsheet
 // import (mirrors ContactPastStaySerializer). `property` (pk) + `property_name`
 // are set when the importer matched the villa name, else null and the row
-// falls back to the sheet's `villa_name` text.
+// falls back to the sheet's `villa_name` text. GAP-113: `date_from`/`date_to`
+// (both or neither) and `amount` (decimal string) from the legacy archive;
+// `currency_code` null = legacy recorded no currency.
 export const contactPastStaySchema = z.object({
   id: z.number(),
   booking_number: z.string(),
@@ -292,6 +294,10 @@ export const contactPastStaySchema = z.object({
   destination: z.string(),
   year: z.number().nullable(),
   notes: z.string(),
+  date_from: z.string().nullable(),
+  date_to: z.string().nullable(),
+  amount: z.string().nullable(),
+  currency_code: z.string().nullable(),
 });
 export type ContactPastStay = z.infer<typeof contactPastStaySchema>;
 

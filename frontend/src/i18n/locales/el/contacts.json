@@ -250,6 +250,7 @@
     "stays_more_one": "+{{count}} προηγούμενη διαμονή που δεν εμφανίζεται",
     "stays_more_other": "+{{count}} προηγούμενες διαμονές που δεν εμφανίζονται",
     "stays_year_unknown": "Άγνωστο έτος",
+    "stays_amount_as_recorded": "{{amount}} όπως καταγράφηκε",
     "empty": "Δεν έχει συνδεθεί πελάτης."
   }
 }

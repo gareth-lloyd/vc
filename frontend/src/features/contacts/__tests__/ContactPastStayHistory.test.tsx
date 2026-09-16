@@ -20,6 +20,10 @@ const STAYS = {
       destination: "Corfu",
       year: 2023,
       notes: "",
+      date_from: null,
+      date_to: null,
+      amount: null,
+      currency_code: null,
     },
     {
       id: 2,
@@ -30,6 +34,10 @@ const STAYS = {
       destination: "",
       year: null,
       notes: "CANCELLED",
+      date_from: null,
+      date_to: null,
+      amount: null,
+      currency_code: null,
     },
   ],
 };
@@ -56,6 +64,63 @@ describe("ContactPastStayHistory", () => {
     expect(screen.getByText("Casa Nowhere")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Casa Nowhere" })).not.toBeInTheDocument();
     expect(screen.getByText(/year unknown/i)).toBeInTheDocument();
+  });
+
+  it("shows exact dates and the recorded amount for archive-dated stays", async () => {
+    const base = STAYS.results[1];
+    server.use(
+      http.get("/api/v1/contacts/56/past-stays", () =>
+        HttpResponse.json({
+          count: 2,
+          next: null,
+          previous: null,
+          results: [
+            {
+              ...base,
+              id: 3,
+              villa_name: "Villa Dated",
+              booking_number: "BN1067a",
+              year: 2025,
+              date_from: "2025-08-03",
+              date_to: "2025-08-10",
+              amount: "4250.00",
+              currency_code: "GBP",
+            },
+            {
+              ...base,
+              id: 4,
+              villa_name: "Villa No Currency",
+              year: 2024,
+              date_from: "2024-06-01",
+              date_to: "2024-06-08",
+              amount: "1800.00",
+              currency_code: null,
+            },
+          ],
+        }),
+      ),
+    );
+
+    renderWithProviders(<ContactPastStayHistory contactId={56} />);
+    await userEvent.click(await screen.findByRole("button", { name: /toggle past stays/i }));
+
+    // Dates replace the bare year; the amount carries its currency when known…
+    expect(await screen.findByText(/3–10 Aug 2025 · BN1067a/)).toBeInTheDocument();
+    expect(screen.queryByText(/^2025/)).not.toBeInTheDocument();
+    expect(screen.getByText("£4,250.00 as recorded")).toBeInTheDocument();
+    // …and is a plain number when legacy recorded no currency (never guessed).
+    expect(screen.getByText(/1–8 Jun 2024/)).toBeInTheDocument();
+    expect(screen.getByText("1,800.00 as recorded")).toBeInTheDocument();
+  });
+
+  it("shows no amount for stays without one", async () => {
+    server.use(http.get("/api/v1/contacts/57/past-stays", () => HttpResponse.json(STAYS)));
+
+    renderWithProviders(<ContactPastStayHistory contactId={57} />);
+    await userEvent.click(await screen.findByRole("button", { name: /toggle past stays/i }));
+
+    expect(await screen.findByText("Casa Nowhere")).toBeInTheDocument();
+    expect(screen.queryByText(/as recorded/i)).not.toBeInTheDocument();
   });
 
   it("shows the empty state when the contact has no past stays", async () => {

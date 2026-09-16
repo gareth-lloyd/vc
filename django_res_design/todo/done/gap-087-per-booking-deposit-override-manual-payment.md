@@ -105,6 +105,6 @@ into the full carry-over flow.
 
 ## Dependencies
 
-- None hard. Coordinates: [GAP-077 ✅](done/gap-077-deposit-balance-gross-net-split.md)
+- None hard. Coordinates: [GAP-077 ✅](gap-077-deposit-balance-gross-net-split.md)
   (splits must keep deriving correctly), GAP-085 (Zoho financials read the
   same source), GAP-086 (finance tab shows the same figures).

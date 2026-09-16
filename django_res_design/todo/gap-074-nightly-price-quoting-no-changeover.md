@@ -71,7 +71,7 @@ today.
 3. Extend the quote line + render context so a saved nightly-range line emails
    as "Available DD Mon – DD Mon · £X / night" (multi-band → multiple lines),
    grouped under the flexible/nightly section from
-   [GAP-078](gap-078-quote-property-ordering-country-region.md).
+   [GAP-078](done/gap-078-quote-property-ordering-country-region.md).
 4. Presentation decision (product): standardise all options in an email to one
    style, or show a weekly-block vs nightly section break (see GAP-078).
 

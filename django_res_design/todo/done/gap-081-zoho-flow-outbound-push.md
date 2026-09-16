@@ -19,7 +19,7 @@
 > Webhook URLs are env vars (`ZOHO_FLOW_WEBHOOK_*`) — the zapikey is the
 > credential, never committed, and the `httpx` logger is pinned WARNING so
 > URLs never hit logs. **Scope changes:** villa push descoped to
-> [GAP-082](../gap-082-zoho-villa-push.md) (user decision 2026-07-23);
+> [GAP-082](gap-082-zoho-villa-push.md) (user decision 2026-07-23);
 > booking push stays dormant until the ~Sept booking build (env key
 > reserved). **Accepted residuals:** merge-absorbed persons and other
 > deletions leave orphaned CRM records (no delete endpoint by contract; live
@@ -171,12 +171,12 @@ August. Progress check-in booked for Mon 2026-07-27.
 
 ## Dependencies
 
-- [GAP-028](gap-028-admin-integrations-surface.md) — the admin
+- [GAP-028](../gap-028-admin-integrations-surface.md) — the admin
   `/system/integrations` read surface over `SyncRecord`/`SyncRun` rows this
   work produces; its `OAuthCredential` CRUD half is likely mooted for Zoho
   (note added there).
-- [GAP-002 ✅](done/gap-002-integrations-empty-url-surface.md) /
-  [Q-003 ✅](done/q-003-channel-sync-scope.md) — the old "Zoho webhook,
+- [GAP-002 ✅](gap-002-integrations-empty-url-surface.md) /
+  [Q-003 ✅](q-003-channel-sync-scope.md) — the old "Zoho webhook,
   slice 2" lineage; that was a different (inbound/channel-sync) scope and was
   deferred, not built. This ticket is the outbound push.
 - `design/backend/08-integrations.md` — **supersedes** its OAuth

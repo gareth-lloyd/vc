@@ -1,7 +1,7 @@
 # GAP-068 — Seed group finance/settings defaults + new-villa starter set
 
 > **❌ DROPPED (2026-07-06) — superseded by
-> [GAP-070](done/gap-070-remove-groups-global-property-defaults.md), now landed
+> [GAP-070](gap-070-remove-groups-global-property-defaults.md), now landed
 > (local `main` unpushed).** GAP-070 dropped property groups and runtime inheritance,
 > so there is no `GroupFinance`/`GroupSettings` left to seed. The confirmed default
 > **values** here (deposit 30% / SD fixed / commission % / 16:30 / 10:30) carried
@@ -12,7 +12,7 @@
 - **Severity:** Build (seeding) — carries the group-defaults half of the
   superseded **Q-021**
 - **Source:** 2026-06-11 new-villa setup transcript / email round; split out of
-  Q-021 when its feature-taxonomy half became [GAP-067](gap-067-room-feature-taxonomy-cleanup.md)
+  Q-021 when its feature-taxonomy half became [GAP-067](../gap-067-room-feature-taxonomy-cleanup.md)
 - **Files:** `properties/models/finance.py` (`GroupFinance`),
   `properties/models/settings.py` (`GroupSettings`), seeding entrypoints
   (`manage.py seed_dev`, production seed/cutover), a test on the `effective_*`

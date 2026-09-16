@@ -91,7 +91,7 @@ Line references are into `legacy/workflows/…` as of the reorg.
     schedule status changes. `09-booking/payment-schedule.md:71`,
     `10-payment/payment-collection.md:138`; plus transactional save of checkout
     personal info `10-payment/checkout-flow.md:62`. *(2026-07-29: overlaps
-    [GAP-087](gap-087-per-booking-deposit-override-manual-payment.md) step 2
+    [GAP-087](done/gap-087-per-booking-deposit-override-manual-payment.md) step 2
     — the manual-payment notes/reference convention; consider promoting this
     item into that ticket when it's picked up.)*
 20. **Concierge diff-patch + 4th schedule tier** — concierge save semantics and

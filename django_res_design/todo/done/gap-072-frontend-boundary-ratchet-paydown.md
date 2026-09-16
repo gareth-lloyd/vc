@@ -103,8 +103,8 @@ allowlist entries:
 
 ## Dependencies
 
-- Builds on [GAP-063](done/gap-063-frontend-feature-coupling-and-cycles.md)
+- Builds on [GAP-063](gap-063-frontend-feature-coupling-and-cycles.md)
   (✅ resolved — contract + first four cycles).
 - The `src/lib/domain/` lifts should coordinate with
-  [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md) so shared
+  [GAP-062](../gap-062-frontend-schema-contract-drift-no-codegen.md) so shared
   shapes are extracted once.

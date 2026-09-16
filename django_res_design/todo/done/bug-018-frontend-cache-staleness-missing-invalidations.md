@@ -108,7 +108,7 @@ by accident — see the note.)
 
 ## Dependencies
 
-- Overlaps [REFACTOR-001](refactor-001-frontend-boilerplate-consolidation.md)
+- Overlaps [REFACTOR-001](../refactor-001-frontend-boilerplate-consolidation.md)
   (the optimistic-update / shared-hook cleanup) — the invalidation map is the
   data-fetching half of the same "stop copy-pasting cache logic" theme; land
   the map here since it fixes live bugs, fold the boilerplate there.

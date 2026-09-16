@@ -1009,6 +1009,8 @@ def test_documented_expected_gaps_are_encoded() -> None:
         "RatePlan (villas with a loaded regime)": 0,
         "RatePlan non-GROSS basis (must be 0)": 0,
         "PropertyService": 0,
+        # GAP-114: 218 shadowed carried sources - 2 occ-fb - 21 #seg (ResProd 16-Sep-2026)
+        "RateBand indicative (CarriedRates)": 195,
         "RateBand non-POA priced <= 0 (must be 0)": 0,
         "RateBand unapproved imported (must be 0)": 0,
         "Extra": 0,
@@ -1065,8 +1067,12 @@ def test_currency_eur_check_reports_the_claiming_legacy_id(
     assert "Code = 'EUR'" in check.legacy_query
 
 
+def _check_by_label(label: str) -> _Check:
+    return next(c for c in reconcile_legacy._CHECKS if c.label == label)
+
+
 def _check(label: str) -> _Check:
-    check = next(c for c in reconcile_legacy._CHECKS if c.label == label)
+    check = _check_by_label(label)
     assert check.legacy_query == "SELECT 0"
     assert check.expected_gap == 0
     assert check.loaded_count is not None
@@ -1133,6 +1139,29 @@ def test_rate_band_value_checks_count_imported_bands_only() -> None:
     assert priced.loaded_count(priced.model) == 2  # type: ignore[misc]
     unapproved = _check("RateBand unapproved imported (must be 0)")
     assert unapproved.loaded_count(unapproved.model) == 1  # type: ignore[misc]
+
+
+@pytest.mark.django_db
+def test_rate_band_indicative_check_counts_imported_indicative_bands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GAP-114: carried rates load as `is_indicative`; only imported bands
+    count — a staff carry-forward (also indicative) never moves the gap."""
+    from pricing.factories import RateBandFactory
+    from pricing.models import RateBand
+
+    RateBandFactory(legacy_id="1", is_indicative=True)  # counted
+    RateBandFactory(legacy_id="2", is_indicative=False)  # confirmed
+    RateBandFactory(is_indicative=True)  # staff carry-forward
+
+    check = _check_by_label("RateBand indicative (CarriedRates)")
+    assert check.model is RateBand
+    assert check.loaded_count is not None
+    assert check.loaded_count(check.model) == 1
+
+    # Keyed on the full query: it shares every needle with the RateBand check.
+    _patch(monkeypatch, [check], responses={check.legacy_query: 1 + check.expected_gap})
+    assert "BLOCKER" not in _run()
 
 
 @pytest.mark.django_db
@@ -1234,8 +1263,9 @@ def test_every_villa_master_query_uses_the_live_villa_filter() -> None:
     villa_queries = [q for q in queries if "VillaMaster" in q]
     # 5 + GAP-108 U6: Location / Capacity / Settings / Description /
     # RoomBeds / PropertyService; + GAP-108 U8c: RateBand, whose legacy query
-    # now counts the loader's own source universe rather than every rate row.
-    assert len(villa_queries) == 12
+    # now counts the loader's own source universe rather than every rate row;
+    # + GAP-114: its CarriedRates slice.
+    assert len(villa_queries) == 13
     for query in villa_queries:
         # `FROM VillaMaster WHERE …` (no alias), `JOIN VillaMaster m ON …` or
         # `FROM VillaMaster m LEFT JOIN …`.
@@ -1535,6 +1565,7 @@ _LOADER_CHECKS: dict[str, list[str]] = {
     ],
     "rate_rule": [
         "RateBand",
+        "RateBand indicative (CarriedRates)",
         "RateBand non-POA priced <= 0 (must be 0)",
         "RateBand unapproved imported (must be 0)",
         _NIGHT_PARITY,
@@ -1657,6 +1688,27 @@ def test_rate_band_check_counts_the_loaders_source_universe() -> None:
     # (`PRICED_ROW_PREDICATE` has its own bare `= 1`, hence the count of 2
     # rather than an absence check.)
     assert query.count("ISNULL(r.IsOccupationPrice, 0) = 1") == 2
+
+
+def test_rate_band_indicative_check_is_the_rate_band_universe_on_carried_seasons() -> None:
+    """GAP-114: the indicative slice must be the RateBand universe with the
+    CarriedRates predicate on BOTH halves (parents and occupancy children) and
+    nothing else — composed, not a hand-rolled copy that can drift."""
+    from data_migration.loaders.pricing import PRICED_ROW_PREDICATE
+
+    rate_band = _check_by_label("RateBand").legacy_query
+    query = _check_by_label("RateBand indicative (CarriedRates)").legacy_query
+
+    predicate = reconcile_legacy.CARRIED_RATES_PREDICATE
+    # NULL-safe spelling pinned on purpose: the column is a nullable ResProd
+    # bit and the loader reads NULL as "not carried".
+    assert predicate == "ISNULL(s.CarriedRates, 0) = 1"
+    # Once per half, at the top-level WHERE right after the row predicate — not
+    # spliced into the correlated occupancy EXISTS, where it would silently
+    # count every non-carried occupancy parent as a plain parent.
+    assert query.count(f"{PRICED_ROW_PREDICATE} AND {predicate}") == 2
+    assert query.count(predicate) == 2
+    assert query.replace(f" AND {predicate}", "") == rate_band
 
 
 @pytest.mark.django_db

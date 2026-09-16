@@ -126,6 +126,30 @@ _RB_SRC = (
     f"JOIN VillaMaster m ON m.Id = s.VillaId AND {live_villa_sql('m.')} "
 )
 
+
+def _rate_band_source_sql(extra_predicate: str = "") -> str:
+    """COUNT of the RateBand loader's source universe (see the RateBand check):
+    non-occupancy priced parents + valid occupancy children. `extra_predicate`
+    narrows BOTH halves to a slice of that same universe (GAP-114: the carried
+    seasons), so a slice check can never drift from the whole."""
+    narrow = f" AND {extra_predicate}" if extra_predicate else ""
+    return (
+        f"SELECT (SELECT COUNT(*) {_RB_SRC}"
+        f" WHERE {PRICED_ROW_PREDICATE}{narrow}"
+        " AND NOT (ISNULL(r.IsOccupationPrice, 0) = 1 AND EXISTS"
+        f"  (SELECT 1 FROM VillaOccupencyPrice o"
+        f"   WHERE o.VillaSeasonRateId = r.ID AND {VALID_OCCUPANCY_BAND_PREDICATE})))"
+        f" + (SELECT COUNT(*) {_RB_SRC}"
+        f"   JOIN VillaOccupencyPrice o ON o.VillaSeasonRateId = r.ID"
+        f"   WHERE {PRICED_ROW_PREDICATE}{narrow} AND ISNULL(r.IsOccupationPrice, 0) = 1"
+        f"   AND {VALID_OCCUPANCY_BAND_PREDICATE})"
+    )
+
+
+# GAP-114: `VillaSeason.CarriedRates` is a nullable ResProd-only bit; the
+# loader reads NULL as "not carried".
+CARRIED_RATES_PREDICATE = "ISNULL(s.CarriedRates, 0) = 1"
+
 Span = tuple[date, date]
 
 
@@ -853,14 +877,7 @@ _CHECKS: list[_Check] = [
         # schema, and a bare `NOT (r.IsOccupationPrice = 1 AND ...)` evaluates
         # UNKNOWN on a NULL, dropping the row from BOTH subqueries while the
         # loader (a falsy `parent.get(...)`) loads it as a base-weekly row.
-        f"SELECT (SELECT COUNT(*) {_RB_SRC}"
-        f" WHERE {PRICED_ROW_PREDICATE} AND NOT (ISNULL(r.IsOccupationPrice, 0) = 1 AND EXISTS"
-        f"  (SELECT 1 FROM VillaOccupencyPrice o"
-        f"   WHERE o.VillaSeasonRateId = r.ID AND {VALID_OCCUPANCY_BAND_PREDICATE})))"
-        f" + (SELECT COUNT(*) {_RB_SRC}"
-        f"   JOIN VillaOccupencyPrice o ON o.VillaSeasonRateId = r.ID"
-        f"   WHERE {PRICED_ROW_PREDICATE} AND ISNULL(r.IsOccupationPrice, 0) = 1"
-        f"   AND {VALID_OCCUPANCY_BAND_PREDICATE})",
+        _rate_band_source_sql(),
         RateBand,
         "RateBand",
         # Pinned on ResProd (13-Aug-2026) by replaying the loader's own pipeline;
@@ -884,6 +901,34 @@ _CHECKS: list[_Check] = [
         # (which `_load_rows` does not currently surface — a source lost there
         # would break this identity silently), and `_row_to_band` rejections.
         expected_gap=462,
+    ),
+    _Check(
+        # GAP-114: carried (copied-forward, owner-unconfirmed) rates survive as
+        # `RateBand.is_indicative`. Legacy side = the RateBand universe above
+        # narrowed to rows on a `CarriedRates` season; loaded side = imported
+        # indicative bands (a staff carry-forward has no legacy_id). The gap is
+        # the RateBand gap's pipeline terms restricted to carried sources.
+        _rate_band_source_sql(CARRIED_RATES_PREDICATE),
+        RateBand,
+        "RateBand indicative (CarriedRates)",
+        # Pinned on ResProd (16-Sep-2026) by replaying the loader's pipeline
+        # (same replay as the RateBand check); zero residual. Legacy 1 616 =
+        # 1 465 non-occupancy parents + 151 valid occupancy children on the 198
+        # flagged seasons. Loaded 1 421. Itemised:
+        #   + 218  flattener-shadowed carried sources (206 parents + 12
+        #          occupancy children) — of the RateBand check's 495
+        #   -   2  synthetic `occ-fb-*` fallbacks minted under a carried parent
+        #          (of 8; a `dict(parent)` copy inherits the flag)
+        #   -  21  `#seg` fragments of carried sources (of 25 — the copied-
+        #          forward grids are where sibling seasons overlap most)
+        #   = 195
+        # Cross-checks: 1 616 - 218 = 1 398 loaded carried sources; + 2 + 21 =
+        # 1 421 indicative rows. The 57 carried rows `_row_to_band` rejects
+        # (of 293) are capacity-emptied fallbacks, outside this universe.
+        expected_gap=195,
+        loaded_count=lambda m: m._default_manager.filter(
+            legacy_id__isnull=False, is_indicative=True
+        ).count(),
     ),
     _Check(
         # BUG-028: legacy quotes treat a 0.00 (or negative) price as absent, so

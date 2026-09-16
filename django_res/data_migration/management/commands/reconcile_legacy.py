@@ -42,7 +42,8 @@ from accounts.enums import OrgType
 from accounts.models import Organisation, Person, User
 from accounts.models.person import PersonEmail, PersonPhone
 from core.console import render_table
-from data_migration.legacy_db import legacy_cursor
+from data_migration.archive_stays import ARCHIVE_ROWS_SQL, classify, group_rows
+from data_migration.legacy_db import legacy_cursor, rows_as_dicts
 from data_migration.loaders._util import legacy_active_sql, legacy_deleted_sql, live_villa_sql
 from data_migration.loaders.availability import AVAILABILITY_LEGACY_PREFIX
 from data_migration.loaders.integrations import SyncRecordZohoLoader, zoho_id_column_exists
@@ -1217,6 +1218,7 @@ class Command(BaseCommand):
         with legacy_cursor() as cursor:
             blockers += self._row_count_section(cursor)
             blockers += self._night_parity_section(cursor)
+            blockers += self._archive_stay_section(cursor)
             if options["integrations"]:
                 blockers += self._zoho_continuity_section(cursor)
                 self._wordpress_info_section(cursor)
@@ -1273,6 +1275,52 @@ class Command(BaseCommand):
             f"RatePeriod night parity: villa {v} legacy {want} nights, loaded {have}"
             for v, want, have in mismatches
         ]
+
+    def _archive_stay_section(self, cursor: Any) -> list[str]:
+        """GAP-113: classify the live `VillaArchiveBookings` stays against the
+        loaded PastStays, as `import_archive_stays` does. Any stay still to
+        `enrich` or `create` blocks, as does a live row that cannot even be
+        parsed: that stay is missing from its guest's history. Either the import
+        was skipped, or it reported the stay (`person_ambiguous` /
+        `person_inactive` / a row error) and nobody resolved it — fix the data,
+        or land it by hand as `archive-stay-<Id>` (CUTOVER.md). The skip
+        categories depend on the sheet, so they are shown, never pinned."""
+        cursor.execute(ARCHIVE_ROWS_SQL)
+        grouped = group_rows(list(rows_as_dicts(cursor)))
+        results = classify(grouped.stays)
+        by_category: dict[str, list[str]] = {}
+        if grouped.test_row_ids:
+            by_category["test_row"] = [str(i) for i in grouped.test_row_ids]
+        for result in results:
+            ids = "/".join(str(i) for i in result.stay.member_ids)
+            by_category.setdefault(result.category, []).append(ids)
+        self.stdout.write(
+            "\nArchive stays (VillaArchiveBookings → PastStay, import_archive_stays):"
+        )
+        pending = {"enrich", "create"}
+        self.stdout.write(
+            render_table(
+                ("category", "stays", "status"),
+                [
+                    (category, len(ids), "BLOCKER" if category in pending else "OK")
+                    for category, ids in sorted(by_category.items())
+                ]
+                or [("-", 0, "OK")],
+            )
+        )
+        blockers = [
+            f"Archive stays to {category} (import_archive_stays): {len(stays)} — "
+            + ", ".join(stays[:10])
+            + (f", +{len(stays) - 10} more" if len(stays) > 10 else "")
+            for category in sorted(pending)
+            if (stays := by_category.get(category))
+        ]
+        if grouped.errors:
+            blockers.append(
+                "Archive rows that cannot land (import_archive_stays): "
+                + ", ".join(f"{legacy_id} {message}" for legacy_id, message in grouped.errors)
+            )
+        return blockers
 
     def _zoho_continuity_section(self, cursor: Any) -> list[str]:
         """Per Zoho source: backfilled SyncRecord vs the legacy rows that need one.

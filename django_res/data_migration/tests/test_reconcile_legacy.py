@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
+from datetime import datetime
 from io import StringIO
 from typing import cast
 
@@ -31,6 +32,7 @@ from properties.models.property import Property
 from reservations.factories import EnquiryFactory
 from reservations.models.booking import Booking
 from reservations.models.enquiry import Enquiry
+from reservations.models.past_stay import PastStay
 
 
 class _FakeCursor:
@@ -67,6 +69,17 @@ class _FakeCursor:
         assert isinstance(self._last, list), "fetchall() called on a scalar response"
         return [v if isinstance(v, tuple) else (v,) for v in self._last]
 
+    # `rows_as_dicts` shape: a scripted list of dicts (the archive-stay rows)
+    # is served as columns + tuples.
+    @property
+    def description(self) -> list[tuple[str]]:
+        assert isinstance(self._last, list)
+        return [(key,) for key in (self._last[0] if self._last else {})]
+
+    def __iter__(self) -> Iterator[tuple[object, ...]]:
+        assert isinstance(self._last, list)
+        return iter([tuple(row.values()) for row in self._last])
+
 
 def _patch(
     monkeypatch: pytest.MonkeyPatch,
@@ -77,6 +90,7 @@ def _patch(
     # it see an empty legacy side (no villas → no mismatches).
     responses = {**responses}
     responses.setdefault(reconcile_legacy.NIGHT_PARITY_QUERY, [])
+    responses.setdefault("VillaArchiveBookings", [])
 
     @contextmanager
     def _fake_cursor() -> Iterator[_FakeCursor]:
@@ -1799,3 +1813,96 @@ def test_property_contact_assignment_check_counts_mapping_role_composites() -> N
     assert "LEFT JOIN VillaContactRoleMapping r" in check.legacy_query
     assert "COUNT(DISTINCT CONCAT(m.Id, '-', ISNULL(r.RoleId, 0)))" in check.legacy_query
     assert check.expected_gap == 6
+
+
+# --- GAP-113: archive stays landed by `import_archive_stays` ------------------
+
+
+def _archive_row(**overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "Id": 100,
+        "FromDate": datetime(2025, 8, 3),
+        "ToDate": datetime(2025, 8, 10),
+        "Amount": None,
+        "CurrencyId": 0,
+        "VillaId": 42,
+        "VillaName": "Villa Yeraki",
+        "Notes": "BN1063",
+        "FirstName": "Tom",
+        "LastName": "Coopersmith",
+        "Email": "",
+    }
+    row.update(overrides)
+    return row
+
+
+@pytest.mark.django_db
+def test_archive_stays_not_yet_landed_are_blockers(monkeypatch: pytest.MonkeyPatch) -> None:
+    person = Person.objects.create(first_name="Ann", last_name="Lee")
+    PastStay.objects.create(
+        person=person,
+        legacy_id="sheet-stay-0000000000000001",
+        booking_number="BN1063",
+        villa_name="Yeraki",
+        year=2025,
+    )
+    rows = [_archive_row(), _archive_row(Id=101, Notes="BN2000", LastName="Other")]
+    _patch(monkeypatch, [], responses={"VillaArchiveBookings": rows})
+
+    with pytest.raises(CommandError, match="2 reconcile blocker") as exc:
+        _run()
+
+    assert "Archive stays to enrich (import_archive_stays): 1 — 100" in str(exc.value)
+    assert "Archive stays to create (import_archive_stays): 1 — 101" in str(exc.value)
+
+
+@pytest.mark.django_db
+def test_many_pending_archive_stays_are_summarised(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [_archive_row(Id=i, Notes=f"BN{i}", LastName=f"Guest{i}") for i in range(1, 13)]
+    _patch(monkeypatch, [], responses={"VillaArchiveBookings": rows})
+
+    with pytest.raises(CommandError) as exc:
+        _run()
+
+    assert "to create (import_archive_stays): 12 — 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, +2 more" in str(
+        exc.value
+    )
+
+
+@pytest.mark.django_db
+def test_landed_and_reported_archive_stays_do_not_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    person = Person.objects.create(first_name="Ann", last_name="Lee")
+    PastStay.objects.create(
+        person=person, legacy_id="archive-stay-101", villa_name="Yeraki", year=2025
+    )
+    PastStay.objects.create(
+        person=person,
+        legacy_id="sheet-stay-0000000000000001",
+        booking_number="BN1063",
+        villa_name="Yeraki",
+        year=2019,
+    )
+    rows = [_archive_row(), _archive_row(Id=101, Notes="BN2000", LastName="Other")]
+    _patch(monkeypatch, [], responses={"VillaArchiveBookings": rows})
+
+    output = _run()
+
+    assert "Archive stays" in output and "BLOCKER" not in output
+    assert "bn_year_conflict" in output and "exists" in output
+
+
+@pytest.mark.django_db
+def test_unparseable_archive_rows_block_but_the_test_row_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [_archive_row(Id=5, FromDate=None), _archive_row(Id=297)]
+    _patch(monkeypatch, [], responses={"VillaArchiveBookings": rows})
+
+    with pytest.raises(CommandError, match="1 reconcile blocker") as exc:
+        _run()
+
+    assert "Archive rows that cannot land (import_archive_stays): 5 missing FromDate" in str(
+        exc.value
+    )

@@ -1,5 +1,11 @@
 # GAP-075 — Per-quote-line ad-hoc flexible stay (min-nights + nightly)
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-074](../gap-074-nightly-price-quoting-no-changeover.md)** as
+> §"Merged from GAP-075". GAP-075 reuses GAP-074's nightly-range renderer and engine path and cannot start before it; it is the same surface with a per-line switch. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** 🟢 Gap (new per-line override). Cross-stack.
 - **Source:** 2026-07-08 Nick / Gareth res-rebuild call. Nick: even villas with
   an official fixed changeover will, late in the season or when gaps appear,
@@ -30,7 +36,7 @@ no nightly rate, no min-nights, no date-range semantics.
 
 - Add an operator affordance on a fixed-changeover result to "quote flexibly"
   for this stay: sets a per-line flag + min-nights, then prices via the
-  [GAP-074](gap-074-nightly-price-quoting-no-changeover.md) nightly-range path
+  [GAP-074](../gap-074-nightly-price-quoting-no-changeover.md) nightly-range path
   within the true available window (respecting the ad-hoc min-nights, not the
   property changeover).
 - Persist the flag + min-nights on `QuotationLine` (nullable, default off) so

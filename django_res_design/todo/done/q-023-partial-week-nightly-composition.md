@@ -1,5 +1,11 @@
 # Q-023 — Partial-week / nightly price composition for odd-length stays
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-074](../gap-074-nightly-price-quoting-no-changeover.md)** as
+> §"Merged from Q-023". Q-023's composition rule is what GAP-074/075 render, and its D1–D3 confirmations were already moved onto GAP-074's owner call (2026-07-29). Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** Question (pricing correctness for non-whole-week stays).
 - **Source:** 2026-06-17 owner Loom (pricing walkthrough, 3:21–4:01).
 - **Files:**
@@ -16,8 +22,8 @@
 > path (nightly-range quoting for no-changeover / ad-hoc-flexible villas);
 > this ticket's D1–D3 confirmation questions should ride the GAP-074
 > owner/Debbie call rather than a separate ask — see
-> [gap-074](gap-074-nightly-price-quoting-no-changeover.md) and
-> [owner-questions-2026-07-02.md](owner-questions-2026-07-02.md).
+> [gap-074](../gap-074-nightly-price-quoting-no-changeover.md) and
+> [owner-questions-2026-07-02.md](../owner-questions-2026-07-02.md).
 
 ## Problem
 
@@ -68,6 +74,6 @@ Document the partial-week algorithm explicitly in `04-pricing.md`:
   (`fallback_nightly`).
 - GAP-035 (rounding of the derived net↔gross figure); Q-018 (base+reduction —
   resolved; effective prices derive through `rule_nightly`).
-- [GAP-074](gap-074-nightly-price-quoting-no-changeover.md) /
+- [GAP-074](../gap-074-nightly-price-quoting-no-changeover.md) /
   [GAP-075](gap-075-per-line-flexible-min-nights-override.md) — the nightly
   quoting surfaces this composition rule feeds.

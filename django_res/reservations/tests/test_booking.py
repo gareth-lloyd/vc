@@ -1050,3 +1050,22 @@ def test_create_from_quotation_line_refuses_terminal_booking(
 
     with pytest.raises(TerminalBookingExists):
         BookingService.create_from_quotation_line(quotation_line, terms_version=terms)
+
+
+@pytest.mark.django_db
+def test_modify_dates_refreshes_is_indicative(booking: Booking, rate_rule: RateBand) -> None:
+    """GAP-114: a modify re-quotes, so the booking snapshot's flag follows the
+    rates as they stand now — flagged while carried, cleared once confirmed."""
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+    rate_rule.is_indicative = True
+    rate_rule.save(update_fields=["is_indicative"])
+
+    booking.modify_dates(date(2026, 7, 1), date(2026, 7, 8))
+    booking.refresh_from_db()
+    assert booking.pricing_snapshot["is_indicative"] is True
+
+    rate_rule.is_indicative = False
+    rate_rule.save(update_fields=["is_indicative"])
+    booking.modify_dates(date(2026, 7, 2), date(2026, 7, 9))
+    booking.refresh_from_db()
+    assert booking.pricing_snapshot["is_indicative"] is False

@@ -403,6 +403,7 @@ class TestStayOptionsSearch:
                 "total_before_reduction": None,
                 "currency_code": "GBP",
                 "is_projected": False,
+                "is_indicative": False,
                 "is_poa": False,
                 "error_code": None,
             },
@@ -414,6 +415,7 @@ class TestStayOptionsSearch:
                 "total_before_reduction": None,
                 "currency_code": "GBP",
                 "is_projected": False,
+                "is_indicative": False,
                 "is_poa": False,
                 "error_code": None,
             },
@@ -425,6 +427,7 @@ class TestStayOptionsSearch:
                 "total_before_reduction": None,
                 "currency_code": "GBP",
                 "is_projected": False,
+                "is_indicative": False,
                 "is_poa": False,
                 "error_code": None,
             },
@@ -968,3 +971,57 @@ class TestReductionPassthrough:
             flex_days=3,
         )
         assert result["total_before_reduction"] is None
+
+
+@pytest.mark.django_db
+class TestIndicativeRates:
+    """GAP-114: the fan-out and weekly rows carry the engine's `is_indicative`
+    (False on error rows, like `is_projected`) so staff see the warning on
+    every priced surface, not just the headline result."""
+
+    def test_occupancy_fan_out_flags_each_band_from_its_own_rate(
+        self, property_: Property, plan: RatePlan
+    ) -> None:
+        from pricing.models import RateBand as RateBandModel
+
+        _sat_changeover(property_)
+        _occupancy_period(plan)
+        RateBandModel.objects.filter(period__plan=plan, min_party=9).update(is_indicative=True)
+
+        [result] = StayOptionsService.search(
+            requests=[_entry(property_, date(2026, 7, 4), date(2026, 7, 11), adults=2)],
+            flex_days=0,
+        )
+
+        by_band = {b["min_party"]: b["is_indicative"] for b in result["occupancy_bands"]}
+        assert by_band == {1: False, 9: True, 13: False}
+
+    def test_weekly_prices_flag_weeks_priced_on_indicative_rates(
+        self, property_: Property, rate_rule: RateBand
+    ) -> None:
+        _sat_changeover(property_)
+        rate_rule.is_indicative = True
+        rate_rule.save(update_fields=["is_indicative"])
+
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2026, 7, 4),
+            window_to=date(2026, 7, 18),
+        )
+
+        assert result["weeks"]
+        assert all(w["is_indicative"] is True for w in result["weeks"])
+
+    def test_error_rows_are_never_indicative(self, property_: Property) -> None:
+        """No rate at all: the row reports the error, not a flag."""
+        _sat_changeover(property_)
+
+        [result] = StayOptionsService.weekly_prices(
+            property_ids=[property_.pk],
+            window_from=date(2026, 7, 4),
+            window_to=date(2026, 7, 11),
+        )
+
+        [week] = result["weeks"]
+        assert week["error_code"] == "no_rate_available"
+        assert week["is_indicative"] is False

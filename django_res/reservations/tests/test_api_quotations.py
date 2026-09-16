@@ -3235,3 +3235,83 @@ def test_duplicate_quotation_without_body_still_works(
     assert first.status_code == 201, first.content
     assert second.status_code == 201, second.content
     assert first.json()["id"] != second.json()["id"]
+
+
+# ---------------------------------------------------------------------------
+# GAP-114 — `is_indicative` rides the pricing snapshot to staff surfaces
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_line_is_indicative_is_read_from_the_snapshot(
+    api_client: APIClient, staff: User, quotation: Quotation, line: QuotationLine
+) -> None:
+    """Snapshot semantics (decision 9): the flag is what the engine said when
+    the line was priced; a line with no snapshot key reads as confirmed."""
+    api_client.force_login(staff)
+    response = api_client.get(f"/api/v1/quotations/{quotation.pk}")
+    assert response.status_code == 200
+    assert response.data["lines"][0]["is_indicative"] is False
+
+    line.pricing_snapshot = {**line.pricing_snapshot, "is_indicative": True}
+    line.save(update_fields=["pricing_snapshot"])
+    response = api_client.get(f"/api/v1/quotations/{quotation.pk}")
+    assert response.data["lines"][0]["is_indicative"] is True
+
+
+@pytest.mark.django_db
+def test_reprice_persists_and_returns_is_indicative(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: RateBand,
+    gbp: Currency,
+) -> None:
+    rate_rule.is_indicative = True
+    rate_rule.save(update_fields=["is_indicative"])
+    api_client.force_login(staff)
+    line = QuotationLine.objects.create(
+        quotation=quotation,
+        property=property_,
+        currency=gbp,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=2,
+    )
+
+    response = api_client.patch(
+        f"/api/v1/quotations/{quotation.pk}/lines/{line.pk}", {"adults": 3}, format="json"
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["is_indicative"] is True
+    line.refresh_from_db()
+    assert line.pricing_snapshot["is_indicative"] is True
+
+
+@pytest.mark.django_db
+def test_convert_keeps_is_indicative_in_the_booking_snapshot(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    line: QuotationLine,
+    rate_rule: RateBand,
+) -> None:
+    """Conversion is allowed (decision 3); the booking's snapshot keeps the
+    flag exactly as the line was priced."""
+    rate_rule.is_indicative = True
+    rate_rule.save(update_fields=["is_indicative"])
+    QuotationService.price_line(quotation, line)
+    assert line.pricing_snapshot["is_indicative"] is True
+    quotation.send()
+    api_client.force_login(staff)
+
+    response = api_client.post(
+        f"/api/v1/quotations/{quotation.pk}:convert",
+        {"line": line.pk, "terms_accepted": True},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert Booking.objects.get().pricing_snapshot["is_indicative"] is True

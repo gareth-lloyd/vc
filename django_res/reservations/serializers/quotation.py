@@ -29,6 +29,11 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
     # changeover day (GAP-007). `null` when the dates weren't moved. The FE
     # renders the "we moved your dates" note from this + `date_from`.
     changeover_shifted_from = serializers.SerializerMethodField()
+    # GAP-114: the line was priced (wholly or partly) on rates the owner had
+    # not confirmed *at pricing time* — a snapshot fact like every other
+    # figure here; confirming the rates later doesn't change a saved line.
+    # Staff-only warning; the customer-facing renderers never read it.
+    is_indicative = serializers.SerializerMethodField()
 
     class Meta:
         model = QuotationLine
@@ -42,6 +47,7 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "date_from",
             "date_to",
             "changeover_shifted_from",
+            "is_indicative",
             "hold",
             "adults",
             "children",
@@ -63,6 +69,7 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
             "hero_image_url",
             "currency",
             "changeover_shifted_from",
+            "is_indicative",
             "hold",
             "pricing_snapshot",
             "total",
@@ -96,6 +103,10 @@ class QuotationLineSerializer(serializers.ModelSerializer[QuotationLine]):
     def get_changeover_shifted_from(self, obj: QuotationLine) -> str | None:
         snapshot = obj.pricing_snapshot or {}
         return snapshot.get("changeover_shifted_from")
+
+    def get_is_indicative(self, obj: QuotationLine) -> bool:
+        snapshot = obj.pricing_snapshot or {}
+        return bool(snapshot.get("is_indicative", False))
 
     def get_property_name(self, obj: QuotationLine) -> str | None:
         prop = obj.property

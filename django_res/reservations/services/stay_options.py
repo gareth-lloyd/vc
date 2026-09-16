@@ -348,6 +348,7 @@ class StayOptionsService:
                         "total_before_reduction": None,
                         "currency_code": band_currency if code == "no_rate_available" else None,
                         "is_projected": False,
+                        "is_indicative": False,
                         "is_poa": is_poa,
                         "error_code": code,
                     }
@@ -367,6 +368,8 @@ class StayOptionsService:
                     ),
                     "currency_code": quote.currency_code,
                     "is_projected": quote.is_projected,
+                    # GAP-114: priced (wholly or partly) on owner-unconfirmed rates.
+                    "is_indicative": quote.is_indicative,
                     "is_poa": False,
                     "error_code": None,
                 }
@@ -513,6 +516,7 @@ class StayOptionsService:
                 "total_before_reduction": None,
                 "currency_code": resolved.code if resolved else None,
                 "is_projected": False,
+                "is_indicative": False,
                 "is_poa": is_poa,
                 "error_code": code,
             }
@@ -528,6 +532,7 @@ class StayOptionsService:
             ),
             "currency_code": quote.currency_code,
             "is_projected": quote.is_projected,
+            "is_indicative": quote.is_indicative,
             "is_poa": False,
             "error_code": None,
         }

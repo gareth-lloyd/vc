@@ -13,6 +13,7 @@ from pricing.serializers.quote import (
     PricingQuoteRequestSerializer,
 )
 from pricing.serializers.rate import (
+    ConfirmRatesRequestSerializer,
     RateBandSerializer,
     RatePeriodSerializer,
     RatePlanDetailSerializer,
@@ -20,6 +21,7 @@ from pricing.serializers.rate import (
 )
 
 __all__ = [
+    "ConfirmRatesRequestSerializer",
     "CurrencySerializer",
     "DiscountLookupCodeSerializer",
     "DiscountSerializer",

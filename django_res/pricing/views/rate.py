@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from core.api import IsReservationsWriter
 from pricing.models import Currency, RateBand, RatePeriod, RatePlan
 from pricing.serializers import (
+    ConfirmRatesRequestSerializer,
     RateBandSerializer,
     RatePeriodSerializer,
     RatePlanDetailSerializer,
@@ -124,6 +125,29 @@ class PropertyRatePlanCarryForwardView(APIView):
             RatePlanDetailSerializer(plan).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class RatePlanConfirmRatesView(APIView):
+    """`POST /rate-plans/{id}:confirm-rates` — owner sign-off on indicative rates.
+
+    GAP-114: clears `RateBand.is_indicative` on the plan's non-historical
+    periods. Body: optional `{"date_from", "date_to"}` — confirms the bands of
+    every period overlapping that inclusive window (whole periods, even ones
+    extending past it). Responds `{"confirmed": n}`.
+    """
+
+    permission_classes = [IsReservationsWriter]
+
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        plan = get_object_or_404(RatePlan, pk=self.kwargs["pk"])
+        body = ConfirmRatesRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        confirmed = RateCarryoverService.confirm(
+            plan,
+            date_from=body.validated_data.get("date_from"),
+            date_to=body.validated_data.get("date_to"),
+        )
+        return Response({"confirmed": confirmed})
 
 
 class RatePlanRatePeriodListCreateView(generics.ListCreateAPIView):

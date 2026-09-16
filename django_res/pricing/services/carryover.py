@@ -21,6 +21,8 @@ from decimal import Decimal
 from typing import Any
 
 import structlog
+from django.db import transaction
+from django.utils import timezone
 
 from core.exceptions import NoRateAvailable, RegimeConflict
 from pricing.models import RateBand, RatePeriod, RatePlan
@@ -36,6 +38,7 @@ from pricing.services.projection import (
     shift_to_changeover_weekday,
 )
 from pricing.services.regime import period_overlap_guard
+from pricing.signals import suppress_summary_rebuild
 
 logger = structlog.get_logger(__name__)
 
@@ -236,6 +239,10 @@ class RateCarryoverService:
                             is_poa=carried.is_poa,
                             is_approved=True,
                             is_locked=False,
+                            # GAP-114: a carry is a copy nobody has signed off —
+                            # indicative until staff confirm it (`confirm` below
+                            # or the band PATCH). Legacy `CarriedRates`, same idea.
+                            is_indicative=True,
                             notes=carried.notes,
                         )
         # The provenance record: rows carry no source pointer (RatePeriod has
@@ -254,6 +261,43 @@ class RateCarryoverService:
             periods_written=written,
         )
         return anchor.plan
+
+    @staticmethod
+    def confirm(
+        plan: RatePlan, *, date_from: date | None = None, date_to: date | None = None
+    ) -> int:
+        """GAP-114: mark the plan's indicative bands as owner-confirmed.
+
+        Confirms whole periods: every indicative band on a period that
+        overlaps the inclusive ``date_from..date_to`` window (both bounds or
+        neither — one alone is a ``ValueError``, never "the whole plan"),
+        skipping periods that have already elapsed (decision 10 — historical
+        rates are frozen as they were; same test as ``RatePeriod.is_historical``).
+        Returns the number of bands cleared. Each band goes through ``save()``
+        so the audit trail records who confirmed what and when; the summary
+        rebuild is suppressed because the cache never reads the flag.
+        """
+        if (date_from is None) != (date_to is None):
+            raise ValueError("confirm needs both date_from and date_to, or neither")
+        bands = RateBand.objects.filter(
+            period__plan=plan, is_indicative=True, period__date_to__gte=timezone.localdate()
+        )
+        if date_from is not None and date_to is not None:
+            bands = bands.filter(period__date_from__lte=date_to, period__date_to__gte=date_from)
+        with transaction.atomic(), suppress_summary_rebuild():
+            confirmed = 0
+            for band in bands:
+                band.is_indicative = False
+                band.save(update_fields=["is_indicative", "updated_at"])
+                confirmed += 1
+        logger.info(
+            "pricing.rates.confirmed",
+            plan_id=plan.pk,
+            date_from=date_from.isoformat() if date_from else None,
+            date_to=date_to.isoformat() if date_to else None,
+            bands_confirmed=confirmed,
+        )
+        return confirmed
 
     @staticmethod
     def next_target_year(property: Any, currency: Any) -> int | None:

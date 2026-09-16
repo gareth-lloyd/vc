@@ -144,3 +144,15 @@ def rule(period: RatePeriod) -> RateBand:
         max_party=8,
         nightly=Decimal("200.00"),
     )
+
+
+@pytest.fixture
+def past_period(plan: RatePlan) -> RatePeriod:
+    """A period whose window fully elapsed (date_to before the frozen today):
+    the historical-lock cases (rates frozen as they were)."""
+    return RatePeriod.objects.create(
+        plan=plan,
+        name="Summer 2019",
+        date_from=date(2019, 6, 1),
+        date_to=date(2019, 8, 31),
+    )

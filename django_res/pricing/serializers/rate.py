@@ -129,6 +129,9 @@ class RateBandSerializer(serializers.ModelSerializer[RateBand]):
             "is_poa",
             "is_locked",
             "is_approved",
+            # GAP-114: writable so staff can confirm (or re-flag) one band from
+            # the workbench; `guard_period_editable` still locks elapsed periods.
+            "is_indicative",
             "notes",
         ]
         read_only_fields = ["id", "period", "effective_nightly", "effective_weekly"]
@@ -545,3 +548,19 @@ class RatePlanDetailSerializer(RatePlanSerializer):
     class Meta(RatePlanSerializer.Meta):
         fields = [*RatePlanSerializer.Meta.fields, "periods"]
         read_only_fields = [*RatePlanSerializer.Meta.read_only_fields, "periods"]
+
+
+class ConfirmRatesRequestSerializer(serializers.Serializer[None]):
+    """Body of `POST /rate-plans/{id}:confirm-rates` (GAP-114): an optional
+    inclusive window — both dates or neither, `date_from <= date_to`."""
+
+    date_from = serializers.DateField(required=False)
+    date_to = serializers.DateField(required=False)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        date_from, date_to = attrs.get("date_from"), attrs.get("date_to")
+        if (date_from is None) != (date_to is None):
+            raise serializers.ValidationError("date_from and date_to must be given together")
+        if date_from is not None and date_to is not None and date_from > date_to:
+            raise serializers.ValidationError("date_from must not be after date_to")
+        return attrs

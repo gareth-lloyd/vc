@@ -709,3 +709,39 @@ def test_materialise_uplift_applies_to_base_not_effective(
     # 10% on the base 200.00 — never on the reduced 100.00.
     assert band.nightly == Decimal("220.00")
     assert band.has_reduction is False
+
+
+# --- GAP-114: carried rows are indicative until the owner confirms them ------
+
+
+@pytest.mark.django_db
+def test_materialise_writes_indicative_bands(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    """A carry-forward is a copy nobody has signed off (decision 5): every band
+    it writes is `is_indicative=True`, whatever the anchor's own flag."""
+    assert anchor_rule.is_indicative is False
+    new_plan = RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
+
+    carried = RateBand.objects.filter(period__plan=new_plan, period__date_from__year=2028)
+    assert carried.exists()
+    assert all(band.is_indicative for band in carried)
+    anchor_rule.refresh_from_db()
+    assert anchor_rule.is_indicative is False
+
+
+@pytest.mark.django_db
+def test_materialise_rerun_keeps_confirmed_bands_confirmed(
+    property_: Property, gbp: Currency, anchor_rule: RateBand
+) -> None:
+    """The idempotent early return leaves existing rows alone — a band staff
+    have since confirmed is not re-flagged by a repeat carry-forward."""
+    RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
+    band = RateBand.objects.get(period__date_from__year=2028)
+    band.is_indicative = False
+    band.save(update_fields=["is_indicative"])
+
+    RateCarryoverService.materialise(property_, target_year=2028, currency=gbp)
+
+    band.refresh_from_db()
+    assert band.is_indicative is False

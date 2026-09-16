@@ -43,17 +43,6 @@ def api_client(staff: User) -> APIClient:
 
 
 @pytest.fixture
-def past_period(plan: RatePlan) -> RatePeriod:
-    """A period whose window fully elapsed (date_to before today)."""
-    return RatePeriod.objects.create(
-        plan=plan,
-        name="Summer 2019",
-        date_from=date(2019, 6, 1),
-        date_to=date(2019, 8, 31),
-    )
-
-
-@pytest.fixture
 def future_period(plan: RatePlan) -> RatePeriod:
     """A period comfortably in the future (never historical)."""
     return RatePeriod.objects.create(

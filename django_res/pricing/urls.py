@@ -21,6 +21,7 @@ from pricing.views import (
     RateBandDetailView,
     RatePeriodBandListCreateView,
     RatePeriodDetailView,
+    RatePlanConfirmRatesView,
     RatePlanDetailView,
     RatePlanRatePeriodListCreateView,
 )
@@ -51,6 +52,11 @@ _pricing_paths: list[URLPattern] = [
         "rate-plans/<int:pk>",
         RatePlanDetailView.as_view(),
         name="rate-plan-detail",
+    ),
+    path(
+        "rate-plans/<int:pk>:confirm-rates",
+        RatePlanConfirmRatesView.as_view(),
+        name="rate-plan-confirm-rates",
     ),
     path(
         "rate-plans/<int:plan_id>/rate-periods",

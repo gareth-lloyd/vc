@@ -598,6 +598,7 @@ class _Band:
     weekly: Decimal | None
     is_poa: bool
     is_approved: bool
+    is_indicative: bool
     notes: str
     legacy_id: str
     sort_id: int
@@ -656,6 +657,9 @@ def _row_to_band(row: dict[str, Any], plan: RatePlan) -> _Band | None:
         weekly=weekly,
         is_poa=is_poa,
         is_approved=bool(row.get("IsApprove")),
+        # GAP-114: the season's rates were copied forward, not owner-confirmed
+        # (NULL bit = not carried). Occupancy/fallback rows are parent copies.
+        is_indicative=bool(row.get("CarriedRates")),
         notes=(row.get("Description") or "").strip(),
         legacy_id=str(legacy_id),
         sort_id=int(row["ID"]),
@@ -700,11 +704,14 @@ class RateBandLoader(BaseLoader):
     # NULL-currency row lands where its season's plan went. The VillaSeason /
     # VillaMaster joins mirror the plan loader's universe: a live row on a
     # soft-deleted season or villa has no regime to land on.
+    # GAP-114: `s.CarriedRates` exists only in the ResProd schema (drifted from
+    # the committed ResSystem source — CUTOVER.md) and lands as
+    # `RateBand.is_indicative`.
     legacy_query = (
         "SELECT r.ID, s.VillaId, r.SeasonId, r.CurrencyId, r.FromDate, r.ToDate, "
         "r.PartySize, r.IsPOA, r.WeeklyPrice, r.NightlyPrice, r.Price, "
         "r.PriceType, r.IsExTra, r.IsApprove, r.IsAvailable, r.Description, "
-        "r.IsOccupationPrice, "
+        "r.IsOccupationPrice, s.CarriedRates, "
         "o.Id AS OccId, o.OccupencyFrom, o.OccupencyTo, o.OccupencyPrice, "
         f"{SEASON_CURRENCY_SUBSELECT} AS SeasonCurrencyId, "
         f"{VILLA_CURRENCY_SUBSELECT} AS VillaCurrencyId "
@@ -877,6 +884,8 @@ class RateBandLoader(BaseLoader):
                             # flag still orders precedence above and stays
                             # visible in notes.
                             is_approved=True,
+                            # GAP-114: payload-only — never part of precedence.
+                            is_indicative=band.is_indicative,
                             notes=(
                                 band.notes
                                 if band.is_approved

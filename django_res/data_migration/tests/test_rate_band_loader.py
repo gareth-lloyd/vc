@@ -62,6 +62,8 @@ def _row(**overrides: object) -> dict[str, object]:
         "IsApprove": True,
         "IsAvailable": True,
         "Description": "Peak",
+        # GAP-114: VillaSeason.CarriedRates (ResProd-only, bit NULL).
+        "CarriedRates": False,
     }
     base.update(overrides)
     return base
@@ -692,3 +694,140 @@ def test_load_rows_purge_spares_ui_rules(loaded_plan: RatePlan) -> None:
     )
     assert RateBand.objects.filter(pk=ui_rule.pk).exists()
     assert RatePeriod.objects.filter(pk=ui_period.pk).exists()
+
+
+# --- GAP-114: VillaSeason.CarriedRates -> RateBand.is_indicative ------------
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("carried", "expected"), [(True, True), (False, False), (None, False)])
+def test_row_to_band_carries_season_carried_rates(
+    loaded_plan: RatePlan, carried: bool | None, expected: bool
+) -> None:
+    """A season's CarriedRates bit marks its rows indicative; NULL reads as not carried."""
+    band = _row_to_band(_row(CarriedRates=carried), loaded_plan)
+    assert band is not None
+    assert band.is_indicative is expected
+
+
+@pytest.mark.django_db
+def test_load_rows_writes_is_indicative(loaded_plan: RatePlan) -> None:
+    RateBandLoader()._load_rows(
+        [
+            _row(ID=1, CarriedRates=True),
+            _row(ID=2, CarriedRates=False, FromDate=date(2025, 7, 1), ToDate=date(2025, 7, 8)),
+        ],
+        LoadReport(loader="rate_rule"),
+    )
+    flags = dict(RateBand.objects.values_list("legacy_id", "is_indicative"))
+    assert flags == {"1": True, "2": False}
+
+
+@pytest.mark.django_db
+def test_load_rows_occupancy_children_and_fallbacks_inherit_carried_rates(
+    loaded_plan: RatePlan,
+) -> None:
+    """Occupancy bands and their base-weekly gap fallbacks are copies of the
+    flagged parent row, so every one of them is indicative."""
+    rows = [
+        _row(
+            ID=1,
+            CarriedRates=True,
+            IsOccupationPrice=True,
+            OccId=101,
+            OccupencyFrom=2,
+            OccupencyTo=4,
+            OccupencyPrice=Decimal("500"),
+        ),
+    ]
+    RateBandLoader()._load_rows(rows, LoadReport(loader="rate_rule"))
+
+    flags = dict(RateBand.objects.values_list("legacy_id", "is_indicative"))
+    assert flags == {"occ-101": True, "occ-fb-1-0": True, "occ-fb-1-1": True}
+
+
+@pytest.mark.django_db
+def test_load_rows_mixed_seasons_flag_per_source_row(loaded_plan: RatePlan) -> None:
+    """GAP-110 merges a villa's seasons into one plan; the flag stays per source
+    row. A carried season punched inside a confirmed one splits it — the
+    confirmed remainders (incl. the `#seg` fragment) stay confirmed, and a
+    fragment of the carried loser stays indicative."""
+    RateBandLoader()._load_rows(
+        [
+            # Winner (lower ID) — carried 2027-style season.
+            _row(
+                ID=1,
+                SeasonId=42,
+                CarriedRates=True,
+                FromDate=date(2025, 6, 10),
+                ToDate=date(2025, 6, 12),
+            ),
+            # Loser — confirmed season spanning the whole month.
+            _row(
+                ID=2,
+                SeasonId=43,
+                CarriedRates=False,
+                FromDate=date(2025, 6, 1),
+                ToDate=date(2025, 6, 30),
+            ),
+            # A carried loser split by a confirmed winner keeps its flag on the fragment.
+            _row(
+                ID=3,
+                SeasonId=42,
+                CarriedRates=True,
+                FromDate=date(2025, 8, 1),
+                ToDate=date(2025, 8, 30),
+            ),
+            _row(
+                ID=0,
+                SeasonId=43,
+                CarriedRates=False,
+                FromDate=date(2025, 8, 10),
+                ToDate=date(2025, 8, 12),
+            ),
+        ],
+        LoadReport(loader="rate_rule"),
+    )
+    flags = dict(RateBand.objects.values_list("legacy_id", "is_indicative"))
+    assert flags == {
+        "1": True,
+        "2": False,
+        "2#seg1": False,
+        "0": False,
+        "3": True,
+        "3#seg1": True,
+    }
+
+
+@pytest.mark.django_db
+def test_load_rows_carried_rates_does_not_change_precedence(loaded_plan: RatePlan) -> None:
+    """The flag rides along on the payload only: flattening the same overlapping
+    rows with and without CarriedRates yields the identical band grid."""
+
+    def grid(carried: bool) -> list[tuple[object, ...]]:
+        RateBandLoader()._load_rows(
+            [
+                _row(
+                    ID=1, CarriedRates=carried, FromDate=date(2025, 6, 10), ToDate=date(2025, 6, 20)
+                ),
+                _row(
+                    ID=2,
+                    CarriedRates=not carried,
+                    FromDate=date(2025, 6, 1),
+                    ToDate=date(2025, 6, 30),
+                ),
+            ],
+            LoadReport(loader="rate_rule"),
+        )
+        return sorted(
+            RateBand.objects.values_list(
+                "legacy_id",
+                "period__date_from",
+                "period__date_to",
+                "min_party",
+                "max_party",
+                "weekly",
+            )
+        )
+
+    assert grid(True) == grid(False)

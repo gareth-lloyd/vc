@@ -1088,7 +1088,11 @@ _CHECKS: list[_Check] = [
         #     2  dangling ClientPrefMasterId 12 and 13 — VillaClientPrefMaster
         #        has 11 rows, max Id 11
         # Order-independent (skips = rows - distinct triples), so the constant
-        # holds even though `legacy_query` has no ORDER BY. The loader's
+        # holds even though `legacy_query` has no ORDER BY. U8d's quotation
+        # fallback re-keys 474 of those triples onto a real person without
+        # moving this number: the two sentinel buckets above are exactly the
+        # rows it cannot help (quotation=NULL, so there is nobody to borrow).
+        # The loader's
         # `data_migration.preference_quotation_unresolved` count (47 here) is a
         # CAUSE spread across these buckets, not a bucket: 9 of the 47 load with
         # quotation=NULL, 38 are among the skips.

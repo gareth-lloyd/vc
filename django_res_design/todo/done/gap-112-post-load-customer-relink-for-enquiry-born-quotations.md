@@ -1,5 +1,42 @@
 # GAP-112 — Post-load pass to relink enquiry-born quotations to the person the sheet import later mints
 
+> **✅ RESOLVED (2026-09-16)** — shipped on `feat/gap-112`; fast-forwarded into
+> local `main` (unpushed) at close-out. 4 commits:
+> d35bd6de U1 `data_migration/relink.py` `classify_enquiry` — the loader's own
+> `match_person_by_email(active_only=True)` plus one veto it lacks: an address
+> held by **more than one** Person (any kind/status) is never resolved, since
+> the matcher's CUSTOMER-first tie-break is a guess for a relink;
+> c8a1e62a U2 `relink_enquiry_customers` (`--dry-run`, idempotent, `.save()`
+> per row so AuditLog records each change, under `suppress_zoho_push`), scoped
+> to legacy-loaded enquiries only so a re-run never touches a post-go-live one;
+> 7ca8b0a1 U3 `reconcile_legacy` invariant `Quotation on unknown client with a
+> relinkable enquiry (must be 0)`; 0e8a4747 U4 CUTOVER §4/§4d/§5/§6g +
+> `django_res/CLAUDE.md`.
+>
+> **Measured on a copy of the run-5 DB** (13-Aug-2026 ResProd + both sheets):
+> the dry run reproduced this ticket's table exactly — 268 relinked, 11
+> shared-e-mail, 11 names-disagree, 30 unmatched, 1 no e-mail (606 enquiries);
+> the real run then gave the invariant 268 → **0**, a second run relinked
+> nothing, and `reconcile_legacy --integrations` exited 0.
+>
+> **Deviations from the ticket, both decided with the user:**
+> - **No pinned residual count.** Acceptance asked for a reconcile check pinning
+>   the residual sentinel count (53). Rejected: it depends on the xlsx contents,
+>   would fail every reconcile run before the relink, and would drift with §6g
+>   hand-merges — contradicting CUTOVER's "sheet imports never move a gap". The
+>   must-be-0 invariant above still makes a silent regression to 321 impossible.
+> - **Guest preferences follow their quotation.** 16 sentinel preferences whose
+>   quotation the relink moves move with it (a `unique_person_preference`
+>   collision is skipped and reported); a preference on a quotation that stays
+>   on the sentinel is not touched, preserving GAP-108 U8d's borrow bound.
+>
+> **Not done:** the 22 ambiguous + 31 unresolvable quotations stay on the
+> sentinel and are reported (shared ones are §6g merge candidates;
+> names-disagree ones have a single holder, so staff link by hand or not);
+> `QuotationLoader`'s own `.update()` back-fill of `Enquiry.person` still writes
+> no AuditLog row (pre-existing); `GuestPreference` is not audit-tracked, so the
+> 16 preference moves leave no trail.
+
 - **Severity:** 🟡 Gap (cutover fidelity, customer-facing). 321 loaded
   quotations sit on the unknown-client sentinel even though the customer's
   name and e-mail are right there on the linked enquiry, and for 290 of them a

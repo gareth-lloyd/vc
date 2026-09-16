@@ -58,6 +58,7 @@ from data_migration.loaders.sentinels import (
     UNKNOWN_CLIENT_LEGACY_ID,
     UNKNOWN_LEGACY_ID,
 )
+from data_migration.relink import classify_enquiry, unlinked_legacy_enquiries
 from integrations.enums import SyncProvider
 from integrations.models import SyncRecord
 from payments.models.payment import Payment
@@ -190,6 +191,28 @@ class _Check:
         if self.loaded_count is not None:
             return self.loaded_count(self.model)
         return int(self.model._default_manager.filter(legacy_id__isnull=False).count())
+
+
+def _relinkable_sentinel_quotations(model: type[Any]) -> int:
+    """GAP-112: loaded quotations on the unknown-client sentinel that
+    `relink_enquiry_customers` would move — their enquiry already has a person,
+    or is one the pass would link now. Independent of the sheet contents: it
+    reads 0 once the relink has run (the sheet imports raise it, and so can
+    `QuotationLoader`'s back-fill of an enquiry from a later quotation)."""
+    stranded = model._default_manager.filter(
+        person__legacy_id=UNKNOWN_CLIENT_LEGACY_ID, legacy_id__isnull=False
+    )
+    relinkable = [
+        enquiry.pk
+        for enquiry in unlinked_legacy_enquiries().filter(pk__in=stranded.values("enquiry"))
+        if classify_enquiry(enquiry)[0] == "relinked"
+    ]
+    return int(
+        stranded.filter(enquiry__person__isnull=False)
+        .exclude(enquiry__person__legacy_id=UNKNOWN_CLIENT_LEGACY_ID)
+        .count()
+        + stranded.filter(enquiry__in=relinkable).count()
+    )
 
 
 def _numeric_legacy_id(legacy_id: str | None) -> int:
@@ -1042,6 +1065,18 @@ _CHECKS: list[_Check] = [
         # U8b — the 9 quotations with `ClientDetailsId` 0 used to be dropped for
         # want of a customer and now resolve one through their enquiry.
         expected_gap=0,
+    ),
+    _Check(
+        # GAP-112: `EnquiryLoader` cannot link the people the sheet imports mint
+        # later, so their quotations load on the sentinel; the
+        # `relink_enquiry_customers` cutover step moves them. Non-zero means that
+        # step was skipped (268 on the run-5 DB). The ambiguous and unresolvable
+        # remainder (53 on run 5) is deliberately not pinned: it depends on the
+        # sheet contents and moves with §6g hand-merges.
+        "SELECT 0",
+        Quotation,
+        "Quotation on unknown client with a relinkable enquiry (must be 0)",
+        loaded_count=_relinkable_sentinel_quotations,
     ),
     _Check(
         "SELECT COUNT(*) FROM VillaQuotationDetails",

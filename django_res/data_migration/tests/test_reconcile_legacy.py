@@ -1002,6 +1002,7 @@ def test_documented_expected_gaps_are_encoded() -> None:
         "PropertyFinance NULL calculation type (must be 0)": 0,
         "PropertySettings without currency (must be 0)": 0,
         "Quotation": 0,
+        "Quotation on unknown client with a relinkable enquiry (must be 0)": 0,
         "GuestPreferenceType": 0,
         "Booking with legacy_id (must be 0)": 0,
         "Payment with legacy_id (must be 0)": 0,
@@ -1529,7 +1530,7 @@ _LOADER_CHECKS: dict[str, list[str]] = {
     "client": ["Person (client)"],
     "enquiry": ["Enquiry"],
     "property_finance": ["PropertyFinance", "PropertyFinance NULL calculation type (must be 0)"],
-    "quotation": ["Quotation"],
+    "quotation": ["Quotation", "Quotation on unknown client with a relinkable enquiry (must be 0)"],
     "quotation_line": ["QuotationLine"],
     "guest_preference_type": ["GuestPreferenceType"],
     "guest_preference": ["GuestPreference"],
@@ -1740,6 +1741,55 @@ def test_placeholder_organisation_invariant_counts_na_names() -> None:
     check = _check("Organisation named NA / N/A / - (must be 0)")
     assert check.model is Organisation
     assert check.count_loaded() == 3
+
+
+@pytest.mark.django_db
+def test_relinkable_sentinel_quotation_invariant_counts_what_the_relink_would_move() -> None:
+    """GAP-112: reads 0 once `relink_enquiry_customers` has run; non-zero
+    after the sheet imports means the relink step was skipped."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from accounts.models import PersonEmail
+    from data_migration.loaders.finance import _ensure_default_terms
+    from data_migration.loaders.sentinels import unknown_client
+    from reservations.models import Quotation
+
+    ada = Person.objects.create(first_name="Ada", last_name="Lovelace", legacy_id="sheet-1")
+    PersonEmail.objects.create(contact=ada, email="ada@example.com", is_primary=True)
+
+    def quotation(email: str, legacy_id: str | None = "1", **kwargs: object) -> None:
+        enquiry = cast(
+            Enquiry,
+            EnquiryFactory(
+                first_name="Ada", last_name="Lovelace", email=email, legacy_id=legacy_id, **kwargs
+            ),
+        )
+        Quotation.objects.create(
+            enquiry=enquiry,
+            person=unknown_client(),
+            expires_at=timezone.now() + timedelta(days=7),
+            terms_version=_ensure_default_terms(),
+            legacy_id=f"q-{Quotation.objects.count() + 1}",
+        )
+
+    quotation("ada@example.com", person=None)  # counted: the relink would link it
+    quotation("", person=ada)  # counted: its enquiry is already linked
+    quotation("nobody@example.com", person=None)  # unmatched: stays on the sentinel
+    quotation("ada@example.com", legacy_id=None, person=None)  # organic enquiry: out of scope
+    quotation("", person=unknown_client())  # a booking stand-in pair: nothing to follow
+    Quotation.objects.create(  # a real client is never counted
+        enquiry=cast(Enquiry, EnquiryFactory(person=None, email="ada@example.com", legacy_id="2")),
+        person=ada,
+        expires_at=timezone.now() + timedelta(days=7),
+        terms_version=_ensure_default_terms(),
+        legacy_id="q-real",
+    )
+
+    check = _check("Quotation on unknown client with a relinkable enquiry (must be 0)")
+    assert check.model is Quotation
+    assert check.count_loaded() == 2
 
 
 def test_property_contact_assignment_check_counts_mapping_role_composites() -> None:

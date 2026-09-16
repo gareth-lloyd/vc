@@ -88,6 +88,10 @@ must be set for any loader. Full playbook: `data_migration/CUTOVER.md`.
   `./manage.py import_past_bookers --file …` — the two spreadsheet imports
   (GAP-089) that the res DB can't supply: 2017-2024 enquiry history, and
   past-booker contacts plus their `PastStay` rows. Both take `--dry-run`.
+- `./manage.py relink_enquiry_customers` — GAP-112, runs right after the two
+  sheet imports: links the customer-less legacy enquiries (and their
+  unknown-client quotations/preferences) to the people those imports minted.
+  Idempotent, takes `--dry-run`; a `reconcile_legacy` invariant blocks if skipped.
 - `./manage.py rebuild_summaries` — manual recovery path only: `loadlegacy`
   already rebuilds the pricing summaries at the end of its own run
   (`loadlegacy.py:112-122`), so reach for this when that rebuild crashed.

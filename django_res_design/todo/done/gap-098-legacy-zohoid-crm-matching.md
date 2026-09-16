@@ -1,5 +1,11 @@
 # GAP-098 — The legacy `ZohoId` is never sent, and the Zoho record id is never stored back
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-097](../gap-097-zoho-push-delivery-confirmation.md)** as
+> §"Merged from GAP-098". Both halves are one response-contract conversation with Limitless (error reporting + record-id write-back), and GAP-098 already said to settle them together. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** 🟠 Gap (duplicate CRM records against the pre-existing
   legacy-synced estate; no round-trip identity).
 - **Source:** 2026-09-01 review of Limitless' parse functions against our

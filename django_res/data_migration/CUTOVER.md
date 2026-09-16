@@ -201,6 +201,8 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > ./manage.py import_past_bookers  --file "$D/VC Past Bookers Final.xlsx"
 > ./manage.py relink_enquiry_customers --dry-run   # GAP-112, see below
 > ./manage.py relink_enquiry_customers
+> ./manage.py import_archive_stays --dry-run       # GAP-113, see below
+> ./manage.py import_archive_stays
 > ```
 >
 > Each prints created / updated / skipped-per-reason counts plus the villa
@@ -259,6 +261,63 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > | `no_email` | 1 | 3 |
 >
 > plus **16** sentinel guest preferences moved with their quotation.
+>
+> **Then date the past stays from `VillaArchiveBookings` (GAP-113).** Between
+> Dec-2025 and Mar-2026 staff re-keyed sheet stays into legacy with exact
+> dates, amount, currency and the lead guest's contact details.
+> `import_archive_stays` runs **after `relink_enquiry_customers` and before
+> `reconcile_legacy`**. It reads the live rows, folds re-saves of one stay
+> into a single stay (same villa, overlapping dates, same `BN…` number, or
+> else the same e-mail or surname), and matches each stay against the
+> `sheet-stay-…` rows:
+>
+> - **enrich** — one sheet stay matches (same year, by booking number, else
+>   by the one customer holding the e-mail, else by exact first + last
+>   name, at the same villa or an unlinked one). Its empty dates, amount
+>   and currency are filled and the archive notes are appended as a line.
+>   Its person and `property` are never touched.
+> - **create** — nothing matches. A `PastStay` keyed `archive-stay-<Id>`
+>   (the highest `Id` among the re-saves) lands on the e-mail's one active
+>   customer, or else on `find_or_create_person` with the archive name and
+>   address. The mobile is added only to a person with no phone whose
+>   channels the sheets own.
+> - **skipped, with ids** — `bn_year_conflict` (the booking number is on a
+>   sheet stay in another year), `weak_conflict` (the only name or e-mail
+>   match is at another villa), `ambiguous`, `target_taken` (the sheet stay
+>   already carries different dates or money), `target_contested` (two
+>   archive stays claim one sheet stay), `person_ambiguous` /
+>   `person_inactive`, and `exists` (nothing left to land; counted, not
+>   listed).
+> - **flags, with ids** — `dates_dropped` (no `ToDate`, `ToDate` not after
+>   `FromDate`, or more than 45 nights: the stay lands with its year only),
+>   `duplicate_conflict` (re-saves disagree on amount, currency, dates or
+>   booking number; the highest `Id` wins, except that the booking number
+>   and e-mail come from the latest re-save that has one), `property_differs` (the archive's villa differs from
+>   the enriched sheet stay's; the sheet's is kept).
+>
+> Amount is stored as recorded; `CurrencyId 0` leaves the currency empty
+> (the Customer-360 row shows a plain number) and `Amount 0` stores none.
+> Party size, `ZohoId` (GAP-098) and the free-text contact fields of
+> *enriched* stays are not imported. Row Id 297 is a staff test row and is
+> always skipped. One transaction, a savepoint per stay, no Zoho pushes;
+> `--dry-run` rolls back, and a second run writes nothing (every landed stay
+> is `exists`; the skips repeat). On the run-6 database (the run-5 load of 13-Aug-2026 `ResProd`
+> plus both sheets; 272 live rows, 253 stays) it gave — re-derive on the day:
+>
+> | Outcome | Stays | Ids |
+> |---|---|---|
+> | `past_stay` updated (enrich) | 220 | |
+> | `past_stay` created | 27 | incl. future stay 5 |
+> | `bn_year_conflict` | 4 | 57/94, 110, 117, 201 |
+> | `weak_conflict` | 1 | 53 |
+> | `exists` | 1 | 290 (dates dropped, nothing else to fill; counted only, the report names it under `dates_dropped`) |
+> | `test_row` | 1 row | 297 |
+>
+> plus 7 persons created, 1 blank-filled and 21 phones added; flags
+> `dates_dropped` 28, 61, 76, 233, 290; `duplicate_conflict` 57/94, 268/280;
+> `property_differs` 97. The six stays still running or ahead of cutover
+> (5, 40, 46, 227/234, 278, 279) all land; their nights are already blocked
+> by `availability_block` holds, and none becomes a `Booking`.
 
 ## 4a. Pricing summaries — automatic, with a manual fallback
 
@@ -624,7 +683,10 @@ never emitted by the loader. An unmapped/NULL legacy `RoleId` falls back to
 > record**: they are the authoritative description of `VillaBookingDetails` and
 > of the currency policy below, and they are what a future "enrich past stays
 > from `VillaArchiveBookings`" ticket would build on. Nothing here is executed
-> today. For the *villa* extras catalogue that **is** loaded, see
+> today. The dates, amount and currency of the re-keyed stays in
+> `VillaArchiveBookings` now reach `PastStay` through `import_archive_stays`
+> ([§4](#4-run-every-loader), GAP-113); chargeable extras still do not.
+> For the *villa* extras catalogue that **is** loaded, see
 > [§4i](#4i-extras-catalogue--pricingextra-gap-107) — a different table
 > (`VillaSeasonRate` with `IsExTra = 1`) and a different destination
 > (`pricing.Extra`).
@@ -904,6 +966,40 @@ villa's loaded periods cover exactly its legacy nights`; otherwise every
 mismatched villa is listed with its legacy vs loaded night counts and is **one
 blocker each**. Expected residue is zero — itemise per villa, never wave it
 through.
+
+### Archive stays (GAP-113)
+
+Printed after the night-parity table (and before the `--integrations`
+sections). It reads `VillaArchiveBookings` and runs the same
+classification as `import_archive_stays` ([§4](#4-run-every-loader)). Blockers:
+
+- stays still classed **enrich** or **create**: the import was skipped, or a
+  stay rolled back. One blocker per category, naming the first 10 ids.
+- archive rows that **cannot be parsed**: they can never land.
+
+The skip categories and the test row are listed but do not block, because
+they depend on the sheet contents. A clean run after the import shows only
+`exists` plus those skips (run 6: 248 exists, 4 `bn_year_conflict`, 1
+`weak_conflict`, test row 297).
+
+A stay the importer skipped for its **person** (`person_ambiguous`,
+`person_inactive`) or for a row error is still classed enrich or create, so
+it keeps blocking. It would otherwise be missing from that guest's history. Clear it
+in one of these ways:
+
+1. Fix the data (merge the duplicate people, §6g; reactivate the person; or
+   correct the row), then re-run `import_archive_stays`.
+2. A **create** stay only: land it by hand as a `PastStay` with `legacy_id`
+   set to `archive-stay-<Id>`, where `<Id>` is the **highest** `Id` in the id
+   group the report names (e.g. `archive-stay-94` for `57/94`).
+3. An **enrich** stay: fill the matched `sheet-stay-…` row's dates, amount
+   and currency by hand. **Never** add an `archive-stay-<Id>` row for it:
+   reconcile would then count the stay as `exists` and pass, while the guest
+   shows the stay twice and the sheet stay stays blank.
+
+There is no admin screen for past stays, so use `manage.py shell` for 2 and 3.
+Reconcile checks that a stay has landed, not its values: whatever is entered
+by hand is taken as given.
 
 Any other gap is a **blocker**. Track it down before proceeding.
 

@@ -92,6 +92,10 @@ must be set for any loader. Full playbook: `data_migration/CUTOVER.md`.
   sheet imports: links the customer-less legacy enquiries (and their
   unknown-client quotations/preferences) to the people those imports minted.
   Idempotent, takes `--dry-run`; a `reconcile_legacy` invariant blocks if skipped.
+- `./manage.py import_archive_stays` — GAP-113, runs after
+  `relink_enquiry_customers`: dates, amount and currency from legacy
+  `VillaArchiveBookings` onto the sheet `PastStay`s, creating the stays the
+  sheets lack. Idempotent, takes `--dry-run`; `reconcile_legacy` blocks if skipped.
 - `./manage.py rebuild_summaries` — manual recovery path only: `loadlegacy`
   already rebuilds the pricing summaries at the end of its own run
   (`loadlegacy.py:112-122`), so reach for this when that rebuild crashed.

@@ -74,7 +74,11 @@ sample check must pass against the live dump:
     (`Σ legacy = Σ loaded + Σ itemised drops`). Bookings, payments and charge
     items left the migration with GAP-089/GAP-108 — they arrive from the Past
     Bookers sheet (`import_past_bookers`), so they carry no legacy money for
-    this standard to reconcile.
+    this standard to reconcile. The amounts `import_archive_stays` (GAP-113)
+    copies onto `PastStay` from `VillaArchiveBookings` are recorded as
+    staff keyed them, with no currency when legacy had none. They are not
+    reconciled as money: `reconcile_legacy` checks only that every archive
+    stay has landed (nothing left to enrich or create), not the amounts.
   - Dates: min/max of arrival/departure, season spans per property.
   - Text: non-null/non-blank counts for descriptions, notes, references
     (catches encoding truncation and over-eager stripping).

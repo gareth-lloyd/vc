@@ -236,6 +236,8 @@ def test_a_second_run_writes_nothing(
     )
     assert list(PastStay.objects.order_by("pk").values_list("updated_at", flat=True)) == stamps
     assert "created" not in out and "updated" not in out
+    # Every landed stay is `exists` on a re-run — counted, not listed.
+    assert "skipped  exists" in out and "Ids by category" not in out
 
 
 def test_flags_are_named_whatever_the_stay_ends_as(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -636,3 +636,54 @@ that no row carrying a `legacy_id` ever lands in those tables.
   rows and do not load — legacy's own `isnull(IsActive,0) = 1` convention
   hides them from the legacy UI too. If a collection looks thin after
   cutover, that is why; reinstating them is a product decision.
+
+## Run 6 — 2026-09-16 (GAP-113 `import_archive_stays`, feat/gap-113)
+
+`villacollective_gap113` = `CREATE DATABASE … TEMPLATE villacollective_gap108d`
+(the run-5 load of 13-Aug-2026 `ResProd` plus both sheets), migrated to
+`reservations.0013` (`PastStay` dates, amount, currency). Then
+`import_archive_stays --dry-run` → real run → re-run → `reconcile_legacy`.
+
+### Before the import
+
+`reconcile_legacy`'s new archive section blocked, as it should: **27** stays to
+create and **220** to enrich.
+
+### Import (real run; the dry run printed the same report)
+
+272 live `VillaArchiveBookings` rows → 253 stays after folding re-saves (e.g.
+`BN1063` ×14, Coopersmith/Coppersmith on one e-mail → one stay).
+
+| Outcome | Count | Ids |
+|---|---|---|
+| `past_stay` updated (enrich) | 220 | |
+| `past_stay` created | 27 | |
+| `person` created / blank-filled | 7 / 1 | |
+| `person_phone` added | 21 | |
+| skipped `bn_year_conflict` | 4 | 57/94, 110, 117, 201 |
+| skipped `weak_conflict` | 1 | 53 |
+| skipped `exists` | 1 | 290 (dates dropped, nothing else to fill; this run listed it — `exists` is now counted only) |
+| skipped `test_row` | 1 | 297 |
+| flag `dates_dropped` | 5 | 28, 61, 76, 233, 290 |
+| flag `duplicate_conflict` | 2 | 57/94, 268/280 |
+| flag `property_differs` | 1 | 97 |
+
+No `country_unresolved`, no person skips, no errors. Of the six stays still
+running or ahead of the run date, 5 was created and 40, 46, 227/234, 278 and
+279 enriched. Gibbens: 113 (`BN1005`) enriched the sheet stay, 114 (`BN1005a`)
+was created.
+
+### Re-run
+
+Zero writes: `exists` 248, and the same four `bn_year_conflict`, one
+`weak_conflict` and test row. The first re-run listed all 248 `exists` ids,
+which padded the id table out to ~1 000 columns, so `exists` is now counted
+without ids.
+
+### `reconcile_legacy` after the import
+
+Archive section clean (`exists` 248, `bn_year_conflict` 4, `weak_conflict` 1,
+`test_row` 1 — none blocking). Every row-count check is OK and night parity is
+clean. The one blocker is **not GAP-113's**: `Quotation on unknown client with
+a relinkable enquiry` gap −270, because `relink_enquiry_customers` was never
+run on the gap108d template this DB was copied from.

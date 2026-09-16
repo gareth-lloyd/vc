@@ -113,7 +113,7 @@ Thirteen tables are new; `VillaPaymentStatus` disappeared, so the count went
 
 | Table | Rows | Classification |
 |---|---|---|
-| `VillaArchiveBookings` | 295 (272 live) | **DEFERRED** — staff re-keying of past sheet bookings (villa, dates, guests, amount, lead-guest name/address). Overlaps the Past Bookers import, so the keep/merge call is owned by **GAP-113**; CUTOVER [§4g](CUTOVER.md#4g-chargeable-extras--bookingchargeitem-gap-017) flags the same "backfill from `VillaArchiveBookings`" work. NOT loaded today. ⚠️ 7 live rows end today or later — it is not purely historical. |
+| `VillaArchiveBookings` | 295 (272 live) | **LOADED by `import_archive_stays`** (GAP-113, runs after the sheet imports; CUTOVER [§4](CUTOVER.md#4-run-every-loader)). Staff re-keying of past sheet bookings: re-saves fold into one stay, which either fills the matching `sheet-stay-…` `PastStay`'s empty dates, amount, currency and notes, or creates an `archive-stay-<Id>` `PastStay` (finding or creating the person with the archive address and mobile). **Dropped:** `Adults`/`Children` (mostly form defaults), `ZohoId` (GAP-098), the contact fields of *enriched* stays, and staff test row 297. `reconcile_legacy` blocks while any stay is still to enrich or create. 7 live rows (6 stays) end on or after 2026-09-16; their nights are already `BookingHold`s. |
 | `VillaCheckoutDetails` | 598 | Booking-side payment/checkout ledger (`BookingRefNo`, `Amount`, `PaymentId`, `PaymentStatus`, `IsDeposit`). Falls under the GAP-089 booking descope — not loaded. |
 | `CheckoutPersonalInfo` | 160 | Lead-guest checkout form per booking. GAP-089 descope — not loaded. |
 | `CheckoutAdditionalInfo` | 25 | Additional-guest rows hanging off `CheckoutPersonalInfo`. GAP-089 descope — not loaded. |

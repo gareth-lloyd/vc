@@ -1,5 +1,23 @@
 # GAP-113 — `VillaArchiveBookings`: 272 staff-re-keyed stays that no loader reads
 
+> **✅ RESOLVED (2026-09-16)** — shipped on `feat/gap-113`; fast-forwarded into
+> local `main` (unpushed) at close-out. The overlap measurement chose
+> **enrich + load unmatched**: `PastStay` gains nullable `date_from`/`date_to`,
+> `amount` and `currency` (U1 `fd277fab`), exposed by the API (U2 `c9b3a2fb`)
+> and shown in Customer-360 "Past stays" (U3 `354ce331`).
+> `data_migration/archive_stays.py` folds re-saves (U4 `5e6849c1`) and
+> classifies each stay against the `sheet-stay-…` rows (U5 `8599272c`).
+> `channels_writable` moved into `sheets/matching.py` and `SheetReport` now
+> names ids (U6 `f6027d97`). The new post-sheet command
+> `import_archive_stays` blank-fills a matched sheet stay or creates
+> `archive-stay-<Id>` (U7 `d65551ef`), and `reconcile_legacy` blocks while any
+> stay is still to enrich or create (U8 `745f6097`). U9 did the ResProd dry
+> run (DRYRUN_LOG run 6: 220 enriched, 27 created, 4 `bn_year_conflict`,
+> 1 `weak_conflict`; re-run writes nothing) and the docs. Party size and
+> `ZohoId` (GAP-098) are not imported; amount is stored as recorded, with no
+> currency for `CurrencyId 0`. Decisions: `design/decisions.md` (GAP-113 row).
+> Runbook: CUTOVER §4 and §5.
+
 - **Severity:** 🟡 Gap (cutover fidelity). The table is the only place in
   ResProd holding these stays with dates, amounts and guest contact details;
   nothing loads it, so they reach the new system only as whatever the Past

@@ -14,7 +14,8 @@ writes the two outcomes:
   duplicate; the phone is added only to a person with none whose channels the
   sheets own (`channels_writable`).
 
-Every other category is reported with the legacy ids behind it. One
+Every other category is reported with the legacy ids behind it, except
+`exists` (on a re-run that is every landed stay), which is only counted. One
 `transaction.atomic()` with a savepoint per stay, under `suppress_zoho_push()`;
 `--dry-run` rolls it all back. A second run writes nothing: created stays are
 found by their key, enriched ones have nothing left to fill.
@@ -138,7 +139,8 @@ class Command(BaseCommand):
             self._create(stay, result.email_person, report)
         else:
             report.skipped[result.category] += 1
-            report.add_id(result.category, _ids(stay))
+            if result.category != "exists":  # a re-run's every stay; count only
+                report.add_id(result.category, _ids(stay))
 
     def _enrich(self, stay: ArchiveStay, target: PastStay, report: SheetReport) -> None:
         fields: list[str] = []

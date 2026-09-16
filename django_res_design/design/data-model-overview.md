@@ -42,8 +42,9 @@ Five models carry the weight of the system:
   `BookingEvent`, `BookingNote`, `BookingHold`, `BookingConciergeItem`,
   `BookingDocument`, and a 1:N to `Payment`. Its historic cousin
   **`PastStay`** (GAP-089) is a Person-owned record of a stay imported from Nick's spreadsheets — villa
-  name (+ optional resolved `Property`), year, legacy booking number, no
-  dates or money — surfaced on Customer-360 and counted into the
+  name (+ optional resolved `Property`), year, legacy booking number; nullable
+  `date_from`/`date_to`, `amount` and `currency` are filled from legacy
+  `VillaArchiveBookings` by `import_archive_stays` (GAP-113) — surfaced on Customer-360 and counted into the
   repeat-customer flag, never scheduled, invoiced or pushed to Zoho.
 - **`Person`** (`accounts`) — the single unified human-identity model. A
   `kind` enum (`CUSTOMER` vs `CONTACT`) distinguishes booking-side customers

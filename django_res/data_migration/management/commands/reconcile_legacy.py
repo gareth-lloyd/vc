@@ -1283,7 +1283,8 @@ class Command(BaseCommand):
         parsed: that stay is missing from its guest's history. Either the import
         was skipped, or it reported the stay (`person_ambiguous` /
         `person_inactive` / a row error) and nobody resolved it — fix the data,
-        or land it by hand as `archive-stay-<Id>` (CUTOVER.md). The skip
+        or land it by hand: a create as `archive-stay-<Id>`, an enrich onto its
+        sheet stay (CUTOVER.md §5). The skip
         categories depend on the sheet, so they are shown, never pinned."""
         cursor.execute(ARCHIVE_ROWS_SQL)
         grouped = group_rows(list(rows_as_dicts(cursor)))

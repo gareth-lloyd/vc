@@ -1,5 +1,11 @@
 # Q-025 — Room floor: A2 ladder seen and endorsed; settle the unparsed remainder
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [Q-028](../q-028-legacy-loader-owner-questions.md)** as
+> §"Merged from Q-025". Its only open item is the ambiguous-floor-rung question for Nick, now question 7 of the combined list; the reconcile residual was already closed. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** Question (owner confirmation + a known reconcile gap).
   **No new build** — GAP-065 already shipped everything Nick asked for.
 - **Source:** 2026-07-20 Nick screen-recording (`Recording-20260720_134424`,

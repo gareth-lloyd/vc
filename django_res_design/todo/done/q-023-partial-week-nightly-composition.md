@@ -23,7 +23,7 @@
 > this ticket's D1–D3 confirmation questions should ride the GAP-074
 > owner/Debbie call rather than a separate ask — see
 > [gap-074](../gap-074-nightly-price-quoting-no-changeover.md) and
-> [owner-questions-2026-07-02.md](../owner-questions-2026-07-02.md).
+> [owner-questions-2026-07-02.md](../reviews/owner-questions-2026-07-02.md).
 
 ## Problem
 

@@ -8,7 +8,7 @@
 > `PlacementId`), and [GAP-066](gap-066-room-bed-size.md) (bed size). The
 > A1/A2 owner-vocabulary decision this ticket raised is carried in those tickets'
 > "Owner steer" sections and the
-> [owner-questions](../owner-questions-2026-07-02.md) round. No work remains here.
+> [owner-questions](../reviews/owner-questions-2026-07-02.md) round. No work remains here.
 
 - **Severity:** Question (vocabulary decision) + build
 - **Source:** 2026-06-11 new-villa setup transcript review

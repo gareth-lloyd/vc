@@ -92,7 +92,7 @@ Sensitive field edits on `Person` (PII, address, name) are tracked into `AuditLo
 > [`todo/gap-040-customer-tags-taxonomy.md`](../../todo/done/gap-040-customer-tags-taxonomy.md)
 > and [`todo/gap-041-standing-linked-contacts.md`](../../todo/done/gap-041-standing-linked-contacts.md).
 > Sensitive tags (Disability / Approach-with-care) may carry retention/consent
-> implications — cross-ref `todo/q-010-guest-data-retention.md`.
+> implications — cross-ref `todo/gap-095-erasure-propagation-to-zoho.md` (absorbed Q-010, 2026-09-16).
 
 ### `PersonEmail(TimestampedModel)`
 - `contact` — `ForeignKey(Person, on_delete=CASCADE, related_name="emails")` (FK column name retained as `contact` from the legacy table)

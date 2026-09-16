@@ -1,5 +1,6 @@
 """GAP-089: `PastStay` — the honest minimal record of a historic stay imported
-from Nick's spreadsheets (villa + year + booking number, no dates / money).
+from Nick's spreadsheets (villa + year + booking number). GAP-113 adds the
+optional exact dates and recorded amount from legacy `VillaArchiveBookings`.
 
 Surfaces on Customer-360 as "Past stays" and folds into the derived
 `is_repeat_customer` flag on both `/contacts/{id}` and `/clients`.
@@ -7,14 +8,20 @@ Surfaces on Customer-360 as "Past stays" and folds into the derived
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+from decimal import Decimal
 from typing import cast
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
+from django.db import IntegrityError, transaction
 from rest_framework.test import APIClient
 
 from accounts.factories import CustomerPersonFactory
 from accounts.models import Person, User
 from core.enums import StaffRole
+from core.models import AuditLog
+from pricing.models import Currency
 from properties.models import Property
 from reservations.models import PastStay
 
@@ -41,6 +48,8 @@ def person(db: None) -> Person:
 def _stay(person: Person, **kwargs: object) -> PastStay:
     defaults: dict[str, object] = {"villa_name": "Villa Yeraki", "year": 2019}
     defaults.update(kwargs)
+    if isinstance(defaults.get("date_from"), date) and "date_to" not in kwargs:
+        defaults["date_to"] = cast(date, defaults["date_from"]) + timedelta(days=7)
     return PastStay.objects.create(person=person, **defaults)
 
 
@@ -50,6 +59,81 @@ def test_default_ordering_is_newest_year_first(person: Person) -> None:
     new = _stay(person, year=2023, booking_number="BN500")
 
     assert list(PastStay.objects.all()) == [new, old, undated]
+
+
+def test_ordering_within_a_year_is_newest_dates_first_then_undated(person: Person) -> None:
+    undated = _stay(person, year=2023, booking_number="BN1")
+    early = _stay(
+        person,
+        year=2023,
+        booking_number="BN9",
+        date_from=date(2023, 5, 1),
+        date_to=date(2023, 5, 8),
+    )
+    late = _stay(
+        person,
+        year=2023,
+        booking_number="BN5",
+        date_from=date(2023, 9, 1),
+        date_to=date(2023, 9, 8),
+    )
+
+    assert list(PastStay.objects.all()) == [late, early, undated]
+
+
+def test_dates_amount_and_currency_round_trip(person: Person, gbp: Currency) -> None:
+    stay = _stay(
+        person,
+        date_from=date(2025, 8, 3),
+        date_to=date(2025, 8, 10),
+        amount=Decimal("4250.00"),
+        currency=gbp,
+    )
+
+    stay.refresh_from_db()
+    assert (stay.date_from, stay.date_to) == (date(2025, 8, 3), date(2025, 8, 10))
+    assert stay.amount == Decimal("4250.00")
+    assert stay.currency == gbp
+
+
+def test_dates_amount_and_currency_default_to_null(person: Person) -> None:
+    stay = _stay(person)
+
+    stay.refresh_from_db()
+    assert (stay.date_from, stay.date_to, stay.amount, stay.currency) == (None, None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("date_from", "date_to"),
+    [
+        (date(2025, 8, 3), None),
+        (None, date(2025, 8, 10)),
+        (date(2025, 8, 10), date(2025, 8, 10)),
+        (date(2025, 8, 10), date(2025, 8, 3)),
+    ],
+)
+def test_dates_must_be_both_or_neither_and_ordered(
+    person: Person, date_from: date | None, date_to: date | None
+) -> None:
+    with pytest.raises(IntegrityError), transaction.atomic():
+        _stay(person, date_from=date_from, date_to=date_to)
+
+
+def test_date_and_amount_edits_are_audited(person: Person, gbp: Currency) -> None:
+    stay = _stay(person)
+
+    stay.date_from = date(2025, 8, 3)
+    stay.date_to = date(2025, 8, 10)
+    stay.amount = Decimal("100.00")
+    stay.currency = gbp
+    stay.save()
+
+    ct = ContentType.objects.get_for_model(PastStay)
+    diffs = [
+        r.field_diffs for r in AuditLog.objects.filter(content_type=ct, object_id=str(stay.pk))
+    ]
+    changed = {key for diff in diffs for key in diff}
+    assert {"date_from", "date_to", "amount", "currency_id"} <= changed
 
 
 def test_contact_past_stays_lists_rows_with_optional_property(

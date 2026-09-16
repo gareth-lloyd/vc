@@ -65,7 +65,17 @@ class ReservationsConfig(AppConfig):
         # is summarised on the merge row by `record_merge` instead.
         track(
             PastStay,
-            fields=["person_id", "property_id", "booking_number", "villa_name", "year"],
+            fields=[
+                "person_id",
+                "property_id",
+                "booking_number",
+                "villa_name",
+                "year",
+                "date_from",
+                "date_to",
+                "amount",
+                "currency_id",
+            ],
         )
         track(
             Booking,

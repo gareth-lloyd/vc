@@ -1,5 +1,11 @@
 # Q-022 — Seasons defined by rental rates, not services
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [Q-028](../q-028-legacy-loader-owner-questions.md)** as
+> §"Merged from Q-022". Its only open item is the C1 season-label confirmation for Nick, now question 6 of the combined list. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** Question (modelling decision; reporting impact)
 - **Source:** 2026-06-11 email thread (Nick Cookson + Bryony Moger);
   2026-06-17 owner Loom (pricing walkthrough, 1:30–2:40)
@@ -68,7 +74,7 @@ controlled label alongside `RatePeriod.name` (GAP-059) rather than a per-band
 attribute; reporting aggregates on the tier while each villa keeps its own
 dates. Note that the tier must **copy with the base** on carry-over (Q-018 —
 carry-over already copies the base, not any in-season reduction), and that
-[SPEC-001](done/spec-001-rateplan-date-authority-regime-bucket.md) explored making
+[SPEC-001](spec-001-rateplan-date-authority-regime-bucket.md) explored making
 `RatePeriod` the sole date authority — **built 2026-09-14 as GAP-110** (the
 plan is a date-less regime bucket; carry-forward writes periods into it, so a
 tier on the period would ride the same clone). A tier-on-period decision here
@@ -90,5 +96,5 @@ be the season-shaped object). Leave the cross-villa reporting standardisation
 - GAP-037 (services split): the **inclusions** half of the legacy "season"
   moves to a Services concept; this ticket keeps the **rate-tier** half.
 - The pricing model (`Property → RatePlan → RatePeriod → RateBand`, GAP-056);
-  [SPEC-001](done/spec-001-rateplan-date-authority-regime-bucket.md) (period as
+  [SPEC-001](spec-001-rateplan-date-authority-regime-bucket.md) (period as
   date authority — structural counterpart to this question).

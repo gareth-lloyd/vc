@@ -31,7 +31,7 @@
 
 - **Severity:** Gap / architecture change (model + migration + FE + docs). Reverses
   the "groups stay" stance of [GAP-068](gap-068-seed-group-finance-settings-defaults.md)
-  and [Q-021](done/q-021-defaults-and-feature-taxonomy.md); **subsumes GAP-068**.
+  and [Q-021](q-021-defaults-and-feature-taxonomy.md); **subsumes GAP-068**.
 - **Source:** owner (Nick) has twice asked to drop Villa Groups (2026-06-11 email;
   reiterated in `owner-questions-2026-07-02.md`). Assessment 2026-07-03 (this
   investigation) found the per-group inheritance is unrealised value at real
@@ -190,9 +190,9 @@ inherit via `effective()`).
   belongs with **GAP-067**, unaffected).
 - **Moots [FG-002](fg-002-effective-null-vs-empty-string.md)** — `effective()`'s
   `""`-vs-`NULL` conflation disappears with the resolver. Close on landing.
-- **Reverses [FG-003](done/fg-003-effective-crashes-on-null-group.md)** — its fix
+- **Reverses [FG-003](fg-003-effective-crashes-on-null-group.md)** — its fix
   (non-null `Property.group`) is undone by dropping the FK.
-- **Check [GAP-026](done/gap-026-currency-display-money-fields.md)** — the FE money
+- **Check [GAP-026](gap-026-currency-display-money-fields.md)** — the FE money
   adornment consumes the group-resolved `currency_code`; ensure it still works once that
   becomes the property's own currency.
 </content>

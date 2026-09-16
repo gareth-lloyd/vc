@@ -85,7 +85,7 @@ fields (GAP-077 `payment_component_splits` + the security-deposit track).
 
 ## Dependencies
 
-- [GAP-077 ✅](done/gap-077-deposit-balance-gross-net-split.md) — the data.
+- [GAP-077 ✅](gap-077-deposit-balance-gross-net-split.md) — the data.
 - **GAP-085** — sibling, not a dependency: same figures, other consumer.
   Land the mapping vocabulary (which res field feeds which label) once and
   reuse it in both.

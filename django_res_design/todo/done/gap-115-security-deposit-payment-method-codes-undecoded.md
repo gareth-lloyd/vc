@@ -1,5 +1,11 @@
 # GAP-115 — `VillaFinance.SecurityDepositPaymentMethod`: three integer codes nobody can decode
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-109](../gap-109-legacy-loader-silent-column-drops.md)** as
+> §"Merged from GAP-115". It is one more home-or-drop column from the same ResProd pass, next to row 9's `VillaFinance` drops, and GAP-115 already suggested folding it in — same conversation, same person. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** 🟢 Gap (cutover fidelity, low blast radius). The column is
   effectively constant on real data, so dropping it costs almost nothing —
   but it is being dropped by *omission*, which is what this ticket fixes.

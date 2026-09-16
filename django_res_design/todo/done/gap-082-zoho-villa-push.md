@@ -50,7 +50,7 @@
 > after curating the catalogue (GAP-067).
 
 - **Severity:** Gap
-- **Source:** Descoped from [GAP-081](done/gap-081-zoho-flow-outbound-push.md)
+- **Source:** Descoped from [GAP-081](gap-081-zoho-flow-outbound-push.md)
   by user decision (2026-07-23) when the Limitless sandbox endpoints landed —
   contacts/enquiries/quotes shipped there; the villa push is its own,
   lower-urgency slice.
@@ -120,6 +120,6 @@ sweep, loader suppression, and the `zoho_backfill` command. This ticket is
 
 ## Dependencies
 
-- [GAP-081 ✅](done/gap-081-zoho-flow-outbound-push.md) — all push machinery
+- [GAP-081 ✅](gap-081-zoho-flow-outbound-push.md) — all push machinery
   (registry, delivery task, sweep, suppression, backfill) built there.
 - The villa webhook URL from the Limitless 2026-07-23 email (env var only).

@@ -171,7 +171,7 @@ and are safe to re-run.
 ## Dependencies
 
 - **⛔ Nick's sample sheets** — hard entry gate.
-- [GAP-082 ✅](done/gap-082-zoho-villa-push.md) — booking push + backfill
+- [GAP-082 ✅](gap-082-zoho-villa-push.md) — booking push + backfill
   this feeds; supersedes its FULL-booking-load precondition.
 - GAP-085 — financials block should be in place before the booking
   backfill runs, or historic bookings push with null financials (decide at

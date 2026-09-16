@@ -1,5 +1,11 @@
 # Q-010 — Guest data retention / GDPR
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-095](../gap-095-erasure-propagation-to-zoho.md)** as
+> §"Merged from Q-010". Q-010 asks *when* guest data is anonymised, GAP-095 asks *how* that reaches the CRM, and GAP-095 already recorded that neither is answerable alone. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** Question
 - **Source:** `product-design/06-verification.md` open question 10
 - **Blocks:** `POST /guests/{id}:anonymize` endpoint, retention sweeper

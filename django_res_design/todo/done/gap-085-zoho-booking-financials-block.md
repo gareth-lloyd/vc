@@ -146,6 +146,6 @@ systems (dropdown + free-text fallback — the taxonomy itself is GAP-088).
 - **GAP-088** (charge-item category taxonomy) — **soft**: the `category` key
   upgrades from free-text/null to enum when it lands; nothing here blocks
   on it.
-- [GAP-082 ✅](done/gap-082-zoho-villa-push.md) / [GAP-081 ✅](done/gap-081-zoho-flow-outbound-push.md)
+- [GAP-082 ✅](gap-082-zoho-villa-push.md) / [GAP-081 ✅](gap-081-zoho-flow-outbound-push.md)
   — push machinery + booking payload already on `main`. No hard
   dependencies.

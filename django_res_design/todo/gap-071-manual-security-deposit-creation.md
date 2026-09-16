@@ -16,6 +16,14 @@
 > recording, 2026-07-29 Limitless call) — both add operator money-flexibility
 > on the same payments track surface; the "amount source / policy override"
 > product decision below overlaps GAP-087's override design. Decide them once.
+>
+> **2026-09-16 check:** GAP-087 has since shipped (2026-08-07) and does
+> **not** settle decision 2 below. What it overrides is the booking's
+> *payment* deposit (`Booking.deposit_override_amount`); it explicitly
+> **deferred** a security-deposit override. Decision 2 stays open. What
+> GAP-087 does give is the precedent to copy if the answer is "yes, an
+> operator may override": a nullable audited amount, a status-gated setter
+> taking `actor` + `reason`, and a writer-gated staff action.
 
 - **Files:**
   - `payments/services/security_deposit.py` — `create_for_booking` (sole creator;

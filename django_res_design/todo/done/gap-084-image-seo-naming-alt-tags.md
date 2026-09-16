@@ -1,5 +1,11 @@
 # GAP-084 — SEO image naming + alt tags (villa/country/region structure, through to WP)
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-106](../gap-106-res-to-website-push.md)** as
+> §"Merged from GAP-084". Image SEO naming + alt text is what enriches the push's gallery (unit 2); how images reach the site is the question the push itself answers. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 **Severity:** gap (SEO improvement — "another tick in the box", not a
 game-changer; Ben's words).
 
@@ -90,7 +96,7 @@ properties images again, which may or may not be worth the effort."
 
 - **GAP-012** (S3 hosting) — key shape, `AWS_S3_FILE_OVERWRITE=False`
   suffixing, legacy flat `properties/legacy/<guid>` keys.
-- [GAP-082 ✅](done/gap-082-zoho-villa-push.md) (Zoho villa push, done
+- [GAP-082 ✅](gap-082-zoho-villa-push.md) (Zoho villa push, done
   2026-07-27) — candidate carrier for image URL + alt if the WP feed rides
   Zoho Flow; today it sends `hero_image_url` only.
 - **Not covered:** image resizing/variants/CDN (out of scope, as in GAP-012).

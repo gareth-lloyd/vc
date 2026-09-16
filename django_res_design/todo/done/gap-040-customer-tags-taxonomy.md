@@ -55,7 +55,7 @@ the enquiry and customer-profile screens
   it a derived badge, not a manual flag. "PA" overlaps the linked-contact role
   in [GAP-041](gap-041-standing-linked-contacts.md) — decide tag vs.
   relationship. "Disability" / "Approach with care" may warrant
-  retention/consent handling (cross-ref [Q-010](../q-010-guest-data-retention.md)).
+  retention/consent handling (cross-ref [Q-010](q-010-guest-data-retention.md)).
 
 No soft delete — tags are added/removed directly; audit-register the change set.
 
@@ -71,4 +71,4 @@ No soft delete — tags are added/removed directly; audit-register the change se
 - [GAP-042](gap-042-customer-360-profile-view.md) (profile view consumes tags),
   [GAP-041](gap-041-standing-linked-contacts.md) (PA overlap),
   [Q-021](./q-021-defaults-and-feature-taxonomy.md) (taxonomy curation pattern),
-  [Q-010](../q-010-guest-data-retention.md) (sensitive-tag retention).
+  [Q-010](q-010-guest-data-retention.md) (sensitive-tag retention).

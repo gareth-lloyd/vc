@@ -8,7 +8,9 @@
   `COVERAGE.md`. They are here so they are dropped by decision rather than by
   omission — the same reason the rest of this table exists. (`VillaFinance.
   SecurityDepositPaymentMethod`, found in the same pass, got its own ticket,
-  **GAP-115**, because its codes cannot be decoded from anything we hold.)
+  **GAP-115**, because its codes cannot be decoded from anything we hold —
+  folded back in 2026-09-16 as **row 21**, full text in §"Merged from
+  GAP-115".)
 - **Source:** 2026-09-11 legacy-loader audit — every registered loader's
   `legacy_query` diffed against `INFORMATION_SCHEMA.COLUMNS` on the
   24-Apr-2025 dump, then each ignored column counted for non-default values
@@ -50,6 +52,7 @@ fixture, and (where a count is derivable) a reconcile line.
 | 18 | `VillaMaster.AvailabilityType` / `.AvailabilityValue` — **new in the ResProd schema**; across the 387 non-deleted villas `AvailabilityType` is NULL ×222, 1 ×102, 2 ×63 | 165 | property | **Decide** — the two codes are not decoded and there is no lookup table; ask the legacy developer before choosing. Likely **Drop** with the distribution recorded, but not by omission. |
 | 19 | `VillaContactMapping.IsCC` — **new in ResProd**; marks a contact as copied on correspondence | 2 of 466 | assignment | **Drop** — 2 rows, and the new system models correspondence recipients per message, not per mapping. Record. |
 | 20 | `VillaQuotationMaster.IsUnbrandedVilla` — **new in ResProd** | 87 | quotation | **Decide** — CHECK-005 lists `is_unbranded` as dropped from the Zoho quote payload, so a home may already be wanted there; settle both together. |
+| 21 | `VillaFinance.SecurityDepositPaymentMethod` — **new in ResProd**; per-villa 0 ×59, 10 ×448, 20 ×1 (villa 489 "BT Test Villa"), plus 10 on all 413 templates and 676 per-season rows | 449 per-villa (non-zero) | property_finance | **Ask the legacy developer, then likely Drop** — the codes are undecodable from anything we hold (the column postdates `ResSystem/`, no lookup table in ResProd); do not guess "10 = bank transfer". Home only if 10 carries meaning the business relies on. Was GAP-115 — see §"Merged from GAP-115". |
 
 ## Acceptance
 
@@ -64,5 +67,85 @@ fixture, and (where a count is derivable) a reconcile line.
 
 - **BUG-030** lands the enquiry Person link (row 5) and the notes fold (row 6).
 - **Q-028** carries rows 10 and 11.
+- **Legacy developer** (external) answers row 21 — ask in the same
+  conversation as row 9.
 - **GAP-107** owns extras/discounts; **GAP-090** owns the description-column
   split; **GAP-067** owns row 16.
+
+---
+
+## Merged from GAP-115 — `VillaFinance.SecurityDepositPaymentMethod`: three integer codes nobody can decode
+
+> _Folded in 2026-09-16 (todo consolidation). The standalone ticket is closed as
+> [GAP-115](done/gap-115-security-deposit-payment-method-codes-undecoded.md); the text below is that ticket as it stood, headings
+> demoted one level. A reference to GAP-115 elsewhere now means this section._
+
+- **Severity:** 🟢 Gap (cutover fidelity, low blast radius). The column is
+  effectively constant on real data, so dropping it costs almost nothing —
+  but it is being dropped by *omission*, which is what this ticket fixes.
+- **Source:** GAP-108 dry run, ResProd (13-Aug-2026), measured 2026-09-16.
+  One of the new columns the ResProd schema added since the 24-Apr-2025 dump.
+- **Files touched:** `data_migration/loaders/finance.py` (only if the answer
+  is "home it"); `COVERAGE.md` / `CUTOVER.md` §5 expected-loss list;
+  `todo/gap-109-legacy-loader-silent-column-drops.md` row 9, which covers the
+  column's neighbours.
+
+### The facts
+
+`VillaFinance` carries a `SecurityDepositPaymentMethod` int. Its whole
+distribution on ResProd:
+
+| Row kind | Code | Rows |
+|---|---|---|
+| per-villa (`SeasonId` NULL, `VillaId > 0`) | 0 | 59 |
+| per-villa | **10** | **448** |
+| per-villa | 20 | 1 |
+| contact-default template (`SeasonId` NULL, `VillaId = 0`) | 10 | 413 |
+| per-season (`SeasonId` set) | 10 | 676 |
+
+(The three row kinds are the same ones the `PropertyFinance` reconcile gap of
+1239 is itemised against — 413 templates + 676 per-season + 150 on excluded
+villas. Do not collapse the templates into the per-villa count: they are not
+a villa's own row.)
+
+The single code-20 row is `VillaFinance.Id` 1531 on villa **489, "BT Test
+Villa"** (`SecurityDepositAmount` 10) — test data, not a real policy. So on
+real villas the column holds only 0 and 10.
+
+**The codes cannot be decoded from anything we hold.** The column does not
+exist anywhere in the in-repo `ResSystem/` checkout (it postdates it), there
+is no lookup table for it in ResProd (`sys.tables` has no payment-method
+table), and the ×10 spacing matches the legacy habit of hand-numbered enums
+without a reference table. Guessing "10 = bank transfer" is exactly the kind
+of invention that must not enter a migration.
+
+### The decision this ticket exists to force
+
+Ask whoever owns the legacy app (Nick/the ResSystem developer) what 0, 10 and
+20 mean, then either:
+
+- **Drop** — one line in the CUTOVER expected-loss list recording the
+  distribution above and the fact that the codes were never decoded. This is
+  the likely answer: one real value plus a blank, and the new system models
+  the security deposit without a method field.
+- **Home** — if 10 turns out to carry meaning the business relies on (e.g. it
+  is the *reason* a deposit is collected pre-arrival rather than on the day),
+  add the field with a transform test and a reconcile count.
+
+Either way the answer gets written down, so the next audit does not re-ask it.
+
+### Acceptance
+
+- The meaning of 0 / 10 / 20 is recorded in `design/decisions.md` (or
+  recorded as "asked, no answer available" — an explicit unknown beats a
+  silent drop).
+- The column is either loaded with a test, or named in `CUTOVER.md` §5's
+  expected-loss list with its distribution.
+- `COVERAGE.md` stops listing the column as unclassified.
+
+### Dependencies
+
+- **GAP-109** row 9 already covers the neighbouring `VillaFinance` drops
+  (`SecurityDepositCalculateFromId`, `IsManualUpdate`, `SeasonId`,
+  `BankAccCounty`). Fold this in when GAP-109 is picked up if the timing
+  suits — it is the same conversation with the same person.

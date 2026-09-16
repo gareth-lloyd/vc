@@ -82,5 +82,5 @@ entry; this ticket supplies it.
 ## Dependencies
 
 - None hard. **GAP-085** consumes the enum (soft dependency in that
-  direction). [GAP-076 ✅](done/gap-076-non-commissionable-extras.md) put
+  direction). [GAP-076 ✅](gap-076-non-commissionable-extras.md) put
   `commissionable` on both models — same two-model alignment pattern.

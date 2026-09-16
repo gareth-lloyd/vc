@@ -26,6 +26,9 @@ block follows.
 
 ## Decision needed
 
+> 2026-09-16: put to Nick as question 8 of
+> [Q-028](q-028-legacy-loader-owner-questions.md) (suggested answer: option 1).
+
 What should happen to an operator discount when the booking is repriced?
 
 1. **Re-apply the same absolute amount** (`quote.total − operator_discount`,

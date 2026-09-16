@@ -22,11 +22,11 @@
 > ⚠️ **Tell Limitless:** Zoho `deposit_status` can now read `"cancelled"` on a
 > **live** booking (one that wants no deposit), not only on a cancelled one —
 > read `== "succeeded"` for "paid?", never `"cancelled"` for "booking dead?".
-> The re-push timing itself is [BUG-021](../bug-021-zoho-booking-not-repushed-on-money-edits.md).
+> The re-push timing itself is [BUG-021](bug-021-zoho-booking-not-repushed-on-money-edits.md).
 >
 > ⚠️ **Left open:** a booking with no deposit row has no path out of
 > `awaiting_deposit` — pre-existing, filed as
-> [BUG-026](../bug-026-no-deposit-booking-parked-in-awaiting-deposit.md).
+> [BUG-026](bug-026-no-deposit-booking-parked-in-awaiting-deposit.md).
 
 - **Severity:** 🔴 Bug (money workflow — the booking is stuck in
   `awaiting_deposit` behind a 0.00 row that cannot be marked paid).

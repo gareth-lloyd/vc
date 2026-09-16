@@ -1,5 +1,13 @@
 # Owner / loader question round — 2026-07-02
 
+> **Retired 2026-09-16 (todo consolidation).** Both open topics moved to
+> live tickets, so this round is closed per its own instruction below:
+> **C1** (season labels) is question 6 of
+> [Q-028](../q-028-legacy-loader-owner-questions.md); **D1–D3** (odd-length
+> stays) are on the owner-call agenda of
+> [GAP-074](../gap-074-nightly-price-quoting-no-changeover.md). Kept for
+> provenance; do not send from here.
+
 Feeds the two still-open tickets **Q-022** (season labels) and **Q-023**
 (odd-length stay pricing). _Topics A (room attributes) and B (defaults +
 feature wording) closed out with Q-019 → GAP-064/065/066 and Q-021 →
@@ -14,7 +22,7 @@ nothing here blocks anything you can't see — it's all "what should the new
 system say/do", not "how".
 
 > **2026-07-29 — fold D1–D3 into the GAP-074 owner call.**
-> [GAP-074](gap-074-nightly-price-quoting-no-changeover.md) (2026-07-08 Nick
+> [GAP-074](../gap-074-nightly-price-quoting-no-changeover.md) (2026-07-08 Nick
 > call) is gated on an owner/Debbie call about nightly-vs-weekly quote
 > presentation — the same nightly-pricing territory as D1–D3 below. To avoid
 > two separate owner asks on one topic, put D1–D3 on that call's agenda

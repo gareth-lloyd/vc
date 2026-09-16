@@ -1,4 +1,13 @@
-# Q-026 — Which fields does Res own on the website, and what happens to a site-side edit?
+# Q-026 — Website contract questions for Mojo: which fields Res owns (and what happens to a site-side edit), and whether country/destination hub pages are Res-fed
+
+> **Scope widened 2026-09-16 (todo consolidation):** absorbs **Q-027** (are
+> country and destination hub pages Res-fed, or marketing pages Mojo owns?) —
+> see §"Merged from Q-027" at the end. Both questions go to the same people
+> (Ben Wood, Dave Thomas) and both set the scope of the GAP-106 payload, so
+> they are one conversation. Answer the two independently: the field matrix
+> blocks GAP-106 unit 1; the hub question decides whether `Country` needs a
+> slug and `Region.slug` must go globally unique, and should be answered
+> before GAP-096's `region` push kind (was GAP-103) is built.
 
 - **Severity:** Question (blocks GAP-106 unit 1's field list on our side, and
   Mojo's collection modelling on theirs — both sides are guessing until this
@@ -67,5 +76,91 @@ owner, and where both want one, Res defaults and the site overrides.**
 ## Dependencies
 
 - **Blocks GAP-106 unit 1** (final field list).
+- The merged hub question (was Q-027) scopes the geo half of the GAP-106
+  payload and GAP-096's `region` push kind (was GAP-103) — see its own
+  Dependencies in §"Merged from Q-027".
 - Related **GAP-090** / **GAP-092** — the description-section set is part of
   what Res owns here; settle those first or the matrix names a moving target.
+
+---
+
+## Merged from Q-027 — Are country and destination hub pages Res-fed, or marketing pages Mojo owns?
+
+> _Folded in 2026-09-16 (todo consolidation). The standalone ticket is closed as
+> [Q-027](done/q-027-are-country-destination-hubs-res-fed.md); the text below is that ticket as it stood, headings
+> demoted one level. A reference to Q-027 elsewhere now means this section._
+
+- **Severity:** Question (decides whether `Country` needs a slug at all, and
+  whether `Region` needs globally-unique ones — a schema question we should
+  not answer by accident while building GAP-106).
+- **Source:** URL-structure review of the live site, 2026-09-09 (Yoast
+  sitemaps).
+- **Files:** `django_res/properties/models/geo.py:8` (`Country` — `name`,
+  `iso2`, `iso3`, `dial_code`, no slug), `geo.py:28` (`Region` — `slug`,
+  unique **per country** via `unique_region_slug_per_country`).
+- **Decision needed from:** Gareth, Ben Wood (Mojo).
+
+### Problem
+
+The live site has **69 flat root-level pages**, of which roughly 45 are
+country or destination hubs: `/greece`, `/italy`, `/france`, `/corfu`,
+`/paxos`, `/tuscany`, `/marrakech`. Villa URLs then sit one level down as
+`/{destination}/{villa}` — `/corfu/villa-zogita`.
+
+So the website's geography is **flat**: `/greece` and `/corfu` are siblings,
+with no URL hierarchy, even though the hierarchy plainly exists in the data.
+Our model is two-tier and hierarchical: `Country` → `Region` → `Property`.
+
+Two consequences depend on an unmade decision:
+
+1. **`Country` has no slug.** If country hubs are ever Res-fed, it needs one.
+   If they are marketing pages, it never does.
+2. **`Region.slug` is unique per country only** — enforced by
+   `unique_region_slug_per_country`. The website's destination namespace is
+   flat and global, so two same-slug regions in different countries would
+   collide on the site. Whether that matters depends on the same decision.
+
+⚠️ **Unverified:** whether any duplicate region slugs exist across countries
+today. Check before treating this as theoretical — if any exist, the collision
+is a live BUG rather than a constraint to tighten.
+
+### The question
+
+Do country and destination hub pages get their content from Res, or are they
+marketing pages Mojo authors and owns?
+
+**Proposed answer: Mojo owns them.** They are editorial and campaign surfaces
+— hero imagery, positioning copy, curated villa selections, seasonal
+messaging — none of which Res holds or should hold. Res supplies the *villas*
+that appear on them, keyed by region, and nothing else.
+
+If that is accepted:
+
+- No `Country.slug`, no change to `Country` at all.
+- `Region.slug` stays unique-per-country; the site keys its destination pages
+  on `region.RES_ID` and treats slug as the advisory matching aid
+  `_region_payload` already documents it as.
+- The only geo obligation on the push is that each villa names its region by
+  `RES_ID`, which it already does.
+
+The alternative — Res-fed hubs — means adding `Country.slug`, promoting
+`Region.slug` to globally unique (with a data fix if duplicates exist), and
+accepting that our geo model now has to mirror a marketing site's URL
+namespace. That is a real cost for benefit nobody has yet asked for.
+
+### Acceptance
+
+- A one-line decision recorded here and reflected in GAP-106's payload scope.
+- If "Mojo owns them": an explicit note in GAP-106 that geo is villa-scoped
+  only, so nobody later adds a hub-content push by inference.
+- Either way: the duplicate-region-slug check above is run and its result
+  recorded, since it stands alone as a data-quality question.
+
+### Dependencies
+
+- **GAP-106** — scope of the geo half of the payload.
+- **GAP-103** (region/country edits never re-push) — if hubs ever become
+  Res-fed, that ticket's `region` push kind becomes the delivery route, so
+  answer this before GAP-103 is built rather than after.
+- **GAP-104** open question (region re-slug moves every villa URL beneath it)
+  — same area; a globally-unique region slug would change that answer too.

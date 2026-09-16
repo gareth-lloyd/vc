@@ -1,5 +1,11 @@
 # GAP-104 — Property slug is freely mutable and un-historied (live public URLs move silently)
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-106](../gap-106-res-to-website-push.md)** as
+> §"Merged from GAP-104". Slug immutability exists to uphold the Res → website contract's "edits in Res never move a URL" promise and supplies the push's `previous_slugs`; it has no consumer outside that push. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** 🟠 Gap (a villa rename can silently move a live public URL,
   and nothing records the old value, so no 301 can be minted — the page
   404s and its link equity is lost).

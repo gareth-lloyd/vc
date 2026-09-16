@@ -4,6 +4,9 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { formatDate } from "@/lib/format/date";
+import { RepeatBadge } from "@/features/contacts/components/RepeatBadge";
+import { TagChips } from "@/features/contacts/components/TagChips";
+import { useContact } from "@/features/contacts/hooks";
 import { EnquiryFormDialog } from "@/features/enquiries/components/EnquiryFormDialog";
 import {
   enquiryRequestTypeLabel,
@@ -21,10 +24,15 @@ interface Props {
  * top of the builder: who's asking, the requested stay (with its ± flex), the
  * party, and the capture context. Edit opens the standard enquiry dialog; the
  * host's enquiry-detail cache invalidation refreshes the header after save.
+ *
+ * The linked client's tags and Repeat badge sit next to the name (GAP-116):
+ * the builder hides the rail that normally shows them. Read-only — the contact
+ * read shares the rail's cache entry, and renders nothing until it resolves.
  */
 export function EnquirySummaryHeader({ enquiry }: Props) {
   const { t } = useTranslation("quotations");
   const [editOpen, setEditOpen] = useState(false);
+  const { data: contact } = useContact(enquiry.person ?? undefined);
 
   const facts: string[] = [];
   if (enquiry.date_from && enquiry.date_to) {
@@ -53,6 +61,12 @@ export function EnquirySummaryHeader({ enquiry }: Props) {
           {enquiry.is_flexible ? (
             <StatusBadge status="flexible" kind="pending" label={t("builder.summary.flexible")} />
           ) : null}
+          <RepeatBadge
+            bookingCount={contact?.booking_count ?? 0}
+            pastStayCount={contact?.past_stay_count ?? 0}
+            isRepeat={contact?.is_repeat_customer ?? false}
+          />
+          <TagChips tags={contact?.tags ?? []} />
         </div>
         <p className="text-muted-foreground text-xs">{facts.join(" · ")}</p>
       </div>

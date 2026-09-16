@@ -78,7 +78,7 @@ Not a big-bang refactor. Establish the contract, then pay down opportunistically
    shared shapes — the enquiry/quotation cross-refs and the property/availability
    cross-refs — into `lib/` or a neutral `features/shared` so neither side
    imports the other. Pairs with the shared-schema work in
-   [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md).
+   [GAP-062](../gap-062-frontend-schema-contract-drift-no-codegen.md).
 3. **Decide rate-workbench's status:** either fold it into `features/properties`
    (accept it's a sub-feature and stop pretending), or invert the dependency by
    promoting the shared pieces (`periodLabel`, `coverage`, the rate FormDialogs,
@@ -98,7 +98,7 @@ Not a big-bang refactor. Establish the contract, then pay down opportunistically
 ## Dependencies
 
 - Shares the shared-schema extraction with
-  [GAP-062](gap-062-frontend-schema-contract-drift-no-codegen.md); do the
+  [GAP-062](../gap-062-frontend-schema-contract-drift-no-codegen.md); do the
   `money`/`country`/status-enum lift once and let both tickets consume it.
-- Frontend analogue of backend [FG-013](done/fg-013-owners-app-outside-layers-contract.md)
+- Frontend analogue of backend [FG-013](fg-013-owners-app-outside-layers-contract.md)
   (import-linter) — same "enforce the layering you already believe in" idea.

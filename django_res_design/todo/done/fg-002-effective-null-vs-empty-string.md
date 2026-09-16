@@ -1,7 +1,7 @@
 # FG-002 — `effective()` conflates `""` and `NULL` as "inherit"
 
 > **❌ DROPPED (2026-07-06) — mooted by
-> [GAP-070](done/gap-070-remove-groups-global-property-defaults.md), now landed
+> [GAP-070](gap-070-remove-groups-global-property-defaults.md), now landed
 > (local `main` unpushed).** GAP-070 deleted `effective()` (and the whole group
 > inheritance chain) outright, so there is no longer any code that conflates `""`
 > with `NULL` as "inherit". `NULL` now means *genuinely unset* and resolves to a

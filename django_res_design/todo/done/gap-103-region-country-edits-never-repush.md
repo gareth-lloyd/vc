@@ -1,5 +1,11 @@
 # GAP-103 — Region/Country edits never reach Zoho (no geo push kind, no parent bump)
 
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-096](../gap-096-organisation-zoho-push-kind.md)** as
+> §"Merged from GAP-103". The `region` push kind is built on GAP-096's `organisation` pattern (registration, dark-landed builder, a stage in `zoho_backfill`), and both endpoints were requested from Limitless in the same email on 2026-09-16. Nothing was decided or built by the
+> merge; the open work continues there.
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** 🟠 Gap (a retired region stays selectable in every Zoho
   dropdown until each villa/contact/enquiry embedding it happens to re-push —
   for a stable villa, never).

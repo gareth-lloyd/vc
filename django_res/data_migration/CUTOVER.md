@@ -24,8 +24,20 @@ calibration evidence.
   `Property` already carries a legacy `legacy_id`.
 - A staff user authorised to run management commands on the production
   cluster.
-- `LEGACY_DATABASE_URL=mssql://sa:<pw>@<host>:<port>/NewResSystem`
-  exported in the shell.
+- `LEGACY_DATABASE_URL=mssql://sa:<pw>@<host>:<port>/ResProd`
+  exported in the shell (the database name is whatever
+  [§3](#3-reseed-res-db-from-the-final-dump) restored into; `ResProd` is the
+  convention).
+- **A dump on the current legacy schema.** GAP-108 retargeted every loader and
+  every reconcile query at `ResProd` (13-Aug-2026 production), which has drifted
+  from the older `NewResSystem` snapshots: 73 tables (12 new), `DeletedAt` on
+  `VillaEnquire`, and `IsActive` soft-delete columns on `VillaRooms`,
+  `VillaFeaturesMappings`, `VillaCollectionsMappings` and `VillaNearBy` that the
+  loaders now honour. The 24-Apr-2025 `NewResSystem` schema is **no longer a
+  supported source** — loaders will fail or silently over-count against it.
+  A dump newer than 13-Aug-2026 is expected and fine; the expected gaps in
+  [§5](#5-verify-with-reconcile_legacy) were pinned on that date and move with
+  the data, so re-derive any that shift rather than nudging the numbers.
 
 ## 1. Freeze legacy writes
 
@@ -35,18 +47,33 @@ means a fresh reload from a newer dump (see [§6](#6-late-writes)).
 
 ## 2. Take the final legacy dump
 
-The current convention is `live-db-YYYY-MM-DD.sql` (UTF-16 LE). Copy it
-into the local `ResSystem/Database/` directory.
+The current convention is a SQL Server backup, `NewResSystem_YYYYMonDD.bak`
+(e.g. `NewResSystem_2026Aug13.bak`) — that is how every production dump has
+arrived since 2026-08. The older `live-db-YYYY-MM-DD.sql` convention (a
+UTF-16 LE T-SQL script) is still restorable but carries the retired schema
+([§0](#0-prerequisites)).
+
+The file can live anywhere readable; `ResSystem/` is the usual home and is
+gitignored, so it exists only in the main checkout.
 
 ## 3. Reseed `res-db` from the final dump
 
 ```bash
-.claude-tmp/drop-and-reseed.sh
+.claude-tmp/drop-and-reseed.sh <dump-file> [db-name]     # db-name: ResProd
 ```
 
-Wait for the script to report `Restore complete`. Sanity-check that
-`SELECT COUNT(*) FROM VillaMaster` returns the expected number of
-properties.
+The script takes the dump path and the target database, so it runs from the
+main checkout or any worktree. A `.bak` is copied into the container and
+restored with `RESTORE … WITH MOVE` (the backup carries the original server's
+file paths, so every logical file is moved onto this container's data dir under
+the target name); a `.sql` is transcoded from UTF-16 only if it actually carries
+that BOM, then piped through `sqlcmd`. The target database is **dropped** if it
+exists — name it deliberately.
+
+It finishes by printing the `VillaMaster` row count. Expect **545** on the
+13-Aug-2026 dump; a newer one should be in the same region. A wildly different
+number (or a failure to reach this line) means the restore did not land — stop
+here rather than loading a half-restored database.
 
 ## 4. Run every loader
 
@@ -90,9 +117,11 @@ uv run python manage.py loadlegacy --all
 > `Property.category` and the `PropertyCategory` lookup were removed; the
 > table is classified as dropped in `COVERAGE.md`.
 
-Expect this to finish in ~2 minutes on the live snapshot. Watch for any
-non-zero `errors` column in the per-loader summary; investigate before
-proceeding. Since 2026-07-05 the command is strict and crash-isolated: a
+Expect **~7 minutes** on the live snapshot (GAP-108 dry runs on ResProd:
+416.9s, 6m16s and 6m56s across three clean loads of the 13-Aug-2026 data — the
+"~2 minutes" quoted here before GAP-108 was the much smaller 24-Apr-2025 dump).
+All **31** registered loaders must report `0` in the `errors` column of the
+per-loader summary; investigate any non-zero before proceeding. Since 2026-07-05 the command is strict and crash-isolated: a
 loader that raises no longer aborts the run (its failure lands in the
 summary as `<loader crashed>`, remaining loaders still run, the sequence
 sync still happens — a failing sync is reported as a
@@ -202,6 +231,60 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > new `hnw` / `owner` values) and the ~2.4k DEAD historic enquiries by
 > design; the booking kind is unaffected.
 
+## 4a. Pricing summaries — automatic, with a manual fallback
+
+`VillaPricingSummary` (the display min/max price and party shown on property
+cards) is normally maintained by a Celery task that `pricing.signals` enqueues
+on every `RatePlan` / `RateBand` write. A full load writes hundreds of
+thousands of those, so **`BaseLoader.load()` suppresses the enqueue** for the
+whole run — the same mechanism that already suppresses the Zoho push
+(`suppress_summary_rebuild`, beside `suppress_zoho_push`).
+
+**`loadlegacy` rebuilds them itself**, in one synchronous pass after the
+loaders and the sequence sync, and prints
+
+```text
+Rebuilt 359 pricing summaries.
+```
+
+as the last line before the per-loader summary table — **359** on the
+13-Aug-2026 dump. So there is nothing extra to run here in the normal case;
+this section is what to check and how to recover.
+
+The rebuild is crash-isolated like a loader: if it raises, the run does **not**
+abort, a `rebuild_summaries` row appears in the summary table carrying
+`<rebuild crashed>`, and `loadlegacy` exits non-zero. That is the one case
+where the property cards would come up blank, and the fix is the manual
+equivalent:
+
+```bash
+uv run python manage.py rebuild_summaries     # idempotent; safe any time
+```
+
+It walks every distinct `(property, currency)` owning a rate plan, recomputes
+each synchronously, takes seconds, and prints the same count. Re-run it freely
+— after a hand-edit to rate plans, or simply to confirm the number.
+
+**No Celery worker is needed for the cutover.** Loader pushes are suppressed
+and the rebuild is synchronous, so the `celery` list should read **0 before
+and after** the load (`redis-cli LLEN celery`). A non-zero tail means something
+enqueued work the cutover did not expect — find it before starting the worker,
+because a worker draining stale messages against a freshly loaded DB is how a
+dry run gets silently mutated.
+
+**AuditLog volume.** The load writes one audit row per tracked-model save:
+**72 009** rows on ResProd, dominated by `propertyimage` (18 232),
+`propertyfeature` (13 359), `quotationline` (7 556), `rateband` (6 633),
+`person` (6 252), `rateperiod` (6 222) and `enquiry` (5 081). That is expected,
+not a leak — but it is the bulk of the load's write volume, so size the
+transaction log and any audit retention policy for it.
+
+**`PropertyFinanceLoader.reference_date` is the load day.** The per-villa
+commission/tax vote (BUG-028 D7) counts only rate rows ending on or after that
+date, so loading and reconciling on different days can shift which rows vote.
+Run the whole sequence in one sitting — the `VillaAvailability` check has the
+same "both sides move with today" property.
+
 ## 4b. Capture external IDs into `SyncRecord` (Zoho)
 
 This step **captures** the external ids Zoho already issued against legacy
@@ -209,21 +292,39 @@ rows into `integrations.SyncRecord`, while the legacy DB is still readable.
 The `syncrecord_zoho` loader runs as part of `loadlegacy --all` in step 4,
 so there is nothing extra to run here — this step is the verification.
 
-> **Live-schema reality (2026-07-05 dry run):** only `VillaContact`,
-> `VillaEnquire` and `VillaMaster` actually carry a `ZohoId` column in the
-> prod dump — `VillaQuotationMaster` and `VillaBooking` do **not** (the
-> five-table list below was aspirational). The loader and the reconcile
-> section probe `INFORMATION_SCHEMA` per table and skip/annotate absent
-> columns, so a schema-vintage difference can no longer crash the run.
-> Known accepted gap: `VillaMaster` continuity expects gap **1** — legacy
-> rows 88 (*Temenos Villa Templos*) and 339 (*Temenos Villa Kioni*) are two
-> **distinct** villas that share one `ZohoId` (`577032000002128026`), a
-> source-side error in Zoho, not duplicate Property records. **Product
-> decision 2026-07-06: ACCEPT.** Both villas migrate; the SyncRecord attaches
-> to the lower legacy Id (88, forced by `ORDER BY Id` in the loader query so
-> it is reproducible), and the shared `ZohoId` is flagged to the CRM owner for
-> a source-side fix. The gap stays **1** until Zoho is corrected — no property
-> merge is warranted.
+> **Live-schema reality (re-measured on ResProd, 13-Aug-2026 — GAP-108).**
+> **Four** source tables are probed, not five. `VillaBooking` is off the list:
+> GAP-089 unregistered the booking loader, so no loaded row exists for a
+> booking `SyncRecord` to attach to. And `VillaQuotationMaster` **does** now
+> carry a `ZohoId` — the 2026-07-05 note that stood here, saying it did not,
+> was true of the 24-Apr-2025 dump only. The loader and this section still
+> probe `INFORMATION_SCHEMA` per table and skip/annotate an absent column, so a
+> schema-vintage difference cannot crash the run.
+>
+> | source | legacy ext id | loaded | sync records | expected gap |
+> |--------|---------------|--------|--------------|--------------|
+> | `VillaMaster.ZohoId` | 112 | 76 | 75 | **1** |
+> | `VillaContact.ZohoId` | 0 | 0 | 0 | 0 |
+> | `VillaEnquire.ZohoId` | 2 228 | 2 228 | 2 227 | **1** |
+> | `VillaQuotationMaster.ZohoId` | 1 601 | 1 467 | 1 467 | 0 |
+>
+> **`VillaContact` carries the column but every value is blank** — contacts
+> were never pushed to Zoho. Not a failure, but it means contact continuity is
+> a non-issue at cutover: every contact will be a fresh insert on first push.
+>
+> Both expected gaps are the **same accepted shape** — two distinct legacy rows
+> sharing one `ZohoId`, a source-side error in Zoho rather than duplicate
+> records here. Both rows migrate; only one can hold the external-ID link, and
+> the loader attaches it to the lower legacy Id (forced by `ORDER BY Id`, so it
+> is reproducible) and logs `data_migration.zoho_id_duplicate`:
+>
+> - `VillaMaster` 88 (*Temenos Villa Templos*) and 339 (*Temenos Villa Kioni*)
+>   share `577032000002128026`. **Product decision 2026-07-06: ACCEPT** — no
+>   property merge is warranted.
+> - `VillaEnquire` 1267 and 1268 share `577032000009062002` (found on the
+>   GAP-108 dry run; same acceptance).
+>
+> Each gap stays **1** until the CRM source is corrected.
 
 Why it is time-critical even though nothing syncs yet: the legacy DB is the
 only home of these ids and it is decommissioned 24–48h after cutover (step
@@ -243,8 +344,8 @@ uv run python manage.py reconcile_legacy --integrations
 The `--integrations` flag adds, after the main table:
 
 - **Zoho external-ID continuity** (enforced): per source table
-  (`VillaMaster`, `VillaContact`, `VillaEnquire`, `VillaQuotationMaster`,
-  `VillaBooking`), the count of backfilled `SyncRecord(provider=ZOHO_CRM)` rows
+  (`VillaMaster`, `VillaContact`, `VillaEnquire`, `VillaQuotationMaster`),
+  the count of backfilled `SyncRecord(provider=ZOHO_CRM)` rows
   (with a non-blank `external_id`) vs the number of **loaded** rows that carried
   a legacy `ZohoId` — i.e. legacy rows whose `ZohoId` is non-blank *and* whose
   `legacy_id` resolves to an imported Django row. The raw legacy `ZohoId` count
@@ -258,7 +359,10 @@ The `--integrations` flag adds, after the main table:
   justification. (The check compares counts, not values; the one-shot
   `loadlegacy --all` writes every `external_id` from the final dump.)
 - **WordPress surface** (informational only): legacy `VillaBooking.BookingUrl`
-  and `VillaSyncDetail` volume. The WordPress backfill is **not built yet** —
+  (251 non-blank on ResProd) and `VillaSyncDetails` volume (5 773 rows over 2
+  distinct `SiteId`s). Note the **plural** table name: the singular
+  `VillaSyncDetail` this section probed before GAP-108 exists in no dump, so
+  the row silently reported `n/a`. The WordPress backfill is **not built yet** —
   multi-site fan-out needs a `provider_instance` field on `SyncRecord` that
   the model doesn't have. This row reports the surface so it isn't silently
   treated as "all clear"; it never blocks. If WP continuity matters for this
@@ -308,10 +412,37 @@ organic reference can never collide with an imported one.
 writes a unified `accounts.Person` **directly**, keyed `legacy_id="client-{Id}"`
 with `kind=CUSTOMER`, reconciling each row's single legacy email/phone onto a
 PRIMARY `PersonEmail`/`PersonPhone` child in place (idempotent on re-run). The
-downstream loaders (quotation, booking, preference) resolve their customer FK
-through `person_for_client("{Id}")` → that same `client-{Id}` Person; the rare
-no-name client `ClientLoader` skips falls back to the `unknown_client` sentinel
+downstream loaders resolve their customer FK through `person_for_client("{Id}")`
+→ that same `client-{Id}` Person, falling back to the `unknown_client` sentinel
 rather than dropping the referencing row.
+
+> **The customer chain has two extra hops since GAP-108** (U8b, U8d). From
+> ~Nov-2025 the legacy app stopped writing a name onto `VillaClientDetails`, and
+> often stopped naming a client row at all, so the plain lookup above
+> increasingly landed on the sentinel. Two loaders now reach one hop further
+> before giving up, and neither can merge two real people:
+>
+> - **`ClientLoader`** takes the name of the lowest-Id named live enquiry
+>   reached through the client's own quotations — 111 clients name themselves,
+>   920 more are recovered this way, and the remaining 184 have no name anywhere
+>   (see `Person (client)` in [§5](#5-verify-with-reconcile_legacy)).
+> - **`QuotationLoader`** resolves a client-less quotation through its enquiry,
+>   which is what closed the old `Quotation` gap of 9 to **0**.
+> - **`GuestPreferenceLoader`** resolves client → **the preference's own
+>   quotation's person** → sentinel, bounded by `_may_borrow_quotation_person`:
+>   the hop is allowed only when the preference names no real client row at all,
+>   or when the quotation names that same client. A preference on a client row
+>   that exists but did not load keeps the sentinel rather than attaching one
+>   person's dietary/access/VIP notes to another. This moved preferences on the
+>   sentinel from 498 to **30**, spread over 104 real people, without moving any
+>   reconcile count. The run logs
+>   `data_migration.preference_customer_borrowed_from_quotation` with `count`
+>   and `refused` (`count=514, refused=0` on ResProd) so a newer dump shows the hop's
+>   reach directly instead of surfacing it as a moved gap.
+>
+> Registry order is load-bearing for the last one: `quotation` runs before
+> `guest_preference`, so `Quotation.person` is already resolved when the
+> preference loader reads it.
 
 The cutover **order is load-bearing**: `migrate` MUST run before `loadlegacy`:
 
@@ -350,9 +481,9 @@ GAP-045 D1) — the same destructive FK-rewrite-then-hard-delete path used for
 owner/agent contacts. There is no separate guest-dedup tool.
 
 In `reconcile_legacy`, `VillaClientDetails` is checked against the `client-`
-slice of `Person` (`expected_gap=1`, the no-name row), and the `VillaContact`
-owner/agent check excludes that slice — see the two `Person (...)` rows in the
-table below.
+slice of `Person` (`expected_gap=184` on ResProd — the rows that name nobody on
+either side), and the `VillaContact` owner/agent check excludes that slice — see
+the two `Person (...)` rows in [§5](#5-verify-with-reconcile_legacy).
 
 ## 4e. Free-text companies fold into `Organisation` (GAP-046)
 
@@ -431,6 +562,24 @@ never emitted by the loader. An unmapped/NULL legacy `RoleId` falls back to
 > COALESCE change needed.
 
 ## 4g. Chargeable Extras → `BookingChargeItem` (GAP-017)
+
+> **SUPERSEDED — this step does not run at cutover (GAP-108 U1, 2026-09-16).**
+> `BookingChargeItemLoader` is **unregistered**, along with the Booking and
+> Payment loaders: historic stays now arrive from the Past Bookers spreadsheet
+> as `PastStay` rows (GAP-089), so there are no imported Bookings for a charge
+> line to hang off. [§5](#5-verify-with-reconcile_legacy) mechanises that with
+> three inverted invariants — `Booking` / `Payment` / `BookingChargeItem with
+> legacy_id` must all be **0**, and a non-zero count means a booking loader was
+> run against the legacy DB.
+>
+> The loader module, its tests and this section are kept as the **schema
+> record**: they are the authoritative description of `VillaBookingDetails` and
+> of the currency policy below, and they are what a future "enrich past stays
+> from `VillaArchiveBookings`" ticket would build on. Nothing here is executed
+> today. For the *villa* extras catalogue that **is** loaded, see
+> [§4i](#4i-extras-catalogue--pricingextra-gap-107) — a different table
+> (`VillaSeasonRate` with `IsExTra = 1`) and a different destination
+> (`pricing.Extra`).
 
 `BookingChargeItemLoader` ports the staff-entered "Chargeable Extras"
 (`VillaBookingDetails`: `Id, BookingId, CurrencyId, Price, Notes`) onto
@@ -514,7 +663,8 @@ on whether to add a `Property.is_poa` flag.
 
 `ExtraLoader` (`extra`, registered after `rate_rule`) ports the villa
 **menu** of extras — the `VillaSeasonRate` rows flagged `IsExTra = 1` that
-`RateBandLoader` keeps out of the rate grid (96 live rows on the 24-Apr-2025
+`RateBandLoader` keeps out of the rate grid (85 live rows on loaded villas on
+the ResProd 13-Aug-2026 dump; 96 on the 24-Apr-2025
 dump, 84 of them on villas that load — the 137 older docs quote was a parse
 of the git-tracked `DbScript.sql`; census in `DRYRUN_LOG.md` run 3). Booked extras are a different thing and were already ported by
 [4g](#4g-chargeable-extras--bookingchargeitem-gap-017). Legacy folded these
@@ -529,7 +679,7 @@ extra is deliberately minimal and **opt-in**:
 | `name` | `Name`, else `Description`, else `Extra <ID>`; truncated to 128 | `Name` is `nvarchar(max)`. |
 | `description` | `Description` | |
 | `kind` / `calc` | `other` / `fixed_per_stay` | Legacy has no unit; staff refine in the SPA (no name-based inference). |
-| `amount` | `Price` as entered (`NULL → 0`) | `RatesModel.Calculate()` is not reproduced. Dry-run census (24-Apr-2025): `PriceType` is gross (20) on 87 of 96 rows and net (10) on 9; `Commission` carries the villa's commission % (20 on 86, 15 on 5) and `TaxAmount` is 0 throughout. Porting `Price` verbatim is exact for gross rows; it would under-quote a **net** row by its commission, and the only live net rows (5238, 5341) are `Price = 0`. **Recalibrating on a newer dump: re-run the net-rows census** (`PriceType = 10 AND Price > 0` on live villas) before trusting `amount`. |
+| `amount` | `Price` as entered (`NULL → 0`) | `RatesModel.Calculate()` is not reproduced. Census re-run on ResProd (13-Aug-2026, extras on loaded villas): `PriceType` is gross (20) on **83** of 85 rows, 82 of them priced, and net (10) on **2** — ids 5238 and 5341, both still `Price = 0.00`, so **no net row carries a price to under-quote**. `TaxAmount` is 0 throughout. Porting `Price` verbatim is therefore exact for every priced extra on this dump. (24-Apr-2025 for comparison: 87 gross / 9 net of 96, same two priced-net-free ids.) **Recalibrating on a newer dump: re-run the net-rows census** — `PriceType = 10 AND Price > 0` on live villas must stay empty, or `amount` under-quotes those rows by their commission. |
 | `currency` | legacy `CurrencyId` if non-zero, else `resolve_property_currency` (preferred live plan → settings → EUR) | The engine filters extras by exact currency match, so the extra must land in the currency quotes are built in. No resolvable currency → skipped. Snapshotted at load: a villa with a *scheduled* currency switch (future-dated plan in another currency) needs its extras re-currencied in the SPA when the switch lands — the engine will not see them until then. |
 | `is_mandatory` | `False` | Legacy extras were a menu, never auto-charged. **Consequence:** the SPA quote builder never sends `opt_in_extras`, so ported extras are catalogue + Zoho `extras[]` visibility until the FE follow-up ticket wires opt-in selection. |
 | `commissionable` | `True` | GAP-076 default. |
@@ -559,37 +709,136 @@ extra never appears in the result set. The retire sweep always runs: it sets
 ## 5. Verify with `reconcile_legacy`
 
 ```bash
-uv run python manage.py reconcile_legacy
+uv run python manage.py reconcile_legacy --integrations
 ```
 
-The command now enforces this itself: it prints an `expected`/`status`
-column and **exits non-zero** if any row's `gap != expected_gap`, so this
-step passes iff the command succeeds — no manual cross-reference needed.
+The command enforces the tables below itself: it prints an `expected`/`status`
+column and **exits non-zero** if any row's `gap != expected_gap`, so this step
+passes iff the command succeeds — no manual cross-reference needed.
+`--integrations` adds the Zoho continuity section ([§4b](#4b-capture-external-ids-into-syncrecord-zoho),
+blocking) and the WordPress surface section (informational).
 
-The expected-gap numbers live in `reconcile_legacy.py` (`_CHECKS`), which is
-their single source of truth. The table below is a human-readable mirror;
-if the live dump legitimately shifts a number, change it in the code (that
-is where the dry-run calibration happens), not just here.
+The numbers live in `reconcile_legacy.py` (`_CHECKS`), which is their single
+source of truth; each check carries its itemised derivation as a comment. The
+tables here are a human-readable mirror, and
+`test_documented_expected_gaps_are_encoded` pins the whole set — so a number
+that legitimately shifts on a newer dump is re-derived in the code *and* that
+test, never nudged in this file alone.
 
-| Source table              | Expected gap | Reason |
-|---------------------------|--------------|--------|
-| `VillaCollectionsMappings`| 308 *(itemised 2026-09-15, BUG-030 §13)* | 3 duplicate (collection, villa) pairs + 22 memberships on deleted villas + **283 live memberships of five collections deleted together on 2024-05-28** ("Chef Included" 66, "Exceptional Design" 55, "Walk to restaurants" 34, "Water Front" 59, "WALK TO THE BEACH" 67) — dropped with their collections (decision 2026-09-11). |
-| `VillaFeaturesMappings` → `PropertyFeature` | 0 *(pinned; GAP-108 executes the SQL for the first time)* | **BUG-030 §11**: distinct legacy (villa, feature) pairs after the loader's remap — a soft-deleted feature resolves to its lowest-Id live namesake (`LOWER(LTRIM(RTRIM(Name)))`), unmatched ones drop out, villas filtered like `PropertyLoader` — vs manual (`is_derived=False`) links between legacy-stamped rows. GAP-067 derived links and staff-made links never count. |
-| `VillaFinance`            | 1236 *(itemised at the GAP-107 dry-run, 2026-09-10)* | Legacy rows the per-villa pass does not port: 1526 total (`VillaId` is `NOT NULL`, so the `VillaId IS NOT NULL` query counts every row) − 1089 `VillaId = 0` (413 contact-default templates + 676 parent-child overrides with no villa) − 146 on soft-deleted villas − 1 on the blank-name villa the property loader skips = 290 ported. 311 override rows carry `VillaId > 0` and *are* ported as the villa's only row — never exclude on `ParentId`. **GAP-107**: the loaded side counts only rows the per-villa pass stamped with `legacy_id` (= `VillaFinance.Id`); the GAP-070 owner-contact fallback rows and `snapshot_defaults` rows carry `NULL`, so the gap no longer moves with the fallback count (GAP-073 measured 1235 while those rows were still counted). `loaded = 0` means a DB loaded before `properties.0008` — see [§6f](#6f-re-stamp-propertyfinancelegacy_id-after-gap-107-only-for-dbs-loaded-before-2026-09). |
-| `VillaCurrency`           | 4            | Junk rows (`HTFG`/`RUPEE`/`RS`) with zero FK references are skipped. |
-| `VillaSeason` → `RatePlan` (villas with a loaded regime) | 0 *(placeholder)* | **GAP-110**: a `RatePlan` is one `(villa, currency)` regime, not a season — `RatePlanLoader` merges every live, priced season of a villa that resolves to the same currency onto one plan keyed `villa:<VillaId>:<CODE>`. Both sides count **villas**: legacy = distinct live villas with ≥1 live priced rate row (the loaders' shared `PRICED_ROW_PREDICATE`); loaded = distinct villas owning a `villa:`-keyed plan that carries ≥1 legacy period (a minted plan the band loader couldn't populate does not count; staff plans never do). Gap = villas the loader can't resolve (no `Property`, no currency), structurally ≥ 0. **Recalibrate at the first post-GAP-110 dry-run** — the pre-regroup numbers (710 seasons → 521 plans, gap 67) no longer apply. Expected losses that no longer count as a gap: the 17 rate-less seasons (no regime — skipped) and the 25 seasons without a live `VillaSeasonDates` window (their plan still lands — the rate rows carry their own dates — but no inclusion service is banded); season names survive only as `notes` on a merged plan. |
-| `VillaSeasonRate` (+ `VillaOccupencyPrice`) | 4492 *(recalibrated 2026-09-14, BUG-028 dry-run 4, post-GAP-110)* | **BUG-013**: the check counts both `VillaSeasonRate` parents **and** `VillaOccupencyPrice` bands on `IsOccupationPrice` parents. Fully itemised in `reconcile_legacy.py` (balances to zero residual): dominated by 3099 priceless non-POA rows (**BUG-028**: only `NightlyPrice`/`WeeklyPrice > 0` or `IsPOA` count; 792 Price-only / 0.00 rows no longer load) and 1154 rows outside the loader's query (deleted/dangling seasons or villas); 136 flattener-shadowed sources, 106 capacity-emptied gap fallbacks and 9 rows on plan-less seasons; occupancy expansion and flattener fragments net off. Recalibrate on a newer dump — the mix moves with the data. |
-| *(section)* `RatePeriod` night parity | 0 villas | **GAP-110**: printed as its own table after the row counts. Per villa, the set of nights legacy priced (the coalesced union of its live, priced, non-extra `VillaSeasonRate` spans, `ToDate` inclusive — same predicate as the loaders, including occupancy parents priced only through their child bands) must equal the nights the villa's loaded legacy periods cover. Boundary trims and conflict splits never change that set, so a villa with a mismatch lost or invented priced nights in the regroup. Every mismatched villa is listed with its legacy vs loaded night counts and is one blocker. A non-zero residue on the dump must be **itemised per villa** (villas with no `Property`; negative-price junk rows), not waved through. |
-| `VillaMaster`             | 1            | One row with empty `Name`. |
-| `VillaContactMapping`     | 1            | Composite legacy_id collapse. |
-| `VillaClientDetails`      | 1            | One row with neither `FirstName` nor `LastName` (no identity to import). Loads to the `client-` slice of `Person` (GAP-045). |
-| `VillaBookingDetails`     | 0 *(confirmed at 2026-07-05 dry-run)* | **GAP-017**: the legacy side already excludes zero-price rows and rows on deleted bookings; the loaded side counts only imported rows (`legacy_id IS NOT NULL`), so staff-created charge lines never skew it. Error/skip rows widen the gap until fixed: no-rate FX rows, unresolvable non-zero `CurrencyId`, conversions quantising to zero, unresolvable bookings — see [4g](#4g-chargeable-extras--bookingchargeitem-gap-017). |
-| `VillaAvailability` (future days) | 0 | New `availability_block` loader (2026-07-05): future day rows deduped to the latest edit per `(villa, day)` (`ROW_NUMBER()` over `COALESCE(UpdatedAt, CreatedAt), Id`, mirroring the loader), then filtered to the blocking statuses 0/NULL (Unknown), 6 (BookedExt), 30/40/50/60 (`AvailableDate >= today`; BUG-030 §31), coalesce into `BookingHold(reason=MANUAL)` rows, each run split around imported bookings and unreleased staff holds; the check compares future day counts to the summed day-span of loaded `avail-*` holds. Both sides move with "today" — run load and reconcile the same day. The gap is the days trimmed under bookings/holds (logged as `trimmed_days`) plus the days on unloaded properties (logged skips) and on errored runs; GAP-108 recalibrates it on the final dump. |
-| `VillaCountry` (active) | 0 *(calibrated 2026-09-10: 6/6)* | **GAP-107**: legacy `IsActive = 1`, not soft-deleted (`DeletedAt IS NOT NULL OR ISNULL(DeletedBy,'') <> ''` — both legacy conventions) vs migrated countries loaded active (`XX` sentinel excluded by iso2). Deleted countries load **retired** (`is_active=False`), never skipped, so FKs still resolve. Standing shifters (0 on the 24-Apr-2025 dump): a live legacy row `CountryLoader` cannot seed-match (iso-less → skipped and logged as `data_migration.country_without_iso_skipped`; the `XX` sentinel keeps its stable `__unknown__` legacy_id; a second live row on an already-claimed iso2 → skipped). BUG-030 §6: England (24, `UK`) resolves to GB and is skipped; its FKs alias to GB, so no post-load merge ([§7](#7-england--gb-merge-retired--bug-030-6) is retired). |
-| `VillaRegion` (imported) | 0 *(calibrated 2026-09-10: 64/64)* | **GAP-107**: non-blank-name legacy regions vs every loaded region with a `legacy_id` (sentinel excluded). Deleted regions load retired, never skipped. With the active slice below this pins the retired count too (retired = imported − active). The bare `VillaRegion` total above it is unchanged by GAP-107 and keeps its pre-existing shifters (blank-name rows skipped; sentinel + staff-created rows on the loaded side). |
-| `VillaRegion` (active) | 0 *(calibrated 2026-09-10: 42/42; 22 retired = 9 own-deleted + 13 under deleted countries)* | **GAP-107**: legacy not-deleted regions under a not-deleted, `IsActive = 1` country vs loaded regions with `is_active=True` (a region is also retired when its country is deleted, `IsActive = 0`, or unresolvable → unknown sentinel). Same seed-match shifters as `VillaCountry (active)`. **Ops:** a reload that retires rows does not reach Zoho (loader pushes are suppressed and nothing downstream changes) — run `zoho_backfill --kinds villa,enquiry,contact` afterwards so Limitless stops offering retired regions. |
-| `VillaSeasonRate` (extras, `IsExTra = 1`) | 0 *(calibrated 2026-09-10: 84/84)* | **GAP-107**: live legacy extras **on villas the property loader loads** (`JOIN VillaMaster`, `DeletedAt IS NULL` on both, non-blank villa name — so the 12 extras on deleted / blank-name villas never enter the gap) vs `pricing.Extra` rows with a `legacy_id` **and `is_active=True`** (a full run retires legacy-deleted extras by flag, mirroring the legacy filter; staff-created extras excluded). Shifters: a no-currency skip, or staff deactivating a ported extra in the SPA. Mapping in [4i](#4i-extras-catalogue--pricingextra-gap-107). |
-| *(invariant)* RatePlan non-GROSS basis | 0 | **SMELL-021**: legacy cannot express a NET price basis — no such column exists, and `RatesModel.Calculate()` treats every entered rate as the guest-facing gross (net derived by subtracting tax + commission) — so `RatePlanLoader` stamps `price_basis=GROSS` explicitly on every imported plan. Legacy side is a constant `SELECT 0`; any imported (`legacy_id IS NOT NULL`) plan carrying NET means the stamp regressed to the model default. Staff-created NET plans are excluded and legitimate. |
+> **Every number below was re-pinned in GAP-108 against `ResProd`** (13-Aug-2026
+> production data, loaded 2026-09-16), itemised to zero residual. Figures quoted
+> in older notes were calibrated on the 24-Apr-2025 `NewResSystem` dump and no
+> longer apply: most moved because the loaders gained ResProd's soft-delete
+> filters, one (`RateBand`) because the check's own legacy query was wrong.
+> `gap = legacy_count - loaded_count`, so a negative gap means the loaded side
+> is deliberately bigger. The loaded side now defaults to
+> `legacy_id IS NOT NULL`, so staff rows, `createsuperuser` and the sheet
+> imports can never move a gap between runs.
+
+### Expected gaps — the 15 checks that are non-zero
+
+| Check | Expected gap | Reason |
+|-------|--------------|--------|
+| `Country (legacy)` | **−225** | Structural, not a loss: `properties.0002` pre-seeds 249 canonical ISO-3166 countries and legacy `VillaCountry` rows are matched *onto* that seed by iso2 rather than added to it, so the loaded side is bigger. ResProd has 24 legacy rows — the 23 of the old dump plus Id 25 `Sync_Country`, a soft-deleted sync artefact resolving to no ISO code — hence 24 − 249. The lazily-minted `XX` sentinel is excluded on the loaded side by `iso2`. The constant tracks the **seed**: it moves only when `properties.0002` changes or legacy gains/loses a country row. |
+| `Currency` | 4 | The rows `CurrencyLoader` refuses: three soft-deleted junk codes that are not 3-letter alphabetic (`HTFG` Id 4, `RUPEE` 5, `RS` 7) plus the soft-deleted `EUR` twin (Id 2) — the live EUR (Id 3) claims the code first (BUG-028). |
+| `PersonEmail` | 2 | 319 legacy `VillaContactEmail` rows, 317 loaded. Both skips are rows with no `@`: Id 30 (empty string) and Id 270 (the literal `tbc`). |
+| `PersonPhone` | 8 | 259 legacy `VillaContactTele` rows, 251 loaded: 7 blank numbers plus Id 221, whose `ContactId` matches no `VillaContact` row, so it has no person to hang on. |
+| `CollectionMembership` | 9 | 2 206 `VillaCollectionsMappings` rows − 194 `IsActive = 0` − 921 `IsActive IS NULL` = 1 091 active; loaded = 1 082 distinct (villa, collection) pairs on a live collection and a loaded villa. Legacy's own views read `isnull(IsActive,0) = 1`, so **NULL is inactive** and the loader mirrors that — see the note under the table, because that convention costs real memberships. (Pre-GAP-108 this was 308 on the 24-Apr dump, dominated by five collections deleted together on 2024-05-28.) |
+| `Room` | 321 | 2 714 legacy rooms − 30 `IsActive = 0` = 2 684 active; 321 of those sit on a villa the property loader does not load (soft-deleted, or the blank-name row), so they have no parent to attach to. |
+| `Room placement (GAP-065)` | 61 | A no-loss gate: every legacy room with a `PlacementId` must land with the raw string preserved in `placement_note`. 2 409 active rooms carry one; the 61 are either (a) on an unloaded villa — the `Room` gap above, restricted to placement-bearing rows — or (b) a dangling `PlacementId` whose `VillaRoomsPlacement.Name` is NULL/blank, where the LEFT JOIN keeps the room and the note is honestly empty. The loaded side counts only the legacy slice, because `placement_note` is API-writable. |
+| `PropertyImage` | 839 | 19 071 legacy rows, 18 232 loaded. All 839 sit on the 35 soft-deleted villas `live_villa_sql` excludes — **0** are empty filenames and **0** are on a live villa, so no loaded property loses an image. |
+| `PropertyNearbyPlace` | 78 | 178 `VillaNearBy` rows − 1 inactive = 177; 78 hit one of the loader's three skips (parent property unresolved, place type unresolved, empty name). |
+| `RateBand` | 462 | **Legacy query replaced in GAP-108** — the old one counted a 39 868-row universe that was never the loader's input, so both numbers documented against it (gap 4492, then 33 235) are dead. Real universe = 6 398 non-occupancy parents + 697 valid occupancy children (which replace 302 parents) = 7 095; loaded 6 633. Itemised to zero residual: **+495** flattener-shadowed sources (481 parents + 14 occupancy children that won no (date × party) cell because a higher-precedence sibling on the same regime plan covered them whole), **−8** synthetic `occ-fb-*` fallbacks the occupancy expansion adds for party ranges a villa's own bands leave uncovered, **−25** `#seg` fragments where one source survives in more than one flat cell. Cross-check: 7 095 − 495 = 6 600 surviving sources, +8 = 6 608 (the loader's `created`), +25 = 6 633 rows. The loader's `skipped` and `party_clipped` counters are **not** terms in it. |
+| `PropertyContactAssignment` | 6 | Both sides count (mapping, role) **composites** — the loader writes one row per role, so counting bare mappings (what this check did before GAP-108, and the reason its old "composite collapse" note was wrong) never matched. 466 mappings (23 role-less, 435 with one role, 8 with two) → 474 composites with no duplicates; 6 sit on soft-deleted villas 462 (3), 505 (2) and 510 (1). Every mapped contact has a name, and the blank-name villa has no mapping. |
+| `Person (client)` | 184 | 1 215 `VillaClientDetails` rows, 1 031 loaded. Only 111 clients carry their own name; **U8b** recovers 920 more by borrowing the name of the lowest-Id named live enquiry reached through the client's quotations (from ~Nov-2025 the legacy app stopped writing a name onto the client row). The remaining 184 have no name anywhere to take — test accounts, `info@`-style shared addresses, and rows whose quotations reach no named enquiry; `ClientLoader.transform` returns `None` rather than minting a nameless Person. |
+| `PropertyFinance` | 1239 | 1 597 rows with `VillaId IS NOT NULL` (= every row; the column is `NOT NULL`) − 413 `VillaId = 0` with a NULL `ParentId` (contact-default templates) − 676 `VillaId = 0` with a `ParentId` (parent-child overrides owning no villa) − 150 `VillaId > 0` on a villa `live_villa_sql` excludes = 358 stamped per-villa rows. Override rows with `VillaId > 0` **are** ported as the villa's own row — never exclude on `ParentId`. Only rows the per-villa pass stamps with `legacy_id` count on the loaded side, so the GAP-070 owner-template and `snapshot_defaults` rows (both NULL) can't move it. `loaded = 0` means a DB loaded before `properties.0008` — see [§6f](#6f-re-stamp-propertyfinancelegacy_id-after-gap-107-only-for-dbs-loaded-before-2026-09). |
+| `QuotationLine` | 345 | 8 035 `VillaQuotationDetails` rows, 7 690 loaded; every skip is the single FK guard in `transform`, zero residual: **206** on a soft-deleted `VillaQuotationMaster` that `QuotationLoader` never loads, **79** orphans whose `QuotationMasterId` matches no master at all (173 distinct dangling ids — legacy has no FK here), **53** on a live loaded quote pointing at villa 462 or 505 (the two deleted test villas, so no real villa loses a line), **7** with `VillaId` 0/NULL. After U8b fills a missing stay date from the master, both date guards and the currency guard fire **zero** times. |
+| `GuestPreference` | 201 | 836 `ClientPreferenceDetails` rows, 635 loaded; every skip is a collapse onto the `unique_person_preference` triple (person, preference type, quotation) or a dangling FK, zero residual: **149** exact duplicate legacy rows — the legacy screen re-saves and the table has no unique constraint, so one client wrote the same VIP note 25 times; **38** distinct unloaded client ids collapsing onto the single unknown-client sentinel (all `quotation = NULL`); **12** same client with two different unresolved quotations, both flattened to `quotation = NULL` and so merged; **2** dangling `ClientPrefMasterId` 12 and 13 (`VillaClientPrefMaster` has 11 rows, max Id 11). The count is order-independent (skips = rows − distinct triples), which is why **U8d**'s quotation fallback re-keys 474 triples onto a real person without moving it. |
+
+> **`IsActive IS NULL` costs live-looking collection memberships.** 921 of the
+> 2 206 mapping rows carry a NULL flag, and legacy's own `isnull(IsActive,0) = 1`
+> convention hides every one of them from the legacy UI too — so the loader
+> drops them and the check agrees. They are **not** part of the 9 above: the
+> legacy side filters them before the comparison. But 612 of them do sit on a
+> live collection and a loaded villa, and **178 distinct (villa, collection)
+> pairs exist *only* as NULL rows** — no active row anywhere reinstates them, so
+> those 178 memberships are the real loss. If a collection looks thin after
+> cutover, this is why; reinstating them is a product decision, not a loader
+> bug.
+
+### Invariants — legacy side is a literal `SELECT 0`, so any row is a blocker
+
+These mechanise claims the row counts cannot: each asserts that a **loaded**
+query returns nothing.
+
+| Invariant | What a non-zero result means |
+|-----------|------------------------------|
+| `Person (owner/agent) primary email count != 1` | An owner/agent with ≥1 loaded email has no primary (the partial unique constraint already rules out two) — `ContactEmailLoader` demotes rivals but never promotes. |
+| `Organisation named NA / N/A / -` | A placeholder company name became a real `Organisation`; `_company_name` maps those to no agency (BUG-030 §15). |
+| `Property slug containing ://` | An imported slug is a raw WordPress URL rather than a slugified one — 385 of 386 loaded villas carry `://` in legacy `VillaMaster.Slug`, so this guards every later write too. |
+| `RatePlan non-GROSS basis` | An imported plan lost its explicit GROSS stamp and fell back to the model default (SMELL-021 — legacy cannot express NET). |
+| `RateBand non-POA priced <= 0` | An imported non-POA band would quote a free stay (BUG-028). |
+| `RateBand unapproved imported` | An imported band is unapproved, so the engine would never price it — legacy quotes ignore `IsApprove` (BUG-028 §5). |
+| `PropertyFinance NULL calculation type` | A stamped finance row would fall through to `_POLICY_FALLBACKS`, turning "10 %" into EUR 10 (BUG-028). |
+| `PropertySettings without currency` | A property's settings row resolved no currency — the flagged `IsDefaultSettingCurrencyId` case that must take the CPD currency (BUG-028). |
+| `Booking with legacy_id` | A booking loader ran against the legacy DB. It is unregistered (GAP-089): historic stays arrive from the Past Bookers sheet as `PastStay` rows, which carry no `legacy_id`. |
+| `Payment with legacy_id` | As above, for `Payment`. |
+| `BookingChargeItem with legacy_id` | As above, for `BookingChargeItem`. |
+
+Two further checks compare a **value**, not a count, because a count would pass
+vacuously: `Currency EUR legacy_id (live row)` (legacy `MIN(Id)` for a live
+`EUR` — Id 3 — vs the `legacy_id` stamped on EUR; a gap names the soft-deleted
+Id 2 twin, BUG-028) and `PropertyDefaults currency legacy_id (CPD row)` (the
+`VillaConfigPropertyDefault` currency vs the singleton's — a row count is
+meaningless because `get_solo()` auto-creates the singleton).
+
+### Zero-gap checks worth knowing
+
+The remaining checks expect **0**, and several encode real behaviour rather
+than a tautology:
+
+- **`Country (active)` / `Region (imported)` / `Region (active)`** — deleted
+  countries and regions load **retired** (`is_active=False`), never skipped, so
+  FKs still resolve; the active slices pin the retired counts by subtraction. A
+  live legacy row `CountryLoader` cannot seed-match (iso-less, or a second row
+  on a claimed iso2) is skipped and logged. England (24, `UK`) resolves to GB,
+  so [§7](#7-england--gb-merge-retired--bug-030-6) stays retired.
+  **Ops:** a reload that retires rows does not reach Zoho — run
+  `zoho_backfill --kinds villa,enquiry,contact` afterwards so Limitless stops
+  offering retired regions.
+- **`Property` (was 1)** — the blank-name villa skip moved into the shared
+  `live_villa_sql` helper, so it is no longer an unexplained one-row gap.
+- **`Quotation` (was 9)** — U8b resolves the 9 quotations with
+  `ClientDetailsId = 0` through their enquiry instead of dropping them.
+- **`Enquiry` (was −5)** — no booking-synth stand-ins exist any more.
+- **`PropertyFeature`** — inactive mappings (262 on ResProd) are filtered; a
+  soft-deleted feature still resolves to its lowest-Id live namesake, so the
+  structural gap stays 0.
+- **`PropertyLocation` / `PropertyCapacity` / `PropertySettings` / `RoomBeds` /
+  `PropertyDescription` / `PropertyService`** — GAP-108 additions covering the
+  satellite rows the loaders write per property or per room, which previously
+  had no check at all.
+- **`Extra`** — live legacy extras on loaded villas vs `pricing.Extra` rows with
+  a `legacy_id` **and** `is_active=True`; a full run retires legacy-deleted
+  extras by flag. Mapping in [4i](#4i-extras-catalogue--pricingextra-gap-107).
+- **`VillaAvailability (future days)`** — future day rows deduped to the latest
+  edit per (villa, day) by `COALESCE(UpdatedAt, CreatedAt), Id`, filtered to the
+  blocking statuses, coalesced into `BookingHold(reason=MANUAL)` runs and split
+  around imported bookings and unreleased staff holds. **Both sides move with
+  "today" — run the load and the reconcile on the same day.**
+
+### `RatePeriod` night parity
+
+Printed as its own table after the row counts. For every villa it compares the
+nights legacy priced — the coalesced union of its live, priced, non-extra rate
+spans (`PRICED_ROW_PREDICATE`, legacy `ToDate` inclusive) — against the nights
+the villa's loaded legacy `RatePeriod` rows cover. Boundary trims and conflict
+splits never change that night *set*, so a mismatch means the villa lost or
+invented priced nights in the GAP-110 regroup. A clean run prints `OK — every
+villa's loaded periods cover exactly its legacy nights`; otherwise every
+mismatched villa is listed with its legacy vs loaded night counts and is **one
+blocker each**. Expected residue is zero — itemise per villa, never wave it
+through.
 
 Any other gap is a **blocker**. Track it down before proceeding.
 
@@ -943,26 +1192,63 @@ source Person and its `legacy_id` with it.
 Merge each source into its survivor with `POST /contacts/{source_id}:merge`
 (admin-only; body `{"target_contact_id": <survivor_id>}`). `Person.merge`
 repoints every FK (bookings, enquiries, quotations, preferences, property
-assignments, channels) before deleting the source. The survivor is the
-`client-` Person, which bookings and preferences reference:
+assignments, channels) before deleting the source.
 
-| Source (deleted)       | Survivor         | Why they are one person                              |
-|------------------------|------------------|------------------------------------------------------|
-| `client-4`             | `client-1`       | Same e-mail and name; both referenced by bookings/preferences. |
-| `1` (VillaContact)     | `client-5`       | Same e-mail.                                         |
-| `232` (VillaContact)   | `client-19`      | Same e-mail and name; the contact's property mapping moves to the survivor. |
+**Find the candidates on the loaded DB, don't work from a pinned list.** The
+three pairs this section used to name (`client-4` → `client-1`, contact `1` →
+`client-5`, contact `232` → `client-19`) were derived on the 24-Apr-2025 dump
+and **none of those client ids exists on ResProd** — the lowest
+`VillaClientDetails.Id` is 2. Re-derive instead:
 
-Find the pks with `Person.objects.filter(legacy_id__in=[...])`. Confirm each
-pair is still the same person on the live dump before merging.
+```python
+# uv run python manage.py shell
+from django.db.models import Count
+from accounts.models import PersonEmail
 
-A `reconcile_legacy` re-run after the merges is expected to move these
-counts, and only these:
+dupes = (
+    PersonEmail.objects.exclude(email="")
+    .values("email")
+    .annotate(n=Count("contact_id", distinct=True))
+    .filter(n__gt=1)
+)
+for row in dupes:
+    people = PersonEmail.objects.filter(email=row["email"]).select_related("contact")
+    print(row["n"], row["email"], [(p.contact_id, p.contact.legacy_id, p.contact.full_name) for p in people])
+```
 
-- `Person (owner/agent)`: gap +2 (contacts 1 and 232 are gone).
-- `Person (client)`: gap +1 (`client-4` is gone).
-- `PersonEmail` / `PersonPhone`: gap + the channels contacts 1 and 232 owned,
-  which now sit on `client-` Persons outside the counted slice (a shared
-  address folds into the survivor's row).
+On ResProd (13-Aug-2026, after both sheet imports) that is **81** addresses
+carried by more than one Person: 35 sheet-only (`sheet-person-…` on both
+sides — the spreadsheet's own repeats), 33 a `client-` Person against a sheet
+Person, 6 a `client-` against a `VillaContact` Person, 5 a contact against a
+sheet Person, and 2 spanning all three slices.
+
+Two rules for working the list:
+
+- **An e-mail match is a candidate, not proof.** Shared and role addresses
+  (`info@…`, an agency's front desk, a villa manager's own address on their
+  owners' records) legitimately sit on several real people — they are part of
+  why the 184 unnamed clients in [§5](#5-verify-with-reconcile_legacy) have no
+  identity to import. Confirm the names and the linked
+  bookings/enquiries agree before merging; when in doubt, leave both.
+- **Prefer the `client-` Person as the survivor** where the pair has one:
+  bookings, quotations and guest preferences reference it. A sheet Person is
+  the next best survivor, then a `VillaContact` one. Merging *into* a sheet
+  Person is safe but loses the `legacy_id` that ties the row to the dump.
+
+A `reconcile_legacy` re-run after the merges will move the person counts, and
+only those — each merge deletes the source Person and its `legacy_id` with it,
+which is exactly why this runs **after** §5 has passed:
+
+- `Person (owner/agent)` gap **+1 per merged-away contact** Person.
+- `Person (client)` gap **+1 per merged-away `client-`** Person.
+- `PersonEmail` / `PersonPhone` gap **+ the channels each merged-away Person
+  owned**, which now sit on a Person outside that check's counted slice (a
+  shared address folds into the survivor's row).
+- Sheet-only merges move nothing: `reconcile_legacy` leaves every `sheet-` row
+  out of its counts.
+
+Record the merges you ran; the numbers above are the only sanctioned drift
+between a passing §5 and a later reconcile.
 
 ## 7. England → GB merge (retired — BUG-030 §6)
 
@@ -1002,9 +1288,17 @@ already selects S3, so any prod push of main carries the flip. Full runbook
 Switch the Villa Collective frontend (and any integrations) to the new
 Django backend's base URL. Smoke-test:
 
-- `/api/quotations` returns only real quotations (no synthesised
-  `legacy_id` starting `booking-`).
-- `/api/countries` returns the canonical ISO-3166 list, including `GB`.
+- `/api/v1/quotations` returns only real quotations. The viewset still
+  excludes `legacy_id__startswith="booking-"`; since GAP-089 unregistered the
+  booking loader nothing mints those any more, so the exclusion should now be
+  a no-op — a non-empty result from
+  `Quotation.objects.filter(legacy_id__startswith="booking-")` means a booking
+  loader ran (the `Booking with legacy_id` invariant in
+  [§5](#5-verify-with-reconcile_legacy) catches the same thing).
+- `/api/v1/countries` returns the canonical ISO-3166 list, including `GB`.
+- A property card shows a price — i.e.
+  [§4a](#4a-pricing-summaries--automatic-with-a-manual-fallback)'s rebuild
+  landed.
 - A staff user can log in and read a property's full detail page.
 
 ## 10. Retire the legacy container
@@ -1015,7 +1309,7 @@ After 24–48 hours of clean operation:
 cd ResSystem && docker compose down -v
 ```
 
-Archive `live-db-YYYY-MM-DD.sql` to the ops data-retention store
+Archive the dump (`NewResSystem_YYYYMonDD.bak`) to the ops data-retention store
 (typically S3). Keep the `data_migration/` Python package in the
 repo indefinitely — the loaders document the legacy schema and remain the
 authoritative migration record.

@@ -199,6 +199,8 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > ./manage.py import_enquiry_sheet --file "$D/Enquiries - FINAL.xlsx"
 > ./manage.py import_past_bookers  --file "$D/VC Past Bookers Final.xlsx" --dry-run
 > ./manage.py import_past_bookers  --file "$D/VC Past Bookers Final.xlsx"
+> ./manage.py relink_enquiry_customers --dry-run   # GAP-112, see below
+> ./manage.py relink_enquiry_customers
 > ```
 >
 > Each prints created / updated / skipped-per-reason counts plus the villa
@@ -230,6 +232,33 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > and enquiry kinds push the sheet people (with their tags — including the
 > new `hnw` / `owner` values) and the ~2.4k DEAD historic enquiries by
 > design; the booking kind is unaffected.
+>
+> **Then relink the enquiries the sheet people belong to (GAP-112).**
+> `EnquiryLoader` links an enquiry to a customer only on a strict e-mail +
+> name match, and the people it would match are minted *later*, by the sheet
+> imports — so those enquiries load customer-less and their quotations fall to
+> the unknown-client sentinel ([§4d](#4d-customers-load-straight-to-person-gap-045)).
+> `relink_enquiry_customers` re-asks the loader's question once both sheets are
+> in, and must run **after `import_past_bookers` and before `reconcile_legacy`
+> and any `zoho_backfill --kinds enquiry`** (a relinked enquiry pushed before
+> it would reach Zoho without its contact). It prints, per category, how many
+> enquiries and quotations it relinked or left alone, plus the guest
+> preferences that followed their quotation; `--dry-run` rolls back. It is
+> re-runnable — a second run relinks nothing — and never touches an enquiry
+> without a legacy `legacy_id` (a sheet or post-go-live one). On the run-5
+> database (13-Aug-2026 `ResProd` + both sheets) it gave, over the 321
+> sentinel quotations — re-derive these on the day, don't compare to them:
+>
+> | Outcome | Quotations | Enquiries |
+> |---|---|---|
+> | `relinked` — one person holds the address, names agree | 268 | 606 |
+> | `shared_email` — more than one person holds it: left for a human | 11 | 25 |
+> | `names_disagree` — the one holder's name differs: left for a human | 11 | 39 |
+> | `inactive` — the one holder is deactivated: left alone | 0 | 0 |
+> | `unmatched` — nobody holds the address | 30 | 482 |
+> | `no_email` | 1 | 3 |
+>
+> plus **16** sentinel guest preferences moved with their quotation.
 
 ## 4a. Pricing summaries — automatic, with a manual fallback
 
@@ -443,6 +472,25 @@ rather than dropping the referencing row.
 > Registry order is load-bearing for the last one: `quotation` runs before
 > `guest_preference`, so `Quotation.person` is already resolved when the
 > preference loader reads it.
+>
+> **The enquiry hop misses at load time for sheet-born customers (GAP-112).**
+> `EnquiryLoader` matches with `match_person_by_email(active_only=True)`, but
+> the `sheet-person-…` people it would match do not exist until the sheet
+> imports run, so `Enquiry.person` stays NULL and `QuotationLoader` has nothing
+> to hop to. The `relink_enquiry_customers` step
+> ([§4](#4-run-every-loader)) closes that after the fact with the same matcher,
+> plus one veto the loader lacks: an address held by **more than one** person
+> (whatever their kind or status) is never resolved — the matcher's
+> CUSTOMER-first tie-break is fine for a loader but is a guess for a relink.
+> A relinked enquiry's sentinel quotations follow it, and so do the sentinel
+> guest preferences recorded against those quotations (the loader borrowed
+> the sentinel from that very quotation); a preference whose quotation stays
+> on the sentinel is not touched. The shared-address leftovers are
+> [§6g](#6g-post-load-person-merges-bug-030-18) merge candidates; a
+> names-disagree one has a single holder, so there is nothing to merge — staff
+> compare the enquiry's name with that person and link it by hand, or not. Minting a Person per
+> enquiry inside `loadlegacy` was rejected: ~2 700 people duplicating the ones
+> the sheet import creates properly.
 
 The cutover **order is load-bearing**: `migrate` MUST run before `loadlegacy`:
 
@@ -733,7 +781,10 @@ test, never nudged in this file alone.
 > `gap = legacy_count - loaded_count`, so a negative gap means the loaded side
 > is deliberately bigger. The loaded side now defaults to
 > `legacy_id IS NOT NULL`, so staff rows, `createsuperuser` and the sheet
-> imports can never move a gap between runs.
+> imports can never move a gap between runs. The one deliberate exception is
+> the GAP-112 invariant below, which the sheet imports raise (as can
+> `QuotationLoader`'s back-fill of an enquiry from a later quotation) and
+> `relink_enquiry_customers` returns to 0.
 
 ### Expected gaps — the 15 checks that are non-zero
 
@@ -784,6 +835,7 @@ query returns nothing.
 | `Booking with legacy_id` | A booking loader ran against the legacy DB. It is unregistered (GAP-089): historic stays arrive from the Past Bookers sheet as `PastStay` rows, which carry no `legacy_id`. |
 | `Payment with legacy_id` | As above, for `Payment`. |
 | `BookingChargeItem with legacy_id` | As above, for `BookingChargeItem`. |
+| `Quotation on unknown client with a relinkable enquiry` | The `relink_enquiry_customers` step ([§4](#4-run-every-loader), GAP-112) was skipped or has gone stale: a loaded quotation is still on the unknown-client sentinel although its enquiry has a person, or is one the relink would link now (268 on the run-5 DB before the step). The ambiguous and unresolvable remainder (53 there) is deliberately not counted — it depends on the sheet contents and moves with §6g merges. |
 
 Two further checks compare a **value**, not a count, because a count would pass
 vacuously: `Currency EUR legacy_id (live row)` (legacy `MIN(Id)` for a live
@@ -1249,7 +1301,8 @@ Two rules for working the list:
   Person is safe but loses the `legacy_id` that ties the row to the dump.
 
 A `reconcile_legacy` re-run after the merges will move the person counts, and
-only those — each merge deletes the source Person and its `legacy_id` with it,
+only those (plus, possibly, the GAP-112 invariant — last bullet) — each merge
+deletes the source Person and its `legacy_id` with it,
 which is exactly why this runs **after** §5 has passed:
 
 - `Person (owner/agent)` gap **+1 per merged-away contact** Person.
@@ -1257,8 +1310,12 @@ which is exactly why this runs **after** §5 has passed:
 - `PersonEmail` / `PersonPhone` gap **+ the channels each merged-away Person
   owned**, which now sit on a Person outside that check's counted slice (a
   shared address folds into the survivor's row).
-- Sheet-only merges move nothing: `reconcile_legacy` leaves every `sheet-` row
-  out of its counts.
+- Sheet-only merges move no count: `reconcile_legacy` leaves every `sheet-` row
+  out of its counts. They can still trip the GAP-112 invariant below.
+- `Quotation on unknown client with a relinkable enquiry` goes **non-zero** when
+  a merge leaves a formerly shared address with a single holder — that
+  enquiry is now resolvable. Re-run `relink_enquiry_customers` (idempotent)
+  rather than accept the drift.
 
 Record the merges you ran; the numbers above are the only sanctioned drift
 between a passing §5 and a later reconcile.

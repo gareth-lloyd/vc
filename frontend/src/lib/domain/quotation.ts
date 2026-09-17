@@ -71,6 +71,9 @@ export const quotationLineSchema = z.object({
   price_override_reason: z.string().optional().default(""),
   is_selected: z.boolean().optional().default(false),
   is_manual: z.boolean().optional().default(false),
+  // GAP-114: snapshot of what the engine said when the line was priced —
+  // wholly or partly on rates the owner had not confirmed. Read-only.
+  is_indicative: z.boolean().optional().default(false),
   notes: z.string().optional().default(""),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),

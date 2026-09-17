@@ -1205,6 +1205,7 @@
       "result": {
         "winning_default": "Καλύτερη διαθέσιμη τιμή",
         "projected": "Προβλεπόμενη",
+        "indicative": "Ενδεικτικές τιμές",
         "occupancy_priced": "Τιμολόγηση ανά πλήθος",
         "nights_one": "{{count}} διανυκτέρευση",
         "nights_other": "{{count}} διανυκτερεύσεις",

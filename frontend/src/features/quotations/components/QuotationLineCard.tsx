@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/data/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/format/date";
 import { formatMoneyWithCode, parseMoney } from "@/lib/format/money";
@@ -62,6 +63,13 @@ export function QuotationLineCard({
             <span className="text-muted-foreground font-mono text-xs">#{line.id}</span>
             {line.is_selected ? (
               <Badge variant="secondary">{t("detail.lines.selected_badge")}</Badge>
+            ) : null}
+            {line.is_indicative ? (
+              <StatusBadge
+                status="indicative"
+                kind="draft"
+                label={t("detail.lines.indicative_badge")}
+              />
             ) : null}
           </div>
           <p className="text-muted-foreground text-xs">

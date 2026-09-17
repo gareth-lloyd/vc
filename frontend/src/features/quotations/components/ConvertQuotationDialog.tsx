@@ -95,6 +95,9 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation, initialL
   const busy = convert.isPending;
   const linesLoading = linesQuery.isLoading;
   const linesEmpty = !linesLoading && (lines?.length ?? 0) === 0;
+  // GAP-114: warn (never block) when the picked line was priced on rates
+  // the owner hadn't confirmed. The booking snapshot keeps the flag.
+  const pickedLine = lines?.find((line) => line.id === lineId);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
@@ -165,6 +168,15 @@ export function ConvertQuotationDialog({ open, onOpenChange, quotation, initialL
               </div>
             )}
           </fieldset>
+
+          {pickedLine?.is_indicative ? (
+            <p
+              className="border-warning/40 bg-warning/10 text-warning rounded-md border px-3 py-2 text-sm"
+              role="status"
+            >
+              {t("detail.dialogs.convert.indicative_warning")}
+            </p>
+          ) : null}
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">

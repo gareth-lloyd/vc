@@ -200,7 +200,8 @@
     "features.otherInformation.description.toasts.saved",
     "features.otherInformation.description.toasts.save_failed",
     "features.otherInformation.description.toasts.cleared",
-    "features.otherInformation.description.toasts.clear_failed"
+    "features.otherInformation.description.toasts.clear_failed",
+    "rate_workbench.probe.result.indicative"
   ],
   "quotations": [
     "builder.criteria.features",
@@ -258,7 +259,12 @@
     "detail.lines.party_format",
     "detail.lines.party_format_with_children",
     "detail.lines.selected_badge",
-    "detail.lines.thumbnail_alt"
+    "detail.lines.thumbnail_alt",
+    "builder.results.indicative",
+    "detail.lines.indicative_badge",
+    "detail.dialogs.send_preview.indicative_warning_one",
+    "detail.dialogs.send_preview.indicative_warning_other",
+    "detail.dialogs.convert.indicative_warning"
   ],
   "bookings": [
     "finance.engine_breakdown",

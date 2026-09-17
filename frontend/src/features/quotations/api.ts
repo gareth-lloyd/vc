@@ -115,6 +115,7 @@ interface SearchOptionsResponse {
     min_nights?: number | null;
     max_nights?: number | null;
     is_projected?: boolean;
+    is_indicative?: boolean;
     stay_options?: Array<{
       date_from: string;
       date_to: string;
@@ -130,6 +131,7 @@ interface SearchOptionsResponse {
       total_before_reduction?: string | null;
       currency_code?: string | null;
       is_projected?: boolean;
+      is_indicative?: boolean;
       is_poa?: boolean;
       error_code?: string | null;
     }>;
@@ -329,6 +331,7 @@ export async function searchQuoteOptions(
       min_nights: q.min_nights ?? null,
       max_nights: q.max_nights ?? null,
       is_projected: q.is_projected ?? null,
+      is_indicative: q.is_indicative ?? null,
       stay_options: q.stay_options ?? null,
       occupancy_bands: q.occupancy_bands ?? null,
       breakdown: q,

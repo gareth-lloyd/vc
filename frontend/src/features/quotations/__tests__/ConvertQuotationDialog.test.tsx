@@ -41,6 +41,7 @@ const lines = {
       currency: "EUR",
       is_selected: false,
       is_manual: false,
+      is_indicative: true,
       notes: "",
     },
     {
@@ -227,5 +228,21 @@ describe("ConvertQuotationDialog", () => {
     setup();
     expect(await screen.findByText(/this quote has no lines yet/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^convert to booking$/i })).toBeDisabled();
+  });
+
+  it("warns staff when the picked line was priced on indicative rates, without blocking convert (GAP-114)", async () => {
+    setup();
+    // Line 32 (the default, `is_selected`) is on confirmed rates — no warning.
+    expect(await screen.findByLabelText(/property #14/i)).toBeChecked();
+    expect(screen.queryByText(/had not confirmed/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText(/property #12/i));
+    expect(
+      screen.getByText(
+        /this line was priced on rates the owner had not confirmed at the time of pricing/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/the client will not see this note/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^convert to booking$/i })).toBeEnabled();
   });
 });

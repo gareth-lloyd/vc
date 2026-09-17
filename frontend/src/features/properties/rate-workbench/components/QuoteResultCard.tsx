@@ -75,6 +75,9 @@ export function QuoteResultCard({ quote, periodLabel }: QuoteResultCardProps) {
         {quote.is_projected ? (
           <Badge variant="outline">{t("rate_workbench.probe.result.projected")}</Badge>
         ) : null}
+        {quote.is_indicative ? (
+          <Badge variant="outline">{t("rate_workbench.probe.result.indicative")}</Badge>
+        ) : null}
         {quote.occupancy_pricing ? (
           <Badge variant="secondary">{t("rate_workbench.probe.result.occupancy_priced")}</Badge>
         ) : null}

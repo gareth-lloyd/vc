@@ -1,6 +1,7 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { StatusBadge } from "@/components/data/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CheckboxLabel } from "@/components/ui/checkbox-label";
@@ -9,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatMoneyWithCode } from "@/lib/format/money";
 import { formatDate } from "@/lib/format/date";
-import { lineEffectiveTotal, stagedLineErrors } from "../lineTotals";
+import { isLineIndicative, lineEffectiveTotal, stagedLineErrors } from "../lineTotals";
 import type { StagedLine } from "../schemas";
 import { PropertyThumbnail } from "./PropertyThumbnail";
 import { ChangeoverShiftedNote } from "./ChangeoverShiftedNote";
@@ -63,7 +64,18 @@ export function QuoteShortlistLine({ line, expanded, onToggle, onUpdate, onRemov
           alt={t("builder.shortlist.thumbnail_alt", { name: line.property_name })}
         />
         <div className="min-w-0 flex-1">
-          <h4 className="text-foreground truncate text-sm font-semibold">{line.property_name}</h4>
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-foreground min-w-0 truncate text-sm font-semibold">
+              {line.property_name}
+            </h4>
+            {isLineIndicative(line) ? (
+              <StatusBadge
+                status="indicative"
+                kind="draft"
+                label={t("builder.results.indicative")}
+              />
+            ) : null}
+          </div>
           <p className="text-muted-foreground text-xs">
             {formatDate(line.priced_date_from)} – {formatDate(line.priced_date_to)}
           </p>

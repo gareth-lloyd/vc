@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkedSaveableBands,
+  isLineIndicative,
   isStagedLineValid,
   lineEffectiveTotal,
   stagedLineErrors,
@@ -25,6 +26,7 @@ function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
     price_override_reason: "",
     is_manual: false,
     manual_only: false,
+    is_indicative: false,
     notes: "",
     ...overrides,
   };
@@ -39,6 +41,7 @@ function band(overrides: Partial<StagedBand> = {}): StagedBand {
     total: "4500.00",
     currency: "USD",
     is_poa: false,
+    is_indicative: false,
     checked: true,
     ...overrides,
   };
@@ -79,5 +82,23 @@ describe("lineTotals — banded lines (GAP-044)", () => {
     });
     expect(isStagedLineValid(oneChecked)).toBe(true);
     expect(stagedLineErrors(oneChecked)).toEqual({});
+  });
+});
+
+describe("isLineIndicative (GAP-114)", () => {
+  it("reads the snapshot on a flat line", () => {
+    expect(isLineIndicative(stagedLine({ is_indicative: true }))).toBe(true);
+    expect(isLineIndicative(stagedLine())).toBe(false);
+  });
+
+  it("derives from the CHECKED bands on a banded line, ignoring the line snapshot", () => {
+    const flagged = band({ min_party: 5, max_party: 8, adults: 8, is_indicative: true });
+    expect(isLineIndicative(stagedLine({ is_indicative: true, occupancy_bands: [band()] }))).toBe(
+      false,
+    );
+    expect(isLineIndicative(stagedLine({ occupancy_bands: [band(), flagged] }))).toBe(true);
+    expect(
+      isLineIndicative(stagedLine({ occupancy_bands: [band(), { ...flagged, checked: false }] })),
+    ).toBe(false);
   });
 });

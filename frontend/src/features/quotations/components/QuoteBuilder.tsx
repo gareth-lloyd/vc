@@ -150,6 +150,7 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
                 total: b.total ?? null,
                 currency: b.currency_code ?? null,
                 is_poa: b.is_poa ?? false,
+                is_indicative: b.is_indicative ?? false,
                 checked: true,
               }))
             : undefined;
@@ -195,6 +196,10 @@ export function QuoteBuilder({ enquiry, onComplete }: QuoteBuilderProps) {
             // A banded line is never manual — each band is priced per bracket.
             is_manual: bands ? false : manualOnly,
             manual_only: bands ? false : manualOnly,
+            // GAP-114: a picked week takes its own reprice's flag, not the
+            // headline's. A banded line derives its badge from its CHECKED
+            // bands at render time instead (`isLineIndicative`).
+            is_indicative: stay ? stay.is_indicative : (option.is_indicative ?? false),
             notes: "",
             ...(bands ? { occupancy_bands: bands } : {}),
           },

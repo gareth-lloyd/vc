@@ -283,6 +283,7 @@ describe("searchQuoteOptions", () => {
               min_nights: 7,
               max_nights: 14,
               is_projected: false,
+              is_indicative: true,
             },
           ],
         }),
@@ -298,6 +299,7 @@ describe("searchQuoteOptions", () => {
       min_nights: 7,
       max_nights: 14,
       is_projected: false,
+      is_indicative: true,
     });
   });
 

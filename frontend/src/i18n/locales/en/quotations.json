@@ -69,6 +69,7 @@
       "hold_until": "Held until {{date}}",
       "discount_label": "Discount",
       "selected_badge": "Selected",
+      "indicative_badge": "Indicative rates",
       "party_format": "{{adults}}A",
       "party_format_with_children": "{{adults}}A · {{children}}C"
     },
@@ -115,6 +116,8 @@
         "preview_heading": "Preview",
         "loading_preview": "Loading preview…",
         "preview_error": "Couldn't load the preview. Try again.",
+        "indicative_warning_one": "{{count}} line was priced on rates the owner had not confirmed at the time of pricing. The client will not see this note.",
+        "indicative_warning_other": "{{count}} lines were priced on rates the owner had not confirmed at the time of pricing. The client will not see this note.",
         "fields": {
           "subject": "Subject",
           "intro": "Introduction",
@@ -158,6 +161,7 @@
         "line_label": "Which line is the guest taking?",
         "loading_lines": "Loading lines…",
         "no_lines": "This quote has no lines yet — add at least one before converting.",
+        "indicative_warning": "This line was priced on rates the owner had not confirmed at the time of pricing. The client will not see this note.",
         "property_with_id": "Property #{{id}}",
         "guests_one": "{{adults}} adult · {{children}} child",
         "guests_other": "{{adults}} adults · {{children}} children",
@@ -309,6 +313,7 @@
       "min_nights_other": "min {{count}} nights",
       "occupancy_pricing": "Occupancy-based pricing",
       "projected": "Projected rates",
+      "indicative": "Indicative rates",
       "reduced_from": "Reduced from {{amount}}",
       "inclusions_label": "Includes",
       "inclusions_more": "Show more",

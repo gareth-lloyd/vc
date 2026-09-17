@@ -77,3 +77,14 @@ export function stagedLineErrors(line: StagedLine): StagedLineErrors {
 export function isStagedLineValid(line: StagedLine): boolean {
   return Object.keys(stagedLineErrors(line)).length === 0;
 }
+
+// GAP-114: whether the shortlist badges a line as priced on owner-unconfirmed
+// rates. A banded line derives it from its CHECKED bands at render time (bands
+// are alternatives — unticking the flagged one must clear the badge, so the
+// saved lines and the badge can't disagree); a flat line carries the snapshot
+// its option/reprice reported.
+export function isLineIndicative(line: StagedLine): boolean {
+  return line.occupancy_bands
+    ? line.occupancy_bands.some((b) => b.checked && b.is_indicative)
+    : line.is_indicative;
+}

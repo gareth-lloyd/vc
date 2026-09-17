@@ -5,7 +5,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { SendPreviewDialog } from "../components/SendPreviewDialog";
-import type { QuotationDetail } from "../schemas";
+import type { QuotationDetail, QuotationLine } from "../schemas";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -27,6 +27,27 @@ const QUOTATION: QuotationDetail = {
   cancel_reason: "",
   lines: [],
 };
+
+function line(overrides: Partial<QuotationLine> = {}): QuotationLine {
+  return {
+    id: 1,
+    quotation: 7,
+    property: 12,
+    date_from: "2026-07-04",
+    date_to: "2026-07-11",
+    adults: 2,
+    children: 0,
+    currency: "EUR",
+    total: "1200.00",
+    inclusions: "",
+    price_override_reason: "",
+    is_selected: false,
+    is_manual: false,
+    is_indicative: false,
+    notes: "",
+    ...overrides,
+  };
+}
 
 const PREVIEW = {
   html: "<html><body><h1>Your villa quote</h1></body></html>",
@@ -237,5 +258,36 @@ describe("SendPreviewDialog", () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("warns staff (not the guest) when lines were priced on indicative rates, without blocking send (GAP-114)", async () => {
+    server.use(previewHandler());
+    const quotation: QuotationDetail = {
+      ...QUOTATION,
+      lines: [
+        line({ id: 1, is_indicative: true }),
+        line({ id: 2, is_indicative: true }),
+        line({ id: 3, is_indicative: false }),
+      ],
+    };
+    renderWithProviders(<SendPreviewDialog open onOpenChange={vi.fn()} quotation={quotation} />);
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        /2 lines were priced on rates the owner had not confirmed at the time of pricing/i,
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/the client will not see this note/i)).toBeInTheDocument();
+    await within(dialog).findByLabelText(/subject/i);
+    expect(within(dialog).getByRole("button", { name: /^send to guest$/i })).toBeEnabled();
+  });
+
+  it("shows no indicative warning when every line is on confirmed rates", async () => {
+    server.use(previewHandler());
+    const quotation: QuotationDetail = { ...QUOTATION, lines: [line({ id: 1 })] };
+    renderWithProviders(<SendPreviewDialog open onOpenChange={vi.fn()} quotation={quotation} />);
+    const dialog = screen.getByRole("dialog");
+    await within(dialog).findByLabelText(/subject/i);
+    expect(within(dialog).queryByText(/had not confirmed/i)).not.toBeInTheDocument();
   });
 });

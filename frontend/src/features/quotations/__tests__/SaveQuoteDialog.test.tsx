@@ -38,6 +38,7 @@ function stagedLine(overrides: Partial<StagedLine> = {}): StagedLine {
     price_override_reason: "",
     is_manual: false,
     manual_only: false,
+    is_indicative: false,
     notes: "",
     ...overrides,
   };
@@ -70,6 +71,7 @@ function band(overrides: Partial<StagedBand> = {}): StagedBand {
     total: "4500.00",
     currency: "USD",
     is_poa: false,
+    is_indicative: false,
     checked: true,
     ...overrides,
   };

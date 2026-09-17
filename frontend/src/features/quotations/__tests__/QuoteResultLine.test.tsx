@@ -139,6 +139,34 @@ describe("QuoteResultLine", () => {
     expect(screen.queryByText("Projected rates")).not.toBeInTheDocument();
   });
 
+  it("badges rates the owner has not confirmed (GAP-114)", () => {
+    renderLine(option({ is_indicative: true }));
+
+    expect(screen.getByText("Indicative rates")).toBeInTheDocument();
+  });
+
+  it("shows no indicative badge on confirmed rates", () => {
+    renderLine(option({ is_indicative: false }));
+
+    expect(screen.queryByText("Indicative rates")).not.toBeInTheDocument();
+  });
+
+  it("marks a flagged band row and badges the header off the checked bands (GAP-114)", () => {
+    renderLine(
+      option({
+        is_indicative: false,
+        occupancy_bands: [
+          band(),
+          band({ min_party: 5, max_party: 8, adults: 8, total: "6200.00", is_indicative: true }),
+        ],
+      }),
+    );
+
+    // Header badge (a checked band is flagged) + the flagged band's own marker;
+    // the confirmed band has none.
+    expect(screen.getAllByText("Indicative rates")).toHaveLength(2);
+  });
+
   it("renders short inclusions in full with no toggle", () => {
     renderLine(option({ inclusion: "Daily maid service" }));
 
@@ -236,6 +264,29 @@ describe("QuoteResultLine", () => {
           },
         ],
       });
+    });
+
+    it("badges the header once a picked week reprices onto unconfirmed rates (GAP-114)", async () => {
+      mockReprice({
+        available: true,
+        total: "5200.00",
+        currency_code: "USD",
+        date_from: "2026-07-11",
+        date_to: "2026-07-18",
+        is_indicative: true,
+      });
+      renderLine(option({ is_indicative: false, stay_options: twoBlocks() }));
+      // Only the confirmed default week is checked — nothing to flag yet.
+      expect(screen.queryByText("Indicative rates")).not.toBeInTheDocument();
+
+      await userEvent.click(weekCells()[1]);
+      await waitFor(() => expect(screen.getByText(/5,200\.00/)).toBeInTheDocument());
+      // Header badge + the flagged week's row marker; the default week row has none.
+      expect(screen.getAllByText("Indicative rates")).toHaveLength(2);
+
+      // Unchecking the flagged week takes it out of the header again.
+      await userEvent.click(weekCells()[1]);
+      expect(screen.queryByText("Indicative rates")).not.toBeInTheDocument();
     });
 
     it("hands one add-unit per checked week to onAdd (GAP-043 fan-out)", async () => {

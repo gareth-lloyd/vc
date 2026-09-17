@@ -1205,6 +1205,7 @@
       "result": {
         "winning_default": "Best available rate",
         "projected": "Projected",
+        "indicative": "Indicative rates",
         "occupancy_priced": "Priced by party size",
         "nights_one": "{{count}} night",
         "nights_other": "{{count}} nights",

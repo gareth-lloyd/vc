@@ -122,6 +122,21 @@ describe("QuotationDetailLayout", () => {
     expect(screen.getByText("Selected")).toBeInTheDocument();
   });
 
+  it("badges a line priced on rates the owner had not confirmed (GAP-114)", async () => {
+    server.resetHandlers();
+    server.use(
+      ...quotationHandlers(baseQuotation, [
+        { ...baseLine, is_indicative: true },
+        { ...baseLine, id: 34, property: 13, is_selected: false },
+      ]),
+    );
+    setup();
+    expect(await screen.findByText("#33")).toBeInTheDocument();
+    expect(await screen.findByText("#34")).toBeInTheDocument();
+    // Only the flagged line carries the staff-facing badge.
+    expect(screen.getAllByText("Indicative rates")).toHaveLength(1);
+  });
+
   it("shows a discount only when it is non-zero", async () => {
     server.resetHandlers();
     server.use(

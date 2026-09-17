@@ -159,6 +159,9 @@ export const occupancyBandSchema = z.object({
   total_before_reduction: z.union([z.string(), z.number()]).nullable().optional(),
   currency_code: z.string().nullable().optional(),
   is_projected: z.boolean().nullable().optional(),
+  // GAP-114: priced wholly or partly on rates the owner has not confirmed
+  // (carried-forward bands). Staff-only warning; the quote prices normally.
+  is_indicative: z.boolean().nullable().optional(),
   is_poa: z.boolean().nullable().optional(),
   error_code: z.string().nullable().optional(),
 });
@@ -210,6 +213,9 @@ export const quoteOptionSchema = z.object({
   min_nights: z.number().nullable().optional(),
   max_nights: z.number().nullable().optional(),
   is_projected: z.boolean().nullable().optional(),
+  // GAP-114: priced wholly or partly on rates the owner has not confirmed
+  // (carried-forward bands). Staff-only warning; the quote prices normally.
+  is_indicative: z.boolean().nullable().optional(),
   stay_options: z.array(stayOptionSchema).nullable().optional(),
   // GAP-044 occupancy fan-out: the occupancy brackets to render as separate
   // default-checked lines. Empty/absent for a single-band villa; nullable +
@@ -242,6 +248,9 @@ export const stayRepriceSchema = z.object({
   // return path, incl. out-of-bracket/POA). Absent for a flat-rate villa or an
   // older response; nullable + optional so those still parse.
   occupancy_bands: z.array(occupancyBandSchema).nullable().optional(),
+  // GAP-114: the repriced week's own indicative flag — a picked week may
+  // land on unconfirmed rates even when the headline week did not.
+  is_indicative: z.boolean().nullable().optional(),
 });
 export type StayReprice = z.infer<typeof stayRepriceSchema>;
 
@@ -261,6 +270,7 @@ export interface ChosenStay {
   total: string | number | null;
   currency: string | null;
   inclusion: string | null;
+  is_indicative: boolean;
 }
 
 // One add-unit handed from a result card to the builder (GAP-043): a chosen
@@ -330,6 +340,7 @@ export interface StagedBand {
   total: string | number | null;
   currency: string | null;
   is_poa: boolean;
+  is_indicative: boolean;
   checked: boolean;
 }
 
@@ -384,6 +395,9 @@ export interface StagedLine {
   // there is no engine total to fall back to, so `is_manual` can't be
   // un-ticked — the shortlist disables the checkbox.
   manual_only: boolean;
+  // GAP-114: priced wholly or partly on rates the owner has not confirmed.
+  // Display-only (the shortlist badge); the server re-derives it on save.
+  is_indicative: boolean;
   notes: string;
   // GAP-044 occupancy fan-out: the occupancy brackets a banded villa was
   // priced into. Bands are ALTERNATIVES, not additive — a banded line carries

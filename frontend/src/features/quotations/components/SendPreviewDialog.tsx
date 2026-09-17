@@ -42,6 +42,9 @@ export function SendPreviewDialog({ open, onOpenChange, quotation }: Props) {
   const markManuallySent = useMarkQuotationManuallySent(quotation.id);
   const { copy } = useCopyToClipboard();
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
+  // GAP-114: staff-only heads-up. The guest email is unchanged and sending
+  // is never blocked — the operator just knows the owner hasn't signed off.
+  const indicativeCount = quotation.lines.filter((line) => line.is_indicative).length;
 
   const form = useForm<QuotationSendOverrides>({
     resolver: zodResolver(quotationSendOverridesSchema),
@@ -148,6 +151,15 @@ export function SendPreviewDialog({ open, onOpenChange, quotation }: Props) {
             {t("detail.dialogs.send_preview.description", { reference: quotation.reference })}
           </DialogDescription>
         </DialogHeader>
+
+        {indicativeCount > 0 ? (
+          <p
+            className="border-warning/40 bg-warning/10 text-warning rounded-md border px-3 py-2 text-sm"
+            role="status"
+          >
+            {t("detail.dialogs.send_preview.indicative_warning", { count: indicativeCount })}
+          </p>
+        ) : null}
 
         {preview.isLoading ? (
           <Skeleton className="h-64 w-full" />

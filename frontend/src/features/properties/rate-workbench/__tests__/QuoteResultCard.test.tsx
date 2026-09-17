@@ -138,3 +138,15 @@ describe("QuoteResultCard — reductions (Q-018)", () => {
     expect(screen.queryByText(/Reduced from/)).toBeNull();
   });
 });
+
+describe("QuoteResultCard — indicative rates (GAP-114)", () => {
+  it("badges a quote priced on rates the owner has not confirmed", () => {
+    renderWithProviders(<QuoteResultCard quote={{ ...grossQuote, is_indicative: true }} />);
+    expect(screen.getByText("Indicative rates")).toBeInTheDocument();
+  });
+
+  it("omits the badge when the flag is false or absent", () => {
+    renderWithProviders(<QuoteResultCard quote={grossQuote} />);
+    expect(screen.queryByText("Indicative rates")).toBeNull();
+  });
+});

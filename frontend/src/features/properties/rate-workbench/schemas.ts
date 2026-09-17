@@ -243,6 +243,7 @@ export const priceQuoteSchema = z
     changeover_shifted_from: z.string().nullable().optional(),
     changeover_day: z.string().nullable().optional(),
     is_projected: z.boolean().optional(),
+    is_indicative: z.boolean().optional(),
     inclusion: z.string().nullable().optional(),
     min_nights: z.number().nullable().optional(),
     max_nights: z.number().nullable().optional(),

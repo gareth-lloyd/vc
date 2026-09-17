@@ -446,6 +446,113 @@ describe("QuoteBuilder", () => {
     });
   });
 
+  it("carries the indicative-rates flag from a week reprice onto the staged line (GAP-114)", async () => {
+    // The default week prices on confirmed rates; the alternate week's reprice
+    // lands on owner-unconfirmed rates. The staged line must badge the
+    // reprice's flag, not the headline's.
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/quotations:search-options", async ({ request }) => {
+        const body = (await request.json()) as { flex_days: number };
+        if (body.flex_days === 0) {
+          return HttpResponse.json({
+            quotes: [
+              {
+                property_id: 7,
+                available: true,
+                total: "5200.00",
+                currency_code: "USD",
+                date_from: "2026-07-11",
+                date_to: "2026-07-18",
+                is_indicative: true,
+              },
+            ],
+          });
+        }
+        return HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4500.00",
+              currency_code: "USD",
+              date_from: "2026-07-04",
+              date_to: "2026-07-11",
+              is_indicative: false,
+              stay_options: [
+                {
+                  date_from: "2026-07-04",
+                  date_to: "2026-07-11",
+                  nights: 7,
+                  is_default: true,
+                  is_available: true,
+                },
+                {
+                  date_from: "2026-07-11",
+                  date_to: "2026-07-18",
+                  nights: 7,
+                  is_default: false,
+                  is_available: true,
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={{ ...enquiry, flexibility_days: 2 }} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    await screen.findByText("Villa Sol");
+    // The headline result is on confirmed rates — no badge on the card.
+    expect(screen.queryByText("Indicative rates")).not.toBeInTheDocument();
+
+    const cells = within(screen.getByRole("group", { name: /stay options/i })).getAllByRole(
+      "checkbox",
+    );
+    await userEvent.click(cells[0]);
+    await userEvent.click(cells[1]);
+    await screen.findByText("$5,200.00 USD");
+    // The card now badges the picked week: header + that week's row marker.
+    expect(screen.getAllByText("Indicative rates")).toHaveLength(2);
+    await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+
+    expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
+    // …and the staged shortlist line carries the reprice's flag.
+    expect(screen.getAllByText("Indicative rates")).toHaveLength(3);
+  });
+
+  it("carries the indicative-rates flag from the headline result onto the staged line (GAP-114)", async () => {
+    server.use(
+      http.get("/api/v1/properties", () => HttpResponse.json(drfPage([villaProperty]))),
+      http.post("/api/v1/quotations:search-options", () =>
+        HttpResponse.json({
+          quotes: [
+            {
+              property_id: 7,
+              available: true,
+              total: "4500.00",
+              currency_code: "USD",
+              date_from: "2026-07-01",
+              date_to: "2026-07-08",
+              is_indicative: true,
+            },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<QuoteBuilder enquiry={enquiry} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /^search$/i }));
+    await screen.findByText("Villa Sol");
+    expect(screen.getAllByText("Indicative rates")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: /add to quote/i }));
+
+    expect(await screen.findByText(/shortlist \(1\)/i)).toBeInTheDocument();
+    // Result card + shortlist line.
+    expect(screen.getAllByText("Indicative rates")).toHaveLength(2);
+  });
+
   it("stages one line per checked week, dedups re-adds, and removes weeks independently (GAP-043)", async () => {
     let saveBody: { lines: Array<Record<string, unknown>> } | null = null;
     server.use(

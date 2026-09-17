@@ -57,6 +57,7 @@ type ResolvedPrice =
       pricedFrom: string;
       pricedTo: string;
       inclusion: string | null;
+      isIndicative: boolean;
     }
   | { state: "pending" }
   | { state: "error"; detail: string | null };
@@ -188,6 +189,7 @@ export function QuoteResultLine({
         pricedFrom: option.date_from ?? block?.date_from ?? "",
         pricedTo: option.date_to ?? block?.date_to ?? "",
         inclusion: option.inclusion ?? null,
+        isIndicative: option.is_indicative ?? false,
       };
     }
     const entry = reprices[block.date_from];
@@ -204,6 +206,7 @@ export function QuoteResultLine({
       pricedFrom: entry.date_from ?? block.date_from,
       pricedTo: entry.date_to ?? block.date_to,
       inclusion: entry.inclusion ?? option.inclusion ?? null,
+      isIndicative: entry.is_indicative ?? false,
     };
   };
 
@@ -248,6 +251,18 @@ export function QuoteResultLine({
   const checkedSaveableBands = leadBands.filter(
     (b) => isBandChecked(b) && !b.is_poa && b.total != null,
   );
+
+  // GAP-114: the header badge keys on what the operator has CHECKED — the
+  // headline flag for the default week, the cached reprice for any other,
+  // plus the checked bands — so staff see the flag where they pick, not only
+  // on the headline. Flagged week rows and band rows carry their own marker.
+  const weekIndicative = (index: number): boolean => {
+    const resolved = resolveWeek(index);
+    return resolved.state === "ready" && resolved.isIndicative;
+  };
+  const showIndicative =
+    (hasBlocks ? checkedSorted.some(weekIndicative) : (option.is_indicative ?? false)) ||
+    leadBands.some((b) => isBandChecked(b) && b.is_indicative);
 
   // Per-week staged markers: map each block onto the line identity the
   // builder would stage it under (same helper ⇒ same key, GAP-007 included).
@@ -317,6 +332,7 @@ export function QuoteResultLine({
       total: banded ? null : priceReady ? resolved.total : null,
       currency: banded ? null : priceReady ? resolved.currency : null,
       inclusion: priceReady ? resolved.inclusion : (option.inclusion ?? null),
+      is_indicative: priceReady ? resolved.isIndicative : false,
     };
   };
 
@@ -428,6 +444,14 @@ export function QuoteResultLine({
     return (
       <p key={block.date_from} className="text-muted-foreground text-xs">
         {formatWeekRangeCompact(block.date_from, block.date_to)}: {value}
+        {weekIndicative(index) ? (
+          <StatusBadge
+            status="indicative"
+            kind="draft"
+            label={t("builder.results.indicative")}
+            className="ms-2"
+          />
+        ) : null}
       </p>
     );
   };
@@ -468,6 +492,13 @@ export function QuoteResultLine({
             ) : null}
             {option.is_projected ? (
               <StatusBadge status="projected" kind="draft" label={t("builder.results.projected")} />
+            ) : null}
+            {showIndicative ? (
+              <StatusBadge
+                status="indicative"
+                kind="draft"
+                label={t("builder.results.indicative")}
+              />
             ) : null}
           </div>
           {metaParts.length > 0 ? (
@@ -521,6 +552,13 @@ export function QuoteResultLine({
                         max: b.max_party,
                       })}
                     </span>
+                    {b.is_indicative ? (
+                      <StatusBadge
+                        status="indicative"
+                        kind="draft"
+                        label={t("builder.results.indicative")}
+                      />
+                    ) : null}
                   </span>
                   <span className="text-foreground text-xs font-medium">
                     {b.is_poa || b.total == null ? (

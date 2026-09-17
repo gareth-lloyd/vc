@@ -136,6 +136,30 @@ describe("quotation schemas", () => {
     expect(stayRepriceSchema.parse({ available: true }).total_before_reduction).toBeUndefined();
   });
 
+  it("carries the indicative-rates flag on results, bands, reprices and saved lines (GAP-114)", () => {
+    const baseBand = { min_party: 1, max_party: 4, adults: 4 };
+    expect(occupancyBandSchema.parse({ ...baseBand, is_indicative: true }).is_indicative).toBe(
+      true,
+    );
+    expect(occupancyBandSchema.parse(baseBand).is_indicative).toBeUndefined();
+    expect(
+      quoteOptionSchema.parse({
+        property_id: 1,
+        property_name: "Villa Sol",
+        available: true,
+        is_indicative: true,
+      }).is_indicative,
+    ).toBe(true);
+    expect(stayRepriceSchema.parse({ available: true, is_indicative: true }).is_indicative).toBe(
+      true,
+    );
+    expect(stayRepriceSchema.parse({ available: true }).is_indicative).toBeUndefined();
+    // A saved line snapshots what the engine said at pricing time; an absent
+    // key (older response) reads as confirmed.
+    expect(quotationLineSchema.parse({ id: 10, is_indicative: true }).is_indicative).toBe(true);
+    expect(quotationLineSchema.parse({ id: 10 }).is_indicative).toBe(false);
+  });
+
   it("parses the guest-facing preview shape", () => {
     const parsed = quotationPreviewSchema.parse({
       html: "<html><body>Quote</body></html>",

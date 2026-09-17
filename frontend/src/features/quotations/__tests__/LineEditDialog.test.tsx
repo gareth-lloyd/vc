@@ -33,6 +33,7 @@ function makeLine(overrides: Partial<QuotationLine> = {}): QuotationLine {
     price_override_reason: "",
     is_selected: false,
     is_manual: false,
+    is_indicative: false,
     notes: "",
     ...overrides,
   };

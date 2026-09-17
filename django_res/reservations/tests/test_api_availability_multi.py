@@ -200,6 +200,7 @@ def test_records_keep_existing_hold_shape(
         "date_to",
         "expires_at",
         "released_at",
+        "status",
         "reason",
         "notes",
         "created_at",

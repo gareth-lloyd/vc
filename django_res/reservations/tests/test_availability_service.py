@@ -15,7 +15,7 @@ import pytest
 from django.utils import timezone
 
 from core.tests import assert_max_queries
-from reservations.enums import BookingHoldReason, BookingStatus, PaymentMethod
+from reservations.enums import BookingHoldReason, BookingHoldStatus, BookingStatus, PaymentMethod
 from reservations.models import (
     Booking,
     BookingHold,
@@ -103,6 +103,7 @@ def _hold(
         date_to=date_to,
         expires_at=now - timedelta(days=1) if expired else now + timedelta(days=30),
         released_at=now if released else None,
+        status=BookingHoldStatus.RELEASED.value if released else BookingHoldStatus.LIVE.value,
         reason=reason,
     )
 

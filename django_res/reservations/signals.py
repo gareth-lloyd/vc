@@ -2,8 +2,8 @@
 
 Defines:
 - `booking_transitioned` — fired by every Booking state-machine transition.
-- `hold_expired` — fired per BookingHold row that the `expire_holds` task
-  has just released past its `expires_at`.
+- `hold_expired` — fired per BookingHold that `HoldService.expire_lapsed`
+  (the `expire_holds` task or an opportunistic sweep) has just moved to EXPIRED.
 
 Wires up:
 - `EnquiryNote` post_save → emit a `NOTE_ADDED` `EnquiryEvent`.
@@ -40,7 +40,7 @@ kwargs: sender=Booking, booking, from_status, to_status, actor, source.
 """
 
 hold_expired = Signal()
-"""Fired once per BookingHold released by the `expire_holds` Celery task.
+"""Fired once per BookingHold moved LIVE → EXPIRED by `HoldService.expire_lapsed`.
 
 kwargs: sender=BookingHold, hold.
 """

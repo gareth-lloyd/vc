@@ -54,7 +54,7 @@ from django.utils import timezone
 
 from data_migration.base import BaseLoader, LoadReport
 from properties.models.property import Property
-from reservations.enums import BookingHoldReason
+from reservations.enums import BookingHoldReason, BookingHoldStatus
 from reservations.models.booking import Booking, BookingHold
 
 logger = structlog.get_logger(__name__)
@@ -296,13 +296,13 @@ class AvailabilityBlockLoader(BaseLoader):
             (b.date_from, b.date_to)
             for b in Booking.objects.occupying(property=prop, date_from=date_from, date_to=date_to)
         ] + [
-            # Every UNRELEASED hold, not just `live_overlapping`: the
+            # Every LIVE hold, not just `live_overlapping`: the
             # `bookinghold_no_overlap_live` exclusion constraint also covers
-            # an expired-but-unreleased hold, which would fail the insert.
+            # a lapsed-but-unswept LIVE hold, which would fail the insert.
             (h.date_from, h.date_to)
             for h in BookingHold.objects.filter(
                 property=prop,
-                released_at__isnull=True,
+                status=BookingHoldStatus.LIVE.value,
                 date_from__lt=date_to,
                 date_to__gt=date_from,
             )

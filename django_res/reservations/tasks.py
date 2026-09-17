@@ -40,33 +40,16 @@ def ingest_ical_feeds() -> list:
 
 @shared_task
 def expire_holds() -> list[int]:
-    """Release `BookingHold` rows past `expires_at`.
+    """Expire every LIVE `BookingHold` past its `expires_at`.
 
-    Fires the `hold_expired` signal once per row. Returns the list of ids
-    that were just released.
+    Delegates to `HoldService.expire_lapsed` (per-row, re-checked under the
+    lock, one `hold_expired` per hold). Returns the ids just expired.
     """
-    from reservations.models.booking import BookingHold
-    from reservations.signals import hold_expired
+    from reservations.services.holds import HoldService
 
-    now = timezone.now()
-    # NULL `expires_at` = indefinite block (owner/maintenance); never reaped.
-    due = list(
-        BookingHold.objects.filter(
-            released_at__isnull=True,
-            expires_at__isnull=False,
-            expires_at__lt=now,
-        )
-    )
-    if not due:
-        return []
-    ids = [hold.pk for hold in due]
-    BookingHold.objects.filter(pk__in=ids).update(released_at=now)
-    for hold in due:
-        # Refresh `released_at` on the in-memory copy so signal handlers see
-        # the post-update state without an extra DB round-trip.
-        hold.released_at = now
-        hold_expired.send(sender=BookingHold, hold=hold)
-    logger.info("hold.expired_batch", released=len(ids))
+    ids = [hold.pk for hold in HoldService.expire_lapsed()]
+    if ids:
+        logger.info("hold.expired_batch", released=len(ids))
     return ids
 
 

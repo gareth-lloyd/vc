@@ -258,14 +258,14 @@ class ReservationsConfig(AppConfig):
             ],
         )
         # BookingHold: the availability-blocking lifecycle (place → release /
-        # expire). The model has no `status` column — lifecycle is carried by
-        # `released_at` (release) and `expires_at` (reap), so those are the
-        # transition fields an inventory-dispute reconstruction needs, alongside
-        # the date window and the hold's source FKs. No PII. NB: the bulk
-        # release/expire paths (`HoldService.release_for_*`, `expire_holds`,
-        # `tasks`) use `queryset.update()` and so bypass the pre_save trail by
-        # design (CLAUDE.md "bulk writes bypass it silently"); the per-instance
-        # `HoldService.place`/`move`/`release` paths are captured.
+        # expire). `status` + `released_at` record the close and `expires_at`
+        # the reap deadline — the transition fields an inventory-dispute
+        # reconstruction needs, alongside the date window and the hold's source
+        # FKs. No PII. NB: the bulk release paths (`HoldService.release_for_*`)
+        # use `queryset.update()` and so bypass the pre_save trail by design
+        # (CLAUDE.md "bulk writes bypass it silently"); the per-instance
+        # `place`/`move`/`release` paths and expiry (per-row since BUG-015,
+        # `HoldService.expire_lapsed`) are captured.
         track(
             BookingHold,
             fields=[
@@ -276,6 +276,7 @@ class ReservationsConfig(AppConfig):
                 "date_from",
                 "date_to",
                 "expires_at",
+                "status",
                 "released_at",
                 "reason",
             ],

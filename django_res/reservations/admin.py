@@ -92,10 +92,14 @@ class BookingHoldAdmin(admin.ModelAdmin):
         "date_from",
         "date_to",
         "expires_at",
+        "status",
         "released_at",
         "reason",
     )
-    list_filter = ("reason",)
+    list_filter = ("status", "reason")
+    # Lifecycle moves go through `HoldService`; a free edit here would bypass
+    # the transition table and could break the status/released_at CHECK.
+    readonly_fields = ("status", "released_at")
 
 
 @admin.register(BookingEvent)

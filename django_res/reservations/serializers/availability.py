@@ -50,11 +50,12 @@ class AvailabilityRecordSerializer(serializers.ModelSerializer[BookingHold]):
             "date_to",
             "expires_at",
             "released_at",
+            "status",
             "reason",
             "notes",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "status", "created_at"]
 
 
 class AvailabilityBookingSerializer(serializers.ModelSerializer["Booking"]):

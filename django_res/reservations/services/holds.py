@@ -1,14 +1,12 @@
 """HoldService — Python-level lifecycle for `BookingHold` rows.
 
-The DB-level `EXCLUDE` constraint (`bookinghold_no_overlap_live`,
-migration 0002) gates on `released_at IS NULL` only — Postgres rejects
-`now()` in an index predicate — so an expired-but-unswept hold still
-blocks at the DB level (BUG-005). Mutating paths therefore
-opportunistically release stale overlapping holds first
-(`expire_overlapping_stale`), with the beat sweeper
-(`tasks.expire_holds`) as the background pass, and translate any
-residual EXCLUDE violation (a true concurrent race) into
-`HoldUnavailable` so the API contract holds.
+The DB-level `EXCLUDE` constraint (`bookinghold_no_overlap_live`) gates on
+`status = LIVE` only — Postgres rejects `now()` in an index predicate — so an
+expired-but-unswept hold still blocks at the DB level (BUG-005). Mutating
+paths therefore opportunistically expire stale overlapping holds first
+(`expire_overlapping_stale`), with the beat sweeper (`tasks.expire_holds`) as
+the background pass, and translate any residual EXCLUDE violation (a true
+concurrent race) into `HoldUnavailable` so the API contract holds.
 
 All mutations run inside `transaction.atomic` so the place/release
 operations remain consistent even if a later step in the calling service
@@ -25,12 +23,15 @@ import structlog
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from core.exceptions import HoldUnavailable
-from reservations.enums import BookingHoldReason
+from core.exceptions import HoldUnavailable, InvalidTransition
+from core.locking import refresh_locked
+from reservations.enums import BookingHoldReason, BookingHoldStatus
 from reservations.models.booking import HOLD_OVERLAP_CONSTRAINT_NAME, BookingHold
 
 if TYPE_CHECKING:
     from datetime import date as date_type
+
+    from django.db.models import QuerySet
 
 logger = structlog.get_logger(__name__)
 
@@ -82,38 +83,77 @@ class HoldService:
         date_to: date_type,
         exclude_hold_ids: list[int] | None = None,
     ) -> list[BookingHold]:
-        """Release expired-but-unswept holds overlapping the range; return them.
+        """Expire lapsed-but-unswept holds overlapping the range; return them.
 
         The opportunistic counterpart to `tasks.expire_holds` (BUG-005): the
         EXCLUDE constraint can't see `expires_at`, so if the beat sweeper is
-        paused an expired hold would still block the INSERT at the DB level.
+        paused a lapsed hold would still block the INSERT at the DB level.
         Mutating paths call this first so a stale hold never blocks a valid
-        booking. Fires `hold_expired` per row, exactly like the sweeper, so
-        comms fan-out is identical whichever path releases the hold.
+        booking. Shares `expire_lapsed` with the sweeper, so comms fan-out is
+        identical whichever path expires the hold.
         """
-        from reservations.signals import hold_expired
-
-        now = timezone.now()
         qs = BookingHold.objects.filter(
             property=property,
-            released_at__isnull=True,
-            expires_at__isnull=False,
-            expires_at__lt=now,
             date_from__lt=date_to,
             date_to__gt=date_from,
         )
         if exclude_hold_ids:
             qs = qs.exclude(pk__in=exclude_hold_ids)
-        due = list(qs)
-        if not due:
-            return []
-        BookingHold.objects.filter(pk__in=[hold.pk for hold in due]).update(released_at=now)
-        for hold in due:
-            # Refresh the in-memory copy so signal handlers see post-update state.
-            hold.released_at = now
-            hold_expired.send(sender=BookingHold, hold=hold)
-        logger.info("hold.expired_opportunistic", released=len(due), property_id=property.pk)
-        return due
+        expired = cls.expire_lapsed(qs)
+        if expired:
+            logger.info(
+                "hold.expired_opportunistic", released=len(expired), property_id=property.pk
+            )
+        return expired
+
+    @classmethod
+    def expire_lapsed(cls, holds: QuerySet[BookingHold] | None = None) -> list[BookingHold]:
+        """Expire every LIVE hold in `holds` whose `expires_at` has passed.
+
+        Per row, not a bulk update: each hold is re-checked under its lock
+        (`_expire_one`), so one released, extended or moved since the SELECT is
+        left alone and gets no `hold_expired`; and each expiry lands on the
+        AuditLog trail. Rows are taken in pk order so two concurrent sweeps
+        (inside `place`/`move`'s outer transaction) lock in the same order and
+        can't deadlock. Fires `hold_expired` once per hold actually expired.
+        NULL `expires_at` = indefinite block (owner/maintenance), never reaped.
+        """
+        from reservations.signals import hold_expired
+
+        now = timezone.now()
+        candidates = list(
+            (holds if holds is not None else BookingHold.objects.all())
+            .filter(
+                status=BookingHoldStatus.LIVE.value,
+                expires_at__isnull=False,
+                expires_at__lt=now,
+            )
+            .order_by("pk")
+        )
+        expired = []
+        for hold in candidates:
+            if cls._expire_one(hold, now):
+                # Per row, not after the loop: in the beat sweep each expiry
+                # commits alone, so a later row failing must not strand the
+                # emails of rows already EXPIRED (never re-selected).
+                hold_expired.send(sender=BookingHold, hold=hold)
+                expired.append(hold)
+        return expired
+
+    @classmethod
+    def _expire_one(cls, hold: BookingHold, now: datetime) -> bool:
+        """Expire `hold` iff it still exists, is LIVE and lapsed on the locked row."""
+        with transaction.atomic():
+            try:
+                refresh_locked(hold)
+            except BookingHold.DoesNotExist:
+                # Deleted since the SELECT (cascade from its quotation/booking).
+                return False
+            lapsed = hold.expires_at is not None and hold.expires_at < now
+            if hold.status != BookingHoldStatus.LIVE.value or not lapsed:
+                return False
+            hold.expire(now=now)
+        return True
 
     @classmethod
     def _assert_no_overlap(
@@ -180,7 +220,7 @@ class HoldService:
         own_hold_ids = list(
             BookingHold.objects.filter(
                 quotation=quotation,
-                released_at__isnull=True,
+                status=BookingHoldStatus.LIVE.value,
             ).values_list("pk", flat=True)
         )
         cls._assert_no_overlap(
@@ -314,13 +354,20 @@ class HoldService:
         return hold
 
     @classmethod
-    @transaction.atomic
     def release(cls, hold: BookingHold) -> BookingHold:
-        """Mark a single hold as released right now."""
-        if hold.released_at is not None:
+        """Release a single hold right now; a no-op on an already-closed hold.
+
+        Idempotent so a double-click (or a release racing the sweeper) stays a
+        200: an EXPIRED hold keeps its status rather than being relabelled.
+        """
+        if hold.status != BookingHoldStatus.LIVE.value:
             return hold
-        hold.released_at = timezone.now()
-        hold.save(update_fields=["released_at", "updated_at"])
+        try:
+            hold.release()
+        except InvalidTransition:
+            # LIVE is the only from-state, so a refusal on the locked row means
+            # someone else closed it first; `hold` now carries that status.
+            return hold
         return hold
 
     @classmethod
@@ -334,8 +381,8 @@ class HoldService:
         """
         return BookingHold.objects.filter(
             quotation_line=line,
-            released_at__isnull=True,
-        ).update(released_at=timezone.now())
+            status=BookingHoldStatus.LIVE.value,
+        ).update(status=BookingHoldStatus.RELEASED.value, released_at=timezone.now())
 
     @classmethod
     @transaction.atomic
@@ -344,8 +391,8 @@ class HoldService:
         now = timezone.now()
         return BookingHold.objects.filter(
             quotation=quotation,
-            released_at__isnull=True,
-        ).update(released_at=now)
+            status=BookingHoldStatus.LIVE.value,
+        ).update(status=BookingHoldStatus.RELEASED.value, released_at=now)
 
     @classmethod
     @transaction.atomic
@@ -354,27 +401,5 @@ class HoldService:
         now = timezone.now()
         return BookingHold.objects.filter(
             booking=booking,
-            released_at__isnull=True,
-        ).update(released_at=now)
-
-    @classmethod
-    def expire_due(cls) -> list[int]:
-        """Mark holds past their `expires_at` as released; return ids touched.
-
-        The actual signal fan-out happens in `reservations.tasks.expire_holds`.
-        This helper is the underlying DB operation.
-        """
-        now = timezone.now()
-        # `expires_at__lt` already excludes NULL rows in SQL, but the explicit
-        # `isnull=False` documents that indefinite holds are never reaped.
-        due_ids = list(
-            BookingHold.objects.filter(
-                released_at__isnull=True,
-                expires_at__isnull=False,
-                expires_at__lt=now,
-            ).values_list("pk", flat=True)
-        )
-        if not due_ids:
-            return []
-        BookingHold.objects.filter(pk__in=due_ids).update(released_at=now)
-        return due_ids
+            status=BookingHoldStatus.LIVE.value,
+        ).update(status=BookingHoldStatus.RELEASED.value, released_at=now)

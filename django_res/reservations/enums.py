@@ -291,6 +291,33 @@ class BookingHoldReason(models.TextChoices):
     MANUAL = "manual", "Manual"
 
 
+class BookingHoldStatus(models.TextChoices):
+    """Lifecycle of a `BookingHold`.
+
+    RELEASED and EXPIRED both stamp `released_at`; the status records which
+    close happened (expiry emails the agent, release doesn't). A LIVE hold whose
+    `expires_at` has passed but hasn't been swept yet still reads LIVE — "lapsed"
+    is a runtime predicate, not a status (Postgres rejects `now()` in an index).
+    """
+
+    LIVE = "live", "Live"
+    RELEASED = "released", "Released"
+    EXPIRED = "expired", "Expired"
+
+
+# Allowed BookingHold transitions, enforced by `BookingHold.release`/`expire`
+# via `core.transitions`. `HoldService.release_for_*` bulk-update LIVE rows
+# directly (no audit row, by design); their `status=LIVE` filter is this
+# table's from-set.
+HOLD_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    BookingHoldStatus.LIVE.value: frozenset(
+        {BookingHoldStatus.RELEASED.value, BookingHoldStatus.EXPIRED.value}
+    ),
+    BookingHoldStatus.RELEASED.value: frozenset(),
+    BookingHoldStatus.EXPIRED.value: frozenset(),
+}
+
+
 # Reasons an operator may create/edit/remove from the availability calendar.
 # Quotation holds are managed via their source (the quotation), never here.
 OPERATOR_EDITABLE_HOLD_REASONS: tuple[str, ...] = (

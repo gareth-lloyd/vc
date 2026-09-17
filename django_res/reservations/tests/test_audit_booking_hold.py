@@ -16,9 +16,10 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
 from core.models import AuditLog
-from reservations.enums import BookingHoldReason
+from reservations.enums import BookingHoldReason, BookingHoldStatus
 from reservations.models import BookingHold
 from reservations.services.holds import HoldService
+from reservations.tasks import expire_holds
 
 if TYPE_CHECKING:
     from properties.models import Property
@@ -43,6 +44,33 @@ def test_hold_release_writes_audit_row(property_: Property) -> None:
     old, new = released_rows[-1].field_diffs["released_at"]
     assert old is None
     assert new is not None
+    assert released_rows[-1].field_diffs["status"] == [
+        BookingHoldStatus.LIVE.value,
+        BookingHoldStatus.RELEASED.value,
+    ]
+
+
+@pytest.mark.django_db
+def test_hold_expiry_writes_audit_row(property_: Property) -> None:
+    """Expiry is per-row since BUG-015, so the sweep lands on the trail too."""
+    hold = BookingHold.objects.create(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() - timedelta(minutes=5),
+        reason=BookingHoldReason.MANUAL.value,
+    )
+
+    expire_holds()
+
+    ct = ContentType.objects.get_for_model(BookingHold)
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(hold.pk))
+    expired_rows = [r for r in rows if "status" in r.field_diffs]
+    assert expired_rows, "expected an AuditLog row capturing the hold expiry"
+    assert expired_rows[-1].field_diffs["status"] == [
+        BookingHoldStatus.LIVE.value,
+        BookingHoldStatus.EXPIRED.value,
+    ]
 
 
 @pytest.mark.django_db

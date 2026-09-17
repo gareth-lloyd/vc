@@ -30,9 +30,11 @@ from reservations.enums import (
     ACTIVE_BOOKING_STATUSES,
     BOOKING_ALLOWED_TRANSITIONS,
     CONFIRMED_BOOKING_STATUSES,
+    HOLD_ALLOWED_TRANSITIONS,
     OVERLAP_BLOCKING_BOOKING_STATUSES,
     TERMINAL_BOOKING_STATUSES,
     BookingHoldReason,
+    BookingHoldStatus,
     BookingNoteKind,
     BookingNoteVisibility,
     BookingStatus,
@@ -43,6 +45,7 @@ from reservations.enums import (
 
 if TYPE_CHECKING:
     from datetime import date as date_type
+    from datetime import datetime
 
     from pricing.services import Quote
 
@@ -927,6 +930,15 @@ class BookingHold(AuditedModel):
     # NULL = never expires (owner / maintenance blocks). Quotation/booking holds
     # always carry a concrete expiry; `tasks.expire_holds` only reaps non-null rows.
     expires_at = models.DateTimeField(db_index=True, null=True, blank=True)
+    # `db_default` keeps inserts from pre-migration code valid while a deploy
+    # has migrated but not yet swapped instances.
+    status = models.CharField(
+        max_length=16,
+        choices=BookingHoldStatus.choices,
+        default=BookingHoldStatus.LIVE,
+        db_default=BookingHoldStatus.LIVE,
+    )
+    # When the hold closed (RELEASED or EXPIRED); NULL iff LIVE (CHECK below).
     released_at = models.DateTimeField(null=True, blank=True)
     reason = models.CharField(
         max_length=32,
@@ -940,7 +952,7 @@ class BookingHold(AuditedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["property", "released_at", "expires_at"]),
+            models.Index(fields=["property", "status", "expires_at"]),
         ]
         constraints = [
             models.CheckConstraint(
@@ -961,10 +973,18 @@ class BookingHold(AuditedModel):
                 ),
                 name="bookinghold_has_source_or_blocking_reason",
             ),
-            # Half-open '[)' bounds (same-day turnover legal). Live = not yet
-            # released; expiry is delegated to the application sweeper, which
-            # sets released_at (Postgres rejects non-IMMUTABLE now() in an
-            # index predicate). HoldService maps this constraint's name to
+            # RELEASED/EXPIRED stamp `released_at`; LIVE never carries one.
+            models.CheckConstraint(
+                condition=(
+                    Q(status=BookingHoldStatus.LIVE, released_at__isnull=True)
+                    | (~Q(status=BookingHoldStatus.LIVE) & Q(released_at__isnull=False))
+                ),
+                name="bookinghold_status_matches_released_at",
+            ),
+            # Half-open '[)' bounds (same-day turnover legal). Gates on LIVE;
+            # expiry is delegated to the application sweeper, which moves a
+            # lapsed hold to EXPIRED (Postgres rejects non-IMMUTABLE now() in
+            # an index predicate). HoldService maps this constraint's name to
             # HoldUnavailable.
             ExclusionConstraint(
                 name=HOLD_OVERLAP_CONSTRAINT_NAME,
@@ -975,7 +995,7 @@ class BookingHold(AuditedModel):
                         RangeOperators.OVERLAPS,
                     ),
                 ],
-                condition=Q(released_at__isnull=True),
+                condition=Q(status=BookingHoldStatus.LIVE),
             ),
         ]
         ordering = ["-created_at"]
@@ -985,9 +1005,25 @@ class BookingHold(AuditedModel):
 
     def is_live(self) -> bool:
         # A null `expires_at` means the hold never expires (owner/maintenance block).
-        if self.released_at is not None:
+        if self.status != BookingHoldStatus.LIVE.value:
             return False
         return self.expires_at is None or self.expires_at > timezone.now()
+
+    def release(self, *, now: datetime | None = None) -> None:
+        """LIVE → RELEASED (an operator or source-driven release)."""
+        self._close(BookingHoldStatus.RELEASED.value, now)
+
+    def expire(self, *, now: datetime | None = None) -> None:
+        """LIVE → EXPIRED (the lapse was swept; `hold_expired` is the caller's)."""
+        self._close(BookingHoldStatus.EXPIRED.value, now)
+
+    def _close(self, to: str, now: datetime | None) -> None:
+        transition(
+            self,
+            to,
+            table=HOLD_ALLOWED_TRANSITIONS,
+            extra_updates={"released_at": now if now is not None else timezone.now()},
+        )
 
     @classmethod
     def live_overlapping(

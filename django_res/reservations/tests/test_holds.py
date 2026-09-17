@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
 from django.utils import timezone
 
 from core.exceptions import HoldUnavailable
-from reservations.enums import BookingHoldReason
+from reservations.enums import BookingHoldReason, BookingHoldStatus
 from reservations.models import BookingHold
 from reservations.services.holds import HoldService
 from reservations.tasks import expire_holds
@@ -161,6 +161,7 @@ def test_release_for_line_bulk_releases_live_holds(
     released = HoldService.release_for_line(quotation_line)
     assert released == 1
     hold.refresh_from_db()
+    assert hold.status == BookingHoldStatus.RELEASED.value
     assert hold.released_at is not None
     assert hold.is_live() is False
 
@@ -183,6 +184,7 @@ def test_deleting_line_releases_its_holds_via_signal(
     quotation_line.delete()
 
     hold.refresh_from_db()
+    assert hold.status == BookingHoldStatus.RELEASED.value
     assert hold.released_at is not None
     assert hold.is_live() is False
 
@@ -200,7 +202,64 @@ def test_release_idempotent(property_: Property) -> None:
     first_release = hold.released_at
     HoldService.release(hold)
     hold.refresh_from_db()
+    assert hold.status == BookingHoldStatus.RELEASED.value
     assert hold.released_at == first_release
+
+
+@pytest.mark.django_db
+def test_release_is_a_no_op_on_expired_hold(property_: Property) -> None:
+    """Releasing a hold the sweeper already expired keeps it EXPIRED — the
+    record of which close happened (and so whether the agent was emailed)."""
+    hold = _stale_hold(property_)
+    expire_holds()
+    hold.refresh_from_db()
+    expired_at = hold.released_at
+
+    HoldService.release(hold)
+
+    hold.refresh_from_db()
+    assert hold.status == BookingHoldStatus.EXPIRED.value
+    assert hold.released_at == expired_at
+
+
+@pytest.mark.django_db
+def test_release_on_stale_instance_is_a_no_op(property_: Property) -> None:
+    """A stale in-memory LIVE copy of an already-expired hold (double-click,
+    sweeper race) is refused under the lock and returned, not a 409."""
+    hold = _stale_hold(property_)
+    stale = BookingHold.objects.get(pk=hold.pk)
+    expire_holds()
+
+    returned = HoldService.release(stale)
+
+    assert returned.status == BookingHoldStatus.EXPIRED.value
+    hold.refresh_from_db()
+    assert hold.status == BookingHoldStatus.EXPIRED.value
+
+
+@pytest.mark.django_db
+def test_release_for_quotation_and_booking_set_released(
+    property_: Property, quotation_line: QuotationLine
+) -> None:
+    quotation = quotation_line.quotation
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+        reason=BookingHoldReason.QUOTATION_OPEN.value,
+        quotation=quotation,
+    )
+    closed = _stale_hold(property_, date_from=date(2026, 8, 1), date_to=date(2026, 8, 8))
+    expire_holds()
+    BookingHold.objects.filter(pk=closed.pk).update(quotation=quotation)
+
+    assert HoldService.release_for_quotation(quotation) == 1
+
+    hold.refresh_from_db()
+    closed.refresh_from_db()
+    assert hold.status == BookingHoldStatus.RELEASED.value
+    assert closed.status == BookingHoldStatus.EXPIRED.value
 
 
 @pytest.mark.django_db
@@ -267,6 +326,7 @@ def test_expire_holds_task_releases_past_due(property_: Property) -> None:
     ids = expire_holds()
     assert len(ids) == 1
     hold = BookingHold.objects.get(pk=ids[0])
+    assert hold.status == BookingHoldStatus.EXPIRED.value
     assert hold.released_at is not None
 
 
@@ -295,7 +355,6 @@ def test_indefinite_hold_survives_expire_holds(property_: Property) -> None:
         never_expires=True,
     )
     assert expire_holds() == []
-    assert HoldService.expire_due() == []
     hold.refresh_from_db()
     assert hold.released_at is None
     assert hold.is_live() is True
@@ -316,14 +375,78 @@ def test_indefinite_hold_survives_expire_holds(property_: Property) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _stale_hold(property_: Property) -> BookingHold:
+def _stale_hold(
+    property_: Property,
+    *,
+    date_from: date = date(2026, 6, 10),
+    date_to: date = date(2026, 6, 17),
+) -> BookingHold:
     """An expired hold the sweeper hasn't released yet (sweeper paused)."""
     return BookingHold.objects.create(
         property=property_,
-        date_from=date(2026, 6, 10),
-        date_to=date(2026, 6, 17),
+        date_from=date_from,
+        date_to=date_to,
         expires_at=timezone.now() - timedelta(minutes=5),
     )
+
+
+@pytest.mark.django_db
+def test_expire_holds_skips_hold_released_after_selection(
+    property_: Property, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R-H2: a hold released between the sweep's SELECT and its per-row lock is
+    left RELEASED and fires no `hold_expired` (no wrong agent email)."""
+    from reservations.signals import hold_expired
+
+    hold = _stale_hold(property_)
+    original = HoldService._expire_one
+
+    def release_first(selected: BookingHold, now: datetime) -> bool:
+        HoldService.release(BookingHold.objects.get(pk=selected.pk))
+        return original(selected, now)
+
+    monkeypatch.setattr(HoldService, "_expire_one", release_first)
+    seen: list[BookingHold] = []
+
+    def receiver(sender: object, hold: BookingHold, **kwargs: object) -> None:
+        seen.append(hold)
+
+    hold_expired.connect(receiver)
+    try:
+        assert expire_holds() == []
+    finally:
+        hold_expired.disconnect(receiver)
+    assert seen == []
+    hold.refresh_from_db()
+    assert hold.status == BookingHoldStatus.RELEASED.value
+
+
+@pytest.mark.django_db
+def test_expire_skips_hold_deleted_after_selection(property_: Property) -> None:
+    """A hold deleted (e.g. with its draft quotation) between the sweep's SELECT
+    and its per-row lock is skipped, not a crash that aborts the sweep."""
+    hold = _stale_hold(property_)
+    selected = BookingHold.objects.get(pk=hold.pk)
+    hold.delete()
+
+    assert HoldService._expire_one(selected, timezone.now()) is False
+
+
+@pytest.mark.django_db
+def test_expire_skips_hold_extended_after_selection(property_: Property) -> None:
+    """R-H2: a stale selected copy of a hold whose expiry was pushed out since
+    is not expired — the lapse is re-checked on the locked row."""
+    hold = _stale_hold(property_)
+    selected = BookingHold.objects.get(pk=hold.pk)
+    extended = timezone.now() + timedelta(hours=1)
+    BookingHold.objects.filter(pk=hold.pk).update(expires_at=extended)
+
+    assert HoldService._expire_one(selected, timezone.now()) is False
+
+    hold.refresh_from_db()
+    assert hold.status == BookingHoldStatus.LIVE.value
+    assert hold.released_at is None
+    assert hold.expires_at == extended
 
 
 @pytest.mark.django_db
@@ -338,6 +461,7 @@ def test_place_succeeds_over_expired_unswept_hold(property_: Property) -> None:
     )
     assert hold.is_live() is True
     stale.refresh_from_db()
+    assert stale.status == BookingHoldStatus.EXPIRED.value
     assert stale.released_at is not None
 
 

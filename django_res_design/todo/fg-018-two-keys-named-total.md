@@ -12,6 +12,9 @@
   which on the wire. **Remaining:** option 1 — rename
   `pricing_snapshot["total"]` → `engine_total` when the snapshot shape is
   next touched (engine + stored JSON + FE schema).
+  **2026-09-17:** the reprice half (BUG-025) is closed too —
+  `BookingService.reprice_snapshot` nets `modify_dates` / `modify_guests`
+  the same way, so no path writes the raw engine `total` to a booking.
 
 ## The trap
 

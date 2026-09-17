@@ -1,5 +1,28 @@
 # BUG-025 — Repricing a booking silently restores the undiscounted price
 
+> **✅ RESOLVED (2026-09-17, local `main` unpushed)** — shipped on `feat/bug-025`
+> in 3 units (ec906c8e `modify_dates`, 9aada473 `modify_guests`, docs). **Fix:**
+> new `BookingService.reprice_snapshot(quote, *, quotation_line)` mirrors
+> `price_line` on the booking side: it keeps the engine figure as `gross`,
+> re-applies `quotation_line.discount` as the **same absolute amount, floored
+> at 0**, and nets the copy through `_net_snapshot_to_line_total`, so
+> `operator_discount`, the netted `total` and `net_to_owner` survive and
+> commission/tax clip exactly as at conversion. `modify_dates` and
+> `modify_guests` write the netted snapshot and `balance_due` from it, and
+> their `BookingEvent` `to_snapshot` records what was written;
+> `booking_total_changed` then resizes the schedule to the discounted total.
+> **Decision (provisional, 2026-09-17):** option 1, Q-028 #8's suggested
+> answer — **Nick has not answered yet**; pro-rata or drop-and-warn is a
+> change confined to `reprice_snapshot`. The line's `discount` is
+> authoritative: a booking snapshot whose `operator_discount` differs
+> (pre-BUG-020 conversion, or a line edited outside the API) is corrected to
+> the line on the next reprice. Zero-discount bookings gain `gross` /
+> `operator_discount: "0.00"` keys on reprice, no money change.
+> **Residuals (unchanged here):** `rental_price` stays the engine
+> `rate_subtotal`; a manual-override line's hand-entered price is still
+> replaced by the engine figure on reprice (the discount is re-applied on top);
+> the FG-018 `total` → `engine_total` rename is still open.
+
 - **Severity:** 🔴 Bug (money — a date or party change on a discounted
   booking quietly puts the operator discount back on the guest's bill).
 - **Found:** 2026-09-02, while closing BUG-020. Not yet reproduced by probe;
@@ -27,7 +50,7 @@ block follows.
 ## Decision needed
 
 > 2026-09-16: put to Nick as question 8 of
-> [Q-028](q-028-legacy-loader-owner-questions.md) (suggested answer: option 1).
+> [Q-028](../q-028-legacy-loader-owner-questions.md) (suggested answer: option 1).
 
 What should happen to an operator discount when the booking is repriced?
 

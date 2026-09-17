@@ -3,8 +3,8 @@
 > **Scope widened 2026-09-16 (todo consolidation):** this is now the single
 > list of questions waiting on Nick. It absorbs **Q-022** (season labels →
 > question 6) and **Q-025** (ambiguous floor rungs → question 7), and carries
-> the product decision **BUG-025** needs (question 8 — BUG-025 itself stays
-> open, it is code). The absorbed tickets' full text is kept as "Merged from"
+> the product decision **BUG-025** needs (question 8 — BUG-025's code shipped
+> 2026-09-17 provisionally on the suggested answer; the question stays open). The absorbed tickets' full text is kept as "Merged from"
 > sections at the end. Questions that belong to a specific call stay with
 > that call: odd-length stay pricing (D1–D3) is on **GAP-074**'s owner/Debbie
 > agenda. Questions 1–5 below are the original loader residue.
@@ -103,6 +103,9 @@
    same amount off ("we agreed £150 off"), (b) scale it with the new price,
    or (c) drop it and warn staff to re-enter it? **Suggested answer:** (a)
    keep the same amount off, never below zero.
+   *(2026-09-17: BUG-025 shipped **provisionally** on (a) —
+   `BookingService.reprice_snapshot`. Still ask: an answer of (b) or (c)
+   reopens it as a change to that one helper.)*
 
 ## Disposition
 

@@ -33,7 +33,7 @@ section current — it is the single source of truth for "what's done".
 1. Derive the `<slug>` from $ARGUMENTS (GAP id → `gap-0XX`; else a short
    kebab summary). If $ARGUMENTS is empty or literally `continue`, look for an
    existing `~/.claude/plans/ship-*.md` whose `## Progress` is unfinished and
-   the matching `../villacollective-worktrees/<slug>/` worktree.
+   the matching `.claude/worktrees/<slug>/` worktree.
 2. If a plan file + worktree already exist: read the plan, read `## Progress`,
    confirm the current branch/worktree, and **jump to the first unfinished
    phase/unit**. Tell the user where you're resuming. Do NOT redo finished units.
@@ -46,17 +46,15 @@ section current — it is the single source of truth for "what's done".
 1. Confirm you are in the primary repo (`/Users/garethlloyd/projects/villacollective`)
    and the working tree is clean (`git status`). If there are unrelated
    uncommitted changes, **halt and ask** how to proceed.
-2. Create the worktree using the project convention (sibling dir, never nested):
+2. Create the worktree using the project convention (`.claude/worktrees/`, gitignored):
 
    ```bash
-   git worktree add -b feat/<slug> ../villacollective-worktrees/<slug> HEAD
+   git worktree add -b feat/<slug> .claude/worktrees/<slug> HEAD
    ```
 
-3. Move the session into it. **Use `EnterWorktree` with an explicit `path`**
-   pointing at `../villacollective-worktrees/<slug>` — its default is
-   `.claude/worktrees/`, which violates the sibling convention and pollutes
-   lint/test walks. From here on, **edit only through the worktree path**;
-   main-repo paths land changes on the wrong branch.
+3. Move the session into it with `EnterWorktree`, `path` pointing at
+   `.claude/worktrees/<slug>`. From here on, **edit only through the worktree
+   path**; main-repo paths land changes on the wrong branch.
 
 ---
 
@@ -121,7 +119,7 @@ cannot continue *after* it within the same turn (it clears context). So:
    (everything you'd need to resume from scratch).
 2. **Stop and tell the user**, verbatim intent:
    *"Plan approved and saved to `~/.claude/plans/ship-<slug>.md`. Worktree:
-   `../villacollective-worktrees/<slug>`. Run `/compact` now, then send
+   `.claude/worktrees/<slug>`. Run `/compact` now, then send
    `continue` (or re-run `/ship continue`) — I'll resume from the plan file at
    Phase 4."*
 3. End the turn. (If the user prefers to skip the explicit compact and rely on
@@ -204,7 +202,7 @@ batches — **do not push** unless the user asks.
 
    ```bash
    cd /Users/garethlloyd/projects/villacollective
-   git worktree remove ../villacollective-worktrees/<slug>
+   git worktree remove .claude/worktrees/<slug>
    git branch -d feat/<slug>
    git worktree list && git log --oneline -5   # verify
    ```
@@ -225,7 +223,5 @@ batches — **do not push** unless the user asks.
 - **Context survival** drives the "delegate to subagents" rule throughout —
   subagents return summaries, keeping the main thread carrying only the plan +
   decisions across the whole cycle.
-- **`EnterWorktree` default path** is wrong for this repo — always pass the
-  explicit sibling `path`.
 - Subagents don't see this session's history; pass them the plan-file path and
   exact file references rather than assuming shared context.

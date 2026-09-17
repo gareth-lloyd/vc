@@ -51,8 +51,8 @@ class RefundViewSet(
     # Action endpoints
     # ------------------------------------------------------------------
     # Service-layer rejections surface through the canonical exception handler:
-    # `AuthorizationError` → 403 `forbidden`, `InvalidPaymentState` → 409
-    # `invalid_state`. No per-action `except` re-mapping (SMELL-010).
+    # `AuthorizationError` → 403 `forbidden`, `InvalidTransition` → 409
+    # `invalid_transition`. No per-action `except` re-mapping (SMELL-010).
     @action(detail=True, methods=["post"], url_path="approve")
     def approve(self, request: Request, pk: str | None = None) -> Response:
         refund = self.get_object()

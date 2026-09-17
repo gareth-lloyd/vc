@@ -22,8 +22,10 @@ from django.db.models.fields.json import KeyTextTransform
 
 from core.exceptions import DomainValidationError, InvalidTransition
 from core.idempotency import IDEMPOTENCY_META_KEY
+from core.locking import refresh_locked
 from core.models.base import AuditedModel
 from core.refs import reference_db_default
+from core.transitions import transition
 from payments import signals as payment_signals
 from payments.enums import (
     ACTIVE_PAYMENT_STATUSES,
@@ -204,40 +206,39 @@ class Payment(AuditedModel):
         """Generic status transition. Writes a `PaymentEvent` and dispatches
         the appropriate signal when the new status is terminal.
         """
-        from core.locking import refresh_locked
+        from django.utils import timezone
+
         from payments.models.payment_event import PaymentEvent
 
-        # Guard against locked, current state: a stale instance (double-click
-        # capture, webhook retry racing a manual mark-paid) must lose with
-        # InvalidTransition, not double-fire `payment_succeeded`.
+        # Lock before deriving fields: a stale instance (double-click capture,
+        # webhook retry racing a manual mark-paid) must lose with
+        # InvalidTransition, and `settled_at` must be read from the fresh row.
         refresh_locked(self)
-        allowed = PAYMENT_ALLOWED_TRANSITIONS.get(self.status, frozenset())
-        if new_status not in allowed:
-            raise InvalidTransition(self.status, new_status, allowed=sorted(allowed))
-
-        old_status = self.status
-        self.status = new_status
+        extra_updates: dict[str, Any] = {}
         if reason:
-            self.failure_reason = reason
-        update_fields = ["status", "failure_reason", "updated_at"]
+            extra_updates["failure_reason"] = reason
         if new_status == PaymentStatus.SUCCEEDED.value and self.settled_at is None:
-            from django.utils import timezone
+            extra_updates["settled_at"] = timezone.now()
 
-            self.settled_at = timezone.now()
-            update_fields.append("settled_at")
-        self.save(update_fields=update_fields)
+        def record(from_status: str, to_status: str) -> None:
+            PaymentEvent.objects.create(
+                payment=self,
+                from_status=from_status,
+                to_status=to_status,
+                kind=kind,
+                source=source,
+                actor=actor,
+                delivery=delivery,
+                meta=meta or {},
+            )
 
-        PaymentEvent.objects.create(
-            payment=self,
-            from_status=old_status,
-            to_status=new_status,
-            kind=kind,
-            source=source,
-            actor=actor,
-            delivery=delivery,
-            meta=meta or {},
+        transition(
+            self,
+            new_status,
+            table=PAYMENT_ALLOWED_TRANSITIONS,
+            extra_updates=extra_updates,
+            record=record,
         )
-
         self._dispatch_terminal_signal(new_status)
         return self
 

@@ -655,3 +655,34 @@ def test_normal_payment_refunded_status_does_not_touch_refund_rows(
     paid_deposit.transition_to(PaymentStatus.REFUNDED.value)
 
     assert Refund.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("action", ["approve", "reject", "cancel", "execute"])
+def test_refund_service_status_guard_reads_table(
+    booking: Any, gbp: Any, paid_deposit: Payment, user: Any, action: str
+) -> None:
+    """Service status refusals are the model's `InvalidTransition`, with the
+    table's allowed set — not a separately-listed `InvalidPaymentState`."""
+    from core.exceptions import InvalidTransition
+    from payments.enums import REFUND_ALLOWED_TRANSITIONS
+
+    refund = RefundService.request(
+        booking=booking,
+        amount=Decimal("100.00"),
+        currency=gbp,
+        purpose_track=RefundPurposeTrack.DEPOSIT.value,
+        reason_code=RefundReasonCode.OVERPAYMENT.value,
+        against_payment=paid_deposit,
+        requested_by=user,
+    )
+    RefundService.cancel(refund, actor=None)
+
+    kwargs: dict[str, Any] = {"actor": None}
+    if action == "reject":
+        kwargs["reason"] = "late"
+    with pytest.raises(InvalidTransition) as exc:
+        getattr(RefundService, action)(refund, **kwargs)
+
+    assert exc.value.from_state == RefundStatus.CANCELLED.value
+    assert exc.value.allowed == sorted(REFUND_ALLOWED_TRANSITIONS[RefundStatus.CANCELLED.value])

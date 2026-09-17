@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from django.db import models, transaction
+from django.db import models
 from django.db.models import F, Q
 from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
@@ -18,7 +18,9 @@ from django.utils import timezone
 from core.idempotency import IDEMPOTENCY_META_KEY
 from core.models.base import AuditedModel
 from core.refs import reference_db_default
+from core.transitions import transition
 from payments.enums import (
+    REFUND_ALLOWED_TRANSITIONS,
     EventSource,
     RefundMethod,
     RefundPurposeTrack,
@@ -165,7 +167,6 @@ class Refund(AuditedModel):
     # ------------------------------------------------------------------
     # Transitions
     # ------------------------------------------------------------------
-    @transaction.atomic
     def _transition(
         self,
         new_status: str,
@@ -173,32 +174,33 @@ class Refund(AuditedModel):
         source: str = EventSource.USER.value,
         actor: Any = None,
         kind: str = "",
+        extra_updates: dict[str, Any] | None = None,
         **meta: Any,
     ) -> Refund:
-        from core.exceptions import InvalidTransition
-        from core.locking import refresh_locked
-        from payments.enums import REFUND_ALLOWED_TRANSITIONS
+        """Move through `REFUND_ALLOWED_TRANSITIONS` (lock → guard → save → event).
+
+        The table is the floor direct model callers can't bypass; the service
+        layers policy (permissions, separation of duties) on top.
+        """
         from payments.models.payment_event import PaymentEvent
 
-        # Table-driven floor (mirrors `Payment.transition_to`): the service
-        # layers policy on top, but no caller can skip a workflow stage or
-        # transition a stale row.
-        refresh_locked(self)
-        allowed = REFUND_ALLOWED_TRANSITIONS.get(self.status, frozenset())
-        if new_status not in allowed:
-            raise InvalidTransition(self.status, new_status, allowed=sorted(allowed))
+        def record(from_status: str, to_status: str) -> None:
+            PaymentEvent.objects.create(
+                refund=self,
+                from_status=from_status,
+                to_status=to_status,
+                kind=kind,
+                source=source,
+                actor=actor,
+                meta=meta or {},
+            )
 
-        old_status = self.status
-        self.status = new_status
-        self.save(update_fields=["status", "updated_at"])
-        PaymentEvent.objects.create(
-            refund=self,
-            from_status=old_status,
-            to_status=new_status,
-            kind=kind,
-            source=source,
-            actor=actor,
-            meta=meta or {},
+        transition(
+            self,
+            new_status,
+            table=REFUND_ALLOWED_TRANSITIONS,
+            extra_updates=extra_updates,
+            record=record,
         )
         return self
 

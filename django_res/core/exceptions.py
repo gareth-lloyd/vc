@@ -165,9 +165,9 @@ class IdempotencyConflict(DomainError):
     under READ COMMITTED; the losing racer trips the model's partial-unique
     DB backstop (FG-010) with `IntegrityError`, which views translate into
     this 409 rather than a 500. Semantically distinct from
-    `InvalidPaymentState` (`invalid_state`, which the payments endpoints keep
-    for their established API contract): an idempotency race is a retry
-    collision, not a state-machine refusal.
+    `InvalidPaymentState` (`invalid_state`), which the payments endpoints keep
+    for their established API contract — including the refund create view's
+    own idempotency race (`payments/views/refund.py`).
     """
 
     code = "idempotency_conflict"
@@ -301,6 +301,13 @@ class NoPendingPayment(DomainError):
 
 
 class InvalidPaymentState(DomainError):
+    """A payments write lost a race at a DB uniqueness constraint.
+
+    Status refusals are `InvalidTransition` (BUG-015); this code survives, for
+    API compatibility, as what the track views (one-active-row-per-purpose)
+    and the refund create view (idempotency key) turn an `IntegrityError` into.
+    """
+
     code = "invalid_state"
 
 

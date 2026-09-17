@@ -32,15 +32,16 @@ from core.api.permissions import actor_has_perm
 from core.exceptions import (
     AuthorizationError,
     DomainValidationError,
-    InvalidPaymentState,
     InvalidTfaCode,
     TfaStepUpRequired,
 )
 from core.idempotency import find_by_meta_key, stamp_meta
 from core.locking import refresh_locked
 from core.logging.operations import log_operation
+from core.transitions import assert_allowed
 from payments.enums import (
     DEAD_REFUND_STATUSES,
+    REFUND_ALLOWED_TRANSITIONS,
     EventSource,
     PaymentPurpose,
     PaymentStatus,
@@ -175,10 +176,7 @@ class RefundService:
         # Lock first: concurrent approvals serialise, and the loser's status
         # check below sees the winner's committed state.
         refresh_locked(refund)
-        if refund.status != RefundStatus.PENDING.value:
-            raise InvalidPaymentState(
-                f"Refund {refund.reference}: cannot :approve from {refund.status!r}"
-            )
+        assert_allowed(refund, RefundStatus.APPROVED.value, table=REFUND_ALLOWED_TRANSITIONS)
         if not actor_has_perm(actor, PERM_APPROVE):
             raise AuthorizationError(f"actor {actor!r} missing {PERM_APPROVE!r} permission")
         if (
@@ -188,35 +186,27 @@ class RefundService:
         ):
             raise AuthorizationError("Requester cannot approve their own refund")
 
-        refund.approved_by = actor
-        refund.approved_at = timezone.now()
-        refund.save(update_fields=["approved_by", "approved_at", "updated_at"])
-        return refund._transition(RefundStatus.APPROVED.value, actor=actor)
+        return refund._transition(
+            RefundStatus.APPROVED.value,
+            actor=actor,
+            extra_updates={"approved_by": actor, "approved_at": timezone.now()},
+        )
 
     @classmethod
     @transaction.atomic
     def reject(cls, refund: Refund, *, actor: Any, reason: str) -> Refund:
         refresh_locked(refund)
-        if refund.status != RefundStatus.PENDING.value:
-            raise InvalidPaymentState(
-                f"Refund {refund.reference}: cannot :reject from {refund.status!r}"
-            )
+        assert_allowed(refund, RefundStatus.REJECTED.value, table=REFUND_ALLOWED_TRANSITIONS)
         if not actor_has_perm(actor, PERM_APPROVE):
             raise AuthorizationError(f"actor {actor!r} missing {PERM_APPROVE!r} permission")
-        refund.rejected_by = actor
-        refund.rejected_at = timezone.now()
-        refund.rejection_reason = reason
-        refund.save(
-            update_fields=[
-                "rejected_by",
-                "rejected_at",
-                "rejection_reason",
-                "updated_at",
-            ]
-        )
         return refund._transition(
             RefundStatus.REJECTED.value,
             actor=actor,
+            extra_updates={
+                "rejected_by": actor,
+                "rejected_at": timezone.now(),
+                "rejection_reason": reason,
+            },
             reason=reason,
         )
 
@@ -224,20 +214,16 @@ class RefundService:
     @transaction.atomic
     def cancel(cls, refund: Refund, *, actor: Any) -> Refund:
         refresh_locked(refund)
-        if refund.status not in (
-            RefundStatus.PENDING.value,
-            RefundStatus.APPROVED.value,
-        ):
-            raise InvalidPaymentState(
-                f"Refund {refund.reference}: cannot :cancel from {refund.status!r}"
-            )
+        assert_allowed(refund, RefundStatus.CANCELLED.value, table=REFUND_ALLOWED_TRANSITIONS)
         # Requester may cancel while PENDING; approver/permission-holder may
         # cancel while APPROVED.
         if refund.status == RefundStatus.APPROVED.value and not actor_has_perm(actor, PERM_APPROVE):
             raise AuthorizationError(f"actor missing {PERM_APPROVE!r} to cancel approved refund")
-        refund.cancelled_at = timezone.now()
-        refund.save(update_fields=["cancelled_at", "updated_at"])
-        return refund._transition(RefundStatus.CANCELLED.value, actor=actor)
+        return refund._transition(
+            RefundStatus.CANCELLED.value,
+            actor=actor,
+            extra_updates={"cancelled_at": timezone.now()},
+        )
 
     @classmethod
     @transaction.atomic
@@ -270,10 +256,7 @@ class RefundService:
         # State + permission guards are expected rejections, not operation
         # failures — keep them above the log_operation block so they don't log
         # as `refund.execute.failed` with a traceback.
-        if refund.status != RefundStatus.APPROVED.value:
-            raise InvalidPaymentState(
-                f"Refund {refund.reference}: cannot :execute from {refund.status!r}"
-            )
+        assert_allowed(refund, RefundStatus.EXECUTING.value, table=REFUND_ALLOWED_TRANSITIONS)
         if not actor_has_perm(actor, PERM_EXECUTE):
             raise AuthorizationError(f"actor {actor!r} missing {PERM_EXECUTE!r} permission")
         # High-risk org policy: executor must differ from approver unless
@@ -399,18 +382,16 @@ class RefundService:
             return refund
 
         if payment.status == PaymentStatus.SUCCEEDED.value:
-            refund.settled_at = payment.settled_at or timezone.now()
-            refund.save(update_fields=["settled_at", "updated_at"])
             return refund._transition(
                 RefundStatus.SUCCEEDED.value,
                 source=EventSource.SYSTEM.value,
+                extra_updates={"settled_at": payment.settled_at or timezone.now()},
             )
         if payment.status == PaymentStatus.FAILED.value:
-            refund.failure_reason = payment.failure_reason
-            refund.save(update_fields=["failure_reason", "updated_at"])
             return refund._transition(
                 RefundStatus.FAILED.value,
                 source=EventSource.SYSTEM.value,
+                extra_updates={"failure_reason": payment.failure_reason},
             )
         return refund
 

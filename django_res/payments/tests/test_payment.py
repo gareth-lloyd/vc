@@ -181,3 +181,11 @@ def test_transition_to__allows_succeeded_to_refunded(
 
     deposit_payment.refresh_from_db()
     assert deposit_payment.status == PaymentStatus.REFUNDED.value
+
+
+def test_payment_table_lists_every_status() -> None:
+    """Terminals are explicit empty sets, so a new status can't silently
+    become terminal by omission."""
+    from payments.enums import PAYMENT_ALLOWED_TRANSITIONS
+
+    assert set(PAYMENT_ALLOWED_TRANSITIONS) == set(PaymentStatus.values)

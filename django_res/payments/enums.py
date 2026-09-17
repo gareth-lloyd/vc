@@ -67,7 +67,11 @@ PAYMENT_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
             PaymentStatus.CANCELLED.value,
         }
     ),
-    # FAILED / REFUNDED / CANCELLED / EXPIRED / WAIVED are terminal.
+    PaymentStatus.FAILED.value: frozenset(),
+    PaymentStatus.REFUNDED.value: frozenset(),
+    PaymentStatus.CANCELLED.value: frozenset(),
+    PaymentStatus.EXPIRED.value: frozenset(),
+    PaymentStatus.WAIVED.value: frozenset(),
 }
 
 # Statuses that fire `payment_succeeded` / `payment_failed` style signals.

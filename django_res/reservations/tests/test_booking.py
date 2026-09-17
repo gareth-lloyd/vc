@@ -1069,3 +1069,138 @@ def test_modify_dates_refreshes_is_indicative(booking: Booking, rate_rule: RateB
     booking.modify_dates(date(2026, 7, 2), date(2026, 7, 9))
     booking.refresh_from_db()
     assert booking.pricing_snapshot["is_indicative"] is False
+
+
+# ---------------------------------------------------------------------------
+# BUG-025 — a reprice re-applies the operator discount (sibling of BUG-020)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def discounted_booking(booking: Booking, rate_rule: RateBand) -> Booking:
+    """A booking converted from a line with a £150 operator discount.
+
+    Engine under the shared fixtures: 7 x 200 = 1400 gross. A percent
+    commission policy is created so the engine charges 15% (210) and the
+    owner-net clipping branch has something to clip; without a policy
+    commission is 0 and the floor never triggers.
+
+    The line's `discount` is persisted because `_lock_for_update` re-reads
+    the FK from the DB — an in-memory edit would be lost on modify.
+    """
+    from properties.enums import CommissionCalcType
+    from properties.models.finance import PropertyFinance
+
+    PropertyFinance.objects.create(
+        property=booking.property,
+        commission_calculation_type=CommissionCalcType.PERCENT,
+        commission_amount=Decimal("15"),
+        tax_percentage=Decimal("0"),
+    )
+    _set_line_discount(booking, "150.00")
+    booking.balance_due = Decimal("1250.00")
+    booking.save(update_fields=["balance_due"])
+    return _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+
+
+def _set_line_discount(booking: Booking, amount: str) -> None:
+    line = booking.quotation_line
+    line.discount = Decimal(amount)
+    line.total = max(Decimal("1400.00") - line.discount, Decimal("0"))
+    line.save(update_fields=["discount", "total"])
+
+
+@pytest.mark.django_db
+def test_modify_dates_reapplies_operator_discount(discounted_booking: Booking) -> None:
+    """Moving to a same-length window keeps the quoted 1250, not the engine's 1400."""
+    discounted_booking.modify_dates(date(2026, 7, 1), date(2026, 7, 8))
+    discounted_booking.refresh_from_db()
+
+    assert discounted_booking.balance_due == Decimal("1250.00")
+    snapshot = discounted_booking.pricing_snapshot
+    assert snapshot["total"] == "1250.00"
+    assert snapshot["gross"] == "1400.00"
+    assert snapshot["operator_discount"] == "150.00"
+    assert snapshot["commission"] == "210.00"
+    assert snapshot["net_to_owner"] == "1040.00"
+
+
+@pytest.mark.django_db
+def test_modify_dates_event_records_netted_snapshot(discounted_booking: Booking) -> None:
+    """The audit event's `to_snapshot` is what was written, not the raw engine figure."""
+    discounted_booking.modify_dates(date(2026, 7, 1), date(2026, 7, 8))
+
+    event = BookingEvent.objects.filter(booking=discounted_booking).latest("created_at")
+    assert event.meta["to_snapshot"]["total"] == "1250.00"
+    assert event.meta["to_snapshot"]["operator_discount"] == "150.00"
+
+
+@pytest.mark.django_db
+def test_modify_dates_fully_discounted_floors_owner_net(discounted_booking: Booking) -> None:
+    """A discount equal to the gross prices the stay at 0; the owner absorbs it."""
+    _set_line_discount(discounted_booking, "1400.00")
+
+    discounted_booking.modify_dates(date(2026, 7, 1), date(2026, 7, 8))
+    discounted_booking.refresh_from_db()
+
+    assert discounted_booking.balance_due == Decimal("0.00")
+    snapshot = discounted_booking.pricing_snapshot
+    assert snapshot["total"] == "0.00"
+    assert snapshot["net_to_owner"] == "0.00"
+    assert snapshot["commission"] == "0.00"
+
+
+@pytest.mark.django_db
+def test_modify_dates_partially_floored_keeps_identity(discounted_booking: Booking) -> None:
+    """Discount past the owner's net: commission clips to what the guest pays."""
+    _set_line_discount(discounted_booking, "1300.00")
+
+    discounted_booking.modify_dates(date(2026, 7, 1), date(2026, 7, 8))
+    discounted_booking.refresh_from_db()
+
+    snapshot = discounted_booking.pricing_snapshot
+    assert snapshot["total"] == "100.00"
+    assert snapshot["commission"] == "100.00"
+    assert snapshot["net_to_owner"] == "0.00"
+
+
+def test_reprice_snapshot_helper_floors_total_at_zero() -> None:
+    """Pure helper: a discount larger than the gross yields a 0 total and stamps
+    `gross` / `operator_discount` beside the netted `total`."""
+    from pricing.services import Quote
+    from reservations.services.bookings import BookingService
+
+    quote = Quote(
+        property_id=1,
+        currency_code="GBP",
+        party=2,
+        date_from=date(2026, 7, 1),
+        date_to=date(2026, 7, 8),
+        lines=[],
+        rate_subtotal=Decimal("1400.00"),
+        extras=[],
+        extras_total=Decimal("0"),
+        commission_base=Decimal("1400.00"),
+        extras_non_commissionable_total=Decimal("0"),
+        discount=Decimal("0"),
+        commission=Decimal("210.00"),
+        tax=Decimal("0"),
+        total=Decimal("1400.00"),
+        net_to_owner=Decimal("1190.00"),
+        breakdown={
+            "total": "1400.00",
+            "commission": "210.00",
+            "tax": "0.00",
+            "net_to_owner": "1190.00",
+        },
+    )
+    line_stub = QuotationLine(pk=1, property_id=1, discount=Decimal("5000"))
+
+    snapshot, total = BookingService.reprice_snapshot(quote, quotation_line=line_stub)
+
+    assert total == Decimal("0.00")
+    assert snapshot["gross"] == "1400.00"
+    assert snapshot["operator_discount"] == "5000.00"
+    assert snapshot["total"] == "0.00"
+    assert snapshot["net_to_owner"] == "0.00"
+    assert quote.breakdown["total"] == "1400.00", "the engine breakdown is not mutated"

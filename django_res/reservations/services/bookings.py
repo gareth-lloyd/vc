@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from django.db import transaction
@@ -16,6 +16,9 @@ from reservations.models.booking_guest import BookingGuest
 from reservations.models.quotation import QuotationLine
 from reservations.services.holds import HoldService
 from reservations.services.owner_finance import owner_money_from_snapshot
+
+if TYPE_CHECKING:
+    from pricing.services import Quote
 
 logger = structlog.get_logger(__name__)
 
@@ -172,6 +175,32 @@ class BookingService:
         if value is None:
             return Decimal("0")
         return Decimal(str(value)).quantize(Decimal("0.01"))
+
+    @classmethod
+    def reprice_snapshot(
+        cls, quote: Quote, *, quotation_line: QuotationLine
+    ) -> tuple[dict[str, Any], Decimal]:
+        """Net a fresh engine quote for a booking being repriced.
+
+        BUG-025: `Booking.modify_dates` / `modify_guests` re-run the engine
+        and used to write `quote.breakdown` / `quote.total` verbatim, which
+        dropped the operator discount netted in at conversion and billed the
+        guest the discount back. This mirrors `price_line`
+        (`services/quotations.py`): the engine figure is kept as `gross`, the
+        line's `discount` is re-applied as the same absolute amount, floored
+        at 0 (product decision 2026-09-17, provisional pending Q-028 #8), and
+        the result is netted through `_net_snapshot_to_line_total` so the
+        booking snapshot keeps the BUG-020 shape.
+
+        Returns the netted snapshot (a copy — the engine's dict is untouched)
+        and the guest total to write to `balance_due`.
+        """
+        snapshot = dict(quote.breakdown)
+        gross = cls._decimal(quote.total)
+        total = max(gross - quotation_line.discount, Decimal("0")).quantize(Decimal("0.01"))
+        snapshot["gross"] = f"{gross:.2f}"
+        cls._net_snapshot_to_line_total(snapshot, total, quotation_line=quotation_line)
+        return snapshot, total
 
     @classmethod
     def _net_snapshot_to_line_total(

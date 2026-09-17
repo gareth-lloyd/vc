@@ -707,11 +707,16 @@ class Booking(AuditedModel):
             adults=self.adults,
             children=self.children,
         )
+        # BUG-025: re-net the engine figure against the line's operator
+        # discount, as at conversion — never write the raw quote.
+        from reservations.services.bookings import BookingService
+
         self.date_from = date_from
         self.date_to = date_to
-        self.pricing_snapshot = quote.breakdown
+        self.pricing_snapshot, self.balance_due = BookingService.reprice_snapshot(
+            quote, quotation_line=self.quotation_line
+        )
         self.rental_price = quote.rate_subtotal
-        self.balance_due = (quote.total - Decimal("0")).quantize(Decimal("0.01"))
         try:
             self.save(
                 update_fields=[
@@ -740,7 +745,7 @@ class Booking(AuditedModel):
                 "from": [old_from.isoformat(), old_to.isoformat()],
                 "to": [date_from.isoformat(), date_to.isoformat()],
                 "from_snapshot": old_snapshot,
-                "to_snapshot": quote.breakdown,
+                "to_snapshot": self.pricing_snapshot,
             },
         )
         self._resync_payment_schedule()

@@ -781,11 +781,15 @@ class Booking(AuditedModel):
             adults=adults,
             children=children,
         )
+        # BUG-025: re-net against the line's operator discount (see modify_dates).
+        from reservations.services.bookings import BookingService
+
         self.adults = adults
         self.children = children
-        self.pricing_snapshot = quote.breakdown
+        self.pricing_snapshot, self.balance_due = BookingService.reprice_snapshot(
+            quote, quotation_line=self.quotation_line
+        )
         self.rental_price = quote.rate_subtotal
-        self.balance_due = (quote.total - Decimal("0")).quantize(Decimal("0.01"))
         self.save(
             update_fields=[
                 "adults",
@@ -803,7 +807,7 @@ class Booking(AuditedModel):
                 "from": {"adults": old_adults, "children": old_children},
                 "to": {"adults": adults, "children": children},
                 "from_snapshot": old_snapshot,
-                "to_snapshot": quote.breakdown,
+                "to_snapshot": self.pricing_snapshot,
             },
         )
         self._resync_payment_schedule()

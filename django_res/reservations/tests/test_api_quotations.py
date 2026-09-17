@@ -3315,3 +3315,78 @@ def test_convert_keeps_is_indicative_in_the_booking_snapshot(
 
     assert response.status_code == 201, response.data
     assert Booking.objects.get().pricing_snapshot["is_indicative"] is True
+
+
+# ----------------------------------------------------------------------
+# BUG-025 — the operator discount must survive a reprice (modify-dates /
+# modify-guests). End-to-end: API → snapshot → payment schedule → Zoho.
+# ----------------------------------------------------------------------
+_DISCOUNTED_SNAPSHOT_MONEY = {
+    "total": "1250.00",
+    "gross": "1400.00",
+    "operator_discount": "150.00",
+    "commission": "210.00",
+    "net_to_owner": "1040.00",
+}
+
+
+def _assert_reprice_kept_quoted_total(response_data: dict[str, object], booking: Booking) -> None:
+    from payments.enums import PaymentPurpose
+    from payments.models import Payment
+
+    booking.refresh_from_db()
+    assert response_data["balance_due"] == "1250.00"
+    assert booking.balance_due == Decimal("1250.00")
+    snapshot = booking.pricing_snapshot
+    assert {key: snapshot[key] for key in _DISCOUNTED_SNAPSHOT_MONEY} == _DISCOUNTED_SNAPSHOT_MONEY
+    amounts = dict(Payment.objects.filter(booking=booking).values_list("purpose", "amount"))
+    assert amounts == {
+        PaymentPurpose.DEPOSIT.value: Decimal("375.00"),
+        PaymentPurpose.BALANCE.value: Decimal("875.00"),
+    }
+
+
+@pytest.mark.django_db
+def test_modify_dates_on_discounted_booking_keeps_quoted_total(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    """Same-length move: the guest still owes 1250, the schedule still sums to
+    1250 and the Zoho financials are byte-identical to before the modify."""
+    _, booking = _convert_priced_line(api_client, staff, quotation, property_, discount="150.00")
+    before = _financials_money(booking)
+
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}:modify-dates",
+        {"date_from": "2026-07-01", "date_to": "2026-07-08", "reason": "guest asked"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    _assert_reprice_kept_quoted_total(response.data, booking)
+    assert _financials_money(booking) == before
+
+
+@pytest.mark.django_db
+def test_modify_guests_on_discounted_booking_keeps_quoted_total(
+    api_client: APIClient,
+    staff: User,
+    quotation: Quotation,
+    property_: Property,
+    rate_rule: object,
+) -> None:
+    _, booking = _convert_priced_line(api_client, staff, quotation, property_, discount="150.00")
+    before = _financials_money(booking)
+
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}:modify-guests",
+        {"adults": 4, "children": 0, "reason": "extended family"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    _assert_reprice_kept_quoted_total(response.data, booking)
+    assert _financials_money(booking) == before

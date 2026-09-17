@@ -1204,3 +1204,55 @@ def test_reprice_snapshot_helper_floors_total_at_zero() -> None:
     assert snapshot["total"] == "0.00"
     assert snapshot["net_to_owner"] == "0.00"
     assert quote.breakdown["total"] == "1400.00", "the engine breakdown is not mutated"
+
+
+@pytest.mark.django_db
+def test_modify_guests_reapplies_operator_discount(discounted_booking: Booking) -> None:
+    """A party change under the same 1-8 band re-quotes at 1400 gross and the
+    £150 discount comes back off, exactly as the dates path."""
+    discounted_booking.modify_guests(4, 0)
+    discounted_booking.refresh_from_db()
+
+    assert discounted_booking.adults == 4
+    assert discounted_booking.balance_due == Decimal("1250.00")
+    snapshot = discounted_booking.pricing_snapshot
+    assert snapshot["total"] == "1250.00"
+    assert snapshot["gross"] == "1400.00"
+    assert snapshot["operator_discount"] == "150.00"
+    assert snapshot["commission"] == "210.00"
+    assert snapshot["net_to_owner"] == "1040.00"
+
+    event = BookingEvent.objects.filter(booking=discounted_booking).latest("created_at")
+    assert event.meta["to_snapshot"]["total"] == "1250.00"
+
+
+@pytest.mark.django_db
+def test_modify_guests_fully_discounted_floors_owner_net(discounted_booking: Booking) -> None:
+    _set_line_discount(discounted_booking, "1400.00")
+
+    discounted_booking.modify_guests(4, 0)
+    discounted_booking.refresh_from_db()
+
+    assert discounted_booking.balance_due == Decimal("0.00")
+    snapshot = discounted_booking.pricing_snapshot
+    assert snapshot["total"] == "0.00"
+    assert snapshot["net_to_owner"] == "0.00"
+    assert snapshot["commission"] == "0.00"
+
+
+@pytest.mark.django_db
+def test_modify_dates_longer_stay_takes_same_amount_off_new_gross(
+    discounted_booking: Booking,
+) -> None:
+    """The rule itself: the same absolute £150 comes off the *new* engine price
+    (14 nights x 200 = 2800), not a pro-rated share and not the old total."""
+    discounted_booking.modify_dates(date(2026, 7, 1), date(2026, 7, 15))
+    discounted_booking.refresh_from_db()
+
+    assert discounted_booking.balance_due == Decimal("2650.00")
+    snapshot = discounted_booking.pricing_snapshot
+    assert snapshot["gross"] == "2800.00"
+    assert snapshot["operator_discount"] == "150.00"
+    assert snapshot["total"] == "2650.00"
+    assert snapshot["commission"] == "420.00"
+    assert snapshot["net_to_owner"] == "2230.00"

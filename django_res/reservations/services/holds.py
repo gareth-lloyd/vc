@@ -23,7 +23,7 @@ import structlog
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from core.exceptions import HoldUnavailable, InvalidTransition
+from core.exceptions import DomainValidationError, HoldUnavailable, InvalidTransition, ReadOnlyHold
 from core.locking import refresh_locked
 from reservations.enums import BookingHoldReason, BookingHoldStatus
 from reservations.models.booking import HOLD_OVERLAP_CONSTRAINT_NAME, BookingHold
@@ -48,6 +48,29 @@ def _resolve_default_expiry(property: Any) -> datetime:
     settings, _ = PropertySettings.objects.get_or_create(property=property)
     hours = settings.hold_duration_hours if settings.hold_duration_hours is not None else 48
     return timezone.now() + timedelta(hours=hours)
+
+
+def _assert_future_expiry(expires_at: datetime) -> None:
+    """Refuse an explicit expiry that has already passed.
+
+    Such a hold would be born lapsed: invisible to every live reader yet still
+    blocking the dates at the DB level until the sweeper reaches it. Applied to
+    caller-supplied values only, never to `_resolve_default_expiry`.
+    """
+    if expires_at <= timezone.now():
+        message = "`expires_at` must be in the future."
+        raise DomainValidationError(message, field_errors={"expires_at": [message]})
+
+
+def _assert_open(hold: BookingHold) -> None:
+    """Lock + re-read `hold`, refusing an edit once it is no longer live.
+
+    Covers a lapsed-but-unswept hold too: every live reader already treats it
+    as gone, so editing it would revive it behind the sweeper's back.
+    """
+    refresh_locked(hold)
+    if not hold.is_live():
+        raise ReadOnlyHold("This hold has been released or has expired; place a new hold.")
 
 
 @contextmanager
@@ -257,6 +280,8 @@ class HoldService:
         never reaps it. `never_expires` and an explicit `expires_at` are
         mutually exclusive.
         """
+        if expires_at is not None:
+            _assert_future_expiry(expires_at)
         cls.expire_overlapping_stale(property=property, date_from=date_from, date_to=date_to)
         cls._assert_no_overlap(property=property, date_from=date_from, date_to=date_to)
         if never_expires:
@@ -291,8 +316,10 @@ class HoldService:
         """Edit an operator block in place; re-checks overlap excluding itself.
 
         Raises `HoldUnavailable` if the new range collides with another live
-        hold (the editing hold is excluded so a no-op save is allowed).
+        hold (the editing hold is excluded so a no-op save is allowed), and
+        `ReadOnlyHold` once the hold is no longer live (closed or lapsed).
         """
+        _assert_open(hold)
         cls.expire_overlapping_stale(
             property=hold.property,
             date_from=date_from,
@@ -330,7 +357,11 @@ class HoldService:
         a quotation line's hold aligned when the line is repriced or edited
         (e.g. a changeover-shifted arrival). Distinct from `update_block`, which
         is the operator-block editor and rewrites reason/notes instead.
+        Raises `ReadOnlyHold` once the hold is no longer live (closed or lapsed).
         """
+        if expires_at is not None:
+            _assert_future_expiry(expires_at)
+        _assert_open(hold)
         cls.expire_overlapping_stale(
             property=hold.property,
             date_from=date_from,
@@ -351,6 +382,33 @@ class HoldService:
             update_fields.append("expires_at")
         with _translate_overlap_violation(hold.property, date_from, date_to):
             hold.save(update_fields=update_fields)
+        return hold
+
+    @classmethod
+    @transaction.atomic
+    def extend(cls, hold: BookingHold, *, expires_at: datetime, actor: Any = None) -> BookingHold:
+        """Push a live hold's expiry to `expires_at`.
+
+        Refuses (`ReadOnlyHold`) a closed hold, a lapsed one (reviving it would
+        un-expire it behind the sweeper's back — place a new hold instead) and
+        an indefinite block (a finite expiry would let the sweeper reap it;
+        release it instead). A past `expires_at` is a `DomainValidationError`.
+        """
+        _assert_open(hold)
+        if hold.expires_at is None:
+            raise ReadOnlyHold(
+                "This block never expires and cannot be given an expiry; release it instead."
+            )
+        _assert_future_expiry(expires_at)
+        hold.expires_at = expires_at
+        hold.save(update_fields=["expires_at", "updated_at"])
+        logger.info(
+            "hold.extended",
+            hold_id=hold.pk,
+            property_id=hold.property_id,
+            expires_at=expires_at.isoformat(),
+            actor_id=getattr(actor, "pk", None),
+        )
         return hold
 
     @classmethod

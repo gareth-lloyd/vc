@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 from django.utils import timezone
 
-from core.exceptions import HoldUnavailable
+from core.exceptions import DomainValidationError, HoldUnavailable, ReadOnlyHold
 from reservations.enums import BookingHoldReason, BookingHoldStatus
 from reservations.models import BookingHold
 from reservations.services.holds import HoldService
@@ -553,3 +553,204 @@ def test_place_race_raises_hold_unavailable_not_integrity_error(
             date_to=date(2026, 6, 20),
             expires_at=timezone.now() + timedelta(hours=1),
         )
+
+
+# ---------------------------------------------------------------------------
+# BUG-015 U8b — edits refuse closed holds; explicit expiries must be future.
+# ---------------------------------------------------------------------------
+
+
+def _closed_hold(property_: Property, status: str) -> BookingHold:
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+    )
+    stale = BookingHold.objects.get(pk=hold.pk)
+    if status == BookingHoldStatus.RELEASED.value:
+        hold.release()
+    else:
+        hold.expire()
+    # A stale LIVE copy: the guard must read the locked row, not this.
+    return stale
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status", [BookingHoldStatus.RELEASED.value, BookingHoldStatus.EXPIRED.value]
+)
+def test_update_block_refuses_closed_hold(property_: Property, status: str) -> None:
+    stale = _closed_hold(property_, status)
+
+    with pytest.raises(ReadOnlyHold):
+        HoldService.update_block(
+            stale,
+            date_from=date(2026, 7, 1),
+            date_to=date(2026, 7, 8),
+            reason=BookingHoldReason.MAINTENANCE.value,
+            notes="x",
+        )
+
+    fresh = BookingHold.objects.get(pk=stale.pk)
+    assert fresh.date_from == date(2026, 6, 10)
+    assert fresh.status == status
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status", [BookingHoldStatus.RELEASED.value, BookingHoldStatus.EXPIRED.value]
+)
+def test_move_refuses_closed_hold(property_: Property, status: str) -> None:
+    stale = _closed_hold(property_, status)
+
+    with pytest.raises(ReadOnlyHold):
+        HoldService.move(stale, date_from=date(2026, 7, 1), date_to=date(2026, 7, 8))
+
+    assert BookingHold.objects.get(pk=stale.pk).date_from == date(2026, 6, 10)
+
+
+@pytest.mark.django_db
+def test_update_block_and_move_refuse_lapsed_unswept_hold(property_: Property) -> None:
+    """Editing a lapsed hold would revive it behind the sweeper's back (every
+    live reader already treats it as gone) — same rule as `extend`."""
+    stale = _stale_hold(property_)
+
+    with pytest.raises(ReadOnlyHold):
+        HoldService.update_block(
+            stale,
+            date_from=date(2026, 7, 1),
+            date_to=date(2026, 7, 8),
+            reason=BookingHoldReason.MAINTENANCE.value,
+            notes="x",
+        )
+    with pytest.raises(ReadOnlyHold):
+        HoldService.move(
+            stale,
+            date_from=date(2026, 7, 1),
+            date_to=date(2026, 7, 8),
+            expires_at=timezone.now() + timedelta(days=3),
+        )
+
+    fresh = BookingHold.objects.get(pk=stale.pk)
+    assert fresh.date_from == date(2026, 6, 10)
+    assert fresh.status == BookingHoldStatus.LIVE.value
+
+
+@pytest.mark.django_db
+def test_place_rejects_past_expiry(property_: Property) -> None:
+    with pytest.raises(DomainValidationError) as exc:
+        HoldService.place(
+            property=property_,
+            date_from=date(2026, 6, 10),
+            date_to=date(2026, 6, 17),
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
+    assert "expires_at" in exc.value.field_errors
+    assert not BookingHold.objects.exists()
+
+
+@pytest.mark.django_db
+def test_place_default_expiry_is_not_future_checked(property_: Property) -> None:
+    """The resolved default is the property's own setting, not operator input:
+    a 0-hour duration is a (flagged) config problem, not a 400."""
+    from properties.models import PropertySettings
+
+    PropertySettings.objects.create(property=property_, hold_duration_hours=0)
+
+    hold = HoldService.place(
+        property=property_, date_from=date(2026, 6, 10), date_to=date(2026, 6, 17)
+    )
+
+    assert hold.pk is not None
+
+
+@pytest.mark.django_db
+def test_move_rejects_past_expiry(property_: Property) -> None:
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+    )
+
+    with pytest.raises(DomainValidationError):
+        HoldService.move(
+            hold,
+            date_from=date(2026, 7, 1),
+            date_to=date(2026, 7, 8),
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
+
+    assert BookingHold.objects.get(pk=hold.pk).date_from == date(2026, 6, 10)
+
+
+@pytest.mark.django_db
+def test_extend_pushes_expiry_out(property_: Property) -> None:
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+    )
+    new_expiry = timezone.now() + timedelta(days=3)
+
+    returned = HoldService.extend(hold, expires_at=new_expiry)
+
+    assert returned.expires_at == new_expiry
+    hold.refresh_from_db()
+    assert hold.expires_at == new_expiry
+    assert hold.status == BookingHoldStatus.LIVE.value
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status", [BookingHoldStatus.RELEASED.value, BookingHoldStatus.EXPIRED.value]
+)
+def test_extend_refuses_closed_hold(property_: Property, status: str) -> None:
+    stale = _closed_hold(property_, status)
+
+    with pytest.raises(ReadOnlyHold):
+        HoldService.extend(stale, expires_at=timezone.now() + timedelta(days=3))
+
+
+@pytest.mark.django_db
+def test_extend_refuses_lapsed_unswept_hold(property_: Property) -> None:
+    """Reviving a lapsed hold would un-expire it behind the sweeper's back
+    (its dates may already be re-held); place a new hold instead."""
+    stale = _stale_hold(property_)
+    expired_at = stale.expires_at
+
+    with pytest.raises(ReadOnlyHold):
+        HoldService.extend(stale, expires_at=timezone.now() + timedelta(days=3))
+
+    assert BookingHold.objects.get(pk=stale.pk).expires_at == expired_at
+
+
+@pytest.mark.django_db
+def test_extend_refuses_indefinite_block(property_: Property) -> None:
+    block = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        reason=BookingHoldReason.OWNER_BLOCK.value,
+        never_expires=True,
+    )
+
+    with pytest.raises(ReadOnlyHold):
+        HoldService.extend(block, expires_at=timezone.now() + timedelta(days=3))
+
+    assert BookingHold.objects.get(pk=block.pk).expires_at is None
+
+
+@pytest.mark.django_db
+def test_extend_rejects_past_expiry(property_: Property) -> None:
+    hold = HoldService.place(
+        property=property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() + timedelta(hours=1),
+    )
+
+    with pytest.raises(DomainValidationError):
+        HoldService.extend(hold, expires_at=timezone.now() - timedelta(minutes=1))

@@ -1004,6 +1004,7 @@ class BookingHold(AuditedModel):
         return f"Hold #{self.pk} on property {self.property_id}"
 
     def is_live(self) -> bool:
+        """In-memory twin of `live_q()` — keep the two in step."""
         # A null `expires_at` means the hold never expires (owner/maintenance block).
         if self.status != BookingHoldStatus.LIVE.value:
             return False
@@ -1025,6 +1026,19 @@ class BookingHold(AuditedModel):
             extra_updates={"released_at": now if now is not None else timezone.now()},
         )
 
+    @staticmethod
+    def live_q(*, now: datetime | None = None) -> Q:
+        """The live-hold predicate: LIVE and not past `expires_at` (NULL = never).
+
+        Build it at query time — `now` is baked into the Q, so a Q (or a
+        queryset holding one) kept on a class attribute goes stale. A lapsed
+        hold stays LIVE in the DB until swept, so status alone isn't enough.
+        """
+        now = now if now is not None else timezone.now()
+        return Q(status=BookingHoldStatus.LIVE.value) & (
+            Q(expires_at__isnull=True) | Q(expires_at__gt=now)
+        )
+
     @classmethod
     def live_overlapping(
         cls,
@@ -1034,7 +1048,7 @@ class BookingHold(AuditedModel):
         property: Any = None,
         exclude_ids: list[int] | None = None,
     ) -> Any:
-        """Live (unreleased, unexpired) holds overlapping the range.
+        """Live (`live_q`) holds overlapping the range.
 
         The single source of truth for the hold-overlap predicate, shared by
         `HoldService`, the availability calendar (`AvailabilityService`) and
@@ -1042,8 +1056,7 @@ class BookingHold(AuditedModel):
         villa; omit it for a cross-property sweep.
         """
         qs = cls.objects.filter(
-            Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()),
-            released_at__isnull=True,
+            cls.live_q(),
             date_from__lt=date_to,
             date_to__gt=date_from,
         )

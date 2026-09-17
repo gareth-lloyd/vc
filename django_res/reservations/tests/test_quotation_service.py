@@ -15,6 +15,7 @@ from properties.models import PropertyFinance, PropertyService
 from properties.models.settings import PropertySettings
 from reservations.enums import (
     BookingHoldReason,
+    BookingHoldStatus,
     ContactMethod,
     EnquiryLostReason,
     EnquirySource,
@@ -607,3 +608,47 @@ def test_line_total_is_the_gross_base_for_a_gross_plan_with_finance(
     assert snapshot["commission"] == "189.00"  # (1400 - 140) x 15%
     assert snapshot["net_to_owner"] == "1071.00"
     assert snapshot["price_basis"] == "gross"
+
+
+def _lapse(hold: BookingHold) -> None:
+    """Make a hold lapsed-but-unswept (sweeper paused)."""
+    BookingHold.objects.filter(pk=hold.pk).update(expires_at=timezone.now() - timedelta(minutes=5))
+
+
+@pytest.mark.django_db
+def test_hold_line_replaces_lapsed_unswept_hold(
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """A lapsed hold is not "already held": hold_line expires it and places a
+    fresh one rather than handing back a dead hold."""
+    _, line = _quotation_with_line(customer, gbp, terms, property_)
+    lapsed = QuotationService.hold_line(line)
+    _lapse(lapsed)
+
+    fresh = QuotationService.hold_line(line)
+
+    assert fresh.pk != lapsed.pk
+    assert fresh.is_live() is True
+    lapsed.refresh_from_db()
+    assert lapsed.status == BookingHoldStatus.EXPIRED.value
+
+
+@pytest.mark.django_db
+def test_move_line_hold_ignores_lapsed_hold(
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """Moving never revives a lapsed hold — the line reads as un-held."""
+    _, line = _quotation_with_line(customer, gbp, terms, property_)
+    lapsed = QuotationService.hold_line(line)
+    _lapse(lapsed)
+    original_from = lapsed.date_from
+
+    assert QuotationService.move_line_hold(line) is None
+
+    assert BookingHold.objects.get(pk=lapsed.pk).date_from == original_from

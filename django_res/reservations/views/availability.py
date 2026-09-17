@@ -133,8 +133,9 @@ class PropertyAvailabilityView(APIView):
 class AvailabilityDetailView(generics.GenericAPIView):
     """`PATCH / DELETE /availability/{id}`.
 
-    `DELETE` releases the hold (`released_at = now`); `PATCH` updates expiry /
-    dates without releasing.
+    `DELETE` releases the hold (status RELEASED) and is idempotent — a closed
+    hold is left as-is and still returns 204. `PATCH` updates dates / reason /
+    notes without releasing, and refuses a hold that is no longer live (409).
     """
 
     serializer_class = AvailabilityRecordSerializer
@@ -306,14 +307,11 @@ class AvailabilitySearchView(APIView):
             qs = qs.filter(region__country__iso2__iexact=country)
         if min_bedrooms := filters.get("min_bedrooms"):
             qs = qs.filter(capacity__bedrooms__gte=int(min_bedrooms))
-        # Subtract villas with a blocking hold overlapping the window.
+        # Subtract villas with a live hold overlapping the window.
         blocked = set(
-            BookingHold.objects.filter(
-                property__in=qs,
-                released_at__isnull=True,
-                date_to__gt=data["date_from"],
-                date_from__lt=data["date_to"],
-            ).values_list("property_id", flat=True)
+            BookingHold.live_overlapping(date_from=data["date_from"], date_to=data["date_to"])
+            .filter(property__in=qs)
+            .values_list("property_id", flat=True)
         )
         result = [
             {
@@ -376,17 +374,11 @@ class AvailabilityExtendHoldView(APIView):
         from reservations.models.booking import BookingHold
 
         hold = get_object_or_404(BookingHold, pk=self.kwargs["pk"])
-        if hold.expires_at is None:
-            # An indefinite block (owner/maintenance) has no expiry to extend.
-            # Writing a finite `expires_at` would let `expire_holds` reap it;
-            # release-hold is the way to remove it.
-            raise ReadOnlyHold(
-                "This block never expires and cannot be given an expiry; release it instead."
-            )
         serializer = AvailabilityExtendHoldSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        hold.expires_at = serializer.validated_data["expires_at"]
-        hold.save(update_fields=["expires_at", "updated_at"])
+        hold = HoldService.extend(
+            hold, expires_at=serializer.validated_data["expires_at"], actor=request.user
+        )
         return Response(AvailabilityRecordSerializer(hold).data)
 
 

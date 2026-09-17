@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from core.api.permissions import IsReservationsWriter
 from core.exceptions import QuotationLocked, TermsNotAccepted
 from core.idempotency import integrity_conflict_guard
-from reservations.enums import PaymentMethod, QuotationStatus
+from reservations.enums import BookingHoldStatus, PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
 from reservations.models import Booking, BookingHold, Quotation, QuotationLine
 from reservations.serializers import (
@@ -84,14 +84,15 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         # hero_image_url from its property's images, renders its own
         # currency code (GAP-014) and surfaces its live hold — prefetch the
         # whole walk so a quotation with N lines stays at a constant query
-        # count. The hold prefetch filters released rows in SQL; liveness
-        # (expiry) is re-checked in the serializer.
+        # count. The hold prefetch filters on LIVE status in SQL; expiry is
+        # re-checked in the serializer (this is a class attribute, so a
+        # `live_q()` here would freeze `now` at import).
         .prefetch_related(
             "lines__property__images",
             "lines__currency",
             Prefetch(
                 "lines__holds",
-                queryset=BookingHold.objects.filter(released_at__isnull=True),
+                queryset=BookingHold.objects.filter(status=BookingHoldStatus.LIVE),
                 to_attr="live_holds",
             ),
         )
@@ -338,7 +339,7 @@ class QuotationLineViewSet(viewsets.ModelViewSet):
                 "property__images",
                 Prefetch(
                     "holds",
-                    queryset=BookingHold.objects.filter(released_at__isnull=True),
+                    queryset=BookingHold.objects.filter(status=BookingHoldStatus.LIVE),
                     to_attr="live_holds",
                 ),
             )

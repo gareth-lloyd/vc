@@ -186,3 +186,30 @@ def test_migration_0014_backfill_classifies_rows(property_: Property) -> None:
         early.pk: RELEASED,
         indefinite.pk: RELEASED,
     }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("status", "expires_in", "live"),
+    [
+        (LIVE, timedelta(hours=1), True),
+        (LIVE, None, True),
+        (LIVE, -timedelta(minutes=5), False),
+        (RELEASED, timedelta(hours=1), False),
+        (RELEASED, None, False),
+        (EXPIRED, -timedelta(minutes=5), False),
+    ],
+)
+def test_live_q_agrees_with_is_live(
+    property_: Property, status: str, expires_in: timedelta | None, live: bool
+) -> None:
+    now = timezone.now()
+    hold = _hold(
+        property_,
+        status=status,
+        expires_at=now + expires_in if expires_in is not None else None,
+        released_at=None if status == LIVE else now,
+    )
+
+    assert hold.is_live() is live
+    assert BookingHold.objects.filter(BookingHold.live_q(), pk=hold.pk).exists() is live

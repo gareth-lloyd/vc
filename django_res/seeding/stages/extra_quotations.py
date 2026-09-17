@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from reservations.factories import EnquiryFactory
 from reservations.models.enquiry import Enquiry
+from reservations.services.holds import HoldService
 from reservations.services.quotations import QuotationService
 from seeding._booking_helpers import conforming_stay, pick_guest
 from seeding.context import SeedContext
@@ -76,8 +77,7 @@ def _run(ctx: SeedContext) -> int:
                 # expiry so quotation cells stay visible across the demo
                 # calendar window (the effective-setting default is ~48h).
                 hold = QuotationService.hold_line(quotation.lines.get())
-                hold.expires_at = expires_at
-                hold.save(update_fields=["expires_at", "updated_at"])
+                HoldService.extend(hold, expires_at=expires_at)
         made += 1
     return made
 

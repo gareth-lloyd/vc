@@ -19,7 +19,7 @@ from core.api.permissions import (
     IsReservationsWriter,
     is_assignable_operator,
 )
-from reservations.enums import EnquiryLostReason, EnquiryStatus, LeadStatus
+from reservations.enums import BookingHoldStatus, EnquiryLostReason, EnquiryStatus, LeadStatus
 from reservations.filters import EnquiryFilter
 from reservations.models import BookingHold, Enquiry, EnquiryEvent, EnquiryNote, Quotation
 from reservations.serializers import (
@@ -56,7 +56,7 @@ def _quotations_prefetch() -> Prefetch:
             "lines__currency",
             Prefetch(
                 "lines__holds",
-                queryset=BookingHold.objects.filter(released_at__isnull=True),
+                queryset=BookingHold.objects.filter(status=BookingHoldStatus.LIVE),
                 to_attr="live_holds",
             ),
         ),

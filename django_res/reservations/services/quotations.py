@@ -20,11 +20,11 @@ from pricing.models import Currency
 from pricing.services import PricingEngine
 from pricing.services.currency import quantise_money, resolve_property_currency
 from reservations.enums import BookingHoldReason, EnquirySource, EnquiryStatus
+from reservations.models.booking import BookingHold
 from reservations.models.quotation import Quotation, QuotationLine
 from reservations.services.holds import HoldService
 
 if TYPE_CHECKING:
-    from reservations.models.booking import BookingHold
     from reservations.models.enquiry import Enquiry
 
 logger = structlog.get_logger(__name__)
@@ -142,7 +142,7 @@ class QuotationService:
         quotation's `expires_at`. Raises `HoldUnavailable` if the dates
         collide with another live hold.
         """
-        existing = line.holds.filter(released_at__isnull=True).first()
+        existing = line.holds.filter(BookingHold.live_q()).first()
         if existing is not None:
             return existing
         hold = HoldService.place(
@@ -190,7 +190,7 @@ class QuotationService:
         when the line has no live hold. Raises `HoldUnavailable` if the new
         dates collide with another live hold.
         """
-        existing = line.holds.filter(released_at__isnull=True).first()
+        existing = line.holds.filter(BookingHold.live_q()).first()
         if existing is None:
             return None
         return HoldService.move(

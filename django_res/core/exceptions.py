@@ -238,10 +238,12 @@ class HoldUnavailable(DomainError):
 
 
 class ReadOnlyHold(DomainError):
-    """A system-managed hold (quotation / booking) cannot be hand-edited.
+    """A hold that cannot be edited in the way requested.
 
-    These are released via their originating quotation/booking, not the
-    availability-block endpoints.
+    Either system-managed (quotation / booking holds are released via their
+    source, not the availability-block endpoints), closed (RELEASED /
+    EXPIRED, or lapsed awaiting the sweeper), or an indefinite block asked for
+    an expiry.
     """
 
     code = "read_only_hold"

@@ -7,8 +7,8 @@ A property date range is unavailable if it overlaps either:
   `reservations.enums.TERMINAL_BOOKING_STATUSES`, so resting legacy DRAFT
   imports count), or
 - a *live* `reservations.BookingHold`
-  (`BookingHold.live_overlapping(...)` — `released_at IS NULL` and
-  `expires_at > now`).
+  (`BookingHold.live_overlapping(...)` — `BookingHold.live_q()`: status LIVE
+  and `expires_at` NULL or in the future).
 
 Both predicates are the canonical model-layer ones, shared verbatim with the
 catalogue-search filter (`properties.filters.property`), so the calendar and

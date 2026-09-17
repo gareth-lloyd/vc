@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import Person, User
 from properties.models import Property
-from reservations.enums import BookingHoldReason
+from reservations.enums import BookingHoldReason, BookingHoldStatus
 from reservations.models.booking import BookingHold
 
 
@@ -390,3 +390,141 @@ def test_availability_search(api_client: APIClient, staff: User, property_: Prop
     assert response.status_code == 200, response.content
     results = response.json()["results"]
     assert any(r["property_id"] == property_.pk for r in results)
+
+
+# ---------------------------------------------------------------------------
+# BUG-015 U8b — closed holds are read-only; explicit expiries must be future;
+# search agrees with the calendar on a lapsed-but-unswept hold.
+# ---------------------------------------------------------------------------
+
+
+def _manual_hold(property_: Property, **kwargs: object) -> BookingHold:
+    fields: dict[str, object] = {
+        "property": property_,
+        "date_from": date(2026, 6, 1),
+        "date_to": date(2026, 6, 7),
+        "expires_at": timezone.now() + timedelta(days=1),
+        "reason": BookingHoldReason.OWNER_BLOCK.value,
+    }
+    fields.update(kwargs)
+    return BookingHold.objects.create(**fields)
+
+
+def _released(property_: Property) -> BookingHold:
+    return _manual_hold(
+        property_, status=BookingHoldStatus.RELEASED.value, released_at=timezone.now()
+    )
+
+
+@pytest.mark.django_db
+def test_extend_hold_past_expiry_is_400(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    hold = _manual_hold(property_)
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/availability/{hold.pk}:extend-hold",
+        data={"expires_at": (timezone.now() - timedelta(hours=1)).isoformat()},
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert response.json()["code"] == "validation_error"
+    assert "expires_at" in response.json()["field_errors"]
+
+
+@pytest.mark.django_db
+def test_extend_released_hold_is_409(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    hold = _released(property_)
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/availability/{hold.pk}:extend-hold",
+        data={"expires_at": (timezone.now() + timedelta(days=60)).isoformat()},
+        format="json",
+    )
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "read_only_hold"
+
+
+@pytest.mark.django_db
+def test_patch_released_block_is_409(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    hold = _released(property_)
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/availability/{hold.pk}",
+        data={"date_to": "2026-06-09"},
+        format="json",
+    )
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "read_only_hold"
+    hold.refresh_from_db()
+    assert hold.date_to == date(2026, 6, 7)
+
+
+@pytest.mark.django_db
+def test_post_block_with_past_expiry_is_400(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        f"/api/v1/properties/{property_.pk}/availability",
+        data={
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "reason": BookingHoldReason.OWNER_BLOCK.value,
+            "expires_at": (timezone.now() - timedelta(hours=1)).isoformat(),
+        },
+        format="json",
+    )
+    assert response.status_code == 400, response.content
+    assert response.json()["code"] == "validation_error"
+    assert not BookingHold.objects.filter(property=property_).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_block_past_expiry_fails_per_property(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/availability:bulk-block",
+        data={
+            "property_ids": [property_.pk],
+            "date_from": "2026-06-10",
+            "date_to": "2026-06-17",
+            "expires_at": (timezone.now() - timedelta(hours=1)).isoformat(),
+        },
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+    body = response.json()
+    assert body["records"] == []
+    assert [(f["property_id"], f["code"]) for f in body["failures"]] == [
+        (property_.pk, "validation_error")
+    ]
+
+
+@pytest.mark.django_db
+def test_availability_search_ignores_lapsed_unswept_hold(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """A hold past its expiry that the sweeper hasn't reached must not hide the
+    villa — search uses the same live predicate as the calendar."""
+    _manual_hold(
+        property_,
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        expires_at=timezone.now() - timedelta(minutes=5),
+    )
+    api_client.force_login(staff)
+    response = api_client.post(
+        "/api/v1/availability:search",
+        data={"date_from": "2026-06-10", "date_to": "2026-06-17", "adults": 2},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    (result,) = [r for r in response.json()["results"] if r["property_id"] == property_.pk]
+    assert result["available"] is True

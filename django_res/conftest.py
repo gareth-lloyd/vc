@@ -8,6 +8,8 @@ it.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import pytest
 
 from comms.enums import SmtpScope
@@ -64,20 +66,39 @@ def _ensure_seeded_reference_data() -> None:
         sync_room_attributes()
 
 
+def _db_fixture_for(marker: pytest.Mark | None, fixturenames: Iterable[str]) -> str | None:
+    """The DB fixture a test runs under, or `None` if it touches no DB.
+
+    A test gets the DB from a `django_db` marker or by requesting `db` /
+    `transactional_db` (directly or via another fixture — `fixturenames` is the
+    transitive closure), so both routes count.
+    """
+    if marker is not None:
+        is_transactional = bool(
+            marker.kwargs.get("transaction") or (marker.args and marker.args[0])
+        )
+        return "transactional_db" if is_transactional else "db"
+    names = set(fixturenames)
+    if "transactional_db" in names:
+        return "transactional_db"
+    if "db" in names:
+        return "db"
+    return None
+
+
 @pytest.fixture(autouse=True)
 def _restore_seeded_reference_data(request: pytest.FixtureRequest) -> None:
     """Restore migration-seeded reference data for every DB-using test.
 
     Picks the DB fixture matching the test's mode so transactional tests get
     their flushed rows restored, while non-transactional tests reseed within
-    their own rolled-back transaction. Tests with no `django_db` marker (pure
-    unit tests) touch no DB and are skipped.
+    their own rolled-back transaction. Tests with no DB access (pure unit
+    tests) are skipped.
     """
-    marker = request.node.get_closest_marker("django_db")
-    if marker is None:
+    db_fixture = _db_fixture_for(request.node.get_closest_marker("django_db"), request.fixturenames)
+    if db_fixture is None:
         return
-    is_transactional = bool(marker.kwargs.get("transaction") or (marker.args and marker.args[0]))
-    request.getfixturevalue("transactional_db" if is_transactional else "db")
+    request.getfixturevalue(db_fixture)
     _ensure_seeded_reference_data()
 
 

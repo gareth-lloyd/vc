@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import type { RateBand } from "@/features/properties/schemas";
 import type { MatrixCell as CellModel } from "../matrixModel";
@@ -30,6 +31,7 @@ const noop = {
   onEditBand: vi.fn(),
   onFill: vi.fn(),
   onDeleteBand: vi.fn(),
+  onToggleIndicative: vi.fn(),
 };
 
 function renderCell(b: RateBand) {
@@ -124,5 +126,61 @@ describe("MatrixCell — reductions (Q-018)", () => {
     expect(document.querySelector("s")).toBeNull();
     expect(screen.queryByText("Reduced")).toBeNull();
     expect(screen.getByRole("textbox", { name: /Nightly rate/ })).toHaveValue("200.00");
+  });
+});
+
+describe("MatrixCell — indicative rates (GAP-114)", () => {
+  it("marks an indicative band with the shared indicative badge", () => {
+    renderCell(band({ is_indicative: true }));
+    expect(screen.getByText("Indicative rates")).toBeInTheDocument();
+  });
+
+  it("marks an indicative POA band too", () => {
+    renderCell(band({ is_poa: true, nightly: null, weekly: null, is_indicative: true }));
+    expect(screen.getByText("POA")).toBeInTheDocument();
+    expect(screen.getByText("Indicative rates")).toBeInTheDocument();
+  });
+
+  it("shows no badge on a confirmed band", () => {
+    renderCell(band({ is_indicative: false }));
+    expect(screen.queryByText("Indicative rates")).toBeNull();
+  });
+
+  it("exposes a checked 'Indicative rates' toggle in the rule menu that clears the flag", async () => {
+    const user = userEvent.setup();
+    const onToggleIndicative = vi.fn();
+    renderWithProviders(
+      <MatrixCell
+        cell={cell(band({ is_indicative: true }))}
+        currencyCode="GBP"
+        canWrite
+        {...noop}
+        onToggleIndicative={onToggleIndicative}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Rule actions" }));
+    const item = await screen.findByRole("menuitemcheckbox", { name: "Indicative rates" });
+    expect(item).toHaveAttribute("aria-checked", "true");
+    await user.click(item);
+    expect(onToggleIndicative).toHaveBeenCalledWith(11, false);
+  });
+
+  it("offers the toggle unchecked on a confirmed band and sets the flag", async () => {
+    const user = userEvent.setup();
+    const onToggleIndicative = vi.fn();
+    renderWithProviders(
+      <MatrixCell
+        cell={cell(band({}))}
+        currencyCode="GBP"
+        canWrite
+        {...noop}
+        onToggleIndicative={onToggleIndicative}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Rule actions" }));
+    const item = await screen.findByRole("menuitemcheckbox", { name: "Indicative rates" });
+    expect(item).toHaveAttribute("aria-checked", "false");
+    await user.click(item);
+    expect(onToggleIndicative).toHaveBeenCalledWith(11, true);
   });
 });

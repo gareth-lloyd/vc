@@ -7,6 +7,7 @@ import type { RatePlanDetail, RateBand } from "@/features/properties/schemas";
 import i18n from "@/i18n";
 import {
   carryForwardRatePlan,
+  confirmRatePlanRates,
   createDiscount,
   createExtra,
   deleteDiscount,
@@ -72,6 +73,12 @@ function patchBandField(
   };
 }
 
+function saveFailedMessage(err: Error): string {
+  return err instanceof ApiError
+    ? err.detail
+    : i18n.t("properties:rate_workbench.matrix.save_failed");
+}
+
 /**
  * Optimistic inline price edit (nightly or weekly) for a matrix cell. Mirrors
  * `useToggleBookingNotePin`: patch the shared `ratePlanDetail` cache immediately,
@@ -112,15 +119,56 @@ export function useOptimisticBandPrice(ratePlanId: number) {
           current ? patchBandField(current, bandId, field, ctx.previous ?? null) : current,
         );
       }
-      const message =
-        err instanceof ApiError
-          ? err.detail
-          : i18n.t("properties:rate_workbench.matrix.save_failed");
-      toast.error(message);
+      toast.error(saveFailedMessage(err));
     },
     onSettled: () => {
       if (queryClient.isMutating({ mutationKey }) === 1) {
         void queryClient.invalidateQueries({ queryKey: key });
+      }
+    },
+  });
+}
+
+/**
+ * GAP-114: per-band "indicative rates" toggle from the matrix cell menu. A plain
+ * invalidate-on-success mutation — a menu checkbox needs no optimistic
+ * scaffold. The backend 400s the PATCH on a historical period; the editor never
+ * offers the toggle there (locked rows carry no rule menu).
+ */
+export function useSetBandIndicative(ratePlanId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bandId, value }: { bandId: number; value: boolean }) =>
+      updateRateBand(bandId, { is_indicative: value }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.properties.ratePlanDetail(ratePlanId),
+      });
+    },
+    onError: (err) => toast.error(saveFailedMessage(err)),
+  });
+}
+
+/**
+ * GAP-114: bulk-confirm the indicative rates of every given plan (one
+ * `:confirm-rates` call each), resolving to the total confirmed. Every plan's
+ * detail is invalidated on settle — a partial failure must still refetch the
+ * plans that did confirm — and any failure rejects so the caller can toast it.
+ */
+export function useConfirmIndicativeRates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ratePlanIds: number[]) => {
+      const results = await Promise.allSettled(ratePlanIds.map((id) => confirmRatePlanRates(id)));
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+      if (failed) {
+        throw failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
+      }
+      return results.reduce((n, r) => n + (r.status === "fulfilled" ? r.value.confirmed : 0), 0);
+    },
+    onSettled: (_confirmed, _err, ratePlanIds) => {
+      for (const id of ratePlanIds) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.properties.ratePlanDetail(id) });
       }
     },
   });

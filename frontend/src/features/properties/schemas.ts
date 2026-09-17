@@ -452,6 +452,10 @@ export const rateBandSchema = z.object({
   is_poa: z.boolean().optional(),
   is_locked: z.boolean().optional(),
   is_approved: z.boolean().optional(),
+  // GAP-114: carried forward (legacy carried seasons / staff carry-forwards)
+  // but not yet confirmed by the owner. Writable via PATCH; cleared in bulk
+  // by `:confirm-rates`.
+  is_indicative: z.boolean().optional(),
   notes: z.string().nullable().optional(),
 });
 export type RateBand = z.infer<typeof rateBandSchema>;
@@ -664,6 +668,8 @@ export type RateBandWritePayload = Omit<
   reduced_weekly: string | null;
   reduced_at: string | null;
   reduction_reason: string;
+  // GAP-114: a flag, not a form field — settable on PATCH, absent from the dialog.
+  is_indicative?: boolean;
 };
 
 export const ratePlanSchema = z.object({

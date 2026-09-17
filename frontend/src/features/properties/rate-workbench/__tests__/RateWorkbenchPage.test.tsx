@@ -1,8 +1,12 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+import { toast } from "sonner";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import { drfPage } from "@/test/drf";
@@ -849,5 +853,170 @@ describe("RateWorkbenchPage — carry forward", () => {
     // its carried 2027 band renders.
     expect(await screen.findByRole("button", { name: /Carried, 1 Jun 2027/ })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Rate plan" })).toHaveTextContent("EUR · Gross");
+  });
+});
+
+describe("RateWorkbenchPage — confirm indicative rates (GAP-114)", () => {
+  // Two live indicative bands on plan 100 (one confirmed band alongside) plus
+  // an indicative band on a historical period, which must not count.
+  const indicativeDetail = {
+    ...ratePlanDetail,
+    periods: [
+      {
+        id: 700,
+        plan: 100,
+        name: "Carried",
+        date_from: "2099-06-01",
+        date_to: "2099-06-30",
+        is_active: true,
+        coverage_gaps: [],
+        bands: [
+          { id: 71, period: 700, min_party: 1, max_party: 4, nightly: "700", is_indicative: true },
+          { id: 72, period: 700, min_party: 5, max_party: 8, nightly: "800", is_indicative: true },
+          {
+            id: 73,
+            period: 700,
+            min_party: 9,
+            max_party: 10,
+            nightly: "900",
+            is_indicative: false,
+          },
+        ],
+      },
+      {
+        id: 701,
+        plan: 100,
+        name: "Old",
+        date_from: "2020-06-01",
+        date_to: "2020-06-30",
+        is_active: true,
+        coverage_gaps: [],
+        bands: [
+          { id: 74, period: 701, min_party: 1, max_party: 8, nightly: "500", is_indicative: true },
+        ],
+      },
+    ],
+  };
+  const confirmedDetail = {
+    ...indicativeDetail,
+    periods: indicativeDetail.periods.map((p) => ({
+      ...p,
+      bands: p.bands.map((b) => (p.id === 700 ? { ...b, is_indicative: false } : b)),
+    })),
+  };
+
+  it("hides the action when no live band is indicative", async () => {
+    setUser("reservations");
+    installHandlers();
+    setup("/properties/casa-sur/rate-workbench");
+    await screen.findByRole("heading", { name: "Rates" });
+    await screen.findByText("EUR · Gross");
+    expect(screen.queryByRole("button", { name: /Confirm indicative rates/ })).toBeNull();
+  });
+
+  it("counts live indicative bands, confirms them via :confirm-rates and refetches the plan", async () => {
+    setUser("reservations");
+    installHandlers();
+    let confirmed = false;
+    let posts = 0;
+    server.use(
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json(confirmed ? confirmedDetail : indicativeDetail),
+      ),
+      http.post("/api/v1/rate-plans/100:confirm-rates", () => {
+        posts += 1;
+        confirmed = true;
+        return HttpResponse.json({ confirmed: 2 });
+      }),
+    );
+    setup("/properties/casa-sur/rate-workbench?year=2099");
+
+    const user = userEvent.setup();
+    const button = await screen.findByRole("button", { name: "Confirm indicative rates (2)" });
+    expect(button).toBeEnabled();
+    // The matrix marks the two live indicative bands (the historical one is hidden).
+    expect(await screen.findAllByText("Indicative rates")).toHaveLength(2);
+
+    await user.click(button);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Confirm rates" }));
+
+    await waitFor(() => expect(posts).toBe(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Confirm indicative rates/ })).toBeNull(),
+    );
+    expect(screen.queryByText("Indicative rates")).toBeNull();
+    expect(toast.success).toHaveBeenCalledWith("2 rate bands confirmed.");
+  });
+
+  it("on a partial failure toasts, keeps the dialog open, and still refetches the plan that confirmed", async () => {
+    setUser("reservations");
+    installHandlers();
+    vi.mocked(toast.error).mockClear();
+    // Two plans with live indicative bands: 100 (EUR, two bands) confirms, 101 (GBP) 500s.
+    const seasonGbp = { ...season, id: 101, name: "Summer GBP", currency_code: "GBP" };
+    const gbpDetail = {
+      ...seasonGbp,
+      periods: [
+        {
+          id: 710,
+          plan: 101,
+          name: "Carried GBP",
+          date_from: "2099-06-01",
+          date_to: "2099-06-30",
+          is_active: true,
+          coverage_gaps: [],
+          bands: [
+            {
+              id: 81,
+              period: 710,
+              min_party: 1,
+              max_party: 8,
+              nightly: "600",
+              is_indicative: true,
+            },
+          ],
+        },
+      ],
+    };
+    let confirmed = false;
+    server.use(
+      http.get("/api/v1/properties/7/rate-plans", () =>
+        HttpResponse.json(drfPage([season, seasonGbp])),
+      ),
+      http.get("/api/v1/rate-plans/100", () =>
+        HttpResponse.json(confirmed ? confirmedDetail : indicativeDetail),
+      ),
+      http.get("/api/v1/rate-plans/101", () => HttpResponse.json(gbpDetail)),
+      http.post("/api/v1/rate-plans/100:confirm-rates", () => {
+        confirmed = true;
+        return HttpResponse.json({ confirmed: 2 });
+      }),
+      http.post("/api/v1/rate-plans/101:confirm-rates", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+    setup("/properties/casa-sur/rate-workbench?year=2099");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Confirm indicative rates (3)" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Confirm rates" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    // Dialog stays open; plan 100's refetch dropped its two bands from the count
+    // (the page behind the modal is aria-hidden, so query by text).
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText("Confirm indicative rates (1)")).toBeInTheDocument();
+  });
+
+  it("disables (never hides) the action for a non-writer", async () => {
+    setUser("viewer");
+    installHandlers();
+    server.use(http.get("/api/v1/rate-plans/100", () => HttpResponse.json(indicativeDetail)));
+    setup("/properties/casa-sur/rate-workbench?year=2099");
+    expect(
+      await screen.findByRole("button", { name: "Confirm indicative rates (2)" }),
+    ).toBeDisabled();
   });
 });

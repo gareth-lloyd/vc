@@ -21,7 +21,7 @@ import { RatePeriodFormDialog } from "@/features/properties/components/RatePerio
 import { useDeleteRateBand, useDeleteRatePeriod } from "@/features/properties/hooks";
 import { formatPartyGaps } from "@/features/properties/coverage";
 import type { RatePeriod, RatePlanDetail, RateBand } from "@/features/properties/schemas";
-import { useOptimisticBandPrice } from "../hooks";
+import { useOptimisticBandPrice, useSetBandIndicative } from "../hooks";
 import { bandLabel, buildMatrix, isHistoricalPeriod } from "../matrixModel";
 import { MatrixCell } from "./MatrixCell";
 
@@ -37,6 +37,9 @@ interface MatrixEditorProps {
   /** Opens the parent's period-create dialog; a zero-period season renders an
    * "Add period" CTA in its empty state when this is provided. */
   onAddPeriod?: () => void;
+  /** Today's ISO date, shared with the page so the historical lock and the
+   * page's indicative count agree; defaults to a per-mount snapshot. */
+  today?: string;
 }
 
 /** Party-range prefill for a new band on this period. The serializer's
@@ -105,6 +108,7 @@ export function MatrixEditor({
   tax,
   capacity,
   onAddPeriod,
+  today: todayProp,
 }: MatrixEditorProps) {
   const { t } = useTranslation("properties");
   const season = seasons.find((s) => s.id === ratePlanId) ?? null;
@@ -121,7 +125,7 @@ export function MatrixEditor({
   // Historical periods (window fully elapsed) clutter the grid with rates that
   // can no longer change. Hide them by default; a toggle reveals them read-only.
   // `today` is snapshotted once so filtering/memoisation stay stable per mount.
-  const today = useMemo(() => todayIso(), []);
+  const today = useMemo(() => todayProp ?? todayIso(), [todayProp]);
   const [showHistorical, setShowHistorical] = useState(false);
   const historicalIds = useMemo(
     () => new Set(periods.filter((p) => isHistoricalPeriod(p, today)).map((p) => p.id)),
@@ -143,6 +147,7 @@ export function MatrixEditor({
     : [];
 
   const price = useOptimisticBandPrice(ratePlanId);
+  const indicative = useSetBandIndicative(ratePlanId);
   const deleteRule = useDeleteRateBand(ratePlanId);
   const deletePeriod = useDeleteRatePeriod(ratePlanId);
 
@@ -433,6 +438,9 @@ export function MatrixEditor({
                                 })
                               }
                               onDeleteBand={setDeletingBand}
+                              onToggleIndicative={(bandId, value) =>
+                                indicative.mutate({ bandId, value })
+                              }
                             />
                           </td>
                         ))}

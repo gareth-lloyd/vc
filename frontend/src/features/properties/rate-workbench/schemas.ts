@@ -176,6 +176,15 @@ export type CarryForwardPayload = CarryForwardInput & {
 };
 
 // ---------------------------------------------------------------------------
+// Confirm indicative rates (GAP-114) — POST /rate-plans/{id}:confirm-rates.
+// Clears `is_indicative` on every band of the plan's live periods and reports
+// how many it touched.
+// ---------------------------------------------------------------------------
+
+export const confirmRatesResponseSchema = z.object({ confirmed: z.number().int() });
+export type ConfirmRatesResponse = z.infer<typeof confirmRatesResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // Live price probe (Unit 6) — POST /pricing:quote. The engine's breakdown is a
 // flat dict of decimal STRINGS; the schemas below parse the fields we render —
 // including owner economics (net_to_owner / commission / tax), trustworthy

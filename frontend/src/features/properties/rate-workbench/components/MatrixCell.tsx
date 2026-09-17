@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
+import { StatusBadge } from "@/components/data/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoneyInput } from "@/components/ui/money-input";
@@ -29,6 +32,8 @@ interface MatrixCellProps {
   /** Open the create dialog seeded with this empty cell's segment + band. */
   onFill: (cell: CellModel) => void;
   onDeleteBand: (band: RateBand) => void;
+  /** GAP-114: flip the band's "indicative rates" flag (PATCH + refetch). */
+  onToggleIndicative: (bandId: number, value: boolean) => void;
 }
 
 interface PriceRowProps {
@@ -145,6 +150,7 @@ export function MatrixCell({
   onEditBand,
   onFill,
   onDeleteBand,
+  onToggleIndicative,
 }: MatrixCellProps) {
   const { t } = useTranslation("properties");
   const band = cell.band;
@@ -197,6 +203,13 @@ export function MatrixCell({
         <DropdownMenuItem onClick={() => onEditBand(band)}>
           {t("rate_workbench.matrix.edit_rule")}
         </DropdownMenuItem>
+        <DropdownMenuCheckboxItem
+          checked={band.is_indicative === true}
+          onCheckedChange={(checked) => onToggleIndicative(band.id, checked === true)}
+        >
+          {t("rate_workbench.matrix.indicative")}
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem className="text-destructive" onClick={() => onDeleteBand(band)}>
           {t("rate_workbench.matrix.delete_rule")}
         </DropdownMenuItem>
@@ -204,10 +217,24 @@ export function MatrixCell({
     </DropdownMenu>
   ) : null;
 
+  // GAP-114: carried, owner-unconfirmed band — the same badge Unit 7's quote
+  // surfaces use, so "indicative" reads identically across the app.
+  const indicativeMark = band.is_indicative ? (
+    <StatusBadge
+      status="indicative"
+      kind="draft"
+      label={t("rate_workbench.matrix.indicative")}
+      className="px-1 text-[10px]"
+    />
+  ) : null;
+
   if (band.is_poa) {
     return (
       <div className="flex items-center justify-between gap-1">
-        <Badge variant="outline">{t("rate_workbench.matrix.poa")}</Badge>
+        <span className="inline-flex items-center gap-1">
+          <Badge variant="outline">{t("rate_workbench.matrix.poa")}</Badge>
+          {indicativeMark}
+        </span>
         {menu}
       </div>
     );
@@ -275,7 +302,7 @@ export function MatrixCell({
         {reducedHintFor("weekly")}
       </div>
       {/* pt-1 centres the h-6 trigger against the first h-8 input row. */}
-      {menu || hasReduction ? (
+      {menu || hasReduction || indicativeMark ? (
         <div className="flex flex-col items-center gap-1 pt-1">
           {menu}
           {hasReduction ? (
@@ -283,6 +310,7 @@ export function MatrixCell({
               {t("rate_workbench.matrix.reduced")}
             </Badge>
           ) : null}
+          {indicativeMark}
         </div>
       ) : null}
     </div>

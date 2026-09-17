@@ -1115,6 +1115,19 @@
         "failed": "Couldn't carry rates forward. Please try again."
       }
     },
+    "confirm_rates": {
+      "button": "Confirm indicative rates ({{count}})",
+      "button_disabled_tooltip": "You do not have permission to change rates.",
+      "dialog_title": "Confirm indicative rates?",
+      "dialog_description_one": "Mark {{count}} carried-forward rate band as confirmed by the owner. Past periods are left unchanged.",
+      "dialog_description_other": "Mark {{count}} carried-forward rate bands as confirmed by the owner. Past periods are left unchanged.",
+      "confirm": "Confirm rates",
+      "toasts": {
+        "success_one": "{{count}} rate band confirmed.",
+        "success_other": "{{count}} rate bands confirmed.",
+        "failed": "Couldn't confirm the rates. Please try again."
+      }
+    },
     "error": {
       "title": "Couldn't load rates",
       "body": "Something went wrong loading this property's rate configuration."
@@ -1159,6 +1172,7 @@
       "nightly_short": "night",
       "weekly_short": "week",
       "reduced": "Reduced",
+      "indicative": "Indicative rates",
       "nightly_for": "Nightly rate, {{from}} to {{to}}, {{party}}",
       "weekly_for": "Weekly rate, {{from}} to {{to}}, {{party}}",
       "no_rules": "This rate period has no bands yet.",

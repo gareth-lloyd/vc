@@ -2,6 +2,10 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+import { toast } from "sonner";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
 import type { RatePlanDetail } from "@/features/properties/schemas";
@@ -651,5 +655,101 @@ describe("MatrixEditor — historical periods", () => {
     // Revealing them replaces the empty state with the (read-only) grid.
     expect(screen.queryByText("All rate periods have ended")).toBeNull();
     expect(await screen.findByLabelText(/Nightly rate, 2020-06-01 to 2020-08-31/i)).toBeDisabled();
+  });
+});
+
+describe("MatrixEditor — indicative rates (GAP-114)", () => {
+  const indicativeDetail: RatePlanDetail = {
+    ...ratePlanDetail,
+    periods: [
+      {
+        ...ratePlanDetail.periods[0],
+        bands: [{ ...ratePlanDetail.periods[0].bands[0], is_indicative: true }],
+      },
+      {
+        id: 502,
+        plan: 100,
+        name: "Old summer",
+        date_from: "2020-06-01",
+        date_to: "2020-08-31",
+        is_active: true,
+        coverage_gaps: [],
+        bands: [
+          { id: 8, period: 502, min_party: 2, max_party: 4, nightly: "500", is_indicative: true },
+        ],
+      },
+    ],
+  };
+
+  it("PATCHes is_indicative=false when the cell's toggle is cleared", async () => {
+    const user = userEvent.setup();
+    const patched: Array<{ id: string; body: unknown }> = [];
+    server.use(
+      http.patch("/api/v1/bands/:id", async ({ params, request }) => {
+        const body = await request.json();
+        patched.push({ id: String(params.id), body });
+        return HttpResponse.json({ ...ratePlanDetail.periods[0].bands[0], is_indicative: false });
+      }),
+    );
+    renderWithProviders(
+      <MatrixEditor
+        ratePlanId={100}
+        seasons={[indicativeDetail]}
+        canWrite
+        commission={null}
+        tax={null}
+      />,
+    );
+    expect(await screen.findByText("Indicative rates")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Rule actions" }));
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "Indicative rates" }));
+
+    await waitFor(() => expect(patched).toHaveLength(1));
+    expect(patched[0].id).toBe("1");
+    expect(patched[0].body).toEqual({ is_indicative: false });
+    // The badge clears via the plan's query cache (seeded by the page fan-out,
+    // not by this prop-fed render) — the page test covers it.
+  });
+
+  it("toasts the save failure on a 500 PATCH and keeps the badge", async () => {
+    const user = userEvent.setup();
+    vi.mocked(toast.error).mockClear();
+    server.use(
+      http.patch("/api/v1/bands/:id", () => HttpResponse.json({ detail: "boom" }, { status: 500 })),
+    );
+    renderWithProviders(
+      <MatrixEditor
+        ratePlanId={100}
+        seasons={[indicativeDetail]}
+        canWrite
+        commission={null}
+        tax={null}
+      />,
+    );
+    await screen.findByText("Indicative rates");
+    await user.click(screen.getByRole("button", { name: "Rule actions" }));
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "Indicative rates" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(screen.getByText("Indicative rates")).toBeInTheDocument();
+  });
+
+  it("offers no toggle on a historical period's band (read-only row), but still marks it", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <MatrixEditor
+        ratePlanId={100}
+        seasons={[indicativeDetail]}
+        canWrite
+        commission={null}
+        tax={null}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Show past periods (1)" }));
+    expect(await screen.findByLabelText(/Nightly rate, 2020-06-01 to 2020-08-31/i)).toBeDisabled();
+    // Both bands are flagged; only the live row has a rule menu.
+    expect(screen.getAllByText("Indicative rates")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Rule actions" })).toHaveLength(1);
   });
 });

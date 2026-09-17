@@ -58,6 +58,14 @@ export function isHistoricalPeriod(period: { date_to: string }, todayIso: string
   return period.date_to < todayIso;
 }
 
+/** GAP-114: indicative (carried, unconfirmed) bands on LIVE periods only —
+ * historical periods stay flagged and are never confirmed (decision 10). */
+export function countIndicativeBands(periods: RatePeriod[], todayIso: string): number {
+  return periods
+    .filter((p) => !isHistoricalPeriod(p, todayIso))
+    .reduce((n, p) => n + (p.bands ?? []).filter((b) => b.is_indicative).length, 0);
+}
+
 /** Numeric party-band label ("2–4", "6"), or null when unbounded (let the caller translate). */
 export function bandLabel(b: MatrixBand): string | null {
   if (b.minParty == null && b.maxParty == null) return null;

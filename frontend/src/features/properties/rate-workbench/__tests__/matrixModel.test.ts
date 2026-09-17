@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMatrix, bandLabel, bandKey } from "../matrixModel";
+import { buildMatrix, bandLabel, bandKey, countIndicativeBands } from "../matrixModel";
 import type { RatePeriod, RateBand } from "@/features/properties/schemas";
 
 // GAP-056: a band is party × price only and carries its parent `period` FK; the
@@ -126,5 +126,30 @@ describe("key + label helpers", () => {
     expect(bandLabel({ minParty: 2, maxParty: 4 })).toBe("2–4");
     expect(bandLabel({ minParty: 6, maxParty: 6 })).toBe("6");
     expect(bandLabel({ minParty: null, maxParty: null })).toBeNull();
+  });
+});
+
+describe("countIndicativeBands (GAP-114)", () => {
+  const today = "2026-09-17";
+
+  it("counts indicative bands on live periods only, skipping historical ones", () => {
+    const periods = [
+      // Live: two indicative, one confirmed.
+      period("2027-06-01", "2027-06-30", [
+        rule({ is_indicative: true }),
+        rule({ min_party: 5, max_party: 6, is_indicative: true }),
+        rule({ min_party: 7, max_party: 8, is_indicative: false }),
+      ]),
+      // Live, unflagged (legacy rows omit the key).
+      period("2027-07-01", "2027-07-31", [rule({})]),
+      // Historical: its indicative band must not count (decision 10).
+      period("2024-06-01", "2024-06-30", [rule({ is_indicative: true })]),
+    ];
+    expect(countIndicativeBands(periods, today)).toBe(2);
+  });
+
+  it("returns 0 with no periods or no indicative bands", () => {
+    expect(countIndicativeBands([], today)).toBe(0);
+    expect(countIndicativeBands([period("2027-06-01", "2027-06-30", [rule({})])], today)).toBe(0);
   });
 });

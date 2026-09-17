@@ -9,8 +9,10 @@ import {
   type RatePlanDetail,
 } from "@/features/properties/schemas";
 import {
+  confirmRatesResponseSchema,
   priceQuoteSchema,
   type CarryForwardPayload,
+  type ConfirmRatesResponse,
   type DiscountWritePayload,
   type ExtraWritePayload,
   type PriceProbeRequest,
@@ -74,6 +76,14 @@ export async function carryForwardRatePlan(
     body,
   );
   return ratePlanDetailSchema.parse(data);
+}
+
+// GAP-114: mark a plan's carried (indicative) rates as owner-confirmed. The
+// backend only touches live (non-historical) periods; the optional date window
+// the endpoint accepts is not used here — the workbench confirms the whole plan.
+export async function confirmRatePlanRates(ratePlanId: number): Promise<ConfirmRatesResponse> {
+  const data = await apiSend<unknown>("POST", `/rate-plans/${ratePlanId}:confirm-rates`, {});
+  return confirmRatesResponseSchema.parse(data);
 }
 
 // Read-only live probe against the pricing engine (colon-verb custom action).

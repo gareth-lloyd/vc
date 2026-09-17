@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { addDaysIso } from "@/lib/format/date";
+import { addDaysIso, todayIso } from "@/lib/format/date";
 import { periodLabel } from "@/features/properties/periodLabel";
 import { useHasReservationsRole } from "@/lib/auth/useHasRole";
 import {
@@ -40,7 +40,8 @@ import { PricingModeToggle } from "./components/PricingModeToggle";
 import { RatePeriodFormDialog } from "@/features/properties/components/RatePeriodFormDialog";
 import { RatePlanFormDialog } from "@/features/properties/components/RatePlanFormDialog";
 import type { PropertyDetail, RatePlan } from "@/features/properties/schemas";
-import { useRatePlanDetailsFanOut } from "./hooks";
+import { useConfirmIndicativeRates, useRatePlanDetailsFanOut } from "./hooks";
+import { countIndicativeBands } from "./matrixModel";
 import { toLanes } from "./toLanes";
 import { useYearWindow } from "./yearWindow";
 import { WorkbenchTimeline } from "./components/WorkbenchTimeline";
@@ -100,6 +101,54 @@ export function RateWorkbenchPage() {
   const [deletingSeason, setDeletingSeason] = useState<RatePlan | null>(null);
   // Carry-forward (GAP-069): open state for the projected-year promotion dialog.
   const [carryForwardOpen, setCarryForwardOpen] = useState(false);
+
+  // GAP-114: carried (indicative) rates awaiting owner confirmation. N sums the
+  // indicative bands on LIVE periods across every loaded plan — historical ones
+  // stay flagged and are never confirmed (decision 10). The action is hidden
+  // at N = 0 and, like every write, disabled (never hidden) for a non-writer.
+  const today = useMemo(() => todayIso(), []);
+  const indicativePlans = useMemo(
+    () =>
+      fanOut.details
+        .map((d) => ({ id: d.id, count: countIndicativeBands(d.periods ?? [], today) }))
+        .filter((p) => p.count > 0),
+    [fanOut.details, today],
+  );
+  const indicativeCount = indicativePlans.reduce((n, p) => n + p.count, 0);
+  const [confirmRatesOpen, setConfirmRatesOpen] = useState(false);
+  const confirmRates = useConfirmIndicativeRates();
+  const handleConfirmRates = async () => {
+    // A refetch can empty the list while the dialog is open — nothing to confirm.
+    if (indicativePlans.length === 0) {
+      setConfirmRatesOpen(false);
+      return;
+    }
+    try {
+      const confirmed = await confirmRates.mutateAsync(indicativePlans.map((p) => p.id));
+      toast.success(t("rate_workbench.confirm_rates.toasts.success", { count: confirmed }));
+      setConfirmRatesOpen(false);
+    } catch {
+      toast.error(t("rate_workbench.confirm_rates.toasts.failed"));
+    }
+  };
+  const confirmRatesLabel = t("rate_workbench.confirm_rates.button", { count: indicativeCount });
+  const confirmRatesButton =
+    indicativeCount === 0 ? null : canWrite ? (
+      <Button size="sm" variant="outline" onClick={() => setConfirmRatesOpen(true)}>
+        {confirmRatesLabel}
+      </Button>
+    ) : (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Button size="sm" variant="outline" disabled>
+              {confirmRatesLabel}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{t("rate_workbench.confirm_rates.button_disabled_tooltip")}</TooltipContent>
+      </Tooltip>
+    );
 
   const handleDeleteSeason = async () => {
     if (!deletingSeason) return;
@@ -161,6 +210,7 @@ export function RateWorkbenchPage() {
         <p className="text-muted-foreground mt-1 text-sm">{t("rate_workbench.subtitle")}</p>
       </div>
       <div className="flex items-center gap-2">
+        {confirmRatesButton}
         {addSeasonButton}
         <div className="flex items-center gap-1">
           <Button
@@ -416,6 +466,7 @@ export function RateWorkbenchPage() {
           tax={settings.data?.tax ?? null}
           capacity={capacity.data?.guests ?? null}
           onAddPeriod={() => setPeriodPrefill(periodInitialValues ?? {})}
+          today={today}
         />
         {periodPrefill != null ? (
           // The key is namespaced ("period-dialog-…") so it can never equal the
@@ -587,6 +638,20 @@ export function RateWorkbenchPage() {
           open
           onOpenChange={setAddSeasonOpen}
           mode="create"
+        />
+      ) : null}
+      {/* GAP-114: owner sign-off on carried (indicative) rates, whole plans at a time. */}
+      {confirmRatesOpen ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setConfirmRatesOpen(false)}
+          onConfirm={handleConfirmRates}
+          title={t("rate_workbench.confirm_rates.dialog_title")}
+          description={t("rate_workbench.confirm_rates.dialog_description", {
+            count: indicativeCount,
+          })}
+          confirmLabel={t("rate_workbench.confirm_rates.confirm")}
+          busy={confirmRates.isPending}
         />
       ) : null}
       {/* GAP-110: carry-forward never creates a plan — it appends periods to

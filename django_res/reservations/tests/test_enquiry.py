@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from core.exceptions import InvalidTransition
 from reservations.enums import (
+    ENQUIRY_ALLOWED_TRANSITIONS,
     EnquiryEventKind,
     EnquiryLostReason,
     EnquiryNoteKind,
@@ -59,6 +60,69 @@ def test_enquiry_status_vocabulary() -> None:
         "dead",
         "converted",
     ]
+
+
+def test_enquiry_table_lists_every_status() -> None:
+    assert set(ENQUIRY_ALLOWED_TRANSITIONS) == set(EnquiryStatus.values)
+    assert ENQUIRY_ALLOWED_TRANSITIONS[EnquiryStatus.CONVERTED.value] == frozenset()
+
+
+# Each wrapper's exact from-set, checked against every status so the table can
+# neither widen nor narrow a wrapper's reach unnoticed (BUG-015).
+_WRAPPER_FROM: list[tuple[str, frozenset[str]]] = [
+    ("contact", frozenset({EnquiryStatus.NEW})),
+    (
+        "quote_sent",
+        frozenset({EnquiryStatus.NEW, EnquiryStatus.PROGRESSING, EnquiryStatus.FOLLOW_UP}),
+    ),
+    ("follow_up", frozenset({EnquiryStatus.PROGRESSING, EnquiryStatus.QUOTE_SENT})),
+    (
+        "convert",
+        frozenset({EnquiryStatus.PROGRESSING, EnquiryStatus.QUOTE_SENT, EnquiryStatus.FOLLOW_UP}),
+    ),
+    (
+        "lose",
+        frozenset(
+            {
+                EnquiryStatus.NEW,
+                EnquiryStatus.PROGRESSING,
+                EnquiryStatus.QUOTE_SENT,
+                EnquiryStatus.FOLLOW_UP,
+            }
+        ),
+    ),
+    ("reopen", frozenset({EnquiryStatus.DEAD})),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("from_status", EnquiryStatus.values)
+@pytest.mark.parametrize(("method", "allowed_from"), _WRAPPER_FROM)
+def test_wrapper_from_set_is_exact(
+    enquiry: Enquiry,
+    quotation: Quotation,
+    method: str,
+    allowed_from: frozenset[str],
+    from_status: str,
+) -> None:
+    lost_reason = EnquiryLostReason.UNKNOWN.value if from_status == EnquiryStatus.DEAD else ""
+    Enquiry.objects.filter(pk=enquiry.pk).update(status=from_status, lost_reason=lost_reason)
+    call: dict[str, Any] = {
+        "quote_sent": lambda: enquiry.quote_sent(quotation, send_path="smtp"),
+        "convert": lambda: enquiry.convert(quotation),
+    }
+    bound = call.get(method, getattr(enquiry, method))
+
+    if from_status in allowed_from:
+        bound()
+        enquiry.refresh_from_db()
+        assert EnquiryEvent.objects.filter(enquiry=enquiry, from_status=from_status).exists()
+    else:
+        with pytest.raises(InvalidTransition):
+            bound()
+        enquiry.refresh_from_db()
+        assert enquiry.status == from_status
+        assert not EnquiryEvent.objects.filter(enquiry=enquiry).exists()
 
 
 @pytest.mark.django_db

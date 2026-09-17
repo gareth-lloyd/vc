@@ -29,7 +29,9 @@ from django.utils import timezone
 
 from core.exceptions import InvalidTransition
 from core.locking import refresh_locked
+from core.transitions import can_transition
 from reservations.enums import (
+    ENQUIRY_ALLOWED_TRANSITIONS,
     EnquiryEventKind,
     EnquiryStatus,
     EventSource,
@@ -134,13 +136,7 @@ def _record_enquiry_quote_sent(
     actor: Any,
 ) -> None:
     """Flip enquiry → QUOTE_SENT if it's in a pre-quote state; always write event."""
-    transitionable_from = (
-        EnquiryStatus.NEW.value,
-        EnquiryStatus.PROGRESSING.value,
-        EnquiryStatus.FOLLOW_UP.value,
-    )
-
-    if enquiry.status in transitionable_from:
+    if can_transition(enquiry, EnquiryStatus.QUOTE_SENT.value, table=ENQUIRY_ALLOWED_TRANSITIONS):
         # `enquiry.quote_sent` runs the transition + writes the EnquiryEvent
         # inside its own `transaction.atomic` block; the wrapping atomic on
         # `record_quote_sent` keeps the whole thing one savepoint.

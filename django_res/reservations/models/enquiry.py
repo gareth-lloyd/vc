@@ -9,12 +9,12 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator
 from django.db import models, transaction
 
-from core.exceptions import InvalidTransition
 from core.fields import CIEmailField
-from core.locking import refresh_locked
 from core.models.base import AuditedModel, TimestampedModel
 from core.refs import reference_db_default
+from core.transitions import transition
 from reservations.enums import (
+    ENQUIRY_ALLOWED_TRANSITIONS,
     ContactMethod,
     EnquiryEventKind,
     EnquiryLostReason,
@@ -224,7 +224,6 @@ class Enquiry(AuditedModel):
     def _transition(
         self,
         *,
-        allowed_from: tuple[str, ...],
         to: str,
         kind: str,
         actor: Any = None,
@@ -233,27 +232,12 @@ class Enquiry(AuditedModel):
         meta: dict[str, Any] | None = None,
         set_fields: dict[str, Any] | None = None,
     ) -> None:
-        with transaction.atomic():
-            # Guard against *locked, current* state — a stale instance's
-            # in-memory status would let a concurrent double-call both pass
-            # and write duplicate events (see core.locking).
-            refresh_locked(self)
-            if self.status not in allowed_from:
-                raise InvalidTransition(self.status, to, allowed=list(allowed_from))
-            prev = self.status
-            self.status = to
-            update_fields = ["status", "updated_at"]
-            # `set_fields` are applied *after* the lock-refresh (which discards
-            # in-memory changes) so they persist in the same UPDATE as the
-            # status change — e.g. lost_reason on lose(), cleared on reopen().
-            if set_fields:
-                for field, value in set_fields.items():
-                    setattr(self, field, value)
-                update_fields += list(set_fields)
-            self.save(update_fields=update_fields)
+        # `set_fields` persist in the same locked UPDATE as the status change —
+        # e.g. lost_reason on lose(), cleared on reopen().
+        def record(prev: str, to_status: str) -> None:
             self._write_event(
                 from_status=prev,
-                to_status=to,
+                to_status=to_status,
                 kind=kind,
                 actor=actor,
                 source=source,
@@ -261,10 +245,17 @@ class Enquiry(AuditedModel):
                 meta=meta,
             )
 
+        transition(
+            self,
+            to,
+            table=ENQUIRY_ALLOWED_TRANSITIONS,
+            extra_updates=set_fields,
+            record=record,
+        )
+
     def contact(self, *, actor: Any = None, reason: str = "") -> Enquiry:
         """Move a NEW enquiry to PROGRESSING (operator reached out)."""
         self._transition(
-            allowed_from=(EnquiryStatus.NEW.value,),
             to=EnquiryStatus.PROGRESSING.value,
             kind=EnquiryEventKind.CONTACTED.value,
             actor=actor,
@@ -296,11 +287,6 @@ class Enquiry(AuditedModel):
         if meta:
             event_meta.update(meta)
         self._transition(
-            allowed_from=(
-                EnquiryStatus.NEW.value,
-                EnquiryStatus.PROGRESSING.value,
-                EnquiryStatus.FOLLOW_UP.value,
-            ),
             to=EnquiryStatus.QUOTE_SENT.value,
             kind=EnquiryEventKind.QUOTE_SENT.value,
             actor=actor,
@@ -316,10 +302,6 @@ class Enquiry(AuditedModel):
         marks it DEAD (`lose`).
         """
         self._transition(
-            allowed_from=(
-                EnquiryStatus.PROGRESSING.value,
-                EnquiryStatus.QUOTE_SENT.value,
-            ),
             to=EnquiryStatus.FOLLOW_UP.value,
             kind=EnquiryEventKind.FOLLOW_UP.value,
             actor=actor,
@@ -377,11 +359,6 @@ class Enquiry(AuditedModel):
     def convert(self, quotation: Quotation, *, actor: Any = None) -> Enquiry:
         """Mark this enquiry as converted (a booking was made from a quotation)."""
         self._transition(
-            allowed_from=(
-                EnquiryStatus.QUOTE_SENT.value,
-                EnquiryStatus.PROGRESSING.value,
-                EnquiryStatus.FOLLOW_UP.value,
-            ),
             to=EnquiryStatus.CONVERTED.value,
             kind=EnquiryEventKind.CONVERTED.value,
             actor=actor,
@@ -404,12 +381,6 @@ class Enquiry(AuditedModel):
         constraint is always satisfied without forcing every caller to choose.
         """
         self._transition(
-            allowed_from=(
-                EnquiryStatus.NEW.value,
-                EnquiryStatus.PROGRESSING.value,
-                EnquiryStatus.QUOTE_SENT.value,
-                EnquiryStatus.FOLLOW_UP.value,
-            ),
             to=EnquiryStatus.DEAD.value,
             kind=EnquiryEventKind.LOST.value,
             actor=actor,
@@ -425,7 +396,6 @@ class Enquiry(AuditedModel):
         the reopened (non-DEAD) row satisfies the constraint with no window.
         """
         self._transition(
-            allowed_from=(EnquiryStatus.DEAD.value,),
             to=EnquiryStatus.NEW.value,
             kind=EnquiryEventKind.REOPENED.value,
             actor=actor,

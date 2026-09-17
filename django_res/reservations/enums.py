@@ -25,6 +25,43 @@ class EnquiryStatus(models.TextChoices):
     CONVERTED = "converted", "Converted"
 
 
+# Allowed Enquiry transitions, enforced by `Enquiry._transition` via
+# `core.transitions`. DEAD can be reopened; CONVERTED is final.
+ENQUIRY_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    EnquiryStatus.NEW.value: frozenset(
+        {
+            EnquiryStatus.PROGRESSING.value,
+            EnquiryStatus.QUOTE_SENT.value,
+            EnquiryStatus.DEAD.value,
+        }
+    ),
+    EnquiryStatus.PROGRESSING.value: frozenset(
+        {
+            EnquiryStatus.QUOTE_SENT.value,
+            EnquiryStatus.FOLLOW_UP.value,
+            EnquiryStatus.CONVERTED.value,
+            EnquiryStatus.DEAD.value,
+        }
+    ),
+    EnquiryStatus.QUOTE_SENT.value: frozenset(
+        {
+            EnquiryStatus.FOLLOW_UP.value,
+            EnquiryStatus.CONVERTED.value,
+            EnquiryStatus.DEAD.value,
+        }
+    ),
+    EnquiryStatus.FOLLOW_UP.value: frozenset(
+        {
+            EnquiryStatus.QUOTE_SENT.value,
+            EnquiryStatus.CONVERTED.value,
+            EnquiryStatus.DEAD.value,
+        }
+    ),
+    EnquiryStatus.DEAD.value: frozenset({EnquiryStatus.NEW.value}),
+    EnquiryStatus.CONVERTED.value: frozenset(),
+}
+
+
 class LeadStatus(models.TextChoices):
     """Lead temperature — a subjective sales signal the operator sets directly,
     orthogonal to the workflow `EnquiryStatus`. New in the rebuild (legacy had

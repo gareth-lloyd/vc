@@ -13,7 +13,8 @@ from core.exceptions import InvalidTransition
 from core.locking import refresh_locked
 from core.models.base import AuditedModel
 from core.refs import next_quotation_number, quotation_reference
-from reservations.enums import EnquiryStatus, QuotationStatus
+from core.transitions import can_transition
+from reservations.enums import ENQUIRY_ALLOWED_TRANSITIONS, EnquiryStatus, QuotationStatus
 
 # `BookingLoader` back-fills a synthetic Quotation *and* line (`legacy_id`
 # prefixed `booking-`) for every imported booking so the legacy quote-history
@@ -192,10 +193,8 @@ class Quotation(AuditedModel):
         # so this is a no-op for them. Any exception here propagates and
         # rolls the entire accept() atomic block back.
         enquiry = self.enquiry
-        if enquiry is not None and enquiry.status in (
-            EnquiryStatus.QUOTE_SENT.value,
-            EnquiryStatus.PROGRESSING.value,
-            EnquiryStatus.FOLLOW_UP.value,
+        if enquiry is not None and can_transition(
+            enquiry, EnquiryStatus.CONVERTED.value, table=ENQUIRY_ALLOWED_TRANSITIONS
         ):
             enquiry.convert(self, actor=actor)
         return self

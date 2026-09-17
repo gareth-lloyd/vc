@@ -49,7 +49,7 @@ prod); no result backend — tasks are fire-and-forget. App object in
   failure capture only the tail rather than the whole run:
   `uv run pytest <path> -n0 -q 2>&1 | tail -40`. Don't run the full suite when
   a module or `-k` selection answers the question.
-- A linked git worktree (sibling `../villacollective-worktrees/<slug>/`)
+- A linked git worktree (`.claude/worktrees/<slug>/`)
   automatically gets its own `test_villacollective_<hash>` DB
   (`settings/test.py` detects the worktree via its file-pointer `.git`; override
   with `PYTEST_DB_SUFFIX`), so concurrent worktrees don't collide on the shared

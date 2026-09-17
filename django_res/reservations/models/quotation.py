@@ -9,12 +9,17 @@ from django.core.validators import MinValueValidator
 from django.db import models, transaction
 from django.db.models import Q
 
-from core.exceptions import InvalidTransition
+from core.exceptions import DomainValidationError
 from core.locking import refresh_locked
 from core.models.base import AuditedModel
 from core.refs import next_quotation_number, quotation_reference
-from core.transitions import can_transition
-from reservations.enums import ENQUIRY_ALLOWED_TRANSITIONS, EnquiryStatus, QuotationStatus
+from core.transitions import assert_allowed, can_transition, transition
+from reservations.enums import (
+    ENQUIRY_ALLOWED_TRANSITIONS,
+    QUOTATION_ALLOWED_TRANSITIONS,
+    EnquiryStatus,
+    QuotationStatus,
+)
 
 # `BookingLoader` back-fills a synthetic Quotation *and* line (`legacy_id`
 # prefixed `booking-`) for every imported booking so the legacy quote-history
@@ -122,10 +127,6 @@ class Quotation(AuditedModel):
     # ------------------------------------------------------------------
     # State machine
     # ------------------------------------------------------------------
-    def _assert_from(self, allowed_from: tuple[str, ...], to: str) -> None:
-        if self.status not in allowed_from:
-            raise InvalidTransition(self.status, to, allowed=list(allowed_from))
-
     @transaction.atomic
     def send(
         self,
@@ -176,9 +177,12 @@ class Quotation(AuditedModel):
         # concurrent convert) must not re-accept — or re-point the accepted
         # line — once the row has moved on.
         refresh_locked(self)
-        self._assert_from((QuotationStatus.SENT.value,), QuotationStatus.ACCEPTED.value)
+        assert_allowed(self, QuotationStatus.ACCEPTED.value, table=QUOTATION_ALLOWED_TRANSITIONS)
         if line.quotation_id != self.pk:
-            raise ValueError("Line does not belong to this quotation")
+            raise DomainValidationError(
+                "Line does not belong to this quotation",
+                field_errors={"line": ["Line does not belong to this quotation."]},
+            )
         # Ensure no other line is currently selected (DB-level partial unique
         # still allows zero or one selected line — we set it as the chosen).
         QuotationLine.objects.filter(quotation=self, is_selected=True).exclude(pk=line.pk).update(
@@ -186,8 +190,7 @@ class Quotation(AuditedModel):
         )
         line.is_selected = True
         line.save(update_fields=["is_selected", "updated_at"])
-        self.status = QuotationStatus.ACCEPTED.value
-        self.save(update_fields=["status", "updated_at"])
+        transition(self, QuotationStatus.ACCEPTED.value, table=QUOTATION_ALLOWED_TRANSITIONS)
         # Roll the parent enquiry forward if one is attached and is in an
         # eligible source state. Agent-direct quotations have no enquiry,
         # so this is a no-op for them. Any exception here propagates and
@@ -199,7 +202,6 @@ class Quotation(AuditedModel):
             enquiry.convert(self, actor=actor)
         return self
 
-    @transaction.atomic
     def expire(self) -> Quotation:
         """DRAFT/SENT → EXPIRED. Called by the Celery beat after `expires_at` passes.
 
@@ -208,26 +210,17 @@ class Quotation(AuditedModel):
         have to leave un-sent drafts lingering (the time-based EXPIRED status
         keeps them distinct from an operator's DRAFT → CANCELLED).
         """
-        refresh_locked(self)
-        self._assert_from(
-            (QuotationStatus.DRAFT.value, QuotationStatus.SENT.value),
-            QuotationStatus.EXPIRED.value,
-        )
-        self.status = QuotationStatus.EXPIRED.value
-        self.save(update_fields=["status", "updated_at"])
+        transition(self, QuotationStatus.EXPIRED.value, table=QUOTATION_ALLOWED_TRANSITIONS)
         return self
 
-    @transaction.atomic
     def cancel(self, reason: str = "") -> Quotation:
         """Any non-terminal → CANCELLED."""
-        refresh_locked(self)
-        self._assert_from(
-            (QuotationStatus.DRAFT.value, QuotationStatus.SENT.value),
+        transition(
+            self,
             QuotationStatus.CANCELLED.value,
+            table=QUOTATION_ALLOWED_TRANSITIONS,
+            extra_updates={"cancel_reason": reason},
         )
-        self.status = QuotationStatus.CANCELLED.value
-        self.cancel_reason = reason
-        self.save(update_fields=["status", "cancel_reason", "updated_at"])
         return self
 
 

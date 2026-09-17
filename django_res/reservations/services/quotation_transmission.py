@@ -27,11 +27,12 @@ from typing import TYPE_CHECKING, Any
 from django.db import transaction
 from django.utils import timezone
 
-from core.exceptions import InvalidTransition
+from core.exceptions import DomainValidationError
 from core.locking import refresh_locked
-from core.transitions import can_transition
+from core.transitions import can_transition, transition
 from reservations.enums import (
     ENQUIRY_ALLOWED_TRANSITIONS,
+    QUOTATION_ALLOWED_TRANSITIONS,
     EnquiryEventKind,
     EnquiryStatus,
     EventSource,
@@ -68,9 +69,8 @@ def record_quote_sent(
     re-marking them as SENT would corrupt the audit trail.
     """
     if send_path not in _VALID_SEND_PATHS:
-        raise ValueError(
-            f"send_path must be one of {sorted(_VALID_SEND_PATHS)!r}, got {send_path!r}"
-        )
+        message = f"send_path must be one of {sorted(_VALID_SEND_PATHS)!r}, got {send_path!r}"
+        raise DomainValidationError(message, field_errors={"send_path": [message]})
 
     # Lock + re-read so concurrent sends serialise: the loser re-reads SENT
     # and takes the idempotency short-circuit instead of re-flipping state.
@@ -97,20 +97,16 @@ def record_quote_sent(
         _queue_zoho_push(quotation)
         return quotation
 
-    if quotation.status != QuotationStatus.DRAFT.value:
-        raise InvalidTransition(
-            quotation.status,
-            QuotationStatus.SENT.value,
-            allowed=[QuotationStatus.DRAFT.value],
-        )
-
-    # 1. Flip the quotation.
-    quotation.status = QuotationStatus.SENT.value
-    update_fields = ["status", "updated_at"]
-    if quotation.expires_at is None:
-        quotation.expires_at = timezone.now() + timedelta(days=7)
-        update_fields.append("expires_at")
-    quotation.save(update_fields=update_fields)
+    # 1. Flip the quotation (DRAFT → SENT; the table refuses the terminals).
+    extra_updates = (
+        {"expires_at": timezone.now() + timedelta(days=7)} if quotation.expires_at is None else None
+    )
+    transition(
+        quotation,
+        QuotationStatus.SENT.value,
+        table=QUOTATION_ALLOWED_TRANSITIONS,
+        extra_updates=extra_updates,
+    )
 
     # 2. Enquiry status + audit event.
     enquiry = quotation.enquiry

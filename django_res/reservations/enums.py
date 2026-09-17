@@ -128,6 +128,30 @@ class QuotationStatus(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
 
 
+# Allowed Quotation transitions, enforced via `core.transitions` by
+# `Quotation.accept`/`expire`/`cancel` and `record_quote_sent` (DRAFT → SENT).
+# Editability (`_MUTABLE_QUOTATION_STATUSES`) is a separate rule, not this table.
+QUOTATION_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    QuotationStatus.DRAFT.value: frozenset(
+        {
+            QuotationStatus.SENT.value,
+            QuotationStatus.EXPIRED.value,
+            QuotationStatus.CANCELLED.value,
+        }
+    ),
+    QuotationStatus.SENT.value: frozenset(
+        {
+            QuotationStatus.ACCEPTED.value,
+            QuotationStatus.EXPIRED.value,
+            QuotationStatus.CANCELLED.value,
+        }
+    ),
+    QuotationStatus.ACCEPTED.value: frozenset(),
+    QuotationStatus.EXPIRED.value: frozenset(),
+    QuotationStatus.CANCELLED.value: frozenset(),
+}
+
+
 class BookingStatus(models.TextChoices):
     DRAFT = "draft", "Draft"
     PENDING_OWNER_APPROVAL = "pending_owner_approval", "Pending owner approval"

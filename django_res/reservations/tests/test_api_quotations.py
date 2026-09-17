@@ -2887,6 +2887,7 @@ def test_convert_dead_quotation_409s(
     )
 
     assert response.status_code == 409, response.data
+    assert response.data["code"] == "invalid_transition"
     assert Booking.objects.count() == 0
 
 

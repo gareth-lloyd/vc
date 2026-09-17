@@ -15,7 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.api.permissions import IsReservationsWriter
-from core.exceptions import InvalidTransition, QuotationLocked, TermsNotAccepted
+from core.exceptions import QuotationLocked, TermsNotAccepted
 from core.idempotency import integrity_conflict_guard
 from reservations.enums import PaymentMethod, QuotationStatus
 from reservations.filters import QuotationFilter
@@ -271,25 +271,19 @@ class QuotationViewSet(StatusCountsMixin, viewsets.ModelViewSet):
         # Only a quote the guest actually received can convert. ACCEPTED is
         # allowed solely as the double-click retry path — and only for the
         # line that was accepted; converting a *different* line would mint a
-        # second booking off the same quote. DRAFT/EXPIRED/CANCELLED (holds
-        # released, price possibly stale) are refused outright.
-        if quotation.status == QuotationStatus.ACCEPTED:
-            if not line.is_selected:
-                raise QuotationLocked(
-                    f"Quotation {quotation.reference} was already accepted with a different line."
-                )
-        elif quotation.status != QuotationStatus.SENT:
-            raise InvalidTransition(
-                quotation.status,
-                QuotationStatus.ACCEPTED.value,
-                allowed=[QuotationStatus.SENT.value],
+        # second booking off the same quote. Every other status goes through
+        # `accept`, whose transition table refuses DRAFT/EXPIRED/CANCELLED
+        # (holds released, price possibly stale) with a 409.
+        if quotation.status == QuotationStatus.ACCEPTED and not line.is_selected:
+            raise QuotationLocked(
+                f"Quotation {quotation.reference} was already accepted with a different line."
             )
         # Accept + create must share a transaction so an `OverlappingBooking`
         # raised by the booking service rolls back the quotation acceptance,
         # otherwise the quotation gets stuck in ACCEPTED with no booking row.
         try:
             with transaction.atomic():
-                if quotation.status == QuotationStatus.SENT:
+                if quotation.status != QuotationStatus.ACCEPTED:
                     quotation.accept(line, actor=request.user)
                 booking = BookingService.create_from_quotation_line(
                     line,

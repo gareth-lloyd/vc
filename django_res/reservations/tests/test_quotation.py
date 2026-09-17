@@ -10,11 +10,12 @@ from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from accounts.models import Person
-from core.exceptions import InvalidTransition
+from core.exceptions import DomainValidationError, InvalidTransition
 from pricing.models import Currency
 from properties.models import Property
-from reservations.enums import QuotationStatus
+from reservations.enums import QUOTATION_ALLOWED_TRANSITIONS, QuotationStatus
 from reservations.models import Quotation, QuotationLine, TermsVersion
+from reservations.services.quotation_transmission import record_quote_sent
 
 
 @pytest.fixture
@@ -38,6 +39,52 @@ def line(quotation: Quotation, property_: Property, gbp: Currency) -> QuotationL
         adults=2,
         total=Decimal("1400.00"),
     )
+
+
+def test_quotation_table_lists_every_status() -> None:
+    assert set(QUOTATION_ALLOWED_TRANSITIONS) == set(QuotationStatus.values)
+    for terminal in (QuotationStatus.ACCEPTED, QuotationStatus.EXPIRED, QuotationStatus.CANCELLED):
+        assert QUOTATION_ALLOWED_TRANSITIONS[terminal.value] == frozenset()
+
+
+# Each action's exact from-set against every status (BUG-015). `send` also
+# accepts SENT: a re-send is an idempotent no-op on status.
+_ACTION_FROM: list[tuple[str, frozenset[str]]] = [
+    ("send", frozenset({QuotationStatus.DRAFT, QuotationStatus.SENT})),
+    ("accept", frozenset({QuotationStatus.SENT})),
+    ("expire", frozenset({QuotationStatus.DRAFT, QuotationStatus.SENT})),
+    ("cancel", frozenset({QuotationStatus.DRAFT, QuotationStatus.SENT})),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("from_status", QuotationStatus.values)
+@pytest.mark.parametrize(("action", "allowed_from"), _ACTION_FROM)
+def test_action_from_set_is_exact(
+    quotation: Quotation,
+    line: QuotationLine,
+    action: str,
+    allowed_from: frozenset[str],
+    from_status: str,
+) -> None:
+    Quotation.objects.filter(pk=quotation.pk).update(status=from_status)
+    bound = (lambda: quotation.accept(line)) if action == "accept" else getattr(quotation, action)
+
+    if from_status in allowed_from:
+        bound()
+    else:
+        with pytest.raises(InvalidTransition):
+            bound()
+        quotation.refresh_from_db()
+        assert quotation.status == from_status
+
+
+@pytest.mark.django_db
+def test_record_quote_sent_rejects_unknown_send_path(quotation: Quotation) -> None:
+    with pytest.raises(DomainValidationError):
+        record_quote_sent(quotation, send_path="carrier-pigeon")
+    quotation.refresh_from_db()
+    assert quotation.status == QuotationStatus.DRAFT.value
 
 
 @pytest.mark.django_db
@@ -168,8 +215,10 @@ def test_accept_rejects_foreign_line(
         terms_version=terms,
     )
     other.send()
-    with pytest.raises(ValueError):
+    with pytest.raises(DomainValidationError):
         other.accept(line)
+    other.refresh_from_db()
+    assert other.status == QuotationStatus.SENT.value
 
 
 @pytest.mark.django_db

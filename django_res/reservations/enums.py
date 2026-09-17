@@ -413,16 +413,33 @@ class DamageClaimStatus(models.TextChoices):
 
     A claim is OPEN when filed, APPROVED once an operator signs off the
     deduction, SETTLED once the deposit has been captured against it, and
-    WITHDRAWN if dropped. The enforced state machine (approval gating, the
-    threshold permissions, the guest-acceptance flow) lands with workflow 8;
-    v1 ships the field + default so the lifecycle has somewhere to live and the
-    audit trail captures status moves.
+    WITHDRAWN if dropped. Moves are enforced by `DamageClaimService` against
+    `DAMAGE_CLAIM_ALLOWED_TRANSITIONS`; the rest of workflow 8 (threshold
+    permissions, the guest-acceptance flow) is still to come.
     """
 
     OPEN = "open", "Open"
     APPROVED = "approved", "Approved"
     SETTLED = "settled", "Settled"
     WITHDRAWN = "withdrawn", "Withdrawn"
+
+
+# Allowed DamageClaim transitions, enforced by `DamageClaimService._transition`
+# via `core.transitions`. SETTLED/WITHDRAWN are terminal and also closed to edits.
+DAMAGE_CLAIM_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    DamageClaimStatus.OPEN.value: frozenset(
+        {
+            DamageClaimStatus.APPROVED.value,
+            DamageClaimStatus.SETTLED.value,
+            DamageClaimStatus.WITHDRAWN.value,
+        }
+    ),
+    DamageClaimStatus.APPROVED.value: frozenset(
+        {DamageClaimStatus.SETTLED.value, DamageClaimStatus.WITHDRAWN.value}
+    ),
+    DamageClaimStatus.SETTLED.value: frozenset(),
+    DamageClaimStatus.WITHDRAWN.value: frozenset(),
+}
 
 
 class BookingGuestRole(models.TextChoices):

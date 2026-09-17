@@ -18,7 +18,7 @@ from django.utils import timezone
 from core.exceptions import DomainValidationError, InvalidSecurityDepositKind
 from core.locking import refresh_locked
 from core.logging.operations import log_operation
-from core.transitions import assert_allowed
+from core.transitions import assert_allowed, can_transition
 from payments.enums import (
     ACTIVE_PAYMENT_STATUSES,
     SD_ALLOWED_TRANSITIONS,
@@ -465,14 +465,15 @@ class SecurityDepositService:
             # The down-edge into reservations is sanctioned by the layers
             # contract; import locally to match `_resolve_damage_claim`.
             if damage_claim is not None:
-                from reservations.enums import DamageClaimStatus
+                from reservations.enums import DAMAGE_CLAIM_ALLOWED_TRANSITIONS, DamageClaimStatus
                 from reservations.services.damage_claims import DamageClaimService
 
                 refresh_locked(damage_claim)
-                if damage_claim.status in {
-                    DamageClaimStatus.OPEN.value,
-                    DamageClaimStatus.APPROVED.value,
-                }:
+                if can_transition(
+                    damage_claim,
+                    DamageClaimStatus.SETTLED.value,
+                    table=DAMAGE_CLAIM_ALLOWED_TRANSITIONS,
+                ):
                     DamageClaimService.settle(damage_claim, actor=actor)
             return sd
 

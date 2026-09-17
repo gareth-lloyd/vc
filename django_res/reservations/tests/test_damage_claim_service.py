@@ -16,7 +16,7 @@ import pytest
 
 from core.exceptions import DomainValidationError, InvalidTransition
 from pricing.models import Currency
-from reservations.enums import DamageClaimStatus
+from reservations.enums import DAMAGE_CLAIM_ALLOWED_TRANSITIONS, DamageClaimStatus
 from reservations.factories import make_occupying_booking
 from reservations.models import DamageClaim
 from reservations.services.damage_claims import DamageClaimService
@@ -25,6 +25,12 @@ if TYPE_CHECKING:
     from accounts.models import Person, User
     from properties.models import Property
     from reservations.models import Booking, TermsVersion
+
+
+def test_damage_claim_table_lists_every_status() -> None:
+    assert set(DAMAGE_CLAIM_ALLOWED_TRANSITIONS) == set(DamageClaimStatus.values)
+    assert DAMAGE_CLAIM_ALLOWED_TRANSITIONS[DamageClaimStatus.SETTLED.value] == frozenset()
+    assert DAMAGE_CLAIM_ALLOWED_TRANSITIONS[DamageClaimStatus.WITHDRAWN.value] == frozenset()
 
 
 @pytest.fixture

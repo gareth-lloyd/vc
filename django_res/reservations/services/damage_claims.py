@@ -24,27 +24,21 @@ from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
 
-from core.exceptions import DomainValidationError, InvalidTransition
+from core.exceptions import DomainValidationError
 from core.locking import refresh_locked
-from reservations.enums import DamageClaimStatus
+from core.transitions import transition
+from reservations.enums import DAMAGE_CLAIM_ALLOWED_TRANSITIONS, DamageClaimStatus
 from reservations.models import DamageClaim
 
-_OPEN = DamageClaimStatus.OPEN.value
 _APPROVED = DamageClaimStatus.APPROVED.value
 _SETTLED = DamageClaimStatus.SETTLED.value
 _WITHDRAWN = DamageClaimStatus.WITHDRAWN.value
 
-#: Allowed status transitions. SETTLED/WITHDRAWN are terminal (empty sets).
-_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    _OPEN: {_APPROVED, _SETTLED, _WITHDRAWN},
-    _APPROVED: {_SETTLED, _WITHDRAWN},
-    _SETTLED: set(),
-    _WITHDRAWN: set(),
-}
-
 #: Closed records — no further edits. Derived from the terminal (empty) rows of
 #: the transition table so the two can't drift.
-_CLOSED_STATES = frozenset(s for s, allowed in _ALLOWED_TRANSITIONS.items() if not allowed)
+_CLOSED_STATES = frozenset(
+    s for s, allowed in DAMAGE_CLAIM_ALLOWED_TRANSITIONS.items() if not allowed
+)
 
 if TYPE_CHECKING:
     from pricing.models import Currency
@@ -139,20 +133,18 @@ class DamageClaimService:
     def _transition(claim: DamageClaim, to_status: str, *, actor: Any = None) -> DamageClaim:
         """Lock + reload the row, guard the transition, stamp + save in place.
 
-        `refresh_locked` (the shared `core.locking` helper, as in
-        `Refund._transition`) takes `SELECT … FOR UPDATE` and reloads `claim`
-        before the guard, closing the read-modify-write race between two
-        concurrent transitions (e.g. an operator withdraw racing an SD-capture
-        settle). Mutating the caller's own instance keeps `updated_at` fresh for
-        a view that serialises the response without a refetch.
+        `core.transitions.transition` locks before the guard, closing the
+        read-modify-write race between two concurrent transitions (e.g. an
+        operator withdraw racing an SD-capture settle). Mutating the caller's
+        own instance keeps `updated_at` fresh for a view that serialises the
+        response without a refetch.
         """
-        refresh_locked(claim)
-        allowed = _ALLOWED_TRANSITIONS[claim.status]
-        if to_status not in allowed:
-            raise InvalidTransition(claim.status, to_status, allowed=sorted(allowed))
-        claim.status = to_status
-        claim.updated_by = actor
-        claim.save(update_fields=["status", "updated_by", "updated_at"])
+        transition(
+            claim,
+            to_status,
+            table=DAMAGE_CLAIM_ALLOWED_TRANSITIONS,
+            extra_updates={"updated_by": actor},
+        )
         return claim
 
     # ------------------------------------------------------------------

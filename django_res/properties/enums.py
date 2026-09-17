@@ -9,6 +9,20 @@ class PropertyStatus(models.TextChoices):
     ARCHIVED = "archived", "Archived"
 
 
+# Allowed Property transitions, enforced by `PropertyLifecycleService` via
+# `core.transitions`: activate from DRAFT/ARCHIVED, archive from DRAFT/ACTIVE,
+# restore ARCHIVED → DRAFT.
+PROPERTY_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    PropertyStatus.DRAFT.value: frozenset(
+        {PropertyStatus.ACTIVE.value, PropertyStatus.ARCHIVED.value}
+    ),
+    PropertyStatus.ACTIVE.value: frozenset({PropertyStatus.ARCHIVED.value}),
+    PropertyStatus.ARCHIVED.value: frozenset(
+        {PropertyStatus.ACTIVE.value, PropertyStatus.DRAFT.value}
+    ),
+}
+
+
 class PropertyChannel(models.TextChoices):
     DIRECT = "direct", "Direct"
     AGENT = "agent", "Agent"

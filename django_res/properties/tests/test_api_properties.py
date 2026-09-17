@@ -245,6 +245,21 @@ def test_archive_then_restore(api_client: APIClient, staff: User, property_: Pro
 
 
 @pytest.mark.django_db
+def test_archive_action_query_count(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """The transition's lock-refresh must not turn the detail response into an N+1.
+
+    The refresh drops the cached one-to-one `settings`, so the detail serializer
+    re-reads it: one constant extra query, not per related row.
+    """
+    api_client.force_login(staff)
+    with assert_max_queries(13):
+        response = api_client.post(f"/api/v1/properties/{property_.pk}:archive")
+    assert response.status_code == 200, response.content
+
+
+@pytest.mark.django_db
 def test_archive_from_archived_returns_409(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:

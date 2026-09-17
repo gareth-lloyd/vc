@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
 
-from core.exceptions import InvalidTransition
-from properties.enums import DescriptionSection, PropertyStatus
+from core.transitions import transition
+from properties.enums import PROPERTY_ALLOWED_TRANSITIONS, DescriptionSection, PropertyStatus
 from properties.models import (
     Collection,
     CollectionMembership,
@@ -32,42 +32,18 @@ class PropertyLifecycleService:
     """Pure-Python orchestration for Property state changes."""
 
     @classmethod
-    @transaction.atomic
     def activate(cls, property: Property) -> Property:
-        if property.status not in (PropertyStatus.DRAFT.value, PropertyStatus.ARCHIVED.value):
-            raise InvalidTransition(
-                property.status,
-                PropertyStatus.ACTIVE.value,
-                allowed=[PropertyStatus.DRAFT.value, PropertyStatus.ARCHIVED.value],
-            )
-        property.status = PropertyStatus.ACTIVE.value
-        property.save(update_fields=["status", "updated_at"])
+        transition(property, PropertyStatus.ACTIVE.value, table=PROPERTY_ALLOWED_TRANSITIONS)
         return property
 
     @classmethod
-    @transaction.atomic
     def archive(cls, property: Property) -> Property:
-        if property.status not in (PropertyStatus.DRAFT.value, PropertyStatus.ACTIVE.value):
-            raise InvalidTransition(
-                property.status,
-                PropertyStatus.ARCHIVED.value,
-                allowed=[PropertyStatus.DRAFT.value, PropertyStatus.ACTIVE.value],
-            )
-        property.status = PropertyStatus.ARCHIVED.value
-        property.save(update_fields=["status", "updated_at"])
+        transition(property, PropertyStatus.ARCHIVED.value, table=PROPERTY_ALLOWED_TRANSITIONS)
         return property
 
     @classmethod
-    @transaction.atomic
     def restore(cls, property: Property) -> Property:
-        if property.status != PropertyStatus.ARCHIVED.value:
-            raise InvalidTransition(
-                property.status,
-                PropertyStatus.DRAFT.value,
-                allowed=[PropertyStatus.ARCHIVED.value],
-            )
-        property.status = PropertyStatus.DRAFT.value
-        property.save(update_fields=["status", "updated_at"])
+        transition(property, PropertyStatus.DRAFT.value, table=PROPERTY_ALLOWED_TRANSITIONS)
         return property
 
     @classmethod

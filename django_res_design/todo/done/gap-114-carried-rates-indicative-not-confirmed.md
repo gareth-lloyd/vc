@@ -1,5 +1,34 @@
 # GAP-114 — `VillaSeason.CarriedRates`: 6 864 quotable rate rows the owner has not confirmed
 
+> **✅ RESOLVED (2026-09-17)** — shipped on `feat/gap-114`; fast-forwarded into
+> local `main` (unpushed) at close-out. The flag lives on the **band**, not the
+> retired `RateCard`: `RateBand.is_indicative` (bool, audit-tracked so "who
+> confirmed, when" comes from the trail — U1 `79ba575d`, decision row in
+> `design/decisions.md`). `RateBandLoader` reads `VillaSeason.CarriedRates`
+> (a ResProd-only nullable bit) per source row, so occupancy children, `occ-fb-*`
+> fallbacks and `#seg` fragments inherit it and flattener precedence is
+> untouched (U2 `36efdbc8`). `PricingEngine.quote` sets `Quote.is_indicative` /
+> `breakdown["is_indicative"]` when any priced night uses such a band;
+> projection inherits it from the anchor (U3 `7a74e425`). New reconcile check
+> `RateBand indicative (CarriedRates)`, pinned on a fresh ResProd dry run:
+> 1 616 carried sources → 1 421 indicative bands, gap 195 itemised to zero
+> residual (+218 shadowed − 2 `occ-fb-*` − 21 `#seg`); `RateBand` gap still 462
+> (U4 `b74a82cb`). Staff carry-forward writes indicative bands;
+> `POST /rate-plans/{id}:confirm-rates` (optional date window, non-historical
+> periods only, audited per band) and a writable band flag clear it
+> (U5 `4634b346`). The quote builder fan-out/weekly rows and
+> `QuotationLineSerializer.is_indicative` (a pricing-time snapshot fact) expose
+> it; conversion and booking modify carry it (U6 `32f5c9d9`). **Business
+> decision: staff-only warning, never a block** — "Indicative rates" badges on
+> the result card (picked week + flagged bands), shortlist, saved lines and the
+> workbench probe, warnings in the send-preview and convert dialogs, sending and
+> converting stay enabled, customer-facing output unchanged (U7 `6d14b4ec`);
+> workbench matrix badge, per-band toggle and "Confirm indicative rates (N)"
+> (U8 `1df3d657`); docs, `CUTOVER.md` §5 row and `DRYRUN_LOG.md` Run 7 (U9).
+> *Deferred, by decision:* customer-rendered caveats, stripping the flag from
+> the Zoho payload, live recomputation on saved lines, booking-detail / owner /
+> timeline surfaces, auto-confirm on price edit, confirming historical periods.
+
 - **Severity:** 🟠 Gap (money-facing). The new system quotes carried-forward
   2027 rates exactly as if the owner had confirmed them; legacy flags them so
   staff know they are indicative. Nothing in the rebuild carries that flag,

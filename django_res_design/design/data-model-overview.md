@@ -67,7 +67,11 @@ Property ─1:N→ RatePlan ─1:N→ RatePeriod ─1:N→ RateBand
            RatePlan = date-less regime bucket, one *active* per (property,
            currency, price_basis); RatePeriod = the sole date axis, carrying
            property + currency stamped from its plan, no-overlap per
-           (property, currency) whatever the plan (GAP-110)
+           (property, currency) whatever the plan (GAP-110);
+           RateBand.is_indicative = rates copied forward but not owner-
+           confirmed (legacy VillaSeason.CarriedRates, staff carry-forward);
+           quotes still price from them, staff see a warning, cleared by
+           POST /rate-plans/{id}:confirm-rates or the band PATCH (GAP-114)
          ─1:N→ Extra (priced add-on catalogue; legacy extras port as opt-in
                rows, GAP-107), Discount
          ─1:1→ PropertySettings, PropertyFinance, PropertyCapacity

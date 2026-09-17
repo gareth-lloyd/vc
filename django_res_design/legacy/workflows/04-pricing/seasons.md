@@ -16,7 +16,7 @@ Season header:
 - `Name` (required, except for `COPY` action)
 - `Notes`
 - `Inclusion` (what the rate includes — e.g., "Daily housekeeping, welcome basket")
-- `CarriedRates` (bool — copy rates from another season; the COPY action uses this)
+- `CarriedRates` (nullable bit, **ResProd schema only** — not in the committed source and nothing in it reads the column; marks a season whose grid was copied forward and not yet confirmed by the owner. All 198 flagged live seasons have `CopyFrom <> 0`. The rebuild carries it as `RateBand.is_indicative`, GAP-114)
 - `PriceType` (int — nightly / weekly / fixed)
 - `CommissionType`, `Commission` (decimal)
 - `IsOccupationPrice` (bool — pricing varies by guest count)
@@ -82,10 +82,10 @@ Optional bulk-rates payload (creates rates immediately along with the season):
 **ID:** `PRICING.SEASON.COPY`
 **Trigger:** "Copy" action on a season — typically used to clone last year's pricing to the new year.
 **Actor:** Pricing manager.
-**Legacy locus:** `ModifySeason` with `Action=COPY` and `CarriedRates=true`.
+**Legacy locus:** `ModifySeason` with `Action=COPY` (the committed source only knows `CopyFrom`; `CarriedRates` is a ResProd-side column the stored procedure sets — see the column note above).
 
 ### Inputs
-- Source season `Id`, target `Dates` (the new dates), `CarriedRates=true`.
+- Source season `Id`. The copy **keeps the source season's dates** (the earlier reading, "target dates as an input", was wrong — staff re-date the copy afterwards); the flagged 2027 seasons on ResProd are such copies.
 
 ### Process
 1. `sp_seasons` with `Action=COPY` carries the season header.
@@ -101,9 +101,11 @@ guide rate at quote time from the most recent year that has rates
 `04-pricing.md` "Projected pricing for future years"). The redesign resolves the legacy open
 questions as follows:
 
-- **No default clone, no `is_provisional`.** Because the guide is derived at quote time and not
-  stored, there is no per-rule "provisional" flag and no `carry_over_rates` beat task rolling
-  the whole portfolio forward. The synthesized in-memory rows carry the source rows' pks, so the
+- **No default clone.** Because the guide is derived at quote time and not
+  stored, there is no `carry_over_rates` beat task rolling the whole portfolio forward.
+  *(Narrowed by GAP-114, 2026-09-16: stored rows that nobody has signed off — legacy
+  `CarriedRates` seasons and staff carry-forwards — do carry `RateBand.is_indicative`,
+  a staff-only "indicative rates" warning that never blocks quoting.)* The synthesized in-memory rows carry the source rows' pks, so the
   quote breakdown still traces back to the real anchor rules. A projected quote renders an
   "inquire for accurate rate" marker via `Quote.is_projected`.
 - **Date mapping is an injected, swappable function** (`date_map`), defaulting to
@@ -115,6 +117,7 @@ questions as follows:
   `RateCarryoverService.materialise(property, *, target_year, currency, date_map, uplift)` clones
   the anchor year into real `RatePlan`/`RateCard`/`RateRule` rows (idempotent per
   `(property, currency, target_year)`, provenance in `RatePlan.notes`), exposed as a `RatePlan`
-  admin action and `POST /properties/{id}/seasons:carry-forward`. Materialised rows are ordinary
-  editable rules with no provisional flag. Manual ad-hoc copy of one season to arbitrary dates
+  admin action and `POST /properties/{id}/rate-plans:carry-forward`. Materialised rows are ordinary
+  editable bands written with `is_indicative=True` (GAP-114) until staff confirm them —
+  `POST /rate-plans/{id}:confirm-rates` (optionally for a date window) or the band PATCH. Manual ad-hoc copy of one season to arbitrary dates
   remains available in the admin for cloning that isn't a straight year roll-forward.

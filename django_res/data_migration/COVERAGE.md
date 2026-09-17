@@ -130,9 +130,15 @@ Thirteen tables are new; `VillaPaymentStatus` disappeared, so the count went
 ### New columns worth a line
 
 - **`VillaSeason.CarriedRates`** — "rates carried over, not confirmed" flag;
-  **198 live seasons** carry it (214 rows including deleted). `rate_plan` /
-  `rate_rule` load those seasons as normal rates. Surfacing them as
-  *indicative* rather than confirmed is owned by **GAP-114**, not this load.
+  **198 live seasons** carry it (214 rows including deleted). **Loaded since
+  GAP-114** as `RateBand.is_indicative` on every band whose source row sits on
+  a flagged season (`ISNULL(CarriedRates, 0) = 1`; occupancy children, `occ-fb-*`
+  fallbacks and `#seg` fragments inherit it). ResProd 16-Sep-2026: 1 616
+  carried source rows → 1 421 indicative bands, reconciled by the
+  `RateBand indicative (CarriedRates)` check (expected gap 195, itemised in
+  `CUTOVER.md` §5). Quotes still price from them; staff see an
+  "indicative rates" warning until they confirm the plan
+  (`POST /rate-plans/{id}:confirm-rates`).
 - **`VillaMaster.AvailabilityType` / `.AvailabilityValue`** — across the 387
   non-deleted villas `AvailabilityType` is NULL ×222, 1 ×102, 2 ×63; the
   meaning of the two codes is not decoded here. No Django target; dropped,

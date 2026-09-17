@@ -290,7 +290,7 @@ Small curated taxonomy (airport, beach, restaurant, station, etc.) FK'd from `Pr
 > period-native — `Property → RatePlan → RatePeriod → RateBand`, no card level:
 >
 > - `GET/POST /properties/{id}/rate-plans` · `POST /properties/{id}/rate-plans:carry-forward`
-> - `GET/PATCH/DELETE /rate-plans/{id}` (`POST /rate-plans/{id}:duplicate` was removed in GAP-110 — a plan is a date-less regime bucket, add periods or carry forward instead; the plan body carries no `effective_from/to`)
+> - `GET/PATCH/DELETE /rate-plans/{id}` · `POST /rate-plans/{id}:confirm-rates` (GAP-114: clears `RateBand.is_indicative` on the plan's non-historical periods, optionally only those overlapping a `{date_from, date_to}` window; returns `{"confirmed": n}`) (`POST /rate-plans/{id}:duplicate` was removed in GAP-110 — a plan is a date-less regime bucket, add periods or carry forward instead; the plan body carries no `effective_from/to`)
 > - `GET/POST /rate-plans/{id}/rate-periods` · `GET/PATCH/DELETE /periods/{id}`
 > - `GET/POST /periods/{id}/bands` · `GET/PATCH/DELETE /bands/{id}`
 >

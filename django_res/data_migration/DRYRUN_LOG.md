@@ -687,3 +687,44 @@ Archive section clean (`exists` 248, `bn_year_conflict` 4, `weak_conflict` 1,
 clean. The one blocker is **not GAP-113's**: `Quotation on unknown client with
 a relinkable enquiry` gap −270, because `relink_enquiry_customers` was never
 run on the gap108d template this DB was copied from.
+
+## Run 7 — 2026-09-16 (GAP-114 `RateBand.is_indicative` + reconcile check, feat/gap-114)
+
+Fresh `villacollective_gap114`, migrated (`pricing.0014_rateband_is_indicative`)
+then `loadlegacy --all` once against the same 13-Aug-2026 `ResProd` restore as
+runs 5–6: **exit 0, 7m20s, 0 errors**. `import_archive_stays` was then run on
+it so the archive section is clean; the enquiry-sheet imports and
+`relink_enquiry_customers` were not, so the one remaining blocker is again the
+GAP-112 `Quotation on unknown client with a relinkable enquiry` invariant — not
+GAP-114's.
+
+### Results
+
+- **`RateBand` unchanged: 7 095 / 6 633 / gap 462 OK.** The loader now selects
+  `s.CarriedRates` and writes `is_indicative`, a payload-only field that never
+  enters the flattener's precedence key, so the grid is byte-identical.
+- **New `RateBand indicative (CarriedRates)`: 1 616 / 1 421 / gap 195 OK.**
+  Pinned by replaying the loader pipeline (`legacy_query` →
+  `_prepare_occupancy_rows` → plan-key resolve → `resolve_rate_band_overlaps`
+  → `_row_to_band` → per-plan `flatten_rate_grid`) and counting only
+  `is_indicative` payloads, zero residual:
+
+  | Term | Count |
+  |------|-------|
+  | Legacy carried sources (1 465 parents + 151 occupancy children) | 1 616 |
+  | − flattener-shadowed carried sources (206 parents + 12 children; of 495) | 218 |
+  | = surviving carried sources | 1 398 |
+  | + `occ-fb-*` fallbacks under a carried parent (of 8) | 2 |
+  | + `#seg` fragments of carried sources (of 25) | 21 |
+  | = indicative bands loaded (matches the DB count) | 1 421 |
+
+  Non-terms: 57 carried rows `_row_to_band` rejects (capacity-emptied
+  fallbacks, of 293 — outside the universe), resolver `dropped` 0, flattener
+  `invalid_spans` 0.
+- **Engine spot-check** on the loaded DB (`PricingEngine.quote`, projection
+  off): plan `villa:339:EUR` (property 212), week of 2027-05-16 on a carried
+  period → `is_indicative=True` (breakdown key True, not projected); the same
+  villa's confirmed week of 2026-10-04 → False. 160 plans carry a flagged
+  2027 grid alongside a confirmed 2026 one — the shape staff will see most.
+- The DB is kept for the SPA demo (quote builder badge, send/convert warnings,
+  rate-workbench "Confirm indicative rates").

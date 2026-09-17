@@ -130,7 +130,7 @@ def test_sd_release_refuses_stale_instance(pre_authed_sd: SecurityDeposit) -> No
     stale = SecurityDeposit.objects.get(pk=pre_authed_sd.pk)
     pre_authed_sd.transition_to_released()
 
-    with pytest.raises(ValueError, match="cannot :release"):
+    with pytest.raises(InvalidTransition):
         stale.transition_to_released()
 
     release_events = PaymentEvent.objects.filter(security_deposit=pre_authed_sd, kind="RELEASE")
@@ -146,7 +146,7 @@ def test_sd_claim_on_released_sd_persists_no_field_writes(
     stale = SecurityDeposit.objects.get(pk=pre_authed_sd.pk)
     pre_authed_sd.transition_to_released()
 
-    with pytest.raises(ValueError, match="cannot :claim"):
+    with pytest.raises(InvalidTransition):
         stale.transition_to_captured(captured_amount=Decimal("100.00"), damage_claim=None)
 
     pre_authed_sd.refresh_from_db()

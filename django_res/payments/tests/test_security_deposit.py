@@ -448,6 +448,71 @@ def test_mark_paid__wrong_kind_raises_typed_domain_error(
 
 
 # ----------------------------------------------------------------------
+# State machine — one table, typed errors (BUG-015)
+# ----------------------------------------------------------------------
+def test_sd_table_terminals_match_terminal_statuses() -> None:
+    from payments.enums import SD_ALLOWED_TRANSITIONS, TERMINAL_SD_STATUSES
+
+    assert set(SD_ALLOWED_TRANSITIONS) == set(SecurityDepositStatus.values)
+    terminals = {s for s, targets in SD_ALLOWED_TRANSITIONS.items() if not targets}
+    assert terminals == set(TERMINAL_SD_STATUSES)
+
+
+@pytest.mark.django_db
+def test_model_kind_mismatch_raises_typed_error(bt_sd: SecurityDeposit) -> None:
+    from core.exceptions import InvalidSecurityDepositKind
+
+    with pytest.raises(InvalidSecurityDepositKind):
+        bt_sd.transition_to_captured(captured_amount=Decimal("1.00"), damage_claim=None)
+
+
+@pytest.mark.django_db
+def test_model_illegal_status_raises_invalid_transition(pre_auth_sd: SecurityDeposit) -> None:
+    from core.exceptions import InvalidTransition
+
+    with pytest.raises(InvalidTransition):
+        pre_auth_sd.transition_to_released()
+    pre_auth_sd.refresh_from_db()
+    assert pre_auth_sd.status == SecurityDepositStatus.AWAITING_DETAILS.value
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("captured", ["-0.01", "500.01"])
+def test_model_capture_bounds_raise_validation_error(
+    pre_auth_sd: SecurityDeposit, captured: str
+) -> None:
+    from core.exceptions import DomainValidationError
+
+    pre_auth_sd.transition_to_pre_authed()
+    with pytest.raises(DomainValidationError) as exc:
+        pre_auth_sd.transition_to_captured(captured_amount=Decimal(captured), damage_claim=None)
+    assert "captured_amount" in exc.value.field_errors
+    pre_auth_sd.refresh_from_db()
+    assert pre_auth_sd.status == SecurityDepositStatus.PRE_AUTHED.value
+    assert pre_auth_sd.captured_amount is None
+
+
+@pytest.mark.django_db
+def test_partial_refund_writes_fields_and_event(bt_sd: SecurityDeposit) -> None:
+    from payments.models import PaymentEvent
+
+    bt_sd.transition_to_held()
+    bt_sd.transition_to_partially_refunded(captured_amount=Decimal("120.00"), damage_claim=None)
+
+    bt_sd.refresh_from_db()
+    assert bt_sd.status == SecurityDepositStatus.PARTIALLY_REFUNDED.value
+    assert bt_sd.captured_amount == Decimal("120.00")
+    assert bt_sd.refunded_amount == Decimal("380.00")
+    assert bt_sd.released_at is not None
+    event = PaymentEvent.objects.filter(security_deposit=bt_sd).latest("created_at")
+    assert (event.from_status, event.to_status, event.kind) == (
+        SecurityDepositStatus.HELD.value,
+        SecurityDepositStatus.PARTIALLY_REFUNDED.value,
+        "CLAIM",
+    )
+
+
+# ----------------------------------------------------------------------
 # Structured logging — the SD money path emits the op triples (BUG-011)
 # ----------------------------------------------------------------------
 @pytest.mark.django_db

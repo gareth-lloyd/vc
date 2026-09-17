@@ -20,6 +20,7 @@ from django.db import models, transaction
 from django.db.models import F, Q
 from django.db.models.fields.json import KeyTextTransform
 
+from core.exceptions import DomainValidationError, InvalidTransition
 from core.idempotency import IDEMPOTENCY_META_KEY
 from core.models.base import AuditedModel
 from core.refs import reference_db_default
@@ -203,7 +204,6 @@ class Payment(AuditedModel):
         """Generic status transition. Writes a `PaymentEvent` and dispatches
         the appropriate signal when the new status is terminal.
         """
-        from core.exceptions import InvalidTransition
         from core.locking import refresh_locked
         from payments.models.payment_event import PaymentEvent
 
@@ -262,11 +262,6 @@ class Payment(AuditedModel):
         fires the `payment_waived` signal so reservations advances the booking
         as if the payment had succeeded.
         """
-        if self.status not in (
-            PaymentStatus.PENDING.value,
-            PaymentStatus.PROCESSING.value,
-        ):
-            raise ValueError(f"Cannot waive Payment {self.reference} from status {self.status!r}")
         return self.transition_to(
             PaymentStatus.WAIVED.value,
             source=EventSource.USER.value,
@@ -294,13 +289,16 @@ class Payment(AuditedModel):
         the generic `transition_to` so the `payment_succeeded` signal fires
         through the usual path.
         """
+        # Narrower than the table (PROCESSING → SUCCEEDED is a gateway capture,
+        # not a manual receipt).
         if self.status != PaymentStatus.PENDING.value:
-            raise ValueError(
-                f"Cannot mark_paid on Payment {self.reference} from status {self.status!r}"
+            raise InvalidTransition(
+                self.status, PaymentStatus.SUCCEEDED.value, allowed=[PaymentStatus.PENDING.value]
             )
         if amount <= 0:
-            raise ValueError(
-                f"Cannot mark_paid on Payment {self.reference} with non-positive amount {amount}"
+            raise DomainValidationError(
+                f"Cannot mark_paid on Payment {self.reference} with non-positive amount {amount}",
+                field_errors={"amount": ["Must be greater than zero."]},
             )
         # The operator is the system-of-record — set provider per the spec.
         # Bank transfer → MANUAL_BANK_TRANSFER; everything else → OTHER.

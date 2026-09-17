@@ -18,8 +18,10 @@ from django.utils import timezone
 from core.exceptions import DomainValidationError, InvalidSecurityDepositKind
 from core.locking import refresh_locked
 from core.logging.operations import log_operation
+from core.transitions import assert_allowed
 from payments.enums import (
     ACTIVE_PAYMENT_STATUSES,
+    SD_ALLOWED_TRANSITIONS,
     TERMINAL_SD_STATUSES,
     EventSource,
     PaymentMethod,
@@ -397,6 +399,18 @@ class SecurityDepositService:
         It is resolved to a real, booking-matched row up front so a bad PK is a
         clean 400 rather than the DB FK constraint raising a 500 mid-capture.
         """
+        # Expected refusals above the log_operation block (as in `hold`), in
+        # the model's order: illegal status 409, then bad amount 400 — and
+        # before the PRE_AUTH capture Payment below is written, which a
+        # negative amount would otherwise trip as a constraint error. The
+        # model re-checks both under lock.
+        target = (
+            SecurityDepositStatus.CAPTURED.value
+            if sd.kind == SecurityDepositKind.PRE_AUTH_HOLD.value
+            else SecurityDepositStatus.PARTIALLY_REFUNDED.value
+        )
+        assert_allowed(sd, target, table=SD_ALLOWED_TRANSITIONS)
+        sd.assert_capturable_amount(captured_amount)
         with log_operation(
             "security_deposit.claim",
             logger=logger,

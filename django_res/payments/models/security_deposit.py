@@ -14,11 +14,14 @@ from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from core.exceptions import DomainValidationError, InvalidSecurityDepositKind
 from core.locking import refresh_locked
 from core.models.base import AuditedModel
 from core.refs import reference_db_default
+from core.transitions import assert_allowed, transition
 from payments import signals as payment_signals
 from payments.enums import (
+    SD_ALLOWED_TRANSITIONS,
     TERMINAL_SD_STATUSES,
     EventSource,
     SecurityDepositKind,
@@ -117,26 +120,33 @@ class SecurityDeposit(AuditedModel):
     def __str__(self) -> str:
         return f"{self.reference} ({self.kind}/{self.status})"
 
-    def _assert_capturable_amount(self, captured_amount: Decimal) -> None:
+    def assert_capturable_amount(self, captured_amount: Decimal) -> None:
         """A claim captures between zero and the full held amount."""
         if captured_amount < 0:
-            raise ValueError(f"SD {self.reference}: captured_amount {captured_amount} is negative")
-        if captured_amount > self.amount:
-            raise ValueError(
-                f"SD {self.reference}: captured_amount {captured_amount} "
-                f"exceeds amount {self.amount}"
-            )
+            message = f"captured_amount {captured_amount} is negative"
+        elif captured_amount > self.amount:
+            message = f"captured_amount {captured_amount} exceeds amount {self.amount}"
+        else:
+            return
+        raise DomainValidationError(
+            f"SD {self.reference}: {message}",
+            field_errors={"captured_amount": [message]},
+        )
+
+    def _assert_kind(self, kind: str, action: str) -> None:
+        if self.kind != kind:
+            raise InvalidSecurityDepositKind(f"SD {self.reference}: {action} only valid for {kind}")
 
     # ------------------------------------------------------------------
     # Transitions
     #
-    # Each public `transition_to_*` is atomic and re-reads the row under
-    # lock (`refresh_locked`) before its status guard, so a stale instance
-    # (operator double-click, concurrent capture vs. release) loses with a
-    # ValueError instead of double-firing — and its field writes roll back
-    # with the failed transition rather than persisting on their own.
+    # Edges live in `SD_ALLOWED_TRANSITIONS`; `_transition` moves through
+    # `core.transitions` (lock → guard → save → PaymentEvent). Wrappers that
+    # branch on kind or check amounts lock first, then refuse in a fixed
+    # order — wrong kind (409 `invalid_sd_kind`), illegal status (409
+    # `invalid_transition`), bad amount (400) — and compute field writes from
+    # the locked row so they land in the same UPDATE as the status.
     # ------------------------------------------------------------------
-    @transaction.atomic
     def _transition(
         self,
         new_status: str,
@@ -144,29 +154,32 @@ class SecurityDeposit(AuditedModel):
         source: str = EventSource.USER.value,
         actor: Any = None,
         kind: str = "",
+        extra_updates: dict[str, Any] | None = None,
         **meta: Any,
     ) -> SecurityDeposit:
         from payments.models.payment_event import PaymentEvent
 
-        old_status = self.status
-        self.status = new_status
-        self.save(update_fields=["status", "updated_at"])
-        PaymentEvent.objects.create(
-            security_deposit=self,
-            from_status=old_status,
-            to_status=new_status,
-            kind=kind,
-            source=source,
-            actor=actor,
-            meta=meta or {},
+        def record(from_status: str, to_status: str) -> None:
+            PaymentEvent.objects.create(
+                security_deposit=self,
+                from_status=from_status,
+                to_status=to_status,
+                kind=kind,
+                source=source,
+                actor=actor,
+                meta=meta or {},
+            )
+
+        transition(
+            self,
+            new_status,
+            table=SD_ALLOWED_TRANSITIONS,
+            extra_updates=extra_updates,
+            record=record,
         )
         return self
 
-    @transaction.atomic
     def transition_to_pre_authed(self, *, actor: Any = None, **meta: Any) -> SecurityDeposit:
-        refresh_locked(self)
-        if self.status != SecurityDepositStatus.AWAITING_DETAILS.value:
-            raise ValueError(f"SD {self.reference}: cannot :hold from status {self.status!r}")
         return self._transition(
             SecurityDepositStatus.PRE_AUTHED.value,
             actor=actor,
@@ -177,23 +190,15 @@ class SecurityDeposit(AuditedModel):
     @transaction.atomic
     def transition_to_released(self, *, actor: Any = None, **meta: Any) -> SecurityDeposit:
         refresh_locked(self)
+        extra_updates: dict[str, Any] = {"released_at": timezone.now()}
         if self.kind == SecurityDepositKind.PRE_AUTH_HOLD.value:
-            if self.status != SecurityDepositStatus.PRE_AUTHED.value:
-                raise ValueError(
-                    f"SD {self.reference}: cannot :release from status {self.status!r}"
-                )
             target = SecurityDepositStatus.RELEASED.value
         else:
-            if self.status != SecurityDepositStatus.HELD.value:
-                raise ValueError(
-                    f"SD {self.reference}: cannot :release from status {self.status!r}"
-                )
             target = SecurityDepositStatus.REFUNDED.value
-        self.released_at = timezone.now()
-        if self.kind == SecurityDepositKind.BT_REFUNDABLE.value:
-            self.refunded_amount = self.amount
-        self.save(update_fields=["released_at", "refunded_amount", "updated_at"])
-        sd = self._transition(target, actor=actor, kind="RELEASE", **meta)
+            extra_updates["refunded_amount"] = self.amount
+        sd = self._transition(
+            target, actor=actor, kind="RELEASE", extra_updates=extra_updates, **meta
+        )
         payment_signals.security_deposit_released.send(sender=type(self), sd=sd)
         return sd
 
@@ -207,18 +212,15 @@ class SecurityDeposit(AuditedModel):
         **meta: Any,
     ) -> SecurityDeposit:
         refresh_locked(self)
-        if self.kind != SecurityDepositKind.PRE_AUTH_HOLD.value:
-            raise ValueError(f"SD {self.reference}: :claim → CAPTURED only valid for PRE_AUTH_HOLD")
-        if self.status != SecurityDepositStatus.PRE_AUTHED.value:
-            raise ValueError(f"SD {self.reference}: cannot :claim from status {self.status!r}")
-        self._assert_capturable_amount(captured_amount)
-        self.captured_amount = captured_amount
-        self.damage_claim = damage_claim
-        self.save(update_fields=["captured_amount", "damage_claim", "updated_at"])
+        self._assert_kind(SecurityDepositKind.PRE_AUTH_HOLD.value, ":claim → CAPTURED")
+        target = SecurityDepositStatus.CAPTURED.value
+        assert_allowed(self, target, table=SD_ALLOWED_TRANSITIONS)
+        self.assert_capturable_amount(captured_amount)
         return self._transition(
-            SecurityDepositStatus.CAPTURED.value,
+            target,
             actor=actor,
             kind="CLAIM",
+            extra_updates={"captured_amount": captured_amount, "damage_claim": damage_claim},
             **meta,
         )
 
@@ -232,34 +234,22 @@ class SecurityDeposit(AuditedModel):
         **meta: Any,
     ) -> SecurityDeposit:
         refresh_locked(self)
-        if self.kind != SecurityDepositKind.BT_REFUNDABLE.value:
-            raise ValueError(
-                f"SD {self.reference}: PARTIALLY_REFUNDED only valid for BT_REFUNDABLE"
-            )
-        if self.status != SecurityDepositStatus.HELD.value:
-            raise ValueError(
-                f"SD {self.reference}: cannot partial-refund from status {self.status!r}"
-            )
+        self._assert_kind(SecurityDepositKind.BT_REFUNDABLE.value, "PARTIALLY_REFUNDED")
+        target = SecurityDepositStatus.PARTIALLY_REFUNDED.value
+        assert_allowed(self, target, table=SD_ALLOWED_TRANSITIONS)
         # Bounds matter doubly here: `refunded_amount = amount - captured`,
         # so an over-amount capture silently produced a negative refund.
-        self._assert_capturable_amount(captured_amount)
-        self.captured_amount = captured_amount
-        self.refunded_amount = self.amount - captured_amount
-        self.damage_claim = damage_claim
-        self.released_at = timezone.now()
-        self.save(
-            update_fields=[
-                "captured_amount",
-                "refunded_amount",
-                "damage_claim",
-                "released_at",
-                "updated_at",
-            ]
-        )
+        self.assert_capturable_amount(captured_amount)
         sd = self._transition(
-            SecurityDepositStatus.PARTIALLY_REFUNDED.value,
+            target,
             actor=actor,
             kind="CLAIM",
+            extra_updates={
+                "captured_amount": captured_amount,
+                "refunded_amount": self.amount - captured_amount,
+                "damage_claim": damage_claim,
+                "released_at": timezone.now(),
+            },
             **meta,
         )
         payment_signals.security_deposit_released.send(sender=type(self), sd=sd)
@@ -268,10 +258,7 @@ class SecurityDeposit(AuditedModel):
     @transaction.atomic
     def transition_to_held(self, *, actor: Any = None, **meta: Any) -> SecurityDeposit:
         refresh_locked(self)
-        if self.kind != SecurityDepositKind.BT_REFUNDABLE.value:
-            raise ValueError(f"SD {self.reference}: HELD only valid for BT_REFUNDABLE")
-        if self.status != SecurityDepositStatus.AWAITING_BT.value:
-            raise ValueError(f"SD {self.reference}: cannot transition to HELD from {self.status!r}")
+        self._assert_kind(SecurityDepositKind.BT_REFUNDABLE.value, "HELD")
         return self._transition(
             SecurityDepositStatus.HELD.value,
             actor=actor,
@@ -283,12 +270,8 @@ class SecurityDeposit(AuditedModel):
     def transition_to_expired(self, *, actor: Any = None, **meta: Any) -> SecurityDeposit:
         refresh_locked(self)
         if self.kind == SecurityDepositKind.PRE_AUTH_HOLD.value:
-            if self.status != SecurityDepositStatus.PRE_AUTHED.value:
-                raise ValueError(f"SD {self.reference}: cannot expire from status {self.status!r}")
             target = SecurityDepositStatus.EXPIRED.value
         else:
-            if self.status != SecurityDepositStatus.AWAITING_BT.value:
-                raise ValueError(f"SD {self.reference}: cannot fail from status {self.status!r}")
             target = SecurityDepositStatus.FAILED.value
         sd = self._transition(
             target,
@@ -300,7 +283,6 @@ class SecurityDeposit(AuditedModel):
         payment_signals.security_deposit_expired.send(sender=type(self), sd=sd)
         return sd
 
-    @transaction.atomic
     def transition_to_failed(
         self,
         *,
@@ -308,20 +290,12 @@ class SecurityDeposit(AuditedModel):
         actor: Any = None,
         **meta: Any,
     ) -> SecurityDeposit:
-        refresh_locked(self)
-        if self.status not in (
-            SecurityDepositStatus.AWAITING_DETAILS.value,
-            SecurityDepositStatus.PRE_AUTHED.value,
-            SecurityDepositStatus.AWAITING_BT.value,
-        ):
-            raise ValueError(f"SD {self.reference}: cannot fail from status {self.status!r}")
-        self.failure_reason = reason
-        self.save(update_fields=["failure_reason", "updated_at"])
         return self._transition(
             SecurityDepositStatus.FAILED.value,
             source=EventSource.SYSTEM.value,
             actor=actor,
             kind="FAILED",
+            extra_updates={"failure_reason": reason},
             reason=reason,
             **meta,
         )

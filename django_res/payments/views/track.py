@@ -27,6 +27,7 @@ from core.api.permissions import IsAccountsWriter
 from core.api.responses import not_implemented_response
 from core.exceptions import (
     InvalidPaymentState,
+    InvalidTransition,
     NoActiveSecurityDeposit,
     NoPendingPayment,
     UnknownAction,
@@ -62,9 +63,13 @@ def _track_response(booking: Booking, purpose: str) -> Response:
 
 def _parse_decimal(value: Any, *, field: str = "amount") -> Decimal:
     try:
-        return Decimal(str(value))
+        amount = Decimal(str(value))
     except InvalidOperation:
-        raise DRFValidationError({field: ["A valid decimal number is required."]}) from None
+        amount = None
+    # NaN / Infinity parse but can't be compared or stored.
+    if amount is None or not amount.is_finite():
+        raise DRFValidationError({field: ["A valid decimal number is required."]})
+    return amount
 
 
 def _parse_positive_decimal(value: Any, *, field: str = "amount") -> Decimal:
@@ -84,20 +89,17 @@ def _parse_datetime(value: Any, *, field: str = "due_at") -> datetime:
 
 
 def _service_call[T](call: Callable[[], T]) -> T:
-    """Translate service-layer `ValueError`s (state-machine misuse) to 409.
+    """Surface a racing writer's one-active-row `IntegrityError` as a 409.
 
-    Mirrors `RefundViewSet._run_service`: the SD/payment *status* guards still
-    raise `ValueError` (SMELL-010), which would otherwise surface as a 500.
-    Typed `DomainError`s (e.g. `InvalidSecurityDepositKind`, BUG-011) pass
-    through untouched — the canonical exception handler maps them itself.
-    IntegrityError is the concurrent twin — two racing requests both pass the
-    in-memory guards and the loser hits a one-active-row constraint; that's a
-    conflict, not a 500.
+    Two concurrent requests can both pass the in-memory checks and the loser
+    hits a one-active-row constraint; that's a conflict, not a 500. Everything
+    else propagates: typed `DomainError`s (`InvalidTransition`,
+    `InvalidSecurityDepositKind`, `DomainValidationError`, …) are mapped by the
+    canonical exception handler, and any other exception is a bug, not a
+    state conflict (BUG-015).
     """
     try:
         return call()
-    except ValueError as exc:
-        raise InvalidPaymentState(str(exc)) from exc
     except IntegrityError as exc:
         raise InvalidPaymentState(
             "A conflicting payment row already exists for this booking."
@@ -344,19 +346,25 @@ def payment_action(
 
 def _payment_capture(request: Request, booking: Booking, payment_pk: int) -> Response:
     payment = get_object_or_404(Payment, pk=payment_pk, booking=booking)
+    # Narrower than PAYMENT_ALLOWED_TRANSITIONS: only an authorised
+    # (PROCESSING) gateway charge can be captured by hand.
     if payment.status != PaymentStatus.PROCESSING.value:
-        raise InvalidPaymentState(f"Cannot capture from status {payment.status!r}")
+        raise InvalidTransition(
+            payment.status,
+            PaymentStatus.SUCCEEDED.value,
+            allowed=[PaymentStatus.PROCESSING.value],
+        )
     payment.transition_to(PaymentStatus.SUCCEEDED.value, actor=request.user, kind="CAPTURE")
     return Response(PaymentSerializer(payment).data)
 
 
 def _payment_void(request: Request, booking: Booking, payment_pk: int) -> Response:
     payment = get_object_or_404(Payment, pk=payment_pk, booking=booking)
-    if payment.status not in (
-        PaymentStatus.PENDING.value,
-        PaymentStatus.PROCESSING.value,
-    ):
-        raise InvalidPaymentState(f"Cannot void from status {payment.status!r}")
+    # Narrower than PAYMENT_ALLOWED_TRANSITIONS: a void cancels an unsettled
+    # row; the table's SUCCEEDED → CANCELLED edge is not an operator void.
+    voidable = [PaymentStatus.PENDING.value, PaymentStatus.PROCESSING.value]
+    if payment.status not in voidable:
+        raise InvalidTransition(payment.status, PaymentStatus.CANCELLED.value, allowed=voidable)
     payment.transition_to(PaymentStatus.CANCELLED.value, actor=request.user, kind="VOID")
     return Response(PaymentSerializer(payment).data)
 

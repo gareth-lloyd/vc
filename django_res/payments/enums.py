@@ -210,6 +210,34 @@ TERMINAL_SD_STATUSES: tuple[str, ...] = (
     SecurityDepositStatus.PARTIALLY_REFUNDED.value,
 )
 
+# Allowed SecurityDeposit transitions, enforced by the `transition_to_*`
+# wrappers via `core.transitions`. One table for both kinds: the pre-auth path
+# (AWAITING_DETAILS → PRE_AUTHED → …) and the BT path (AWAITING_BT → HELD → …)
+# share no non-terminal state, and each wrapper checks the kind first.
+SD_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    SecurityDepositStatus.AWAITING_DETAILS.value: frozenset(
+        {SecurityDepositStatus.PRE_AUTHED.value, SecurityDepositStatus.FAILED.value}
+    ),
+    SecurityDepositStatus.PRE_AUTHED.value: frozenset(
+        {
+            SecurityDepositStatus.RELEASED.value,
+            SecurityDepositStatus.CAPTURED.value,
+            SecurityDepositStatus.EXPIRED.value,
+            SecurityDepositStatus.FAILED.value,
+        }
+    ),
+    SecurityDepositStatus.AWAITING_BT.value: frozenset(
+        {SecurityDepositStatus.HELD.value, SecurityDepositStatus.FAILED.value}
+    ),
+    SecurityDepositStatus.HELD.value: frozenset(
+        {
+            SecurityDepositStatus.REFUNDED.value,
+            SecurityDepositStatus.PARTIALLY_REFUNDED.value,
+        }
+    ),
+    **{status: frozenset() for status in TERMINAL_SD_STATUSES},
+}
+
 
 class WebhookProvider(models.TextChoices):
     FLYWIRE = "flywire", "Flywire"

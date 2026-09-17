@@ -261,7 +261,9 @@ def test_claim_bt_bounds_captured_amount(
         format="json",
     )
 
-    assert response.status_code in (400, 409), response.data
+    assert response.status_code == 400, response.data
+    assert response.data["code"] == "validation_error"
+    assert "captured_amount" in response.data["field_errors"]
     held_bt_sd.refresh_from_db()
     assert held_bt_sd.status == SecurityDepositStatus.HELD.value
 
@@ -326,7 +328,7 @@ def test_sd_service_state_mismatch_is_409_not_500(
     booking: Booking,
     gbp: Currency,
 ) -> None:
-    """`:hold` on a BT-kind SD raises a service ValueError — must be a 409."""
+    """`:hold` on a BT-kind SD is refused by kind — must be a 409, not a 500."""
     SecurityDeposit.objects.create(
         booking=booking,
         kind=SecurityDepositKind.BT_REFUNDABLE.value,
@@ -384,3 +386,120 @@ def test_sd_double_hold_is_409_not_500(
 
     second = api_client.post(url, {"gateway_response": {}}, format="json")
     assert second.status_code == 409, second.data
+
+
+# ----------------------------------------------------------------------
+# BUG-015 — only typed domain errors become 409s
+# ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def pre_authed_sd(db: None, booking: Booking, gbp: Currency) -> SecurityDeposit:
+    return SecurityDeposit.objects.create(
+        booking=booking,
+        kind=SecurityDepositKind.PRE_AUTH_HOLD.value,
+        status=SecurityDepositStatus.PRE_AUTHED.value,
+        amount=Decimal("500.00"),
+        currency=gbp,
+    )
+
+
+@pytest.mark.django_db
+def test_unrelated_value_error_on_sd_action_is_not_409(
+    api_client: APIClient,
+    accounts_user: User,
+    booking: Booking,
+    pre_authed_sd: SecurityDeposit,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A programming error inside an SD action must surface as the bug it is,
+    not be dressed up as a state conflict (the old blanket ValueError → 409)."""
+    from payments.services.security_deposit import SecurityDepositService
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise ValueError("boom")
+
+    monkeypatch.setattr(SecurityDepositService, "release", boom)
+    api_client.force_login(accounts_user)
+
+    # The test client re-raises unhandled exceptions rather than rendering a 500.
+    with pytest.raises(ValueError, match="boom"):
+        api_client.post(f"/api/v1/bookings/{booking.pk}/security:release")
+
+
+@pytest.mark.django_db
+def test_illegal_sd_transition_is_409_invalid_transition(
+    api_client: APIClient,
+    accounts_user: User,
+    booking: Booking,
+    gbp: Currency,
+) -> None:
+    sd = SecurityDeposit.objects.create(
+        booking=booking,
+        kind=SecurityDepositKind.PRE_AUTH_HOLD.value,
+        status=SecurityDepositStatus.AWAITING_DETAILS.value,
+        amount=Decimal("500.00"),
+        currency=gbp,
+    )
+    api_client.force_login(accounts_user)
+
+    response = api_client.post(f"/api/v1/bookings/{booking.pk}/security:release")
+
+    assert response.status_code == 409, response.data
+    assert response.data["code"] == "invalid_transition"
+    sd.refresh_from_db()
+    assert sd.status == SecurityDepositStatus.AWAITING_DETAILS.value
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("captured", ["-50.00", "600.00", "NaN", "Infinity"])
+def test_pre_auth_claim_bad_amount_is_400_and_creates_no_capture(
+    api_client: APIClient,
+    accounts_user: User,
+    booking: Booking,
+    pre_authed_sd: SecurityDeposit,
+    captured: str,
+) -> None:
+    """Bounds are checked before the capture Payment is written — a negative
+    amount used to trip the payment amount constraint and read as a 409."""
+    api_client.force_login(accounts_user)
+
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/security:claim",
+        {"captured_amount": captured},
+        format="json",
+    )
+
+    assert response.status_code == 400, response.data
+    assert "captured_amount" in response.data["field_errors"]
+    assert not Payment.objects.filter(booking=booking, meta__kind="CAPTURE").exists()
+    pre_authed_sd.refresh_from_db()
+    assert pre_authed_sd.status == SecurityDepositStatus.PRE_AUTHED.value
+
+
+@pytest.mark.django_db
+def test_claim_on_unclaimable_sd_is_409_before_amount_400(
+    api_client: APIClient,
+    accounts_user: User,
+    booking: Booking,
+    gbp: Currency,
+) -> None:
+    """Status refuses before bounds: a BT deposit not yet received can't be
+    claimed at all, whatever the amount."""
+    SecurityDeposit.objects.create(
+        booking=booking,
+        kind=SecurityDepositKind.BT_REFUNDABLE.value,
+        status=SecurityDepositStatus.AWAITING_BT.value,
+        amount=Decimal("500.00"),
+        currency=gbp,
+    )
+    api_client.force_login(accounts_user)
+
+    response = api_client.post(
+        f"/api/v1/bookings/{booking.pk}/security:claim",
+        {"captured_amount": "600.00"},
+        format="json",
+    )
+
+    assert response.status_code == 409, response.data
+    assert response.data["code"] == "invalid_transition"

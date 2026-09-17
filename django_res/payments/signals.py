@@ -249,6 +249,8 @@ def _close_money_on_booking_closed(
     )
     if sd is None:
         return
+    # Narrower than SD_ALLOWED_TRANSITIONS on purpose: a PRE_AUTHED hold is
+    # live money at the gateway, so it goes to operator review, not FAILED.
     if sd.status in (
         SecurityDepositStatus.AWAITING_DETAILS.value,
         SecurityDepositStatus.AWAITING_BT.value,

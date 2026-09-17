@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from django.utils import timezone as dj_timezone
 
+from core.exceptions import InvalidTransition
 from payments import signals as payment_signals
 from payments.enums import (
     PaymentMethod,
@@ -60,7 +61,7 @@ def test_waive__transitions_to_waived_and_fires_signal(
 def test_waive__rejects_from_terminal_status(deposit_payment: Payment) -> None:
     deposit_payment.status = PaymentStatus.SUCCEEDED.value
     deposit_payment.save(update_fields=["status"])
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidTransition):
         deposit_payment.waive("after-the-fact")
 
 

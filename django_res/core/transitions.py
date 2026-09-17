@@ -55,12 +55,17 @@ def transition(
     table: TransitionTable,
     extra_updates: dict[str, Any] | None = None,
     record: Callable[[str, str], None] | None = None,
+    only_from: Collection[str] | None = None,
 ) -> str:
     """Lock, guard, move `instance` to `to`, and record it. Returns the prior status.
 
     `extra_updates` are field values written in the same UPDATE as the status.
     `record(prev, to)` writes the aggregate's event row inside the transaction,
     so a failed write rolls the status back with it.
+
+    `only_from` narrows the table for one action that shares its edge with
+    another: `Booking.auto_accept` and `owner_approve` both move to
+    AWAITING_DEPOSIT, but each only from its own source status.
 
     Any in-memory changes made before the call are discarded by the lock
     refresh; compute derived values after locking (see `refresh_locked`).
@@ -75,6 +80,9 @@ def transition(
         with transaction.atomic():
             refresh_locked(instance)
             assert_allowed(instance, to, table=table)
+            if only_from is not None and getattr(instance, "status") not in only_from:  # noqa: B009
+                status = getattr(instance, "status")  # noqa: B009
+                raise InvalidTransition(status, to, allowed=sorted(only_from))
             prev = getattr(instance, "status")  # noqa: B009
             snapshot = {field: getattr(instance, field) for field in extras}
             setattr(instance, "status", to)  # noqa: B010

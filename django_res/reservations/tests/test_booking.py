@@ -843,6 +843,42 @@ def test_auto_accept_into_overlap_raises_overlapping_booking(
 
 
 @pytest.mark.django_db
+def test_overlap_refusal_leaves_instance_as_locked(
+    booking: Booking,
+    customer: Person,
+    gbp: Currency,
+    terms: TermsVersion,
+    property_: Property,
+) -> None:
+    """The OverlappingBooking remap must not leave the in-memory instance
+    claiming the refused status or its extra field writes."""
+    _set_status(booking, BookingStatus.AWAITING_DEPOSIT.value)
+    second = _second_booking(
+        customer=customer,
+        gbp=gbp,
+        terms=terms,
+        property_=property_,
+        date_from=date(2026, 6, 14),
+        date_to=date(2026, 6, 20),
+    )
+    snapshot_before = second.house_rules_snapshot_at
+
+    with pytest.raises(OverlappingBooking):
+        second.auto_accept()
+
+    assert second.status == BookingStatus.DRAFT.value
+    assert second.house_rules_snapshot_at == snapshot_before
+
+
+def test_booking_table_terminals_match_terminal_statuses() -> None:
+    from reservations.enums import BOOKING_ALLOWED_TRANSITIONS, TERMINAL_BOOKING_STATUSES
+
+    assert set(BOOKING_ALLOWED_TRANSITIONS) == set(BookingStatus.values)
+    terminals = {s for s, targets in BOOKING_ALLOWED_TRANSITIONS.items() if not targets}
+    assert terminals == set(TERMINAL_BOOKING_STATUSES)
+
+
+@pytest.mark.django_db
 def test_drafts_can_overlap(
     booking: Booking,
     customer: Person,

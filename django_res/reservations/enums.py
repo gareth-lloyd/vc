@@ -140,6 +140,49 @@ TERMINAL_BOOKING_STATUSES: tuple[str, ...] = (
     BookingStatus.DECLINED.value,
 )
 
+# Allowed Booking transitions, enforced by `Booking._transition` via
+# `core.transitions`. Every live status can still be cancelled.
+BOOKING_ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    BookingStatus.DRAFT.value: frozenset(
+        {
+            BookingStatus.PENDING_OWNER_APPROVAL.value,
+            BookingStatus.AWAITING_DEPOSIT.value,
+            BookingStatus.CANCELLED.value,
+        }
+    ),
+    BookingStatus.PENDING_OWNER_APPROVAL.value: frozenset(
+        {
+            BookingStatus.AWAITING_DEPOSIT.value,
+            BookingStatus.DECLINED.value,
+            BookingStatus.CANCELLED.value,
+        }
+    ),
+    BookingStatus.AWAITING_DEPOSIT.value: frozenset(
+        {
+            BookingStatus.DEPOSIT_PAID.value,
+            BookingStatus.EXPIRED.value,
+            BookingStatus.CANCELLED.value,
+        }
+    ),
+    BookingStatus.DEPOSIT_PAID.value: frozenset(
+        {
+            BookingStatus.AWAITING_BALANCE.value,
+            BookingStatus.BALANCE_PAID.value,
+            BookingStatus.CANCELLED.value,
+        }
+    ),
+    BookingStatus.AWAITING_BALANCE.value: frozenset(
+        {BookingStatus.BALANCE_PAID.value, BookingStatus.CANCELLED.value}
+    ),
+    BookingStatus.BALANCE_PAID.value: frozenset(
+        {BookingStatus.CHECKED_IN.value, BookingStatus.CANCELLED.value}
+    ),
+    BookingStatus.CHECKED_IN.value: frozenset(
+        {BookingStatus.CHECKED_OUT.value, BookingStatus.CANCELLED.value}
+    ),
+    **{status: frozenset() for status in TERMINAL_BOOKING_STATUSES},
+}
+
 # Status gates for the Clients-directory region aggregation (GAP-047).
 #
 # A region is *quoted* once a real quote has been sent (SENT/ACCEPTED; excludes

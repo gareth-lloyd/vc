@@ -130,3 +130,14 @@ def test_can_transition_and_assert_allowed() -> None:
     with pytest.raises(InvalidTransition) as exc:
         assert_allowed(enquiry, NEW, table=TABLE)
     assert exc.value.allowed == [DEAD, PROGRESSING]
+
+
+def test_transition_only_from_narrows_the_table() -> None:
+    enquiry = _enquiry(status=PROGRESSING)
+
+    with pytest.raises(InvalidTransition) as exc:
+        transition(enquiry, DEAD, table=TABLE, extra_updates={"lost_reason": "x"}, only_from=[NEW])
+
+    assert exc.value.allowed == [NEW]
+    enquiry.refresh_from_db()
+    assert enquiry.status == PROGRESSING

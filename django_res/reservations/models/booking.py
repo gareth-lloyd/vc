@@ -1,8 +1,8 @@
 """Booking, BookingHold, BookingEvent, BookingNote.
 
-The Booking state machine lives in `06-availability.md`. Every transition
-asserts the source state is in `allowed_from`, mutates inside
-`transaction.atomic`, writes a BookingEvent, and fires the
+The Booking state machine lives in `06-availability.md`; its edges are
+`BOOKING_ALLOWED_TRANSITIONS`. Every transition goes through
+`core.transitions` (lock, guard, save, BookingEvent) and then fires the
 `booking_transitioned` signal.
 """
 
@@ -21,13 +21,14 @@ from django.utils import timezone
 
 from core.exceptions import InvalidTransition, OverlappingBooking
 from core.fields import DateRangeFunc
-from core.locking import refresh_locked
 from core.models.base import AuditedModel, TimestampedModel
 from core.refs import booking_reference, generate_reference
+from core.transitions import transition
 from properties.enums import DescriptionSection
 from properties.models import PropertyDescription
 from reservations.enums import (
     ACTIVE_BOOKING_STATUSES,
+    BOOKING_ALLOWED_TRANSITIONS,
     CONFIRMED_BOOKING_STATUSES,
     OVERLAP_BLOCKING_BOOKING_STATUSES,
     TERMINAL_BOOKING_STATUSES,
@@ -329,7 +330,6 @@ class Booking(AuditedModel):
     # ------------------------------------------------------------------
     def _transition(
         self,
-        allowed_from: tuple[str, ...],
         to: str,
         *,
         actor: Any = None,
@@ -337,49 +337,39 @@ class Booking(AuditedModel):
         reason: str = "",
         extra_updates: dict[str, Any] | None = None,
         meta: dict[str, Any] | None = None,
+        only_from: tuple[str, ...] | None = None,
     ) -> Booking:
-        """Run a single state transition + audit event + signal.
+        """Move through `BOOKING_ALLOWED_TRANSITIONS`, write a BookingEvent, signal.
 
-        The guard runs against *locked, current* DB state: a saved instance's
-        in-memory `status` may be stale (operator double-click, webhook retry
-        racing a manual action), and trusting it would double-fire the
-        transition. `refresh_locked` serialises concurrent callers; the loser
-        re-reads the winner's status and raises `InvalidTransition`.
+        `core.transitions` locks and guards against current DB state, so a
+        stale instance (double-click, webhook retry) loses with
+        `InvalidTransition` and its in-memory state is restored. The signal
+        fires once this method's own transaction block has exited.
         """
         # Local import to avoid the signal module pulling Booking at import time.
         from reservations.signals import booking_transitioned
 
-        prev = self.status
-        snapshot: dict[str, Any] = {}
+        def record(from_status: str, to_status: str) -> None:
+            BookingEvent.objects.create(
+                booking=self,
+                from_status=from_status,
+                to_status=to_status,
+                actor=actor,
+                source=source,
+                reason=reason,
+                meta=meta or {},
+            )
+
         try:
-            with transaction.atomic():
-                if self.pk is not None:
-                    refresh_locked(self)
-                if self.status not in allowed_from:
-                    raise InvalidTransition(self.status, to, allowed=list(allowed_from))
-                prev = self.status
-                snapshot = {"status": prev}
-                if extra_updates:
-                    snapshot.update({f: getattr(self, f) for f in extra_updates})
-                self.status = to
-                update_fields = ["status", "updated_at"]
-                if extra_updates:
-                    for field, value in extra_updates.items():
-                        setattr(self, field, value)
-                        update_fields.append(field)
-                self.save(update_fields=update_fields)
-                BookingEvent.objects.create(
-                    booking=self,
-                    from_status=prev,
-                    to_status=to,
-                    actor=actor,
-                    source=source,
-                    reason=reason,
-                    meta=meta or {},
-                )
+            prev = transition(
+                self,
+                to,
+                table=BOOKING_ALLOWED_TRANSITIONS,
+                extra_updates=extra_updates,
+                record=record,
+                only_from=only_from,
+            )
         except IntegrityError as exc:
-            for field, value in snapshot.items():
-                setattr(self, field, value)
             if to in OVERLAP_BLOCKING_BOOKING_STATUSES and _is_overlap_violation(exc):
                 raise OverlappingBooking(
                     f"Booking {self.reference}: cannot transition to {to!r}; "
@@ -428,7 +418,6 @@ class Booking(AuditedModel):
     ) -> Booking:
         """DRAFT → PENDING_OWNER_APPROVAL."""
         return self._transition(
-            (BookingStatus.DRAFT.value,),
             BookingStatus.PENDING_OWNER_APPROVAL.value,
             actor=actor,
             source=EventSource.SYSTEM.value,
@@ -486,30 +475,30 @@ class Booking(AuditedModel):
     ) -> Booking:
         """DRAFT → AWAITING_DEPOSIT (when property auto-approves bookings)."""
         return self._transition(
-            (BookingStatus.DRAFT.value,),
             BookingStatus.AWAITING_DEPOSIT.value,
             actor=actor,
             source=EventSource.SYSTEM.value,
             reason=reason,
             meta=meta,
             extra_updates=self._house_rules_stamp(),
+            # Owner-approval bookings must go through owner_approve.
+            only_from=(BookingStatus.DRAFT.value,),
         )
 
     def owner_approve(self, *, actor: Any = None, reason: str = "") -> Booking:
         """PENDING_OWNER_APPROVAL → AWAITING_DEPOSIT."""
         return self._transition(
-            (BookingStatus.PENDING_OWNER_APPROVAL.value,),
             BookingStatus.AWAITING_DEPOSIT.value,
             actor=actor,
             source=EventSource.OWNER.value,
             reason=reason,
             extra_updates=self._house_rules_stamp(),
+            only_from=(BookingStatus.PENDING_OWNER_APPROVAL.value,),
         )
 
     def owner_decline(self, reason: str, *, actor: Any = None) -> Booking:
         """PENDING_OWNER_APPROVAL → DECLINED."""
         return self._transition(
-            (BookingStatus.PENDING_OWNER_APPROVAL.value,),
             BookingStatus.DECLINED.value,
             actor=actor,
             source=EventSource.OWNER.value,
@@ -519,7 +508,6 @@ class Booking(AuditedModel):
     def record_deposit(self, payment: Any = None, *, actor: Any = None) -> Booking:
         """AWAITING_DEPOSIT → DEPOSIT_PAID."""
         return self._transition(
-            (BookingStatus.AWAITING_DEPOSIT.value,),
             BookingStatus.DEPOSIT_PAID.value,
             actor=actor,
             source=EventSource.WEBHOOK.value,
@@ -529,7 +517,6 @@ class Booking(AuditedModel):
     def skip_deposit(self, *, actor: Any = None, reason: str = "deposit_not_required") -> Booking:
         """AWAITING_DEPOSIT → DEPOSIT_PAID (no deposit wanted, schedule advance)."""
         return self._transition(
-            (BookingStatus.AWAITING_DEPOSIT.value,),
             BookingStatus.DEPOSIT_PAID.value,
             actor=actor,
             source=EventSource.SYSTEM.value,
@@ -539,7 +526,6 @@ class Booking(AuditedModel):
     def arm_balance(self, *, actor: Any = None) -> Booking:
         """DEPOSIT_PAID → AWAITING_BALANCE (beat task)."""
         return self._transition(
-            (BookingStatus.DEPOSIT_PAID.value,),
             BookingStatus.AWAITING_BALANCE.value,
             actor=actor,
             source=EventSource.SYSTEM.value,
@@ -548,10 +534,6 @@ class Booking(AuditedModel):
     def record_balance(self, payment: Any = None, *, actor: Any = None) -> Booking:
         """AWAITING_BALANCE / DEPOSIT_PAID → BALANCE_PAID."""
         return self._transition(
-            (
-                BookingStatus.AWAITING_BALANCE.value,
-                BookingStatus.DEPOSIT_PAID.value,
-            ),
             BookingStatus.BALANCE_PAID.value,
             actor=actor,
             source=EventSource.WEBHOOK.value,
@@ -561,7 +543,6 @@ class Booking(AuditedModel):
     def check_in(self, *, actor: Any = None) -> Booking:
         """BALANCE_PAID → CHECKED_IN."""
         return self._transition(
-            (BookingStatus.BALANCE_PAID.value,),
             BookingStatus.CHECKED_IN.value,
             actor=actor,
         )
@@ -573,7 +554,6 @@ class Booking(AuditedModel):
         task — both converge on `CHECKED_OUT`.
         """
         return self._transition(
-            (BookingStatus.CHECKED_IN.value,),
             BookingStatus.CHECKED_OUT.value,
             actor=actor,
             source=EventSource.SYSTEM.value,
@@ -581,17 +561,7 @@ class Booking(AuditedModel):
 
     def cancel(self, reason: str, *, actor: Any = None) -> Booking:
         """Any non-terminal → CANCELLED."""
-        allowed = (
-            BookingStatus.DRAFT.value,
-            BookingStatus.PENDING_OWNER_APPROVAL.value,
-            BookingStatus.AWAITING_DEPOSIT.value,
-            BookingStatus.DEPOSIT_PAID.value,
-            BookingStatus.AWAITING_BALANCE.value,
-            BookingStatus.BALANCE_PAID.value,
-            BookingStatus.CHECKED_IN.value,
-        )
         return self._transition(
-            allowed,
             BookingStatus.CANCELLED.value,
             actor=actor,
             reason=reason,
@@ -601,7 +571,6 @@ class Booking(AuditedModel):
     def expire(self, *, actor: Any = None) -> Booking:
         """AWAITING_DEPOSIT → EXPIRED (beat task; deposit window passed)."""
         return self._transition(
-            (BookingStatus.AWAITING_DEPOSIT.value,),
             BookingStatus.EXPIRED.value,
             actor=actor,
             source=EventSource.SYSTEM.value,

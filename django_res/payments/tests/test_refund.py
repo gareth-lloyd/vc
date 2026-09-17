@@ -52,6 +52,21 @@ def paid_balance(db: None, booking: Any, gbp: Any) -> Payment:
     )
 
 
+def test_refund_table_lists_every_status() -> None:
+    """Terminals are explicit empty sets, so a new status can't silently
+    become terminal by omission."""
+    from payments.enums import REFUND_ALLOWED_TRANSITIONS
+
+    assert set(REFUND_ALLOWED_TRANSITIONS) == set(RefundStatus.values)
+    for terminal in (
+        RefundStatus.REJECTED,
+        RefundStatus.SUCCEEDED,
+        RefundStatus.FAILED,
+        RefundStatus.CANCELLED,
+    ):
+        assert REFUND_ALLOWED_TRANSITIONS[terminal.value] == frozenset()
+
+
 @pytest.mark.django_db
 def test_refund_state_machine__request_approve_execute_creates_payment(
     booking: Any,

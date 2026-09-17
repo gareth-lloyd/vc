@@ -1,5 +1,40 @@
 # BUG-015 — State-machine transitions hand-rolled four ways; SD's bare `ValueError` maps unrelated errors to false 409s, and some lifecycles are unguarded
 
+> **✅ RESOLVED (2026-09-17, local `main` unpushed)** — shipped on `feat/bug-015`
+> in 10 units (20f1cee2 primitive, facda6c4 SD typed errors, 55ba58dc
+> Payment/Refund, 768716a3 Booking, e7921545 Enquiry, a165447f Quotation,
+> e4ad2723 DamageClaim/Property, eb780e4c + d8680ec8 BookingHold, docs).
+> **Fix:** `core/transitions.py` (`transition` / `assert_allowed` /
+> `can_transition`) is the one lock → table guard → `save(update_fields)` →
+> event-writer primitive (event row where the aggregate has an event table),
+> and all nine status machines route through it against a single
+> `<ENTITY>_ALLOWED_TRANSITIONS` table in their app's `enums.py` — the one
+> bulk exception is `HoldService.release_for_*` (`queryset.update()` on LIVE
+> holds, no audit row, as before). It is **Q-024-neutral** — no signal moved. SD refusals are typed
+> (`InvalidTransition` 409, `InvalidSecurityDepositKind`,
+> `DomainValidationError` 400) and `track.py::_service_call` now remaps only
+> `IntegrityError`, so an unrelated `ValueError` is a real error again, not a
+> false 409. Callers stop re-listing allowed-from (`can_transition` in
+> quotation accept/transmission and SD claim → DamageClaim settle; the
+> quotation `:convert` view no longer re-derives it); rules deliberately
+> narrower than a table (the SD booking-terminal signal, gateway
+> capture/void, quotation editability) keep an explicit, commented tuple.
+> `BookingHold` gained a `status` column (LIVE / RELEASED / EXPIRED,
+> migrations 0014 backfill + 0015 constraints) with a CHECK tying
+> `released_at IS NULL` ⇔ LIVE, so a released-and-live row is
+> unrepresentable. Expiry is per row and re-checked under the lock; readers
+> share `BookingHold.live_q()`; closed or lapsed holds are read-only; an
+> explicit past `expires_at` is a 400; new `HoldService.extend`.
+> **Stale in this ticket:** `DamageClaim` was already guarded
+> (`DamageClaimService._transition`) — only its enum docstring said
+> otherwise; it now shares the primitive. **Deferred:** OwnerBlock
+> cancel/contest; `Enquiry.set_lead_status`'s bare `ValueError` (not a
+> transition, view pre-validates); surfacing `InvalidTransition.allowed` in
+> the API body. **Deploy note:** between `migrate` and the instance swap, old
+> code's bulk hold release violates the new CHECK (accepted; no live traffic).
+>
+> _Original ticket preserved below for context._
+
 - **Severity:** 🔴 Bug
 - **Source:** the 2026-07-02 backend complexity audit (transition enforcement scattered)
 - **Files:** `payments/models/security_deposit.py:165–327` (bare `ValueError`

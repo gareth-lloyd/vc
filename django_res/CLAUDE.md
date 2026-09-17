@@ -167,6 +167,32 @@ Booking is uniquely tied to its QuotationLine, so
 `BookingService.create_from_quotation_line` checks the FK first. References:
 `RefundService.request` / `execute`.
 
+### State transitions go through `core.transitions`
+
+Every status-enum lifecycle (Booking, Enquiry, Quotation, Payment, Refund,
+SecurityDeposit, DamageClaim, Property, BookingHold) declares one
+`<ENTITY>_ALLOWED_TRANSITIONS: dict[str, frozenset[str]]` table in its app's
+`enums.py` (terminal statuses listed explicitly as `frozenset()`) and moves
+through `core.transitions.transition(instance, to, table=…, extra_updates=…,
+record=…)`: one `transaction.atomic` block that locks and re-reads the row,
+guards against the table, saves with `update_fields` (so the AuditLog trail
+fires), then calls `record(prev, to)` to write the aggregate's event row where
+it has one (Booking, Enquiry, Payment, Refund, SecurityDeposit). An
+illegal move raises `InvalidTransition` (409 `invalid_transition`); on any
+failure the in-memory status and extras are restored. Signals stay where each
+entity fires them (Q-024 is undecided). Callers that only need "could this
+move?" use `can_transition` / `assert_allowed` against the same table rather
+than restating a status tuple; a rule deliberately *narrower* than the table
+(e.g. a gateway action, an editability check) keeps its explicit tuple with a
+one-line comment saying why. Bad input on a transition path is
+`DomainValidationError` (400), never a bare `ValueError`. Pin each table with a
+"lists every status" test. References: `Booking._transition`,
+`SecurityDeposit` wrappers (lock → kind guard → `assert_allowed` → bounds →
+transition). Known exceptions: `HoldService.release_for_*` bulk-release LIVE
+holds with `queryset.update()` (filter = the table's from-set, no audit row, by
+design), and `OwnerBlock` cancel/contest is still hand-rolled with no table
+(deferred from BUG-015).
+
 ### Service-layer permission checks
 
 State-mutating services take an `actor` kwarg and call

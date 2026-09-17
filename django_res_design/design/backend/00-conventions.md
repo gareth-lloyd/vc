@@ -235,7 +235,7 @@ The legacy `SchedullerJob` class was checked in but `[DISABLED]` in production (
 
 | Task | App | Schedule | Purpose |
 |---|---|---|---|
-| `expire_holds` | `reservations` | every 1 min | Sets `released_at = now()` on `BookingHold`s past `expires_at`; emits `hold_expired` signal. See `06-availability.md`. |
+| `expire_holds` | `reservations` | every 1 min | Moves LIVE `BookingHold`s past `expires_at` to EXPIRED (per row, re-checked under the lock; stamps `released_at`) via `HoldService.expire_lapsed`; emits `hold_expired` per hold. See `06-availability.md`. |
 | `escalate_pending_owner_approvals` | `reservations` | every 1 h | Owner-approval requests pending past a configurable threshold emit `owner_approval_reminder` for `comms`. Does not auto-approve. |
 | `send_payment_reminders` | `payments` | every 1 h | Per-purpose reminder logic (deposit due, balance 7-day warning, balance due, SD due). Idempotent via `EmailLog` correlation lookup (no `Payment.reminder_sent_at` column needed). |
 | `process_sd_refunds` | `payments` | every 1 h | `SecurityDeposit.kind=PRE_AUTH_HOLD` → triggers `:release` on/after `release_scheduled_for`; `BT_REFUNDABLE` → opens a `Refund` row and queues `:execute`. Flagged for ops review if a damage claim is pending on the booking. |

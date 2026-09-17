@@ -121,11 +121,21 @@ so FKs still resolve but the row is not selectable (GAP-107); `Extra` and
 per-villa rows — the owner-contact fallback rows stay `NULL`).
 
 ### State machines
-Each lifecycle model (`Booking`, `Payment`, `Quotation`, …) has:
+Each lifecycle model (`Booking`, `Enquiry`, `Quotation`, `Payment`, `Refund`,
+`SecurityDeposit`, `DamageClaim`, `Property`, `BookingHold`) has
+(`OwnerBlock` is the hand-rolled exception, deferred from BUG-015):
 - a `status` `CharField(choices=…)` with an explicit enum
-- per-transition methods on the model (e.g. `Booking.submit_for_approval()`)
-- transitions wrapped in `transaction.atomic()`, writing an event row and
-  emitting a signal
+- one `<ENTITY>_ALLOWED_TRANSITIONS` table in the app's `enums.py` — the only
+  statement of which moves are legal (BUG-015)
+- per-transition methods (e.g. `Booking.submit_for_approval()`,
+  `BookingHold.release()`) that all go through
+  `core.transitions.transition`: lock + re-read, table guard
+  (`InvalidTransition` → 409), `save(update_fields=…)` so the AuditLog trail
+  fires, then the event-row writer for aggregates that have an event table
+  (Booking, Enquiry, Payment, Refund, SecurityDeposit), in one
+  `transaction.atomic()`; signals are fired by the wrapper as before. The one
+  bulk path is `HoldService.release_for_*` (`queryset.update()` on LIVE holds,
+  no audit row)
 - `CheckConstraint`s enforcing date/status coherence
 
 ### Property settings/finance defaults (no runtime inheritance)

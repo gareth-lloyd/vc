@@ -252,7 +252,7 @@ Other previously-soft-deletable models are reassigned as follows:
 - **`is_active` boolean only:** `User` (Django standard), `Currency`, `Country`, `Region`, `FeatureCategory`, `Feature`, `Collection`, `NearbyPlaceType`, `RatePlan`, `RateCard`, `RateRule`, `Discount`, `Extra`, `ChangeOverRule`, `EmailTemplate`, `SmtpProfile`.
 - **Hard delete (CASCADE from owner, PROTECT from references):** `PropertyLocation`, `PropertyCapacity`, `PropertySettings`, `Room`, `RoomBeds`, `PropertyImage`, `PropertyNearbyPlace`, `PersonEmail`, `PersonPhone`, `CollectionMembership`, `PropertyContactAssignment`, `Commission`, `TaxPolicy`, `BankAccount`, `PaymentSchedule`, `SecurityDepositPolicy`, the group-level finance siblings.
 - **Append-only event/audit (never deleted):** `BookingEvent`, `PaymentEvent`, `EnquiryEvent`, `WebhookDelivery`, `SyncRun`, `SyncIssue`, `EmailLog`, `FxRate`, `AuditLog`.
-- **Terminal-timestamp lifecycle (already in design):** `BookingHold.released_at` (expired/released holds stay visible; only the partial `EXCLUDE` index treats them as inactive). `Booking.archived_at` (orthogonal operator-facing tidy-out flag; the underlying terminal `status` still tells the truth).
+- **Terminal-timestamp lifecycle (already in design):** `Booking.archived_at` below. (`BookingHold` began here on `released_at` alone; since BUG-015 it has a `status` enum LIVE/RELEASED/EXPIRED, with `released_at` kept as the close time — closed holds stay visible; only the partial `EXCLUDE` index treats them as inactive.) `Booking.archived_at` (orthogonal operator-facing tidy-out flag; the underlying terminal `status` still tells the truth).
 
 ## What we did *not* break
 

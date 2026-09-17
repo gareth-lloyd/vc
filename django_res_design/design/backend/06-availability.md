@@ -14,20 +14,22 @@ A soft reservation protecting a villa's dates. Replaces the legacy `OnHold` (sta
 
 > **Holds are a manual operator action — quotations never place them automatically.** Quoting is the soft part of the sales process (legacy parity: the quote generator's explicit Hold / Remove-hold buttons): creating, duplicating, or editing a quotation line never blocks availability, and a quote may legitimately be saved over dates someone else holds. An operator places a line's hold deliberately via `POST /quotations/{qid}/lines/{id}:hold` (`QuotationService.hold_line` — idempotent, reason `QUOTATION_OPEN`, expiry from the property's effective `hold_duration_hours`, ~48h default) and releases it via `:release-hold` (never status-guarded — freeing inventory must always be possible). Editing a held line's dates *moves* the live hold (`move_line_hold`, preserving its expiry); editing an un-held line never conjures one.
 
-**Lifecycle is the `released_at` timestamp**, not a soft-delete flag. Live holds satisfy `released_at IS NULL AND expires_at > now()`; expired or manually released holds carry a `released_at` value and are visible to any query that wants them (the partial `EXCLUDE` index simply excludes them from the no-overlap rule). The Celery `expire_holds` beat task sets `released_at = now()` on expired rows — it does not delete them.
+**Lifecycle is a `status` column** (`BookingHoldStatus`: `LIVE` → `RELEASED` | `EXPIRED`, table `HOLD_ALLOWED_TRANSITIONS`, BUG-015), not a soft-delete flag. Both closes stamp `released_at` (a CHECK ties `released_at IS NULL` ⇔ `LIVE`); the status records *which* close happened, since only expiry emails the agent. **Live** is `BookingHold.live_q()` / `is_live()`: `status = LIVE AND (expires_at IS NULL OR expires_at > now())` — a lapsed hold stays `LIVE` in the DB until swept, because Postgres rejects `now()` in an index predicate, so the `EXCLUDE` gates on `status = LIVE` alone and mutating paths opportunistically expire lapsed overlapping holds first. Closed holds are kept, never deleted, and are read-only: `update_block` / `move` / `extend` refuse a hold that is no longer live (`ReadOnlyHold`, 409), and an explicit past `expires_at` is a 400.
 
 - `property` — FK properties.Property CASCADE
 - `quotation` — FK Quotation CASCADE, null=True
 - `booking` — FK Booking CASCADE, null=True
 - `date_from`, `date_to` — DateField
-- `expires_at` — DateTimeField(db_index=True)
-- `released_at` — DateTimeField(null=True, blank=True)
+- `expires_at` — DateTimeField(db_index=True, null=True) — NULL = indefinite owner/maintenance block
+- `status` — `BookingHoldStatus` (`LIVE` default, also `db_default`)
+- `released_at` — DateTimeField(null=True, blank=True) — when it closed
 - `reason` — TextChoices (`QUOTATION_OPEN`, `BOOKING_DEPOSIT_PENDING`, `OWNER_BLOCK`, `MAINTENANCE`, `MANUAL`, `STOP_SALE`)
 
 Constraints:
 - `CheckConstraint(date_from < date_to)`
 - `CheckConstraint(quotation IS NOT NULL OR booking IS NOT NULL OR reason IN ('OWNER_BLOCK','MAINTENANCE','MANUAL','STOP_SALE'))`
-- `EXCLUDE USING gist (property_id WITH =, daterange(date_from, date_to, '[)') WITH &&) WHERE (released_at IS NULL AND expires_at > now())` — no overlapping live holds for a property
+- `CheckConstraint bookinghold_status_matches_released_at` — `LIVE` ⇔ `released_at IS NULL`
+- `EXCLUDE USING gist (property_id WITH =, daterange(date_from, date_to, '[)') WITH &&) WHERE (status = 'live')` — no overlapping live holds for a property
 - An equivalent exclude on `Booking` (see 05-reservations.md) covers active bookings.
 
 Together the two exclude constraints make double-booking impossible at the DB level.
@@ -62,7 +64,7 @@ frontend derives display status and geometry from the intervals.
 
 Implementation of `is_available`:
 1. Check no Booking *occupies* the range (`Booking.objects.occupying` — any status **not** in `TERMINAL_BOOKING_STATUSES`). This is deliberately broader than the DB `OVERLAP_BLOCKING` write-constraint set: it also catches resting `DRAFT` rows (see below) that the constraint lets overlap.
-2. Check no live BookingHold overlaps (`released_at IS NULL AND expires_at > now()`), optionally excluding hold ids we own (so a quotation can convert to a booking without fighting its own hold).
+2. Check no live BookingHold overlaps (`BookingHold.live_q()`), optionally excluding hold ids we own (so a quotation can convert to a booking without fighting its own hold).
 3. Check check-in date matches `ChangeOverRule` for the property (any rule for the active window must allow the weekday; if zero rules, all weekdays allowed).
 4. Check `PropertySettings.min_nights_rental` (effective value after group fallback).
 5. Return bool.
@@ -114,9 +116,12 @@ The search layer itself does not call `AvailabilityService.is_available()` per p
 ```
 created (operator action: lines/{id}:hold → QuotationService.hold_line,
          or an operator block via the availability endpoints)
-  → released_at set      (operator :release-hold; line delete signal;
-                          quotation :withdraw; booking conversion)
-  → expires_at reached    (Celery beat task sets released_at = now())
+  → RELEASED             (operator :release-hold; line delete signal;
+                          quotation :withdraw; booking conversion — the last
+                          three bulk-update LIVE rows, no audit row)
+  → EXPIRED              (expires_at passed: beat task or an opportunistic
+                          sweep inside place/move/update_block)
+  (both stamp released_at; :extend-hold pushes expires_at on a live hold)
 ```
 
 Quotation **expiry** does *not* release line holds: a hold carries its own
@@ -127,16 +132,13 @@ deliberate, since the operator placed it as a significant action — and
 Withdrawal (`:withdraw`) and conversion to a booking still release every hold
 on the quotation immediately.
 
-A Celery beat task `reservations.tasks.expire_holds` runs every minute:
+A Celery beat task `reservations.tasks.expire_holds` runs every minute and
+calls `HoldService.expire_lapsed`: it selects `status = LIVE AND expires_at <
+now()` in pk order, then per row locks, re-checks (a hold released, extended or
+deleted since the select is skipped) and moves it to `EXPIRED` through the
+transition primitive — so each expiry lands on the AuditLog trail.
 
-```sql
-UPDATE reservations_bookinghold
-SET released_at = now()
-WHERE released_at IS NULL AND expires_at < now()
-RETURNING id, property_id, quotation_id;
-```
-
-The returning rows fan out a `hold_expired(hold)` Django signal. The `comms` app listens (see `10-comms.md`) and dispatches a `hold.expired` email to the agent who created the hold. Auto-expiry is **enabled from day one** — the legacy scheduler was `[DISABLED]` (see `workflows/06-availability/holds.md`), which forced manual cleanup. This Celery beat task replaces that gap.
+Each expired hold fans out a `hold_expired(hold)` Django signal straight after its row is expired — committed in the beat sweep, but only a savepoint when the opportunistic sweep runs inside `place`/`move`/`update_block`, so listeners with side effects must defer to `transaction.on_commit` (the comms email already does). The `comms` app listens (see `10-comms.md`) and dispatches a `hold.expired` email to the agent who created the hold. Auto-expiry is **enabled from day one** — the legacy scheduler was `[DISABLED]` (see `workflows/06-availability/holds.md`), which forced manual cleanup. This Celery beat task replaces that gap.
 
 ## Booking state machine
 

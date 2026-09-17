@@ -10,6 +10,9 @@ duplicate gateway calls.
 `refresh_locked` is the shared fix: take `SELECT … FOR UPDATE` on the row and
 reload the instance in place *before* the guard runs, so the second caller
 serialises behind the first and its guard sees the freshly-committed state.
+
+Most callers reach it through `core.transitions.transition`, which wraps the
+lock with the table guard, the save and the event write.
 """
 
 from __future__ import annotations

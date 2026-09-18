@@ -196,7 +196,7 @@ function QuotesSection({
           </Badge>
         ) : null}
       </div>
-      <EnquiryQuoteStack quotations={enquiry.quotations} />
+      <EnquiryQuoteStack quotations={enquiry.quotations} enquiryStatus={enquiry.status} />
       {hasRole ? (
         <div className="space-y-4">
           <Button

@@ -1,5 +1,46 @@
 # GAP-117 — `/bookings` has no "Imported bookings" tab (imported `PastStay` rows are only reachable per client)
 
+> **✅ RESOLVED (2026-09-18, local main unpushed)** — 4 code units on
+> `feat/gap-117`:
+> - **Endpoint:** a staff-only, read-only `GET /api/v1/past-stays`
+>   (`PastStayListView`, `reservations/views/past_stays.py`).
+>   - It uses `PastStayListSerializer`, which is `ContactPastStaySerializer`
+>     plus `person` and a nullable `person_name`.
+>   - `?search=` matches the guest's first and last name, `villa_name`,
+>     the property's name and display name, and `booking_number`.
+>   - `?ordering=` is disabled. The order is `Meta.ordering` plus a `pk`
+>     tie-break, so paging across clients is stable.
+>   - The query count is pinned at 4.
+>   - A test pins that an app `Booking` never appears.
+> - **Shared row code:** the row schema and formatting moved to
+>   `frontend/src/lib/domain/importedBooking.ts`.
+> - **Relabel:** the client-profile accordion and the RepeatBadge count now
+>   read "Imported bookings" (el "Εισαγόμενες κρατήσεις"). Only the values
+>   changed; the keys did not.
+> - **Tab:** `/bookings` has Radix tabs driven by `?tab=imported`.
+>   - Switching tab pushes a history entry and clears the other tab's params.
+>   - Arrow keys only move focus (manual activation).
+>   - Only the active tab mounts.
+>   - `ImportedBookingsTab` has search, server pagination and no sort.
+>     Guest links go to `/clients/:id/details` ("Unnamed client" when the name
+>     is blank); villa links go to `/properties/:id`, or show the sheet name.
+>
+> **Deviations from the proposal below:**
+> 1. The shared code lives in `lib/domain/importedBooking.ts`, not
+>    `features/contacts/…`. eslint-boundaries forbids `bookings → contacts`
+>    and accepts no new edges. `contacts/schemas.ts` re-exports the schema
+>    under its old `contactPastStay*` names.
+> 2. The URL is `/api/v1/past-stays` (the v1 mount, no trailing slash).
+> 3. The query key is `queryKeys.importedBookings.list`.
+> 4. The i18n block is `bookings:list_tabs.*` because `tabs.*` is already
+>    used by the booking detail tabs.
+> 5. RepeatBadge's "N past stays" count was relabelled too.
+>
+> **Accepted:** the new key is not invalidated on contact merge or
+> anonymise. A stale row lasts at most the global staleTime.
+>
+> **Deferred:** extra filters and sorting, CSV export, and a row detail page.
+
 - **Severity:** 🟡 Gap (frontend + one small read endpoint). The data is
   loaded and shown per client; there is no cross-client list.
 - **Source:** owner request, 2026-09-18 — a simple tab on the /bookings view

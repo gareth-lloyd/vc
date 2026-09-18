@@ -4,8 +4,13 @@ The "Booking History" sheet carries (name, booking number, villa, destination,
 year) and nothing else: no dates, no money, no occupancy, no terms. A real
 `Booking` needs all of those, and inventing them would put placeholder stays on
 calendars and in finance totals. `PastStay` is the honest minimal record: it
-feeds the Customer-360 "Past stays" list and the derived `is_repeat_customer`
-flag, and is never scheduled, invoiced, or pushed to Zoho (deferred).
+feeds the Customer-360 list, the /bookings tab (GAP-117) and the derived
+`is_repeat_customer` flag, and is never scheduled, invoiced, or pushed to Zoho
+(deferred).
+
+UI name: "Imported bookings" — the code keeps `PastStay`. Rows come only from
+the cutover importers below; the app never creates one, and a completed app
+`Booking` never becomes one.
 
 GAP-113: legacy `VillaArchiveBookings` re-keyed many of those stays with exact
 dates and the amount staff recorded, so `date_from` / `date_to` / `amount` /

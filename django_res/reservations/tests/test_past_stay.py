@@ -2,8 +2,9 @@
 from Nick's spreadsheets (villa + year + booking number). GAP-113 adds the
 optional exact dates and recorded amount from legacy `VillaArchiveBookings`.
 
-Surfaces on Customer-360 as "Past stays" and folds into the derived
-`is_repeat_customer` flag on both `/contacts/{id}` and `/clients`.
+Surfaces on Customer-360 and the /bookings tab as "Imported bookings" (GAP-117)
+and folds into the derived `is_repeat_customer` flag on both `/contacts/{id}`
+and `/clients`.
 """
 
 from __future__ import annotations
@@ -21,9 +22,12 @@ from accounts.factories import CustomerPersonFactory
 from accounts.models import Person, User
 from core.enums import StaffRole
 from core.models import AuditLog
+from core.tests import assert_max_queries
 from pricing.models import Currency
 from properties.models import Property
-from reservations.models import PastStay
+from reservations.enums import BookingStatus
+from reservations.factories import TermsVersionFactory, make_occupying_booking
+from reservations.models import PastStay, TermsVersion
 
 pytestmark = pytest.mark.django_db
 
@@ -285,3 +289,171 @@ def test_person_merge_moves_past_stays(person: Person) -> None:
     stay.refresh_from_db()
     assert stay.person == target
     assert not Person.objects.filter(pk=person.pk).exists()
+
+
+# ----------------------------------------------------------------------
+# GAP-117: cross-client `GET /past-stays` — the "Imported bookings" tab on
+# /bookings. Imported rows only: an app-created `Booking` never appears.
+# ----------------------------------------------------------------------
+
+PAST_STAYS_URL = "/api/v1/past-stays"
+
+
+def test_past_stays_list_rejects_anonymous(api_client: APIClient) -> None:
+    assert api_client.get(PAST_STAYS_URL).status_code == 403
+
+
+def test_past_stays_list_requires_staff(api_client: APIClient) -> None:
+    user = User.objects.create_user(is_staff=False, email="owner@example.com", password="x")
+    api_client.force_login(user)
+
+    assert api_client.get(PAST_STAYS_URL).status_code == 403
+
+
+def test_past_stays_list_spans_clients_with_guest_fields(
+    api_client: APIClient, staff: User, person: Person, property_: Property, gbp: Currency
+) -> None:
+    other = cast(Person, CustomerPersonFactory(first_name="Olga", last_name="Other"))
+    mine = _stay(
+        person,
+        booking_number="BN500",
+        villa_name="Test Villa",
+        property=property_,
+        destination="Corfu",
+        year=2023,
+        date_from=date(2023, 8, 3),
+        amount=Decimal("4250.00"),
+        currency=gbp,
+    )
+    theirs = _stay(other, booking_number="BN10", villa_name="Villa Unknown", year=2017)
+    api_client.force_login(staff)
+
+    response = api_client.get(PAST_STAYS_URL)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 2
+    assert [r["id"] for r in body["results"]] == [mine.pk, theirs.pk]
+    assert body["results"][0] == {
+        "id": mine.pk,
+        "booking_number": "BN500",
+        "villa_name": "Test Villa",
+        "property": property_.pk,
+        "property_name": "Test Villa",
+        "destination": "Corfu",
+        "year": 2023,
+        "notes": "",
+        "date_from": "2023-08-03",
+        "date_to": "2023-08-10",
+        "amount": "4250.00",
+        "currency_code": "GBP",
+        "person": person.pk,
+        "person_name": person.display_name,
+    }
+    assert body["results"][1]["person"] == other.pk
+    assert body["results"][1]["person_name"] == "Olga Other"
+    assert body["results"][1]["currency_code"] is None
+
+
+def test_past_stays_list_null_person_name_when_name_blank(
+    api_client: APIClient, staff: User
+) -> None:
+    nameless = Person.objects.create(first_name="", last_name="", kind="customer")
+    _stay(nameless)
+    api_client.force_login(staff)
+
+    row = api_client.get(PAST_STAYS_URL).json()["results"][0]
+
+    assert row["person"] == nameless.pk
+    assert row["person_name"] is None
+
+
+def test_past_stays_list_keeps_model_ordering_and_ignores_ordering_param(
+    api_client: APIClient, staff: User, person: Person
+) -> None:
+    old = _stay(person, year=2017, notes="a")
+    undated = _stay(person, year=None, notes="b")
+    late = _stay(person, year=2023, date_from=date(2023, 9, 1), notes="c")
+    early = _stay(person, year=2023, date_from=date(2023, 5, 1), notes="d")
+    api_client.force_login(staff)
+
+    expected = [late.pk, early.pk, old.pk, undated.pk]
+    for url in (PAST_STAYS_URL, f"{PAST_STAYS_URL}?ordering=notes"):
+        assert [r["id"] for r in api_client.get(url).json()["results"]] == expected
+
+
+def test_past_stays_list_breaks_ordering_ties_by_pk(
+    api_client: APIClient, staff: User, person: Person
+) -> None:
+    # Identical sort keys (sheet rows: same year, no dates, blank number) must
+    # still page deterministically.
+    tied = [_stay(person, year=2019, booking_number="").pk for _ in range(3)]
+    api_client.force_login(staff)
+
+    assert [r["id"] for r in api_client.get(PAST_STAYS_URL).json()["results"]] == tied
+
+
+@pytest.mark.parametrize("term", ["Zanzibar", "Villa Kamara", "BN777", "Grand Kamara"])
+def test_past_stays_list_search(
+    api_client: APIClient, staff: User, person: Person, property_: Property, term: str
+) -> None:
+    property_.display_name = "Grand Kamara Estate"
+    property_.save()
+    guest = cast(Person, CustomerPersonFactory(first_name="Ann", last_name="Zanzibar"))
+    hits = {
+        "Zanzibar": lambda: _stay(guest),
+        "Villa Kamara": lambda: _stay(person, villa_name="Villa Kamara"),
+        "BN777": lambda: _stay(person, booking_number="BN777"),
+        "Grand Kamara": lambda: _stay(person, villa_name="Sheet name", property=property_),
+    }
+    hit = hits[term]()
+    decoy = _stay(person, villa_name="Villa Decoy", booking_number="BN1")
+    api_client.force_login(staff)
+
+    ids = [r["id"] for r in api_client.get(PAST_STAYS_URL, {"search": term}).json()["results"]]
+
+    assert hit.pk in ids
+    assert decoy.pk not in ids
+
+
+def test_past_stays_list_excludes_app_bookings(
+    api_client: APIClient, staff: User, person: Person, property_: Property, gbp: Currency
+) -> None:
+    booking = make_occupying_booking(
+        property=property_,
+        person=person,
+        currency=gbp,
+        terms=cast(TermsVersion, TermsVersionFactory()),
+        date_from=date(2024, 6, 1),
+        date_to=date(2024, 6, 8),
+    )
+    booking.status = BookingStatus.CHECKED_OUT
+    booking.save()
+    stay = _stay(person)
+    api_client.force_login(staff)
+
+    body = api_client.get(PAST_STAYS_URL).json()
+
+    assert body["count"] == 1
+    assert [r["id"] for r in body["results"]] == [stay.pk]
+
+
+# Session + user + COUNT + page SELECT (person/property/currency joined).
+QUERY_PIN = 4
+
+
+def test_past_stays_list_query_count_is_flat(
+    api_client: APIClient, staff: User, property_: Property, gbp: Currency
+) -> None:
+    def seed(n: int) -> None:
+        for i in range(n):
+            guest = cast(Person, CustomerPersonFactory())
+            _stay(guest, property=property_, amount=Decimal("1.00"), currency=gbp, year=2000 + i)
+
+    api_client.force_login(staff)
+    seed(2)
+    with assert_max_queries(QUERY_PIN):
+        assert api_client.get(PAST_STAYS_URL).status_code == 200
+    seed(6)
+    with assert_max_queries(QUERY_PIN):
+        assert api_client.get(PAST_STAYS_URL).json()["count"] == 8

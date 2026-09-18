@@ -15,6 +15,7 @@ from rest_framework import serializers
 
 from reservations.enums import QuotationStatus
 from reservations.models import Booking, Enquiry, GuestPreference, PastStay, Quotation
+from reservations.serializers._contact_reads import contact_name
 
 
 class ContactBookingSerializer(serializers.ModelSerializer[Booking]):
@@ -177,3 +178,18 @@ class ContactPastStaySerializer(serializers.ModelSerializer[PastStay]):
         if prop is None:
             return None
         return prop.display_name or prop.name
+
+
+class PastStayListSerializer(ContactPastStaySerializer):
+    """GAP-117 row for the cross-client `/past-stays` list — the UI's "Imported
+    bookings" (legacy-imported `PastStay`s only, never a `Booking`). The contact
+    row plus the guest: `person` pk and `person_name` (null when the name is blank)."""
+
+    person_name = serializers.SerializerMethodField()
+
+    class Meta(ContactPastStaySerializer.Meta):
+        fields = [*ContactPastStaySerializer.Meta.fields, "person", "person_name"]
+        read_only_fields = fields
+
+    def get_person_name(self, obj: PastStay) -> str | None:
+        return contact_name(obj.person)

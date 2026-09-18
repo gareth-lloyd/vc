@@ -40,6 +40,7 @@ from reservations.views import (
     OwnerBookingViewSet,
     OwnerDashboardView,
     OwnerPropertyCalendarView,
+    PastStayListView,
     PropertyAvailabilityView,
     QuotationLineViewSet,
     QuotationSearchOptionsView,
@@ -105,6 +106,9 @@ _contact_read_routes: list[URLPattern | URLResolver] = [
 # ----------------------------------------------------------------------
 _client_routes: list[URLPattern | URLResolver] = [
     path("clients", ClientListView.as_view(), name="client-list"),
+    # GAP-117: legacy-imported stays across all clients — the UI's "Imported
+    # bookings" tab on /bookings (never app-created `Booking`s).
+    path("past-stays", PastStayListView.as_view(), name="past-stay-list"),
 ]
 
 

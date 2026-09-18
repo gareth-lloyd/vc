@@ -42,6 +42,7 @@ from reservations.views.owner import (
     OwnerPropertyCalendarView,
 )
 from reservations.views.owner_block_update import OwnerBlockUpdateViewSet
+from reservations.views.past_stays import PastStayListView
 from reservations.views.quotation import QuotationLineViewSet, QuotationViewSet
 from reservations.views.quote_options import QuotationSearchOptionsView
 from reservations.views.terms import (
@@ -81,6 +82,7 @@ __all__ = [
     "OwnerBookingViewSet",
     "OwnerDashboardView",
     "OwnerPropertyCalendarView",
+    "PastStayListView",
     "PropertyAvailabilityView",
     "QuotationLineViewSet",
     "QuotationSearchOptionsView",

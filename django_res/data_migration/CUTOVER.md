@@ -203,7 +203,19 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > ./manage.py relink_enquiry_customers
 > ./manage.py import_archive_stays --dry-run       # GAP-113, see below
 > ./manage.py import_archive_stays
+> ./manage.py relink_enquiry_customers             # again — see the note below
 > ```
+>
+> **`relink_enquiry_customers` runs twice, and the second run is not
+> optional** (run 8, 2026-09-18). `import_archive_stays` mints people of its
+> own — 7 on the reference load — and some of them are the holder of an
+> e-mail that a still-sentinel enquiry was waiting for, so they make a handful
+> of enquiries relinkable that were not when the first relink ran. Skip the
+> second run and `reconcile_legacy` blocks on the GAP-112 invariant: run 8 saw
+> `Quotation on unknown client with a relinkable enquiry` = **2**, and the
+> second relink moved exactly those 2 quotations and 3 enquiries, after which
+> the gate passed. The command is idempotent, so a second run costs nothing
+> when the archive import unlocked nothing.
 >
 > Each prints created / updated / skipped-per-reason counts plus the villa
 > and person names it could not resolve (left unlinked or skipped —
@@ -241,12 +253,15 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > imports — so those enquiries load customer-less and their quotations fall to
 > the unknown-client sentinel ([§4d](#4d-customers-load-straight-to-person-gap-045)).
 > `relink_enquiry_customers` re-asks the loader's question once both sheets are
-> in, and must run **after `import_past_bookers` and before `reconcile_legacy`
+> in, and must run **after `import_past_bookers`, again after
+> `import_archive_stays`, and before `reconcile_legacy`
 > and any `zoho_backfill --kinds enquiry`** (a relinked enquiry pushed before
 > it would reach Zoho without its contact). It prints, per category, how many
 > enquiries and quotations it relinked or left alone, plus the guest
 > preferences that followed their quotation; `--dry-run` rolls back. It is
-> re-runnable — a second run relinks nothing — and never touches an enquiry
+> re-runnable — a second run relinks nothing unless something has since minted
+> the person an enquiry was waiting for, which is exactly why
+> `import_archive_stays` is followed by another run — and never touches an enquiry
 > without a legacy `legacy_id` (a sheet or post-go-live one). On the run-5
 > database (13-Aug-2026 `ResProd` + both sheets) it gave, over the 321
 > sentinel quotations — re-derive these on the day, don't compare to them:
@@ -265,8 +280,10 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > **Then date the past stays from `VillaArchiveBookings` (GAP-113).** Between
 > Dec-2025 and Mar-2026 staff re-keyed sheet stays into legacy with exact
 > dates, amount, currency and the lead guest's contact details.
-> `import_archive_stays` runs **after `relink_enquiry_customers` and before
-> `reconcile_legacy`**. It reads the live rows, folds re-saves of one stay
+> `import_archive_stays` runs **after `relink_enquiry_customers`, and is
+> itself followed by a second `relink_enquiry_customers` (the people it mints
+> unlock a few more enquiries), before `reconcile_legacy`**. It reads the live
+> rows, folds re-saves of one stay
 > into a single stay (same villa, overlapping dates, same `BN…` number, or
 > else the same e-mail or surname), and matches each stay against the
 > `sheet-stay-…` rows:
@@ -898,7 +915,7 @@ query returns nothing.
 | `Booking with legacy_id` | A booking loader ran against the legacy DB. It is unregistered (GAP-089): historic stays arrive from the Past Bookers sheet as `PastStay` rows, which carry no `legacy_id`. |
 | `Payment with legacy_id` | As above, for `Payment`. |
 | `BookingChargeItem with legacy_id` | As above, for `BookingChargeItem`. |
-| `Quotation on unknown client with a relinkable enquiry` | The `relink_enquiry_customers` step ([§4](#4-run-every-loader), GAP-112) was skipped or has gone stale: a loaded quotation is still on the unknown-client sentinel although its enquiry has a person, or is one the relink would link now (268 on the run-5 DB before the step). The ambiguous and unresolvable remainder (53 there) is deliberately not counted — it depends on the sheet contents and moves with §6g merges. |
+| `Quotation on unknown client with a relinkable enquiry` | The `relink_enquiry_customers` step ([§4](#4-run-every-loader), GAP-112) was skipped or has gone stale: a loaded quotation is still on the unknown-client sentinel although its enquiry has a person, or is one the relink would link now (268 on the run-5 DB before the step). **The usual cause of a small non-zero here is a missed *second* relink** — `import_archive_stays` mints people after the first one, so run 8 sat at 2 until the relink was run again ([§4](#4-run-every-loader)). The ambiguous and unresolvable remainder (53 there) is deliberately not counted — it depends on the sheet contents and moves with §6g merges. |
 
 Two further checks compare a **value**, not a count, because a count would pass
 vacuously: `Currency EUR legacy_id (live row)` (legacy `MIN(Id)` for a live

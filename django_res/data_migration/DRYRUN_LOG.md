@@ -728,3 +728,66 @@ GAP-114's.
   2027 grid alongside a confirmed 2026 one — the shape staff will see most.
 - The DB is kept for the SPA demo (quote builder badge, send/convert warnings,
   rate-workbench "Confirm indicative rates").
+
+## Run 8 — 2026-09-18 (first full sequence through a green `reconcile_legacy`)
+
+Fresh `villacollective_load1` on `main` (29bdad10), migrated then the **whole**
+§4–§5 sequence for the first time: `loadlegacy --all`, both sheet imports,
+`relink_enquiry_customers`, `import_archive_stays`, `reconcile_legacy
+--integrations`. Same 13-Aug-2026 `ResProd` restore as runs 5–7. Runs 5–7 each
+stopped short of one step or another, so **no earlier run had taken the
+reconcile gate green** — that is what this one was for.
+
+`loadlegacy --all`: **exit 0, ~4m35s, all 31 loaders, 0 errors.** Every skip
+count reproduced the GAP-108 pins exactly — `room` 321, `property_image` 839,
+`property_finance` 1239, `quotation_line` 345, `guest_preference` 201,
+`client` 184, `collection_membership` 9, `nearby_place` 78,
+`property_contact_assignment` 6, `contact_email` 2, `contact_phone` 8,
+`currency` 4. Sequence synced to high-water mark 4769; 359 pricing summaries
+rebuilt. `finance_rate_rows_mixed` 23 villas of 310 with rate rows;
+`enquiry_stale_cutoff` 2026-05-15, 873 stale rows.
+
+Sheet imports, both matching their dry runs row for row: `import_enquiry_sheet`
+2 376 enquiries / 3 147 people created, 463 blank-filled, 1 245
+`undated_row_person_only`, 3 `invalid email` (rows 4, 2290, 2400);
+`import_past_bookers` 765 stays / 580 people created, 45 + 23 updated, skips
+82 `person_unmatched`, 7 `country_unresolved`, 1 `bad_year`, 1 `invalid_email`.
+
+`relink_enquiry_customers` reproduced the run-5 table exactly: 606 enquiries,
+268 quotations, 16 guest preferences relinked; 25 / 11 `shared_email`, 39 / 11
+`names_disagree`, 482 / 30 `unmatched`, 3 / 1 `no_email`, 0 `inactive`.
+
+`import_archive_stays` reproduced run 6 down to the ids: 220 enriched, 27
+created, 7 persons created, 1 blank-filled, 21 phones added; `bn_year_conflict`
+57/94, 110, 117, 201; `weak_conflict` 53; `exists` 290; `test_row` 297; flags
+`dates_dropped` 28, 61, 76, 233, 290, `duplicate_conflict` 57/94 and 268/280,
+`property_differs` 97.
+
+### Finding — the documented §4 order cannot pass the gate as written
+
+The first `reconcile_legacy --integrations` **failed**, one blocker:
+
+```
+Quotation on unknown client with a relinkable enquiry (must be 0)  0  2  -2  0  BLOCKER
+```
+
+Cause: `CUTOVER.md` §4 ordered `relink_enquiry_customers` **before**
+`import_archive_stays`, but the archive import mints people of its own (7
+here), and some of them hold the e-mail a still-sentinel enquiry was waiting
+for. Those enquiries become relinkable only *after* the archive import, so the
+single documented relink can never reach them.
+
+A second `relink_enquiry_customers` moved exactly the shortfall — **3
+enquiries, 2 quotations**, 0 preferences — and the re-run gate passed:
+**exit 0, all 65 checks OK**, every expected gap on its pinned number, every
+invariant 0, Zoho continuity 1 / 0 / 1 / 0 as pinned.
+
+Runs 5–7 never hit this because none of them ran the archive import and the
+gate in the same database. §4 now runs the relink twice and says why; the
+GAP-112 invariant row names a missed second relink as the usual cause of a
+small non-zero.
+
+Not attempted: collapsing the two runs into one relink placed after
+`import_archive_stays`. It looks correct — the archive import reads people and
+`PastStay` rows, not the enquiry→customer link the relink rewrites — but it was
+not run, so the runbook documents the twice-run sequence that was.

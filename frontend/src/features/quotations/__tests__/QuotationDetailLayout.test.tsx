@@ -18,7 +18,7 @@ const baseQuotation = {
   reference: "Q-2026-007",
   status: "draft",
   enquiry: 11,
-  guest: 42,
+  person: 42,
   agent: null,
   expires_at: "2026-06-01T00:00:00Z",
   created_at: "2026-05-01T00:00:00Z",
@@ -435,5 +435,35 @@ describe("QuotationDetailLayout", () => {
     setup();
     expect(await screen.findByText(/quotation not found/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+  });
+
+  // GAP-045 renamed the customer FK `guest` → `person`, and the API stopped
+  // sending `guest`, but the read schema kept declaring `guest` (optional, so
+  // parsing never failed) and never declared `person` (so zod stripped it).
+  // The panel read `quotation.guest`, got `undefined`, and every quotation
+  // showed "No customer linked".
+  it("shows the linked customer in the profile panel", async () => {
+    const empty = { count: 0, next: null, previous: null, results: [] };
+    server.use(
+      http.get("/api/v1/contacts/42", () =>
+        HttpResponse.json({
+          id: 42,
+          first_name: "Kate",
+          last_name: "Ferguson",
+          emails: [],
+          phones: [],
+        }),
+      ),
+      http.get("/api/v1/contacts/42/relationships", () => HttpResponse.json(empty)),
+      http.get("/api/v1/contacts/42/enquiries", () => HttpResponse.json(empty)),
+      http.get("/api/v1/contacts/42/bookings", () => HttpResponse.json(empty)),
+      http.get("/api/v1/contacts/42/past-stays", () => HttpResponse.json(empty)),
+    );
+    setup();
+
+    await userEvent.click(await screen.findByRole("button", { name: /customer profile/i }));
+
+    expect(await screen.findByText("Kate Ferguson")).toBeInTheDocument();
+    expect(screen.queryByText(/no customer linked/i)).not.toBeInTheDocument();
   });
 });

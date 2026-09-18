@@ -122,13 +122,13 @@ export function useConvertEnquiry(enquiryId: EnquiryId) {
     onSuccess: (updated, quotation) => {
       onDetailUpdated(queryClient, enquiryId, updated);
       // The accepted quotation's status flips server-side too (BUG-018).
-      // enquiry/guest/agent are null: the enquiry half is covered by
+      // enquiry/person/agent are null: the enquiry half is covered by
       // onDetailUpdated above, and passing the enquiry id here would
       // re-invalidate the detail key it just setQueryData'd.
       invalidateQuotationDependents(queryClient, {
         id: quotation,
         enquiry: null,
-        guest: null,
+        person: null,
         agent: null,
       });
     },

@@ -69,18 +69,18 @@ export function invalidateEnquiryDependents(
 }
 
 /** The cross-entity surfaces a quotation touches: its parent enquiry and the
- * guest/agent contact subtrees. Split out from the full dependents helper so
+ * customer (`person`)/agent contact subtrees. Split out from the full dependents helper so
  * non-status mutations (line hold/release) can refresh these without churning
  * quotation lists/status counts. */
 export function invalidateQuotationRelated(
   qc: QueryClient,
-  quotation: { enquiry?: number | null; guest?: number | null; agent?: number | null },
+  quotation: { enquiry?: number | null; person?: number | null; agent?: number | null },
 ): void {
   if (quotation.enquiry != null) {
     // The detail prefix also covers the enquiry's activity/notes sub-keys.
     void qc.invalidateQueries({ queryKey: queryKeys.enquiries.detail(quotation.enquiry) });
   }
-  invalidateContactSubtree(qc, quotation.guest);
+  invalidateContactSubtree(qc, quotation.person);
   invalidateContactSubtree(qc, quotation.agent);
 }
 
@@ -93,7 +93,7 @@ export function invalidateQuotationDependents(
   quotation: {
     id: QuotationId;
     enquiry?: number | null;
-    guest?: number | null;
+    person?: number | null;
     agent?: number | null;
   },
 ): void {

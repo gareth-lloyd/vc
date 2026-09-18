@@ -162,7 +162,7 @@ function RailSummary({
         />
         <FactRow
           label={t("detail.summary.guest")}
-          value={quotation.guest_name ?? (quotation.guest != null ? `#${quotation.guest}` : "—")}
+          value={quotation.guest_name ?? (quotation.person != null ? `#${quotation.person}` : "—")}
         />
         <FactRow
           label={t("detail.summary.agent")}
@@ -388,7 +388,7 @@ export function QuotationDetailLayout() {
               headerClassName="text-foreground text-sm font-semibold"
             >
               <div className="mt-2">
-                <CustomerProfilePanel personId={quotation.guest} />
+                <CustomerProfilePanel personId={quotation.person} />
               </div>
             </Collapsible>
           </div>

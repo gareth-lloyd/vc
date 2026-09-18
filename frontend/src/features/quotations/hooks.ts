@@ -173,7 +173,7 @@ export function useWithdrawQuotation(id: QuotationId) {
 }
 
 export function useConvertQuotation(
-  quotation: Pick<QuotationDetail, "id" | "enquiry" | "guest" | "agent">,
+  quotation: Pick<QuotationDetail, "id" | "enquiry" | "person" | "agent">,
 ) {
   const qc = useQueryClient();
   return useMutation({
@@ -210,7 +210,7 @@ export function useDeleteQuotationLine(quotationId: QuotationId) {
 // Related-entity FKs threaded from the caller's QuotationDetail — a hold
 // isn't a status transition, so hold hooks refresh the related surfaces
 // without churning quotation lists/status counts.
-type QuotationRelated = { enquiry?: number | null; guest?: number | null; agent?: number | null };
+type QuotationRelated = { enquiry?: number | null; person?: number | null; agent?: number | null };
 
 // Manual hold toggles. A hold blocks the villa's dates for everyone, so the
 // held line's property availability (calendar grid, holds, multi-villa

@@ -18,7 +18,7 @@ const QUOTATION: QuotationDetail = {
   reference: "Q-2026-007",
   status: "draft",
   enquiry: 11,
-  guest: 42,
+  person: 42,
   agent: null,
   is_unbranded: false,
   expires_at: "2026-06-01T00:00:00Z",

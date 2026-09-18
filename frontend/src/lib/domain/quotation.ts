@@ -24,7 +24,9 @@ export const quotationListItemSchema = z.object({
   reference: z.string(),
   enquiry: z.number().nullable().optional(),
   enquiry_reference: z.string().nullable().optional(),
-  guest: z.number().nullable().optional(),
+  // The customer FK (GAP-045 renamed it from `guest`; the API no longer sends
+  // `guest`). `guest_name` kept its name and is that person's display name.
+  person: z.number().nullable().optional(),
   guest_name: z.string().nullable().optional(),
   agent: z.number().nullable().optional(),
   agent_name: z.string().nullable().optional(),

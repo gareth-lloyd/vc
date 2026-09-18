@@ -123,7 +123,7 @@ describe("invalidateQuotationRelated", () => {
   it("invalidates the parent enquiry detail subtree and both guest and agent contact subtrees", () => {
     const { qc, keys } = spyClient();
 
-    invalidateQuotationRelated(qc, { enquiry: 8, guest: 7, agent: 9 });
+    invalidateQuotationRelated(qc, { enquiry: 8, person: 7, agent: 9 });
 
     // detail(8) is a prefix of the enquiry's activity/notes sub-keys, so the
     // whole enquiry subtree is covered by this one invalidation.
@@ -135,7 +135,7 @@ describe("invalidateQuotationRelated", () => {
   it("skips enquiry and contact keys when the quotation has none linked", () => {
     const { qc, keys } = spyClient();
 
-    invalidateQuotationRelated(qc, { enquiry: null, guest: null, agent: null });
+    invalidateQuotationRelated(qc, { enquiry: null, person: null, agent: null });
 
     expect(keys()).toEqual([]);
   });
@@ -145,7 +145,7 @@ describe("invalidateQuotationDependents", () => {
   it("invalidates the quotation's own detail, lists and status counts plus the related enquiry/contacts", () => {
     const { qc, keys } = spyClient();
 
-    invalidateQuotationDependents(qc, { id: 4, enquiry: 8, guest: 7, agent: null });
+    invalidateQuotationDependents(qc, { id: 4, enquiry: 8, person: 7, agent: null });
 
     expect(keys()).toContainEqual(queryKeys.quotations.detail(4));
     expect(keys()).toContainEqual(queryKeys.quotations.lists());

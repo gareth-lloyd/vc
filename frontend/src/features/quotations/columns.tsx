@@ -37,7 +37,8 @@ export function buildQuotationColumns(t: TFunction<"quotations">): ColumnDef<Quo
       enableSorting: false,
       cell: ({ row }) => {
         const name =
-          row.original.guest_name ?? (row.original.guest != null ? `#${row.original.guest}` : null);
+          row.original.guest_name ??
+          (row.original.person != null ? `#${row.original.person}` : null);
         return name ? <span className="text-sm">{name}</span> : MUTED_DASH;
       },
     },

@@ -26,7 +26,7 @@ const quotationFixture = {
   reference: "Q-AAA-004",
   status: "sent",
   enquiry: ENQUIRY_ID,
-  guest: GUEST_ID,
+  person: GUEST_ID,
   agent: AGENT_ID,
 };
 

@@ -106,6 +106,14 @@ export const queryKeys = {
     all: () => ["clients"] as const,
     list: <F>(filters: F) => ["clients", "list", filters] as const,
   },
+  // GAP-117: the /bookings "Imported bookings" tab (backend `/past-stays`).
+  // Read-only legacy rows. Deliberately not invalidated on contact
+  // merge/anonymise: a stale guest name/link lasts at most the global
+  // staleTime, acceptable for a cutover archive.
+  importedBookings: {
+    all: () => ["imported-bookings"] as const,
+    list: <F>(filters: F) => ["imported-bookings", "list", filters] as const,
+  },
   bookings: {
     all: () => ["bookings"] as const,
     lists: () => ["bookings", "list"] as const,

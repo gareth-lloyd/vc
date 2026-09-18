@@ -19,8 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { orderingToSorting, sortingToOrdering } from "@/lib/drf/sorting";
 import { useBookingColumns } from "./columns";
+import { ImportedBookingsTab } from "./components/ImportedBookingsTab";
 import { BOOKINGS_PAGE_SIZE, useBookings, useBookingStatusCounts } from "./hooks";
 import {
   bookingStatusOptions,
@@ -56,7 +58,8 @@ function paramsToFilters(params: URLSearchParams): BookingFilters {
   };
 }
 
-export function BookingsListPage() {
+// The app-bookings list (the default tab). Owns its own filter URL params.
+function BookingsListTab() {
   const { t } = useTranslation("bookings");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -181,14 +184,7 @@ export function BookingsListPage() {
 
   return (
     <div>
-      <PageHeader
-        title={t("list.title")}
-        breadcrumbs={[
-          { label: t("list.breadcrumb_operations") },
-          { label: t("list.breadcrumb_bookings") },
-        ]}
-      />
-      <div className="space-y-4 p-6">
+      <div className="space-y-4">
         <StatusFilterBar
           options={statusOptions}
           counts={statusCounts.data}
@@ -285,6 +281,54 @@ export function BookingsListPage() {
             }
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+const IMPORTED_TAB = "imported";
+
+/**
+ * /bookings — app bookings plus, on a second tab, the "Imported bookings"
+ * archive (GAP-117: legacy-imported stays, never app bookings). `?tab=imported`
+ * selects the second tab; anything else is the bookings list. Only the active
+ * tab is mounted, so neither list fetches while hidden.
+ */
+export function BookingsListPage() {
+  const { t } = useTranslation("bookings");
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") === IMPORTED_TAB ? IMPORTED_TAB : "bookings";
+
+  // Each tab's filters/page belong to that tab, so switching starts clean. A
+  // push (not replace) so Back returns to the previous tab.
+  const onTabChange = (value: string) => {
+    setParams(value === IMPORTED_TAB ? { tab: IMPORTED_TAB } : {});
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title={t("list.title")}
+        breadcrumbs={[
+          { label: t("list.breadcrumb_operations") },
+          { label: t("list.breadcrumb_bookings") },
+        ]}
+      />
+      <div className="p-6">
+        {/* Manual activation: arrow keys move focus only, so browsing the tab
+            list doesn't push history entries or drop the current filters. */}
+        <Tabs value={tab} onValueChange={onTabChange} activationMode="manual">
+          <TabsList aria-label={t("list_tabs.aria_label")}>
+            <TabsTrigger value="bookings">{t("list_tabs.bookings")}</TabsTrigger>
+            <TabsTrigger value={IMPORTED_TAB}>{t("list_tabs.imported")}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="bookings" className="pt-2">
+            <BookingsListTab />
+          </TabsContent>
+          <TabsContent value={IMPORTED_TAB} className="pt-2">
+            <ImportedBookingsTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

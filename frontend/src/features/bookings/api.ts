@@ -20,6 +20,7 @@ import {
   bookingListResponseSchema,
   bookingNoteSchema,
   bookingNotesResponseSchema,
+  importedBookingListResponseSchema,
   paymentRecordsListSchema,
   paymentTrackSchema,
   refundSchema,
@@ -44,6 +45,8 @@ import {
   type DamageClaimPhoto,
   type DamageClaimWriteInput,
   type DeclineBookingInput,
+  type ImportedBookingFilters,
+  type ImportedBookingListItem,
   type MarkPaidInput,
   type ModifyDatesInput,
   type ModifyGuestsInput,
@@ -76,6 +79,20 @@ function toQuery(filters: BookingFilters): QueryParams {
 export async function fetchBookings(filters: BookingFilters): Promise<Paginated<BookingListItem>> {
   const data = await apiGet<unknown>("/bookings", { query: toQuery(filters) });
   return bookingListResponseSchema.parse(data);
+}
+
+// GAP-117: legacy-imported stays (the backend's `PastStay`) across all clients.
+// DRF SearchFilter reads `search`, not the bookings list's `q`.
+export async function fetchImportedBookings(
+  filters: ImportedBookingFilters,
+): Promise<Paginated<ImportedBookingListItem>> {
+  const data = await apiGet<unknown>("/past-stays", {
+    query: {
+      search: filters.q || undefined,
+      page: filters.page && filters.page > 1 ? filters.page : undefined,
+    },
+  });
+  return importedBookingListResponseSchema.parse(data);
 }
 
 // The query that scopes the status counts: every filter EXCEPT the ones that

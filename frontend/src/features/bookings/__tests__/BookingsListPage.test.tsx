@@ -1,10 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
-import { renderWithProviders } from "@/test/render";
+import { drfPage } from "@/test/drf";
+import { renderWithDataRouter, renderWithProviders } from "@/test/render";
 import { expectTriggerRange, openDateRange, typeDateRange } from "@/test/dateRange";
 import { BookingsListPage } from "../BookingsListPage";
 
@@ -237,6 +238,99 @@ describe("BookingsListPage", () => {
       expect(p.get("check_in_after")).toBeNull();
       expect(p.get("exclude_terminal")).toBeNull();
       expect(p.get("ordering")).toBe("-date_from");
+    });
+  });
+
+  describe("Imported bookings tab (GAP-117)", () => {
+    const importedRow = {
+      id: 3,
+      booking_number: "BN42",
+      villa_name: "Villa Sheet",
+      property: null,
+      property_name: null,
+      destination: "",
+      year: 2018,
+      notes: "",
+      date_from: null,
+      date_to: null,
+      amount: null,
+      currency_code: null,
+      person: 7,
+      person_name: "Ada Lovelace",
+    };
+
+    // Registers every list the page might hit and records which were called.
+    function captureAll() {
+      const hits: string[] = [];
+      server.use(
+        http.get("/api/v1/bookings/status-counts", () => {
+          hits.push("status-counts");
+          return HttpResponse.json({});
+        }),
+        http.get("/api/v1/bookings", () => {
+          hits.push("bookings");
+          return HttpResponse.json(fixture);
+        }),
+        http.get("/api/v1/past-stays", () => {
+          hits.push("past-stays");
+          return HttpResponse.json(drfPage([importedRow]));
+        }),
+      );
+      return hits;
+    }
+
+    const renderRouted = (route: string) =>
+      renderWithDataRouter([{ path: "/bookings", element: <BookingsListPage /> }], { route });
+
+    it("shows both tabs with Bookings selected by default", async () => {
+      captureAll();
+      renderRouted("/bookings");
+      expect(await screen.findByText("B-AAA-001")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Bookings" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(screen.getByRole("tab", { name: "Imported bookings" })).toHaveAttribute(
+        "aria-selected",
+        "false",
+      );
+    });
+
+    it("?tab=imported lists imported rows without fetching app bookings", async () => {
+      const hits = captureAll();
+      renderRouted("/bookings?tab=imported");
+      expect(await screen.findByText("Villa Sheet")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Imported bookings" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(hits).toEqual(["past-stays"]);
+    });
+
+    it("switching tab drops the other tab's params and Back returns to Bookings", async () => {
+      captureAll();
+      const { router } = renderRouted("/bookings?status=deposit_paid&page=2");
+      await screen.findByText("B-AAA-001");
+
+      await userEvent.click(screen.getByRole("tab", { name: "Imported bookings" }));
+
+      expect(await screen.findByText("Villa Sheet")).toBeInTheDocument();
+      expect(router.state.location.search).toBe("?tab=imported");
+
+      await act(() => router.navigate(-1));
+
+      expect(await screen.findByText("B-AAA-001")).toBeInTheDocument();
+      expect(router.state.location.search).toBe("?status=deposit_paid&page=2");
+    });
+
+    it("falls back to Bookings for an unknown ?tab=", async () => {
+      captureAll();
+      renderRouted("/bookings?tab=bogus");
+      expect(await screen.findByText("B-AAA-001")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Bookings" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
     });
   });
 });

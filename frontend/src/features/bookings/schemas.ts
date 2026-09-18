@@ -1,6 +1,7 @@
 import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
+import { importedBookingSchema } from "@/lib/domain/importedBooking";
 
 // Lives in lib/domain so contacts can render booking history without
 // importing this feature's schemas (GAP-063/GAP-072); re-exported for local use.
@@ -768,6 +769,25 @@ export interface BookingFilters {
 
 export const bookingStatusOptions = (): Array<{ value: BookingStatus; label: string }> =>
   bookingStatusSchema.options.map((value) => ({ value, label: bookingStatusLabel(value) }));
+
+// ----------------------------------------------------------------------
+// GAP-117: "Imported bookings" tab — `/past-stays` across all clients
+// (PastStayListSerializer). Legacy-imported rows only, never a Booking.
+// `person_name` is null when the guest's name is blank.
+// ----------------------------------------------------------------------
+
+export const importedBookingListItemSchema = importedBookingSchema.extend({
+  person: z.number(),
+  person_name: z.string().nullable(),
+});
+export type ImportedBookingListItem = z.infer<typeof importedBookingListItemSchema>;
+
+export const importedBookingListResponseSchema = paginated(importedBookingListItemSchema);
+
+export interface ImportedBookingFilters {
+  q?: string;
+  page?: number;
+}
 
 // ----------------------------------------------------------------------
 // Email logs (booking Comms tab) — surfaced by /bookings/{id}/emails.

@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
 import { queryKeys, type BookingId } from "@/lib/query/keys";
 import { invalidateBookingDependents } from "@/lib/query/invalidate";
@@ -43,6 +49,7 @@ import {
   fetchBookingNotes,
   fetchBookingRefunds,
   fetchBookings,
+  fetchImportedBookings,
   fetchDepositTrack,
   fetchSecurityDeposit,
   fetchSecurityTrack,
@@ -79,6 +86,7 @@ import type {
   ConciergeItemWriteInput,
   DamageClaimWriteInput,
   DeclineBookingInput,
+  ImportedBookingFilters,
   MarkPaidInput,
   ModifyDatesInput,
   ModifyGuestsInput,
@@ -92,6 +100,15 @@ export function useBookings(filters: BookingFilters) {
   return useQuery({
     queryKey: queryKeys.bookings.list(filters),
     queryFn: () => fetchBookings(filters),
+  });
+}
+
+// GAP-117: keep the current page on screen while the next one loads.
+export function useImportedBookings(filters: ImportedBookingFilters) {
+  return useQuery({
+    queryKey: queryKeys.importedBookings.list(filters),
+    queryFn: () => fetchImportedBookings(filters),
+    placeholderData: keepPreviousData,
   });
 }
 

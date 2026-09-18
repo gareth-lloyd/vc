@@ -10,6 +10,28 @@
     "empty_title": "No bookings match these filters",
     "empty_hint": "Try clearing the search or changing the status / source filters."
   },
+  "list_tabs": {
+    "aria_label": "Booking lists",
+    "bookings": "Bookings",
+    "imported": "Imported bookings"
+  },
+  "imported": {
+    "description": "Historic stays loaded from the legacy system. Read-only.",
+    "search_placeholder": "Search by guest, villa, or booking number…",
+    "load_failed": "Couldn't load imported bookings.",
+    "empty_title": "No imported bookings found",
+    "empty_hint": "Try clearing the search.",
+    "unnamed_client": "Unnamed client",
+    "year_unknown": "Year unknown",
+    "columns": {
+      "guest": "Guest",
+      "villa": "Villa",
+      "destination": "Destination",
+      "when": "When",
+      "booking_number": "Booking no.",
+      "amount": "Amount as recorded"
+    }
+  },
   "filters": {
     "any_status": "Any status",
     "any_source": "Any source",

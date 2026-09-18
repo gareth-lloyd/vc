@@ -1,6 +1,7 @@
 import { z } from "zod";
 import i18n from "@/i18n";
 import { paginated } from "@/lib/api/pagination";
+import { type ImportedBooking, importedBookingSchema } from "@/lib/domain/importedBooking";
 import {
   bookingStatusSchema,
   enquiryStatusSchema,
@@ -279,27 +280,11 @@ export type ContactBookingHistoryItem = z.infer<typeof contactBookingHistorySche
 
 export const contactBookingHistoryResponseSchema = paginated(contactBookingHistorySchema);
 
-// GAP-089: `/contacts/{id}/past-stays` — historic stays from the spreadsheet
-// import (mirrors ContactPastStaySerializer). `property` (pk) + `property_name`
-// are set when the importer matched the villa name, else null and the row
-// falls back to the sheet's `villa_name` text. GAP-113: `date_from`/`date_to`
-// (both or neither) and `amount` (decimal string) from the legacy archive;
-// `currency_code` null = legacy recorded no currency.
-export const contactPastStaySchema = z.object({
-  id: z.number(),
-  booking_number: z.string(),
-  villa_name: z.string(),
-  property: z.number().nullable(),
-  property_name: z.string().nullable(),
-  destination: z.string(),
-  year: z.number().nullable(),
-  notes: z.string(),
-  date_from: z.string().nullable(),
-  date_to: z.string().nullable(),
-  amount: z.string().nullable(),
-  currency_code: z.string().nullable(),
-});
-export type ContactPastStay = z.infer<typeof contactPastStaySchema>;
+// GAP-089: `/contacts/{id}/past-stays` — historic stays from the legacy import,
+// shown as "Imported bookings" (GAP-117). The row shape lives in lib/domain so
+// the /bookings tab can share it; re-exported under the original names.
+export const contactPastStaySchema = importedBookingSchema;
+export type ContactPastStay = ImportedBooking;
 
 export const contactPastStaysResponseSchema = paginated(contactPastStaySchema);
 

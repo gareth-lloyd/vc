@@ -1,28 +1,18 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { Collapsible } from "@/components/ui/collapsible";
-import { formatDateRangeEndpoints } from "@/lib/format/date";
-import { formatMoney, parseMoney } from "@/lib/format/money";
+import { importedBookingWhen, recordedAmount } from "@/lib/domain/importedBooking";
 import type { ContactId } from "@/lib/query/keys";
 import { useContactPastStays } from "../hooks";
-import type { ContactPastStay } from "../schemas";
 
 interface ContactPastStayHistoryProps {
   contactId: ContactId;
 }
 
-// GAP-113: legacy amounts are shown exactly as staff recorded them. With no
-// recorded currency the bare number is shown — a currency is never guessed.
-function recordedAmount(row: ContactPastStay): string | null {
-  if (row.amount == null) return null;
-  if (row.currency_code) return formatMoney(row.amount, row.currency_code);
-  return parseMoney(row.amount).toLocaleString("en-GB", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 /**
+ * UI name: "Imported bookings" (GAP-117) — PastStay rows from the legacy
+ * cutover import only; the /bookings tab lists the same rows across clients.
+ *
  * GAP-089: the customer's historic stays from Nick's spreadsheets — a year,
  * a villa name and a legacy booking number — as PastStay rows rather than
  * Bookings, in their own accordion beside ContactBookingHistory. Same shape as
@@ -84,9 +74,7 @@ export function ContactPastStayHistory({ contactId }: ContactPastStayHistoryProp
                   </div>
                   <div className="text-muted-foreground flex shrink-0 flex-col items-end text-xs">
                     <span>
-                      {row.date_from && row.date_to
-                        ? formatDateRangeEndpoints(row.date_from, row.date_to)
-                        : (row.year ?? t("profile.stays_year_unknown"))}
+                      {importedBookingWhen(row) ?? t("profile.stays_year_unknown")}
                       {row.booking_number ? ` · ${row.booking_number}` : ""}
                     </span>
                     {amount ? (

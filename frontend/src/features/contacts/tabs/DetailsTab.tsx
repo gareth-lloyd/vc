@@ -31,6 +31,7 @@ import { TagChips } from "../components/TagChips";
 import { LinkedContactsAccordion } from "../components/LinkedContactsAccordion";
 import { ContactEnquiryHistory } from "../components/ContactEnquiryHistory";
 import { ContactBookingHistory } from "../components/ContactBookingHistory";
+import { ContactPastStayHistory } from "../components/ContactPastStayHistory";
 import { ContactAddressSection } from "../components/ContactAddressSection";
 import { isClientContact } from "../display";
 import type { Contact, ContactEmail, ContactPhone } from "../schemas";
@@ -358,6 +359,10 @@ export function DetailsTab() {
       <LinkedContactsAccordion contactId={contact.id} />
       <ContactEnquiryHistory contactId={contact.id} />
       <ContactBookingHistory contactId={contact.id} />
+      {/* Pre-cutover stays are PastStay rows, not Bookings (GAP-089), so a
+          legacy customer's whole history lives here — the booking accordion
+          above is empty for every imported client. */}
+      <ContactPastStayHistory contactId={contact.id} />
     </div>
   );
 }

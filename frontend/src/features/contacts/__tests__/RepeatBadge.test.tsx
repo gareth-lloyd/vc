@@ -14,13 +14,13 @@ describe("RepeatBadge", () => {
     // bookings yet — "0 bookings" next to "Repeat" would read as a contradiction.
     renderWithProviders(<RepeatBadge bookingCount={0} pastStayCount={3} isRepeat />);
     expect(screen.getByText("Repeat")).toBeInTheDocument();
-    expect(screen.getByText("3 past stays")).toBeInTheDocument();
-    expect(screen.queryByText(/bookings?/)).not.toBeInTheDocument();
+    expect(screen.getByText("3 imported bookings")).toBeInTheDocument();
+    expect(screen.queryByText(/0 bookings?/)).not.toBeInTheDocument();
   });
 
-  it("shows both figures when the customer has bookings and past stays", () => {
+  it("shows both figures when the customer has bookings and imported bookings", () => {
     renderWithProviders(<RepeatBadge bookingCount={2} pastStayCount={1} isRepeat />);
-    expect(screen.getByText("2 bookings · 1 past stay")).toBeInTheDocument();
+    expect(screen.getByText("2 bookings · 1 imported booking")).toBeInTheDocument();
   });
 
   it("keeps the booking-only label unchanged", () => {

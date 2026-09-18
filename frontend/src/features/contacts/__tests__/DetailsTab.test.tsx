@@ -71,7 +71,7 @@ describe("DetailsTab history sections", () => {
 
     renderTab();
 
-    expect(await screen.findByText(/past stays \(1\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/imported bookings \(1\)/i)).toBeInTheDocument();
     expect(screen.getByText(/previous bookings/i)).toBeInTheDocument();
   });
 
@@ -82,6 +82,6 @@ describe("DetailsTab history sections", () => {
 
     renderTab();
 
-    expect(await screen.findByText(/^past stays$/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^imported bookings$/i)).toBeInTheDocument();
   });
 });

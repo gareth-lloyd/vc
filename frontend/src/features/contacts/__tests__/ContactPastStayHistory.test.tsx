@@ -48,10 +48,10 @@ describe("ContactPastStayHistory", () => {
 
     renderWithProviders(<ContactPastStayHistory contactId={55} />);
 
-    expect(await screen.findByText(/past stays \(2\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/imported bookings \(2\)/i)).toBeInTheDocument();
     expect(screen.queryByText("Villa Yeraki")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /toggle past stays/i }));
+    await userEvent.click(screen.getByRole("button", { name: /toggle imported bookings/i }));
 
     // A linked stay shows the resolved property name (as a link) + destination.
     expect(await screen.findByRole("link", { name: "Villa Yeraki" })).toHaveAttribute(
@@ -102,7 +102,7 @@ describe("ContactPastStayHistory", () => {
     );
 
     renderWithProviders(<ContactPastStayHistory contactId={56} />);
-    await userEvent.click(await screen.findByRole("button", { name: /toggle past stays/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /toggle imported bookings/i }));
 
     // Dates replace the bare year; the amount carries its currency when known…
     expect(await screen.findByText(/3–10 Aug 2025 · BN1067a/)).toBeInTheDocument();
@@ -117,13 +117,13 @@ describe("ContactPastStayHistory", () => {
     server.use(http.get("/api/v1/contacts/57/past-stays", () => HttpResponse.json(STAYS)));
 
     renderWithProviders(<ContactPastStayHistory contactId={57} />);
-    await userEvent.click(await screen.findByRole("button", { name: /toggle past stays/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /toggle imported bookings/i }));
 
     expect(await screen.findByText("Casa Nowhere")).toBeInTheDocument();
     expect(screen.queryByText(/as recorded/i)).not.toBeInTheDocument();
   });
 
-  it("shows the empty state when the contact has no past stays", async () => {
+  it("shows the empty state when the contact has no imported bookings", async () => {
     server.use(
       http.get("/api/v1/contacts/77/past-stays", () =>
         HttpResponse.json({ count: 0, next: null, previous: null, results: [] }),
@@ -131,9 +131,9 @@ describe("ContactPastStayHistory", () => {
     );
 
     renderWithProviders(<ContactPastStayHistory contactId={77} />);
-    await userEvent.click(await screen.findByRole("button", { name: /toggle past stays/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /toggle imported bookings/i }));
 
-    expect(await screen.findByText(/no past stays on record/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no imported bookings on record/i)).toBeInTheDocument();
   });
 
   it("surfaces a 'more not shown' hint when the page is truncated", async () => {
@@ -149,10 +149,10 @@ describe("ContactPastStayHistory", () => {
     );
 
     renderWithProviders(<ContactPastStayHistory contactId={55} />);
-    await userEvent.click(await screen.findByRole("button", { name: /toggle past stays/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /toggle imported bookings/i }));
 
     await waitFor(() =>
-      expect(screen.getByText(/3 more past stays not shown/i)).toBeInTheDocument(),
+      expect(screen.getByText(/3 more imported bookings not shown/i)).toBeInTheDocument(),
     );
   });
 });

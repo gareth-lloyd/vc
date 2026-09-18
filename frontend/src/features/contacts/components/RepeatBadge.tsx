@@ -6,8 +6,8 @@ interface RepeatBadgeProps {
   bookingCount: number;
   /**
    * GAP-089: historic stays imported from the spreadsheets (no Booking row).
-   * Shown as its own "{n} past stays" figure so a live booking is never
-   * conflated with a sheet-only record.
+   * Shown as its own "{n} imported bookings" figure (GAP-117 UI name) so a
+   * live booking is never conflated with a sheet-only record.
    */
   pastStayCount?: number;
   /** Whether the customer counts as a returning client (>= 1 booking or past stay). */

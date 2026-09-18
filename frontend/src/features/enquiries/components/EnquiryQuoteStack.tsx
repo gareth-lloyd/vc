@@ -57,11 +57,22 @@ function QuoteCard({ quote }: { quote: QuotationDetail }) {
   );
 }
 
-export function EnquiryQuoteStack({ quotations }: { quotations: QuotationDetail[] }) {
+export function EnquiryQuoteStack({
+  quotations,
+  enquiryStatus,
+}: {
+  quotations: QuotationDetail[];
+  enquiryStatus?: string;
+}) {
   const { t } = useTranslation("enquiries");
 
   if (quotations.length === 0) {
-    return <p className="text-muted-foreground text-sm">{t("quotes_section.empty")}</p>;
+    // A quote-sent enquiry with no quotation is a legacy one: staff often
+    // pasted rates into their own e-mail, which marked the enquiry Completed
+    // (loaded as quote_sent) without ever saving a quotation record.
+    const key =
+      enquiryStatus === "quote_sent" ? "quotes_section.sent_off_system" : "quotes_section.empty";
+    return <p className="text-muted-foreground text-sm">{t(key)}</p>;
   }
 
   return (

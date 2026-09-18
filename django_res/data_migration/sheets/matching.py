@@ -416,7 +416,10 @@ def find_or_create_person(
         return PersonMatch(existing, created=False, filled=filled)
 
     person = Person(
-        first_name=first,
+        # A nameless row (e-mail only) would render as "Client #id"; the
+        # address stands in as the first name. Matching above used the raw
+        # (blank) names, so re-runs still resolve via legacy_id / e-mail.
+        first_name=first or ("" if last else addr[:128]),
         last_name=last,
         legacy_id=legacy_id,
         kind=PersonKind.CUSTOMER,

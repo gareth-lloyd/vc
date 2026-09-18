@@ -299,6 +299,33 @@ def test_email_only_row_matches_the_existing_person_on_that_address() -> None:
     assert PersonEmail.objects.filter(email="john@example.com").count() == 1
 
 
+def test_nameless_new_person_takes_the_email_as_first_name() -> None:
+    # 43 enquiry-sheet rows carry only an e-mail; a blank name renders as
+    # "Client #id" everywhere, so the address stands in for it.
+    match = find_or_create_person(
+        email="Francesca@Tephi.co.uk",
+        first_name="",
+        last_name="",
+        legacy_id=person_legacy_id("francesca@tephi.co.uk", "", ""),
+    )
+
+    assert match.created is True
+    assert match.person.first_name == "francesca@tephi.co.uk"
+    assert match.person.last_name == ""
+
+
+def test_a_last_name_alone_is_kept_without_the_email_fallback() -> None:
+    match = find_or_create_person(
+        email="smith@example.com",
+        first_name="",
+        last_name="Smith",
+        legacy_id=person_legacy_id("smith@example.com", "", "Smith"),
+    )
+
+    assert match.person.first_name == ""
+    assert match.person.last_name == "Smith"
+
+
 def test_rerun_leaves_an_anonymised_sheet_person_alone() -> None:
     legacy_id = person_legacy_id("ada@example.com", "Ada", "Lovelace")
     first = find_or_create_person(

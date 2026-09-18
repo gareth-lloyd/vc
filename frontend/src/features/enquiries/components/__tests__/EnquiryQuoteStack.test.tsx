@@ -21,6 +21,21 @@ describe("EnquiryQuoteStack", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
+  // Legacy staff often pasted rates into their own e-mail, which marked the
+  // enquiry Completed (→ quote_sent) without saving a quotation. The empty
+  // stack must say so rather than read as "nothing sent yet".
+  it("explains a quote-sent enquiry that has no quote on record", () => {
+    renderWithProviders(<EnquiryQuoteStack quotations={[]} enquiryStatus="quote_sent" />);
+    expect(screen.getByText(/sent from the old system/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no quotes for this enquiry yet/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the plain empty state for other statuses", () => {
+    renderWithProviders(<EnquiryQuoteStack quotations={[]} enquiryStatus="new" />);
+    expect(screen.getByText(/no quotes for this enquiry yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/sent from the old system/i)).not.toBeInTheDocument();
+  });
+
   it("renders one deep-linked card per quote with the humanised status", () => {
     renderWithProviders(
       <EnquiryQuoteStack

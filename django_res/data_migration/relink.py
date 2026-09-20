@@ -9,13 +9,17 @@ loader's own question afterwards. It is shared by the
 
 from __future__ import annotations
 
+import hashlib
 from typing import Literal
 
 from django.db.models import QuerySet
 
 from accounts.enums import PersonStatus
 from accounts.models import Person
-from data_migration.loaders.sentinels import SHEET_LEGACY_PREFIX
+from data_migration.loaders.sentinels import (
+    ENQUIRY_PERSON_LEGACY_PREFIX,
+    SHEET_LEGACY_PREFIX,
+)
 from data_migration.sheets.matching import match_person_by_email
 from reservations.models import Enquiry
 
@@ -25,6 +29,19 @@ Category = Literal[
 
 # `EnquiryLoader` stores this for a nameless row, after it has matched.
 ANON_FIRST_NAME = "(anon)"
+
+
+def enquiry_person_legacy_id(email: str) -> str:
+    """`enquiry-person-<sha1>` over the normalised address (GAP-118 §3).
+
+    Keyed on the address alone, unlike `sheets.matching.person_legacy_id`,
+    which folds the names in so spouses sharing an inbox get distinct rows.
+    Here the address IS the grouping: every unmatched enquiry carrying it
+    becomes one customer, and a re-run derives the same key, which is what
+    makes `--mint-unmatched` idempotent.
+    """
+    digest = hashlib.sha1((email or "").strip().lower().encode()).hexdigest()
+    return f"{ENQUIRY_PERSON_LEGACY_PREFIX}{digest[:16]}"
 
 
 def unlinked_legacy_enquiries() -> QuerySet[Enquiry]:

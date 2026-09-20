@@ -193,6 +193,8 @@ def test_country_for_legacy_id_aliases_england_to_gb() -> None:
         ("0030", "12345", "+30 12345"),
         ("", " call office ", "call office"),
         ("44", "", ""),
+        # GAP-118 §2: sheet-sourced numbers arrive with a ".00" suffix.
+        ("0044", "7985414214.00", "+447985414214"),
     ],
 )
 def test_legacy_phone(calling_code: str | None, number: str, expected: str) -> None:

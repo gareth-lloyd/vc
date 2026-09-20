@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 import pytest
+import structlog.testing
 from django.utils import timezone
 
 from accounts.models import Person
@@ -22,7 +23,7 @@ from properties.models.property import Property
 from properties.models.settings import PropertySettings
 from reservations.enums import EnquirySource, QuotationStatus
 from reservations.models.enquiry import Enquiry
-from reservations.models.quotation import Quotation
+from reservations.models.quotation import Quotation, QuotationLine
 
 
 def _row(**overrides: object) -> dict[str, object]:
@@ -209,6 +210,86 @@ def test_line_occupancy_comes_from_the_master(
     kwargs = QuotationLineLoader().transform(_line_row(Adult=adult, Children=children))
     assert kwargs is not None
     assert (kwargs["adults"], kwargs["children"]) == expected
+
+
+# --- GAP-118 §4: a NULL master party borrows the legacy enquiry's ---
+
+
+def test_line_query_joins_the_enquiry_occupancy() -> None:
+    query = QuotationLineLoader.legacy_query
+    # `DeletedAt IS NULL` in the JOIN: EnquiryLoader skips a soft-deleted
+    # enquiry, so its quotation gets an `-autoenquiry` stand-in — borrowing
+    # the deleted row's party would contradict the enquiry on screen.
+    assert "LEFT JOIN VillaEnquire e ON e.Id = m.EnquireId AND e.DeletedAt IS NULL" in query
+    assert "e.Adult AS EnquiryAdult" in query
+    assert "e.Children AS EnquiryChildren" in query
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("adult", "children", "enq_adult", "enq_children", "expected"),
+    [
+        # Both master fields NULL and the enquiry records a party — borrow it.
+        (None, None, 12, 1, (12, 1)),
+        (None, None, 12, None, (12, 0)),
+        # An EXPLICIT zero on the master is data, not a gap (BUG-030 §23).
+        (0, 0, 12, 1, (0, 0)),
+        # Only one master field NULL: not the shape we borrow for.
+        (None, 3, 12, 1, (0, 3)),
+        (4, None, 12, 1, (4, 0)),
+        # Nothing to borrow (orphan master, a soft-deleted enquiry the JOIN
+        # filters out, or the enquiry records zero too).
+        (None, None, None, None, (0, 0)),
+        (None, None, 0, 0, (0, 0)),
+        # Children without an adult count are still recorded data.
+        (None, None, None, 3, (0, 3)),
+        (None, None, 0, 3, (0, 3)),
+        # `VillaEnquire.Adult` is an unbounded web-form field;
+        # `QuotationLine.adults` is a PositiveSmallIntegerField. Leave an
+        # out-of-range party unborrowed rather than drop the line on write.
+        (None, None, 99999, 0, (0, 0)),
+        (None, None, 4, 99999, (0, 0)),
+    ],
+)
+def test_line_party_falls_back_to_the_legacy_enquiry(
+    _guest_and_currency: None,
+    adult: int | None,
+    children: int | None,
+    enq_adult: int | None,
+    enq_children: int | None,
+    expected: tuple[int, int],
+) -> None:
+    _quotation_and_property()
+    kwargs = QuotationLineLoader().transform(
+        _line_row(
+            Adult=adult,
+            Children=children,
+            EnquiryAdult=enq_adult,
+            EnquiryChildren=enq_children,
+        )
+    )
+    assert kwargs is not None
+    assert (kwargs["adults"], kwargs["children"]) == expected
+
+
+@pytest.mark.django_db
+def test_line_party_borrows_are_counted(_guest_and_currency: None) -> None:
+    _quotation_and_property()
+    report = LoadReport(loader="quotation_line")
+    with structlog.testing.capture_logs() as logs:
+        QuotationLineLoader()._load_rows(
+            [
+                _line_row(Id=77, Adult=None, Children=None, EnquiryAdult=12, EnquiryChildren=1),
+                # An enquiry party of zero is not a borrow.
+                _line_row(Id=78, Adult=None, Children=None, EnquiryAdult=0, EnquiryChildren=0),
+                _line_row(Id=79, Adult=4, Children=2, EnquiryAdult=12, EnquiryChildren=1),
+            ],
+            report,
+        )
+
+    assert QuotationLine.objects.get(legacy_id="77").adults == 12
+    borrowed = [e for e in logs if e["event"] == "data_migration.quotation_line_party_from_enquiry"]
+    assert borrowed[0] == {**borrowed[0], "count": 1}
 
 
 @pytest.mark.django_db

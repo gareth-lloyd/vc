@@ -119,6 +119,21 @@ describe("EnquirySummaryHeader", () => {
       expect(screen.getByText("2 bookings")).toBeInTheDocument();
     });
 
+    it("renders no tags or repeat badge for the unknown-client sentinel", async () => {
+      // GAP-118: the builder hides the rail, so this header is the substitute
+      // for `CustomerProfilePanel` — which renders the sentinel as "no customer
+      // linked". Showing its tags and repeat state here would contradict the
+      // rail with the same data on the same page.
+      mockContact({ is_unknown_client: true });
+      renderWithProviders(<EnquirySummaryHeader enquiry={enquiry({ person: 42 })} />);
+
+      // The reference proves the header rendered before asserting absences.
+      expect(await screen.findByText("ENQ-99")).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByText("VIP")).not.toBeInTheDocument());
+      expect(screen.queryByText("Trade")).not.toBeInTheDocument();
+      expect(screen.queryByText("Repeat")).not.toBeInTheDocument();
+    });
+
     it("does not badge a first-time customer", async () => {
       mockContact({ is_repeat_customer: false, booking_count: 0 });
       renderWithProviders(<EnquirySummaryHeader enquiry={enquiry({ person: 42 })} />);

@@ -6,18 +6,31 @@ Stable `legacy_id='__unknown__'` keeps the rows idempotent across re-runs.
 
 from __future__ import annotations
 
+from accounts.constants import (
+    CLIENT_LEGACY_PREFIX,
+    UNKNOWN_CLIENT_LEGACY_ID,
+    UNKNOWN_LEGACY_ID,
+)
 from accounts.enums import PersonKind, PersonStatus
 from accounts.models import Person
 from properties.models.geo import Country, Region
 
-# `legacy_id` minted on the sentinel rows.
-UNKNOWN_LEGACY_ID = "__unknown__"
-
-# Canonical `legacy_id` prefix for the customer Persons `ClientLoader` writes
-# (`client-{VillaClientDetailsId}`). Single source of truth so the loader write,
-# the `person_for_client` read, and the `reconcile_legacy` count slices can never
-# drift.
-CLIENT_LEGACY_PREFIX = "client-"
+# GAP-118: `UNKNOWN_LEGACY_ID`, `CLIENT_LEGACY_PREFIX` and the composed
+# `UNKNOWN_CLIENT_LEGACY_ID` now live in `accounts.constants` — the API has to
+# recognise the sentinel row (`ContactSerializer.is_unknown_client`) and
+# `accounts` cannot import `data_migration`. Re-exported here so every existing
+# `from data_migration.loaders.sentinels import …` keeps working and the three
+# stay single-source; see that module for what each one is.
+__all__ = [
+    "CLIENT_LEGACY_PREFIX",
+    "ENQUIRY_PERSON_LEGACY_PREFIX",
+    "SHEET_LEGACY_PREFIX",
+    "UNKNOWN_CLIENT_LEGACY_ID",
+    "UNKNOWN_LEGACY_ID",
+    "unknown_client",
+    "unknown_country",
+    "unknown_region",
+]
 
 # GAP-089: `legacy_id` prefix shared by every row the spreadsheet importers
 # write (`sheet-person-…`, `sheet-stay-…`, `sheet-enquiry-…`). Those rows have
@@ -25,11 +38,12 @@ CLIENT_LEGACY_PREFIX = "client-"
 # that is compared against the legacy dump.
 SHEET_LEGACY_PREFIX = "sheet-"
 
-# Fixed legacy_id for the `unknown_client` sentinel Person. Carries the
-# `client-` prefix so it sorts with the customer rows, but reconcile_legacy
-# excludes it from BOTH Person count slices (owner/agent AND client) so the
-# documented VillaClientDetails gap stays stable whether or not it's minted.
-UNKNOWN_CLIENT_LEGACY_ID = f"{CLIENT_LEGACY_PREFIX}{UNKNOWN_LEGACY_ID}"
+# GAP-118: `legacy_id` prefix for the customer Persons `relink_enquiry_customers
+# --mint-unmatched` writes for an enquiry address no loaded Person holds
+# (`enquiry-person-<sha1(address)>`, minted by `relink.enquiry_person_legacy_id`).
+# Like the `sheet-` rows these have no res-DB twin, so `reconcile_legacy`
+# excludes the prefix from the Person count slice it compares against the dump.
+ENQUIRY_PERSON_LEGACY_PREFIX = "enquiry-person-"
 
 
 def unknown_country() -> Country:

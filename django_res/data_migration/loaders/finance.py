@@ -763,6 +763,10 @@ class QuotationLoader(BaseLoader):
         return defaults
 
 
+# `QuotationLine.adults`/`children` are PositiveSmallIntegerField (GAP-118).
+_MAX_PARTY = 32767
+
+
 class QuotationLineLoader(BaseLoader):
     """VillaQuotationDetails -> reservations.QuotationLine.
 
@@ -773,7 +777,36 @@ class QuotationLineLoader(BaseLoader):
     existing LEFT JOIN to the master rather than from the loaded `Quotation`,
     because `Quotation` has no date columns at all (only its lines do) — the
     master row is the only place they exist, and the join was already there.
+
+    GAP-118 §4 — a master with **both** party columns NULL borrows the linked
+    legacy enquiry's party: rendering "0A" against a 12-adult enquiry is simply
+    wrong. (§4's headline 1 235 counts zero-party lines whose **loaded**
+    `Enquiry.adults > 0`, which is a wider population than this borrows for —
+    it includes an explicit `Adult=0`, a half-filled master, and stand-ins
+    carrying the model default. Derive the borrow count from the log line, do
+    not pin it to 1 235.) The party comes down a second
+    LEFT JOIN, **never from the loaded `Enquiry`**: `Quotation.enquiry` is
+    `PROTECT` and not-null, `Enquiry.adults` defaults to 2, and `ensure_enquiry`
+    stand-ins never set it — so the ORM route would invent the party of 2 that
+    BUG-030 §23 bans. The legacy column is genuinely NULL-able, so SQL is the
+    only honest source.
     """
+
+    # GAP-118 §4: how many lines took their party from the enquiry, logged per
+    # load like the GAP-108 borrow counters — so a dry run on a NEWER dump sees
+    # the fallback's reach change instead of inferring it. Counted in
+    # `transform`, as GAP-108's are (`preferences.py:165`), so a row whose
+    # write then fails is still counted: this measures the rule's reach, not
+    # persisted rows. Unpinned — first measure it on the day.
+    _borrowed_from_enquiry = 0
+
+    def _load_rows(self, rows: list[dict[str, Any]], report: LoadReport) -> None:
+        self._borrowed_from_enquiry = 0
+        super()._load_rows(rows, report)
+        logger.info(
+            "data_migration.quotation_line_party_from_enquiry",
+            count=self._borrowed_from_enquiry,
+        )
 
     name = "quotation_line"
     target_model = QuotationLine
@@ -781,11 +814,20 @@ class QuotationLineLoader(BaseLoader):
         # BUG-030 §27: the party size lives on the master (LEFT JOIN: a line
         # on a missing master still reaches the skip path).
         # GAP-108: the master's dates ride along as the dateless-line fallback.
+        # GAP-118: the master's own enquiry rides along as the NULL-party
+        # fallback (`EnquireId` is the legacy spelling — cf. QuotationLoader).
         "SELECT d.Id, d.QuotationMasterId, d.VillaId, d.FromDate, d.ToDate, d.Price, "
         "d.CurrencyId, d.IsManual, m.Adult, m.Children, "
-        "m.FromDate AS MasterFromDate, m.ToDate AS MasterToDate "
+        "m.FromDate AS MasterFromDate, m.ToDate AS MasterToDate, "
+        "e.Adult AS EnquiryAdult, e.Children AS EnquiryChildren "
         "FROM VillaQuotationDetails d "
-        "LEFT JOIN VillaQuotationMaster m ON m.Id = d.QuotationMasterId"
+        "LEFT JOIN VillaQuotationMaster m ON m.Id = d.QuotationMasterId "
+        # `DeletedAt IS NULL` in the JOIN, as every other VillaEnquire read
+        # has it (`loaders/reservations.py:316`): EnquiryLoader skips a
+        # soft-deleted enquiry, so QuotationLoader mints an `-autoenquiry`
+        # stand-in for it. Borrowing the deleted row's 12 adults would put
+        # "12A" lines under a 2-adult enquiry — the inverse of §4's defect.
+        "LEFT JOIN VillaEnquire e ON e.Id = m.EnquireId AND e.DeletedAt IS NULL"
     )
 
     def transform(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -814,16 +856,42 @@ class QuotationLineLoader(BaseLoader):
         currency = legacy_currency_for(row, prop)
         if currency is None:
             return None
+        adults, children = self._party(row)
         return {
             "quotation": quotation,
             "property": prop,
             "currency": currency,
             "date_from": date_from,
             "date_to": date_to,
-            # NULL occupancy stays 0 — never a fabricated party (§23/§27).
-            "adults": int(row.get("Adult") or 0),
-            "children": int(row.get("Children") or 0),
+            "adults": adults,
+            "children": children,
             "total": _decimal(row.get("Price")) or Decimal("0"),
             "is_selected": False,
             "is_manual": bool(row.get("IsManual")),
         }
+
+    def _party(self, row: dict[str, Any]) -> tuple[int, int]:
+        """The line's party: the master's, else the legacy enquiry's, else 0.
+
+        A NULL party on the master is a gap, not a datum, so GAP-118 fills it
+        from the enquiry the quotation came from. An **explicit** zero is a
+        datum and is loaded as 0 — BUG-030 §23 bans inventing a party, and the
+        UI prompts for the real one. Only a master with *both* columns NULL
+        borrows, so a half-filled master keeps the half it has; either side of
+        the enquiry's party being positive is enough to borrow, so recorded
+        children are not dropped for want of an adult count.
+
+        `VillaEnquire.Adult` is a public web-form field with no ceiling, while
+        `QuotationLine.adults` is a `PositiveSmallIntegerField`. An
+        out-of-range value is left unborrowed rather than clamped: clamping
+        would invent a party, and letting the write raise would *drop* a line
+        that used to load as 0A, moving the pinned `QuotationLine` gap and
+        turning an informational row into a cutover BLOCKER.
+        """
+        adult, children = row.get("Adult"), row.get("Children")
+        if adult is None and children is None:
+            borrowed = (int(row.get("EnquiryAdult") or 0), int(row.get("EnquiryChildren") or 0))
+            if any(borrowed) and all(n <= _MAX_PARTY for n in borrowed):
+                self._borrowed_from_enquiry += 1
+                return borrowed
+        return int(adult or 0), int(children or 0)

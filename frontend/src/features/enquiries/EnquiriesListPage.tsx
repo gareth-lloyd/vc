@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { SortingState } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -26,7 +26,12 @@ import { useUsers } from "@/features/users/hooks";
 import { userDisplayName } from "@/features/users/schemas";
 import type { LeadStatus } from "@/styles/tokens";
 import { useEnquiryColumns } from "./columns";
-import { ENQUIRIES_PAGE_SIZE, useEnquiries, useEnquiryStatusCounts } from "./hooks";
+import {
+  ENQUIRIES_PAGE_SIZE,
+  useEnquiries,
+  useEnquiryKanbanColumns,
+  useEnquiryStatusCounts,
+} from "./hooks";
 import { EnquiryCard } from "./components/EnquiryCard";
 import { KanbanBoard, type KanbanColumn } from "./components/KanbanBoard";
 import { EnquiryFormDialog } from "./components/EnquiryFormDialog";
@@ -91,28 +96,6 @@ function paramsToFilters(params: URLSearchParams): EnquiryFilters {
   };
 }
 
-function groupIntoColumns(
-  items: EnquiryListItem[],
-  titleFor: (status: EnquiryStatus) => string,
-): KanbanColumn<EnquiryListItem>[] {
-  const buckets: Record<EnquiryStatus, EnquiryListItem[]> = {
-    new: [],
-    progressing: [],
-    quote_sent: [],
-    follow_up: [],
-    converted: [],
-    dead: [],
-  };
-  for (const item of items) {
-    buckets[item.status]?.push(item);
-  }
-  return KANBAN_STATUSES.map((status) => ({
-    id: status,
-    title: titleFor(status),
-    items: buckets[status],
-  }));
-}
-
 export function EnquiriesListPage() {
   const { t } = useTranslation("enquiries");
   const navigate = useNavigate();
@@ -140,21 +123,19 @@ export function EnquiriesListPage() {
     updateParam("ordering", sortingToOrdering(sorting));
   };
 
-  // The Kanban shows every status as a column and has no filter UI, so a
-  // lingering `?status=` (e.g. from a dashboard deep-link) would silently empty
-  // most columns. The board also isn't paginated, so a `page`/`page_size` left
-  // over from the list view would truncate or window it. Drop all three for the
-  // board query; the URL params are preserved for when the user switches back to
-  // the list view (where the bar + controls show them).
-  const effectiveFilters =
-    view === "kanban"
-      ? { ...filters, status: undefined, page: undefined, page_size: undefined }
-      : filters;
-  const query = useEnquiries(effectiveFilters);
+  // GAP-118: the two views fetch differently, so only one of them runs. The
+  // list view pages through everything; the board fans out one bounded request
+  // per column (each supplying its own status, so a `?status=` left over from a
+  // dashboard deep-link cannot narrow the whole board). The URL params are
+  // preserved either way for when the user switches back.
+  const isKanban = view === "kanban";
+  const listQuery = useEnquiries(filters, { enabled: !isKanban });
+  const boardQuery = useEnquiryKanbanColumns(filters, { enabled: isKanban });
+  const query = isKanban ? boardQuery : listQuery;
   const statusCounts = useEnquiryStatusCounts(filters);
   const enquiryColumns = useEnquiryColumns();
   const pageSize = filters.page_size ?? ENQUIRIES_PAGE_SIZE;
-  const pageCount = query.data ? Math.max(1, Math.ceil(query.data.count / pageSize)) : 1;
+  const pageCount = listQuery.data ? Math.max(1, Math.ceil(listQuery.data.count / pageSize)) : 1;
   const sorting = useMemo(() => orderingToSorting(filters.ordering), [filters.ordering]);
 
   const statusOptions = useMemo(() => enquiryStageTabOptions(), []);
@@ -167,6 +148,59 @@ export function EnquiriesListPage() {
     { enabled: view === "list" },
   );
   const operators = operatorsQuery.data?.results ?? [];
+
+  // A "View all" target: the current filters, narrowed to one column, in the
+  // list view. `page` goes so the deep-link lands on the first page.
+  const listViewHref = (status: EnquiryStatus) => {
+    const out = new URLSearchParams(params);
+    out.set("status", status);
+    out.set("view", "list");
+    out.delete("page");
+    return `/enquiries?${out.toString()}`;
+  };
+
+  const kanbanColumns: KanbanColumn<EnquiryListItem>[] = KANBAN_STATUSES.map((status) => {
+    const page = boardQuery.byStatus[status];
+    const items = page?.results ?? [];
+    const label = enquiryStatusLabel(status);
+    // The badge is the server's count for the whole column, never the number of
+    // cards — that is the GAP-118 defect. Take it from the column's OWN
+    // response: same filterset, same round trip, so badge, footer and cards can
+    // never disagree. `status-counts` (fetched anyway for the list view's
+    // filter bar) only covers the gap before the column resolves.
+    const total = page?.count ?? statusCounts.data?.[status] ?? 0;
+    return {
+      id: status,
+      title: label,
+      total,
+      items,
+      footer: boardQuery.failed.includes(status) ? (
+        <div className="text-destructive flex items-center justify-between gap-2 text-xs">
+          <span>{t("kanban.column_failed")}</span>
+          <button
+            type="button"
+            onClick={() => boardQuery.refetch()}
+            className="text-foreground underline"
+          >
+            {t("kanban.column_retry")}
+          </button>
+        </div>
+      ) : items.length < total ? (
+        <div className="text-muted-foreground flex items-center justify-between gap-2 text-xs">
+          <span>{t("kanban.showing", { shown: items.length, total })}</span>
+          <Link
+            to={listViewHref(status)}
+            className="text-foreground underline"
+            // Three columns each render "View all"; without the column name
+            // they are indistinguishable in a screen reader's link list.
+            aria-label={t("kanban.view_all_column", { status: label })}
+          >
+            {t("kanban.view_all")}
+          </Link>
+        </div>
+      ) : undefined,
+    };
+  });
 
   const handleRowClick = (row: EnquiryListItem) => {
     navigate(`/enquiries/${row.id}`);
@@ -324,12 +358,12 @@ export function EnquiriesListPage() {
             onRetry={() => query.refetch()}
             retrying={query.isFetching}
           />
-        ) : view === "kanban" ? (
-          query.isLoading ? (
+        ) : isKanban ? (
+          boardQuery.isLoading ? (
             <Skeleton className="h-96 w-full" />
           ) : (
             <KanbanBoard<EnquiryListItem>
-              columns={groupIntoColumns(query.data?.results ?? [], enquiryStatusLabel)}
+              columns={kanbanColumns}
               getItemId={(item) => String(item.id)}
               renderCard={(item) => (
                 <EnquiryCard enquiry={item} onClick={() => navigate(`/enquiries/${item.id}`)} />
@@ -339,8 +373,8 @@ export function EnquiriesListPage() {
         ) : (
           <DataTable
             columns={enquiryColumns}
-            data={query.data?.results}
-            isLoading={query.isLoading}
+            data={listQuery.data?.results}
+            isLoading={listQuery.isLoading}
             pageIndex={(filters.page ?? 1) - 1}
             pageCount={pageCount}
             pageSize={pageSize}

@@ -11,13 +11,14 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 from io import StringIO
 from typing import cast
 
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.utils import timezone
 
 from accounts.enums import OrgType
 from accounts.models import Organisation, Person
@@ -29,10 +30,12 @@ from integrations.factories import SyncRecordFactory
 from pricing.models.currency import Currency
 from properties.factories import FeatureFactory, PropertyFactory
 from properties.models.property import Property
-from reservations.factories import EnquiryFactory
+from reservations.factories import EnquiryFactory, TermsVersionFactory
 from reservations.models.booking import Booking
 from reservations.models.enquiry import Enquiry
 from reservations.models.past_stay import PastStay
+from reservations.models.quotation import Quotation, QuotationLine
+from reservations.models.terms import TermsVersion
 
 
 class _FakeCursor:
@@ -1865,6 +1868,106 @@ def test_property_contact_assignment_check_counts_mapping_role_composites() -> N
     assert "LEFT JOIN VillaContactRoleMapping r" in check.legacy_query
     assert "COUNT(DISTINCT CONCAT(m.Id, '-', ISNULL(r.RoleId, 0)))" in check.legacy_query
     assert check.expected_gap == 6
+
+
+# --- GAP-118 §3: customers minted from unmatched enquiry addresses ------------
+
+
+def _owner_agent_check() -> _Check:
+    """The real `Person (owner/agent)` check, so its exclusions are the ones
+    under test rather than a copy that could drift from the command."""
+    return next(c for c in reconcile_legacy._CHECKS if c.label == "Person (owner/agent)")
+
+
+@pytest.mark.django_db
+def test_minted_enquiry_customers_are_outside_the_owner_agent_slice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`relink_enquiry_customers --mint-unmatched` writes `enquiry-person-…`
+    Persons that have no VillaContact twin. Counted here they would inflate
+    the loaded side and turn the owner/agent check RED."""
+    Person.objects.create(first_name="Owner", last_name="One", legacy_id="7")
+    Person.objects.create(
+        first_name="Ada", last_name="Lovelace", legacy_id="enquiry-person-0123456789abcdef"
+    )
+    check = _owner_agent_check()
+    _patch(monkeypatch, [check], responses={check.legacy_query: 1 + check.expected_gap})
+
+    output = _run()
+
+    assert "BLOCKER" not in output
+
+
+@pytest.mark.django_db
+def test_minted_enquiry_customers_are_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    minted = Person.objects.create(
+        first_name="Ada", last_name="Lovelace", legacy_id="enquiry-person-0123456789abcdef"
+    )
+    EnquiryFactory(person=minted)
+    _patch(monkeypatch, [], responses={})
+
+    output = _run()
+
+    assert "Customers minted from enquiries (informational — GAP-118 §3)" in output
+    assert _cells(output, "Person minted from an enquiry address")[1] == "1"
+    assert _cells(output, "…enquiries they carry")[1] == "1"
+
+
+# --- GAP-118 §4: informational quotation-line party surface -------------------
+
+
+def _cells(output: str, label: str) -> list[str]:
+    """The cells of the one rendered table row whose first cell is `label`."""
+    rows = [line for line in output.splitlines() if line.startswith(label)]
+    assert len(rows) == 1, f"expected one {label!r} row, got {len(rows)}"
+    return [cell.strip() for cell in rows[0].split("  ") if cell.strip()]
+
+
+def _line(*, adults: int, children: int, enquiry_adults: int, enquiry_legacy_id: str = "") -> None:
+    """One QuotationLine on its own enquiry, with the party the caller asks for."""
+    enquiry = cast(
+        Enquiry,
+        EnquiryFactory(adults=enquiry_adults, legacy_id=enquiry_legacy_id or None),
+    )
+    quotation = Quotation.objects.create(
+        reference=f"QVC{enquiry.pk}",
+        enquiry=enquiry,
+        person=Person.objects.create(first_name="Ada", last_name="Lovelace"),
+        expires_at=timezone.now(),
+        terms_version=cast(TermsVersion, TermsVersionFactory()),
+    )
+    QuotationLine.objects.create(
+        quotation=quotation,
+        property=cast(Property, PropertyFactory()),
+        currency=Currency.objects.get_or_create(
+            code="GBP", defaults={"name": "Pound sterling", "symbol": "£"}
+        )[0],
+        date_from=date(2026, 6, 10),
+        date_to=date(2026, 6, 17),
+        adults=adults,
+        children=children,
+    )
+
+
+@pytest.mark.django_db
+def test_quotation_line_party_is_reported_and_never_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The "counts moved" line GAP-118's acceptance asks for. It is INFO, not a
+    blocker: an explicit legacy `Adult=0` and `ensure_enquiry` stand-ins (which
+    carry `Enquiry.adults`' default of 2) both keep it off zero."""
+    _line(adults=0, children=0, enquiry_adults=12)  # borrow did not reach
+    _line(adults=0, children=0, enquiry_adults=0)  # nothing to borrow
+    _line(adults=12, children=1, enquiry_adults=12)  # party present
+    # A stand-in's `adults` is only the model default — not a missed borrow.
+    _line(adults=0, children=0, enquiry_adults=2, enquiry_legacy_id="q9-autoenquiry")
+    _patch(monkeypatch, [], responses={})
+
+    output = _run()
+
+    assert "Quotation-line party (informational — GAP-118 §4)" in output
+    assert _cells(output, "QuotationLine with a zero party")[1] == "3"
+    assert _cells(output, "…on a real enquiry that records adults")[1] == "1"
 
 
 # --- GAP-113: archive stays landed by `import_archive_stays` ------------------

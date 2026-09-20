@@ -203,8 +203,28 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > ./manage.py relink_enquiry_customers
 > ./manage.py import_archive_stays --dry-run       # GAP-113, see below
 > ./manage.py import_archive_stays
-> ./manage.py relink_enquiry_customers             # again — see the note below
+> ./manage.py relink_enquiry_customers --mint-unmatched --dry-run
+> ./manage.py relink_enquiry_customers --mint-unmatched   # again — see below
 > ```
+>
+> **`--mint-unmatched` goes on the SECOND run only** (GAP-118 §3). It mints
+> one customer `Person` per enquiry address no loaded person holds
+> (`enquiry-person-<sha1(address)>`, 543 enquiries and 51 stranded
+> quotations on the 2026-09-18 dev DB), names it from the lowest-id enquiry
+> in the group that carries a name — `(anon)` is dropped per field, and a
+> wholly anonymous group takes the address as its first name, the
+> `find_or_create_person` rule that keeps it off "Client #id" — takes the
+> phone from the lowest-id enquiry that has one (independently of the name:
+> nothing re-adds a dropped number, both sheet importers guard on
+> `not phones.exists()`), and links every enquiry sharing that address. Two
+> different names on one address mint ONE person and the name not taken is
+> reported as `name not used (address carries several)`. On the **first** run it would mint people `import_archive_stays`
+> is about to mint properly — the duplication GAP-112's "Why not in GAP-108"
+> rejected — so the flag is opt-in and belongs after the archive stays. The
+> ambiguous categories are never minted: `shared_email`, `names_disagree`,
+> `no_email` and `inactive` stay on the sentinel exactly as GAP-112 left
+> them. Idempotent: the key is derived from the address, so a third run
+> mints nothing.
 >
 > **`relink_enquiry_customers` runs twice, and the second run is not
 > optional** (run 8, 2026-09-18). `import_archive_stays` mints people of its
@@ -276,6 +296,16 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > | `no_email` | 1 | 3 |
 >
 > plus **16** sentinel guest preferences moved with their quotation.
+>
+> **GAP-118 §3 — the second run also mints.** `--mint-unmatched` clears the
+> `unmatched` bucket (an address no `Person` holds at all): one customer per
+> distinct address, its enquiries linked and their sentinel quotations
+> followed in the same pass, so the GAP-112 invariant stays 0. The minted
+> rows carry the `enquiry-person-` prefix, which `reconcile_legacy` excludes
+> from the `Person (owner/agent)` slice (they have no VillaContact twin) and
+> `channels_writable` admits (a later sheet import may add their phone). What
+> is left on the sentinel afterwards is only the ambiguous residue, reported
+> and never guessed — see the §5 note below.
 >
 > **Then date the past stays from `VillaArchiveBookings` (GAP-113).** Between
 > Dec-2025 and Mar-2026 staff re-keyed sheet stays into legacy with exact
@@ -548,6 +578,19 @@ rather than dropping the referencing row.
 > Registry order is load-bearing for the last one: `quotation` runs before
 > `guest_preference`, so `Quotation.person` is already resolved when the
 > preference loader reads it.
+>
+> **A quotation line's party hops the same way (GAP-118 §4).** A
+> `VillaQuotationMaster` with **both** `Adult` and `Children` NULL takes the
+> party from its own `VillaEnquire` row, read down a `LEFT JOIN … AND
+> e.DeletedAt IS NULL` — never from the loaded `Enquiry`, whose `adults`
+> defaults to 2 and would hand every `-autoenquiry` stand-in the fabricated
+> party BUG-030 §23 bans. An **explicit** `Adult=0` still loads as 0; a
+> half-filled master keeps the half it has; an out-of-range web-form value is
+> left unborrowed rather than dropping the line on write. The run logs
+> `data_migration.quotation_line_party_from_enquiry` with `count`, the same
+> way the hops above report their reach — measure it on the day rather than
+> pinning §4's headline 1 235, which counts a wider population.
+> `reconcile_legacy` prints the residual zero-party lines informationally.
 >
 > **The enquiry hop misses at load time for sheet-born customers (GAP-112).**
 > `EnquiryLoader` matches with `match_person_by_email(active_only=True)`, but
@@ -1433,6 +1476,44 @@ which is exactly why this runs **after** §5 has passed:
 
 Record the merges you ran; the numbers above are the only sanctioned drift
 between a passing §5 and a later reconcile.
+
+## 6h. Phone numbers ending `.00` (only for DBs loaded before 2026-09-20)
+
+> _(Historical — the defect is fixed in the parser. A fresh cutover load never
+> sees it.)_
+
+`Enquiries - FINAL.xlsx` writes some phone cells as the literal **string**
+`+44 7985414214.00` (openpyxl type `str`, format General), so the reader's
+integral-float coercion never fires. Before GAP-118, `to_e164` could not parse
+that and returned it unchanged, leaving 713 of 2 099 `PersonPhone` rows with a
+`.0`/`.00` tail (691 on `sheet-person-…` people, 22 on legacy `client-…` ones).
+
+`reservations.phone.to_e164` now strips a trailing `\.0+` before parsing, and
+only rewrites the value when the stripped form is a **valid** number — an
+unparseable string still passes through verbatim. The tail must be the
+string's **only** dot, so a dot-separated French number (`04.93.12.34.00`)
+is left alone. That covers `import_enquiry_sheet` and `legacy_phone` in one
+place.
+
+Two residues survive a fresh load, both by design: a number whose stripped
+form still fails validation keeps its tail (`legacy_phone("0030",
+"12345.00")` → `+30 12345.00`, BUG-030 §17 — the country is worth more than
+the tail), and a dot-separated number is never touched.
+
+**An already-loaded DB is not repaired by re-running the imports**, and the
+residue is not only `PersonPhone`:
+
+- `import_enquiry_sheet` only writes a phone to a person who has **none**
+  (`if phone and not person.phones.exists() and channels_writable(...)`), so
+  a person already carrying a `.00` number is skipped and
+  `reconcile_primary_phone` is never reached. (Had it been reached it would
+  have corrected the row in place — it updates the PRIMARY row, it does not
+  add a sibling.)
+- `Enquiry.phone` is written from the same cell inside a
+  `get_or_create(defaults=…)`, so existing enquiry rows keep their tail too.
+
+Dev and staging get clean numbers on their next fresh rebuild. Nothing to run
+at cutover.
 
 ## 7. England → GB merge (retired — BUG-030 §6)
 

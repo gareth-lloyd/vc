@@ -167,6 +167,11 @@ export const contactSchema = z.object({
   // assignment (active OR historical). Derived server-side; `.optional()` like
   // the sibling derived fields so existing fixtures stay assignable.
   has_property_assignments: z.boolean().optional(),
+  // GAP-118: True only for the one sentinel Person the legacy load parks
+  // unresolvable quotations on — it is not a real customer. Derived
+  // server-side; `.optional()` like the sibling derived fields, so consumers
+  // must read `=== true` rather than treating `undefined` as a signal.
+  is_unknown_client: z.boolean().optional(),
   emails: z.array(contactEmailSchema).optional().default([]),
   phones: z.array(contactPhoneSchema).optional().default([]),
   // GAP-040 F1: a fixed taxonomy of customer tags (see PERSON_TAGS). Left

@@ -56,6 +56,37 @@ const listFixture = {
   ],
 };
 
+const STATUS_COUNTS = { new: 236, progressing: 9, quote_sent: 498, converted: 12 };
+
+function mockStatusCounts(counts: Record<string, number> = STATUS_COUNTS) {
+  server.use(http.get("/api/v1/enquiries/status-counts", () => HttpResponse.json(counts)));
+}
+
+/**
+ * The board fans out one request per KANBAN_STATUSES entry. Answer each with
+ * only the rows of that status, the way the API does, and record what was
+ * asked for.
+ */
+function mockKanbanFanOut(rows = listFixture.results, counts = STATUS_COUNTS) {
+  const seen: { status: string | null; page_size: string | null }[] = [];
+  mockStatusCounts(counts);
+  server.use(
+    http.get("/api/v1/enquiries", ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      const status = params.get("status");
+      seen.push({ status, page_size: params.get("page_size") });
+      const results = rows.filter((r) => r.status === status);
+      return HttpResponse.json({
+        count: counts[status as keyof typeof counts] ?? results.length,
+        next: null,
+        previous: null,
+        results,
+      });
+    }),
+  );
+  return seen;
+}
+
 function setup(route = "/enquiries") {
   return renderWithProviders(
     <Routes>
@@ -68,7 +99,7 @@ function setup(route = "/enquiries") {
 
 describe("EnquiriesListPage", () => {
   it("renders the Kanban board by default with cards in their status columns", async () => {
-    server.use(http.get("/api/v1/enquiries", () => HttpResponse.json(listFixture)));
+    mockKanbanFanOut();
     setup();
 
     await screen.findByTestId("kanban-column-new");
@@ -84,6 +115,7 @@ describe("EnquiriesListPage", () => {
   });
 
   it("toggles to the list view and renders a table", async () => {
+    mockStatusCounts();
     server.use(http.get("/api/v1/enquiries", () => HttpResponse.json(listFixture)));
     setup();
 
@@ -124,51 +156,147 @@ describe("EnquiriesListPage", () => {
     expect(screen.queryByTestId("kanban-column-new")).not.toBeInTheDocument();
   });
 
-  it("ignores ?status= in kanban view so no column is silently emptied", async () => {
-    let seenStatus: string | null = "unset";
-    server.use(
-      http.get("/api/v1/enquiries", ({ request }) => {
-        seenStatus = new URL(request.url).searchParams.get("status");
-        return HttpResponse.json(listFixture);
-      }),
-    );
+  it("fetches one bounded page per column instead of one unfiltered page", async () => {
+    // GAP-118: the board used to take the first page of ALL enquiries and
+    // bucket it, so a column past the page boundary showed nothing. Each column
+    // now asks for its own status with its own small page size, and no
+    // unfiltered board request fires.
+    const seen = mockKanbanFanOut();
+    setup();
+
+    await screen.findByTestId("kanban-column-new");
+    await waitFor(() => expect(seen.length).toBe(3));
+    expect(seen.map((r) => r.status).sort()).toEqual(["converted", "new", "quote_sent"]);
+    expect(seen.every((r) => r.page_size === "20")).toBe(true);
+  });
+
+  it("ignores a ?status= left over from the list view when fanning out", async () => {
+    // A dashboard deep-link leaves ?status=new in the URL. Each column supplies
+    // its OWN status, so the stale one must not narrow the whole board.
+    const seen = mockKanbanFanOut();
     setup("/enquiries?status=new&view=kanban");
 
     await screen.findByTestId("kanban-column-new");
-    // The board query dropped the status filter…
-    await waitFor(() => expect(seenStatus).toBeNull());
-    // …so cards from other statuses still populate their columns.
+    await waitFor(() => expect(seen.length).toBe(3));
     expect(
       within(screen.getByTestId("kanban-column-quote_sent")).getByText("Linus Torvalds"),
     ).toBeInTheDocument();
   });
 
-  it("drops page/page_size from the kanban board query so the board isn't windowed", async () => {
-    // The list view's pagination controls write `page`/`page_size` to the URL.
-    // The Kanban isn't paginated, so a switch back to the board must ignore them
-    // or the board would show only one truncated page across all columns.
+  it("drops a page left over from the list view so no column is windowed", async () => {
+    // The list view's pagination writes `page`/`page_size` to the URL. Each
+    // column is its own first page, so a leftover `page=3` must not empty them.
     let seenPage: string | null = "unset";
-    let seenPageSize: string | null = "unset";
+    mockStatusCounts();
     server.use(
       http.get("/api/v1/enquiries", ({ request }) => {
-        const url = new URL(request.url);
-        seenPage = url.searchParams.get("page");
-        seenPageSize = url.searchParams.get("page_size");
-        return HttpResponse.json(listFixture);
+        seenPage = new URL(request.url).searchParams.get("page");
+        return HttpResponse.json({ count: 0, next: null, previous: null, results: [] });
       }),
     );
     setup("/enquiries?view=kanban&page=3&page_size=25");
 
     await screen.findByTestId("kanban-column-new");
     await waitFor(() => expect(seenPage).toBeNull());
-    expect(seenPageSize).toBeNull();
+  });
+
+  it("badges each column from status-counts and footers the windowed remainder", async () => {
+    // The ticket's headline defect: the board showed New 19 / Quote sent 7 from
+    // `items.length` where status-counts says 236 / 498.
+    mockKanbanFanOut();
+    setup();
+
+    const newCol = await screen.findByTestId("kanban-column-new");
+    expect(within(newCol).getByText("236")).toBeInTheDocument();
+    expect(within(newCol).getByText(/showing 1 of 236/i)).toBeInTheDocument();
+    const quoted = screen.getByTestId("kanban-column-quote_sent");
+    expect(within(quoted).getByText("498")).toBeInTheDocument();
+    // "View all" drops into the list view filtered to that column.
+    const viewAll = within(quoted).getByRole("link", { name: /view all/i });
+    expect(viewAll).toHaveAttribute("href", expect.stringContaining("status=quote_sent"));
+    expect(viewAll).toHaveAttribute("href", expect.stringContaining("view=list"));
+  });
+
+  it("keeps the loaded columns when one column's request fails", async () => {
+    // GAP-118 turned one board request into one per column. A transient 500 on
+    // a single lane must not replace the whole triage surface.
+    mockStatusCounts();
+    server.use(
+      http.get("/api/v1/enquiries", ({ request }) => {
+        const status = new URL(request.url).searchParams.get("status");
+        if (status === "converted") return new HttpResponse(null, { status: 500 });
+        const results = listFixture.results.filter((r) => r.status === status);
+        return HttpResponse.json({ count: results.length, next: null, previous: null, results });
+      }),
+    );
+    setup();
+
+    const newCol = await screen.findByTestId("kanban-column-new");
+    expect(await within(newCol).findByText("Ada Lovelace")).toBeInTheDocument();
+    // The failed lane says so, in place — the board itself is still there.
+    const converted = screen.getByTestId("kanban-column-converted");
+    expect(within(converted).getByText(/couldn't load this column/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't load enquiries/i)).not.toBeInTheDocument();
+  });
+
+  it("retries every column from the board-wide error state", async () => {
+    // Only when NO column loads does the board surrender to the shared
+    // ErrorState — and its retry has to reach all three requests.
+    let attempts = 0;
+    mockStatusCounts();
+    server.use(
+      http.get("/api/v1/enquiries", () => {
+        attempts += 1;
+        return new HttpResponse(null, { status: 503 });
+      }),
+    );
+    setup();
+
+    // `error instanceof ApiError` still narrows through the combined result.
+    expect(await screen.findByText(/couldn't load enquiries \(503\)/i)).toBeInTheDocument();
+    await waitFor(() => expect(attempts).toBe(3));
+
+    await userEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(attempts).toBe(6));
+  });
+
+  it("labels each View all link with its column", async () => {
+    // Three links reading only "View all" are indistinguishable in a screen
+    // reader's link list.
+    mockKanbanFanOut();
+    setup();
+
+    await screen.findByTestId("kanban-column-new");
+    expect(
+      await screen.findByRole("link", { name: /view all new enquiries/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /view all quote sent enquiries/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no footer on a column that holds everything it counts", async () => {
+    mockKanbanFanOut(listFixture.results, {
+      new: 1,
+      progressing: 0,
+      quote_sent: 1,
+      converted: 0,
+    });
+    setup();
+
+    const newCol = await screen.findByTestId("kanban-column-new");
+    await waitFor(() => expect(within(newCol).getByText("Ada Lovelace")).toBeInTheDocument());
+    expect(within(newCol).queryByText(/showing/i)).not.toBeInTheDocument();
   });
 
   it("kanban toggle remains reachable when a status filter is active", async () => {
     // Landing from the dashboard "New enquiries" KPI puts ?status=new in the
     // URL, which flips the implicit default to "list". The user must still be
     // able to switch back to the Kanban view.
-    server.use(http.get("/api/v1/enquiries", () => HttpResponse.json(listFixture)));
+    // MSW prepends runtime handlers, so no blanket `/enquiries` handler here —
+    // it would shadow the fan-out and this test would assert nothing about the
+    // board it toggles to.
+    mockKanbanFanOut();
     setup("/enquiries?status=new");
     expect(await screen.findByText("E-AAA-001")).toBeInTheDocument();
     expect(screen.queryByTestId("kanban-column-new")).not.toBeInTheDocument();
@@ -178,7 +306,7 @@ describe("EnquiriesListPage", () => {
   });
 
   it("opens the unified workspace (/enquiries/:id) on a Kanban card click", async () => {
-    server.use(http.get("/api/v1/enquiries", () => HttpResponse.json(listFixture)));
+    mockKanbanFanOut();
     setup();
     await userEvent.click(await screen.findByText("Ada Lovelace"));
     expect(await screen.findByText("Detail page")).toBeInTheDocument();

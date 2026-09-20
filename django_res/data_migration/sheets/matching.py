@@ -37,7 +37,11 @@ from django_countries import countries
 from accounts.enums import PersonKind, PersonStatus, PersonTag
 from accounts.models import Person
 from accounts.services.person_channels import reconcile_primary_email
-from data_migration.loaders.sentinels import CLIENT_LEGACY_PREFIX, SHEET_LEGACY_PREFIX
+from data_migration.loaders.sentinels import (
+    CLIENT_LEGACY_PREFIX,
+    ENQUIRY_PERSON_LEGACY_PREFIX,
+    SHEET_LEGACY_PREFIX,
+)
 from properties.enums import PropertyStatus
 from properties.models import Country, Property, Region
 
@@ -476,7 +480,14 @@ def append_note_line(person: Person, line: str) -> bool:
 
 
 def channels_writable(legacy_id: str | None) -> bool:
-    """Sheet- and client-keyed people (and hand-made ones) may gain a channel;
-    a legacy owner/agent Person (bare VillaContact id) may not, or the
-    PersonPhone reconcile count would drift from VillaContactTele."""
-    return legacy_id is None or legacy_id.startswith((SHEET_LEGACY_PREFIX, CLIENT_LEGACY_PREFIX))
+    """Sheet-, client- and enquiry-keyed people (and hand-made ones) may gain a
+    channel; a legacy owner/agent Person (bare VillaContact id) may not, or the
+    PersonPhone reconcile count would drift from VillaContactTele.
+
+    GAP-118: the relink pass's `enquiry-person-` customers belong on the
+    writable side — they have no VillaContact twin either, and a later sheet
+    import silently refusing to add their phone would be a data loss.
+    """
+    return legacy_id is None or legacy_id.startswith(
+        (SHEET_LEGACY_PREFIX, CLIENT_LEGACY_PREFIX, ENQUIRY_PERSON_LEGACY_PREFIX)
+    )

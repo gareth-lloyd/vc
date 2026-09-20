@@ -7,6 +7,7 @@ from typing import Any
 from django.db import transaction
 from rest_framework import serializers
 
+from accounts.constants import UNKNOWN_CLIENT_LEGACY_ID
 from accounts.enums import ContactType, PersonKind, PersonStatus, PersonTag
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone
 from accounts.serializers.organisation import OrganisationSummarySerializer
@@ -89,6 +90,12 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
     # subquery, no N+1); falls back to a scoped `.exists()` for un-annotated
     # callers (merge/anonymize responses).
     has_property_assignments = serializers.SerializerMethodField()
+    # GAP-118: True only for the one `unknown_client` sentinel Person the legacy
+    # load parks unresolvable quotations on. The FE renders it as "no customer
+    # linked" rather than as an ordinary, tag-editable customer. Derived rather
+    # than exposing `legacy_id`, which this serializer withholds on purpose
+    # (`serializers/organisation.py:24`). No N+1 — a local column.
+    is_unknown_client = serializers.SerializerMethodField()
 
     class Meta:
         model = Person
@@ -116,6 +123,7 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
             "is_repeat_customer",
             "contact_types",
             "has_property_assignments",
+            "is_unknown_client",
             "anonymized_at",
             "user",
             "emails",
@@ -163,6 +171,9 @@ class ContactSerializer(serializers.ModelSerializer[Person]):
         if annotated is None:
             return obj.property_assignments.exists()
         return bool(annotated)
+
+    def get_is_unknown_client(self, obj: Person) -> bool:
+        return obj.legacy_id == UNKNOWN_CLIENT_LEGACY_ID
 
     def get_contact_types(self, obj: Person) -> list[str]:
         # GAP-052: union of every capacity, sorted for a stable response. Values

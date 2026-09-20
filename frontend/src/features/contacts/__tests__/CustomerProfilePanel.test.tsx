@@ -46,4 +46,48 @@ describe("CustomerProfilePanel", () => {
     renderWithProviders(<CustomerProfilePanel personId={null} />);
     expect(screen.getByText(/no customer linked/i)).toBeInTheDocument();
   });
+
+  it("renders the migration sentinel as unlinked, not as a customer", async () => {
+    // GAP-118: the legacy load parks a quotation whose client it could not
+    // resolve on one sentinel Person. It is not a customer, so the rail must
+    // not show its name, its tags, or an editor that would write to it.
+    server.use(
+      http.get("/api/v1/contacts/7", () =>
+        HttpResponse.json({
+          id: 7,
+          first_name: "Unknown",
+          last_name: "Client",
+          kind: "customer",
+          // What the backend actually returns for the sentinel — without it
+          // `isClientContact` is false and the tag-editor assertion below
+          // passes vacuously, since the editor would not mount either way.
+          contact_types: ["customer"],
+          tags: ["vip"],
+          is_unknown_client: true,
+          emails: [],
+          phones: [],
+        }),
+      ),
+    );
+
+    renderWithProviders(<CustomerProfilePanel personId={7} />);
+
+    expect(await screen.findByText(/no customer linked/i)).toBeInTheDocument();
+    expect(screen.queryByText("Unknown Client")).not.toBeInTheDocument();
+    expect(screen.queryByText("VIP")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /tag/i })).not.toBeInTheDocument();
+  });
+
+  it("still renders an ordinary customer whose flag is false", async () => {
+    server.use(
+      http.get("/api/v1/contacts/9", () =>
+        HttpResponse.json({ ...contactFixture, is_unknown_client: false }),
+      ),
+    );
+    mockNestedReads(9);
+
+    renderWithProviders(<CustomerProfilePanel personId={9} />);
+
+    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+  });
 });

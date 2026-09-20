@@ -7,6 +7,7 @@ from typing import cast
 import pytest
 from rest_framework.test import APIClient
 
+from accounts.constants import CLIENT_LEGACY_PREFIX, UNKNOWN_CLIENT_LEGACY_ID
 from accounts.enums import PersonKind, PersonStatus, PersonTag
 from accounts.factories import OrganisationFactory
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone, User
@@ -629,6 +630,100 @@ def test_contact_types_empty_for_plain_contact(
     body = api_client.get(f"/api/v1/contacts/{contact.pk}").json()
 
     assert body["contact_types"] == []
+
+
+@pytest.mark.django_db
+def test_is_unknown_client_true_for_the_migration_sentinel(
+    api_client: APIClient, staff: User
+) -> None:
+    # GAP-118: the loader parks a quotation whose legacy client it could not
+    # resolve on this fixed row. The FE must be able to tell it apart from a
+    # real customer WITHOUT seeing `legacy_id` (which ContactSerializer does not
+    # expose, deliberately).
+    sentinel = Person.objects.create(
+        first_name="Unknown",
+        last_name="Client",
+        kind=PersonKind.CUSTOMER.value,
+        status=PersonStatus.INACTIVE.value,
+        legacy_id=UNKNOWN_CLIENT_LEGACY_ID,
+    )
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{sentinel.pk}").json()
+
+    assert body["is_unknown_client"] is True
+
+
+@pytest.mark.django_db
+def test_is_unknown_client_false_for_an_ordinary_loaded_customer(
+    api_client: APIClient, staff: User
+) -> None:
+    # A real loaded customer carries the same `client-` prefix — only the exact
+    # sentinel id counts, so the prefix alone must not trip the flag.
+    person = Person.objects.create(
+        first_name="Ada",
+        last_name="Lovelace",
+        kind=PersonKind.CUSTOMER.value,
+        legacy_id=f"{CLIENT_LEGACY_PREFIX}4711",
+    )
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{person.pk}").json()
+
+    assert body["is_unknown_client"] is False
+
+
+@pytest.mark.django_db
+def test_is_unknown_client_false_for_a_contact_with_no_legacy_id(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    # An app-created contact has `legacy_id = NULL`; the flag must be a plain
+    # False, never null — the FE reads it as a boolean.
+    api_client.force_login(staff)
+
+    body = api_client.get(f"/api/v1/contacts/{contact.pk}").json()
+
+    assert body["is_unknown_client"] is False
+
+
+@pytest.mark.django_db
+def test_list_contacts_carries_is_unknown_client(api_client: APIClient, staff: User) -> None:
+    # The same serializer serves the list route, where the FE reads the flag off
+    # the row rather than re-fetching the detail. Seed an ordinary contact too,
+    # so this pins DISCRIMINATION and not merely presence. Keyed by id rather
+    # than by position — the list queryset is unordered.
+    sentinel = Person.objects.create(
+        first_name="Unknown",
+        last_name="Client",
+        kind=PersonKind.CUSTOMER.value,
+        legacy_id=UNKNOWN_CLIENT_LEGACY_ID,
+    )
+    ordinary = Person.objects.create(first_name="Ada", last_name="Lovelace")
+    api_client.force_login(staff)
+
+    body = api_client.get("/api/v1/contacts").json()
+
+    assert {row["id"]: row["is_unknown_client"] for row in body["results"]} == {
+        sentinel.pk: True,
+        ordinary.pk: False,
+    }
+
+
+@pytest.mark.django_db
+def test_is_unknown_client_is_read_only(
+    api_client: APIClient, staff: User, contact: Person
+) -> None:
+    # Derived from `legacy_id`; a client cannot set it.
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/contacts/{contact.pk}",
+        {"is_unknown_client": True},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["is_unknown_client"] is False
 
 
 @pytest.mark.django_db

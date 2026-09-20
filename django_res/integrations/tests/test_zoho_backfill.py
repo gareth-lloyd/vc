@@ -20,7 +20,7 @@ from django.core.management import CommandError, call_command
 from django.test import override_settings
 from django.utils import timezone
 
-from accounts.factories import PersonFactory
+from accounts.factories import OrganisationFactory, PersonFactory
 from accounts.models import Person
 from integrations import tasks
 from integrations.enums import RunTriggeredBy, SyncProvider, SyncRunStatus, SyncStatus
@@ -29,10 +29,12 @@ from reservations.enums import EnquiryEventKind, QuotationStatus
 from reservations.factories import EnquiryFactory, TermsVersionFactory
 from reservations.models import Enquiry, EnquiryEvent, Quotation, TermsVersion
 
+ORGANISATION_URL = "https://flow.zoho.example/organisation"
 CONTACT_URL = "https://flow.zoho.example/contact"
 ENQUIRY_URL = "https://flow.zoho.example/enquiry"
 QUOTE_URL = "https://flow.zoho.example/quote"
 ALL_WEBHOOKS = {
+    "organisation": ORGANISATION_URL,
     "contact": CONTACT_URL,
     "villa": "",
     "enquiry": ENQUIRY_URL,
@@ -92,6 +94,7 @@ def _posted_urls(post_mock: mock.Mock) -> list[str]:
 
 
 def test_pushes_kinds_in_dependency_order_and_records_sync_run(post_mock: mock.Mock) -> None:
+    OrganisationFactory()  # PersonFactory sets no agency, so no org arrives free
     _person()
     _enquiry()  # brings its own person
     _quotation()  # brings its own enquiry + person
@@ -100,10 +103,15 @@ def test_pushes_kinds_in_dependency_order_and_records_sync_run(post_mock: mock.M
         _run()
 
     urls = _posted_urls(post_mock)
+    assert urls.count(ORGANISATION_URL) == 1
     assert urls.count(CONTACT_URL) == 3
     assert urls.count(ENQUIRY_URL) == 2
     assert urls.count(QUOTE_URL) == 1
-    # Dependency order: every contact before every enquiry before every quote.
+    # Dependency order: organisations first (a contact payload nests its
+    # agency's RES_ID), then contacts, then enquiries, then quotes.
+    assert max(i for i, u in enumerate(urls) if u == ORGANISATION_URL) < min(
+        i for i, u in enumerate(urls) if u == CONTACT_URL
+    )
     assert max(i for i, u in enumerate(urls) if u == CONTACT_URL) < min(
         i for i, u in enumerate(urls) if u == ENQUIRY_URL
     )
@@ -115,14 +123,14 @@ def test_pushes_kinds_in_dependency_order_and_records_sync_run(post_mock: mock.M
     assert run.provider == SyncProvider.ZOHO_CRM
     assert run.triggered_by == RunTriggeredBy.MANUAL
     assert run.status == SyncRunStatus.SUCCEEDED
-    assert run.records_processed == 6
-    assert run.records_succeeded == 6
+    assert run.records_processed == 7
+    assert run.records_succeeded == 7
     assert run.records_failed == 0
     assert run.error_summary == ""
     assert run.finished_at is not None
 
     assert not SyncRecord.objects.exclude(status=SyncStatus.IN_SYNC.value).exists()
-    assert SyncRecord.objects.count() == 6
+    assert SyncRecord.objects.count() == 7
 
 
 def test_villa_backfill_order_and_all_statuses(post_mock: mock.Mock) -> None:

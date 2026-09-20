@@ -38,7 +38,7 @@ from django.utils import timezone
 if TYPE_CHECKING:
     from integrations.models import SyncRecord
 
-ZOHO_FLOW_KINDS = ("contact", "villa", "enquiry", "quote", "booking")
+ZOHO_FLOW_KINDS = ("organisation", "contact", "villa", "enquiry", "quote", "booking")
 
 # GAP-102 provenance: every POST carries a `_meta` SIBLING key (never a
 # wrapper — that would rename the root for every Flow mapping Limitless have

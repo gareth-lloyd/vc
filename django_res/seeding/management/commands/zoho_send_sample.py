@@ -127,6 +127,7 @@ if TYPE_CHECKING:
 # these up — auto-push stays disabled while this command can still reach the
 # live sample flows on demand.
 _SAMPLE_ENV_VAR = {
+    "organisation": "ZOHO_SAMPLE_WEBHOOK_ORGANISATION",
     "contact": "ZOHO_SAMPLE_WEBHOOK_CONTACT",
     "villa": "ZOHO_SAMPLE_WEBHOOK_VILLA",
     "enquiry": "ZOHO_SAMPLE_WEBHOOK_ENQUIRY",

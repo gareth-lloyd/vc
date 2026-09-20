@@ -4,10 +4,11 @@
 
 **Status:** 🟨 code complete — **PR-A merged** (storage settings, multipart
 upload, `image_url` read path, `UploadTicket` dropped, `post_delete` cleanup,
-FE file picker) and **PR-B built** (`import_legacy_images` command + tests +
-this runbook, branch `feat/legacy-image-import`, 2026-06-11). Bucket created.
-Remaining: the ops prerequisites below, then executing the cutover runbook
-(the actual staging/prod import runs).
+FE file picker), **PR-B merged** (`import_legacy_images` + tests + this runbook,
+`0ed2502f` on `main` — an earlier revision of this line claimed it was unmerged
+on `feat/legacy-image-import`; that branch no longer exists) and **PR-C merged**
+(`fetch_legacy_images`, 2026-09-20). Bucket created. Remaining: **one** ops
+prerequisite (the app-scoped IAM user), then executing the cutover runbook.
 
 **Source:** ad-hoc request 2026-06-08 ("proper S3-bucket-based image hosting
 for staging and prod"). An earlier revision of this doc specced **Cloudflare
@@ -30,7 +31,7 @@ disk** via `FileSystemStorage`, served by
 - **Doesn't survive restart/redeploy/scale** — a new container has no uploaded
   files. Staging masks this with `WHITENOISE_AUTOREFRESH=True` + re-running
   `seed_dev`, but real uploads vanish.
-- **Can't hold the ~13k legacy images** the cutover needs.
+- **Can't hold the 18,232 legacy images (~10.3 GB)** the cutover needs.
 
 The write path is half-built for object storage but inert: the FE form has a
 manual "key" text field (no file picker), `PropertyImageWriteSerializer` takes
@@ -141,7 +142,7 @@ set its keys as Render env vars per service. Do not ship the
    with `properties/legacy/`, upload the source binary to the row's existing
    key via `default_storage` (so `AWS_LOCATION` prefixing applies
    automatically) and the row resolves with **no row edits**. Idempotent: one
-   `list_objects` of the prefix + diff, not 13k per-object HEADs. Reports
+   `list_objects` of the prefix + diff, not 18k per-object HEADs. Reports
    uploaded / skipped / missing-at-source; treat missing-at-source as the
    expected-loss bucket — log, don't crash.
 
@@ -166,15 +167,27 @@ set its keys as Render env vars per service. Do not ship the
    `legacy_id=1` came from `wwwroot/PropertyImages/1/9436180e-….jpg`.
 
    **Flatten-collision check (re-run per dump).** Flattening is only safe if
-   filenames are globally unique across villas. Verified 2026-06-09: **12,293
-   rows, 12,293 distinct keys, 0 collisions** (legacy `Name` values are
-   GUIDs). A property of the data, not a guarantee — re-verify on the cutover
-   dump; a single colliding `Name` would make two rows resolve to one image,
-   silently overwriting.
+   filenames are globally unique across villas. Verified on the loaded data
+   2026-09-20: **18,232 rows, 18,232 distinct keys, 0 collisions** (legacy
+   `Name` values are GUIDs), and **18,232 distinct case-insensitively** too —
+   which matters because two keys differing only in case are distinct rows in
+   Postgres and distinct S3 objects but ONE file on a case-insensitive
+   filesystem. The 2026-06-09 figure in an earlier revision of this doc (12,293)
+   predates the full load. A property of the data, not a guarantee: both
+   commands re-check it as a pre-flight and abort before doing any work.
 
-   **Source files are not in the repo/container** —
-   `res-app:/app/wwwroot/PropertyImages` is empty and the path is gitignored;
-   ops must export the archived legacy tree for `--source` (see Prereqs).
+   **Source of the binaries — HTTPS from the legacy host (primary).**
+   `res-app:/app/wwwroot/PropertyImages` is empty in the repo/container and the
+   path is gitignored, but the legacy .NET app serves every file publicly from
+   `https://vc2.mojodev.co.uk/PropertyImages/<VillaId>/<filename>` (hardcoded at
+   `PropertyService2.cs:766`). `fetch_legacy_images` downloads that tree into the
+   nested layout `import_legacy_images --source` expects, so **no ops export is
+   needed** — see runbook step 2a. An ops export of the `res-app-images` Docker
+   volume remains the fallback if the legacy host is retired first.
+
+   **Trap, verified:** a *directory* URL answers **HTTP 200 with the Blazor SPA
+   shell**, not a listing. A 200 does not mean an image, there is no directory
+   enumeration, and so the DB row set is the only manifest.
 
 ## Open decisions (settle at implementation time)
 
@@ -190,15 +203,19 @@ set its keys as Render env vars per service. Do not ship the
 - **B — Prod cutover ordering.** Once prod's storage flips to S3, every
   legacy row's URL points at S3 immediately, but binaries aren't there until
   `import_legacy_images` runs (needs the `--source` ops prerequisite). **Run
-  the import into `production/` before flipping prod**, or all 13k villa
+  the import into `production/` before flipping prod**, or all 18,232 villa
   photos 404 in the window. Staging can tolerate the gap.
 
 ## Prerequisites (ops)
 
 1. ~~S3 bucket + public-read policy~~ — **done** (see Infrastructure).
 2. App-scoped IAM user; keys into Render env vars (staging + prod services).
-3. Source export of the ~13k legacy binaries for `import_legacy_images
-   --source` (`CUTOVER.md §8` — update it to point here).
+   **This is the only remaining ops blocker.**
+3. ~~Source export of the ~13k legacy binaries~~ — **no longer required.**
+   `fetch_legacy_images` produces the `--source` tree itself over HTTPS
+   (runbook step 2a). Keep the fetched archive as a cold archive afterwards: it
+   is the only copy outside a legacy host that is a retirement candidate, and
+   re-fetching costs another 10.3 GB of the supplier's egress.
 
 ## Cutover runbook (PR-B)
 
@@ -210,9 +227,36 @@ set its keys as Render env vars per service. Do not ship the
    existing "check Render env vars before pushing" habit.
 1. **Prereqs** (above): app-scoped IAM user (`villacollective-app`,
    put/get/delete/list on `villacollective-images` only) with keys in Render
-   env vars for staging + prod; ops export of the legacy `PropertyImages/`
-   tree onto the operator's machine. Never ship the `villacollective-cli`
-   user's keys to Render.
+   env vars for staging + prod. Never ship the `villacollective-cli` user's keys
+   to Render. No ops export is needed — step 2a fetches the binaries.
+2a. **Fetch the legacy binaries** (~2.5 h, ~10.3 GB, needs no AWS credentials
+   and never writes to the database):
+
+   ```bash
+   # Pre-flight only, ~2 seconds: validates the data and the destination.
+   uv run python manage.py fetch_legacy_images --dry-run
+   # Watched smoke run — confirm real throughput before committing hours.
+   uv run python manage.py fetch_legacy_images --limit 200
+   # The real thing. `caffeinate -i` because system sleep kills the run;
+   # tmux because a closed terminal SIGHUPs it. Run it OFF-PEAK.
+   caffeinate -i uv run python manage.py fetch_legacy_images
+   # Then confirm the tree is complete *through the actual consumer*:
+   uv run python manage.py import_legacy_images \
+       --source ~/villacollective-legacy/PropertyImages --dry-run
+   ```
+
+   Expect `downloaded + skipped + missing == 18232` and `missing at source 0`
+   from the dry-run. Interrupt and re-run freely — it resumes from the
+   filesystem. If the host starts to struggle, Ctrl-C and re-run with
+   `--concurrency 4 --delay 0.25`.
+
+   **This hits a third party's live production server.** It is their bandwidth
+   (~10.3 GB, which a hosting plan may cap) and their users' web server, so run
+   it off-peak, leave the concurrency cap alone, and watch the first 200 files.
+   Sustained connections from one IP can trip a bot rule and block you — if that
+   happens, stop and wait; do not switch IPs. The command sends an identifying
+   User-Agent and stops itself after a run of consecutive failures. One-time
+   only: never scheduled, never Celery-wrapped.
 2. **Import into `production/` before the flip-carrying push** — from the
    operator's machine (the source dir is local, not on Render):
 
@@ -222,8 +266,10 @@ set its keys as Render env vars per service. Do not ship the
    export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
    # plus whatever else production.py fails fast on — check the file at run
    # time; real-or-dummy is fine, the command never touches them.
-   uv run python manage.py import_legacy_images --source /path/to/PropertyImages --dry-run
-   uv run python manage.py import_legacy_images --source /path/to/PropertyImages
+   uv run python manage.py import_legacy_images \
+       --source ~/villacollective-legacy/PropertyImages --dry-run
+   uv run python manage.py import_legacy_images \
+       --source ~/villacollective-legacy/PropertyImages
    ```
 
    Record the uploaded / skipped / missing-at-source counts; missing-at-source
@@ -245,6 +291,9 @@ set its keys as Render env vars per service. Do not ship the
   storage; staging flips via env.
 - **PR-B — legacy import:** `import_legacy_images` + collision re-check +
   prod cutover (ordering per decision B).
+- **PR-C — legacy fetch:** `fetch_legacy_images` + the shared
+  `properties/services/legacy_images.py` pre-flight predicates. Removes the ops
+  export prerequisite; the upload half is unchanged.
 
 ## Acceptance
 
@@ -259,6 +308,9 @@ set its keys as Render env vars per service. Do not ship the
 - `import_legacy_images` is idempotent, reports
   uploaded/skipped/missing-at-source, and resolves existing rows with no row
   edits.
+- `fetch_legacy_images` produces that command's `--source` tree, resumes after
+  an interrupt without re-downloading, refuses a destination inside the repo,
+  and aborts before any request on colliding / case-colliding / unsafe paths.
 - Lint/type/test gate green.
 
 ## Dependencies

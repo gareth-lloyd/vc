@@ -1529,18 +1529,35 @@ calls it.
 
 ## 8. Image files
 
-The DB rows are already in place (~13 000 `properties/legacy/<file>` keys
-with no backing binaries). Upload the binaries with:
+The DB rows are already in place (**18,232** `properties/legacy/<file>` keys,
+~10.3 GB of binaries, with nothing behind them). Fetch the binaries, then
+upload them:
 
 ```bash
-uv run python manage.py import_legacy_images --source <PropertyImages dir> --dry-run
-uv run python manage.py import_legacy_images --source <PropertyImages dir>
+# ~2.5 h, ~10.3 GB. Run it off-peak; see the GAP-012 runbook first — this hits
+# a third party's live production server and spends their bandwidth.
+uv run python manage.py fetch_legacy_images --dry-run     # pre-flight, ~2 s
+uv run python manage.py fetch_legacy_images --limit 200   # watched smoke run
+caffeinate -i uv run python manage.py fetch_legacy_images
+
+uv run python manage.py import_legacy_images \
+    --source ~/villacollective-legacy/PropertyImages --dry-run
+uv run python manage.py import_legacy_images \
+    --source ~/villacollective-legacy/PropertyImages
 ```
 
-`--source` is the exported legacy `PropertyImages/` directory (per-villa-id
-subfolders); the command reconstructs each nested source path from
-`property.legacy_id` and uploads to the row's existing flat key. Idempotent;
-missing-at-source files are the documented expected-loss bucket.
+`fetch_legacy_images` downloads the legacy host's public
+`PropertyImages/<VillaId>/<filename>` tree into exactly the nested layout
+`--source` expects, so **no ops export of the legacy volume is needed**. It
+resumes from the filesystem after an interrupt and keeps the tree afterwards as
+a cold archive — re-fetching would cost the supplier another 10.3 GB of egress.
+
+`--source` is that directory (per-villa-id subfolders); the import reconstructs
+each nested source path from `property.legacy_id` and uploads to the row's
+existing flat key. Both commands are idempotent, and both abort before doing any
+work if the flattened keys collide. Missing-at-source files are the documented
+expected-loss bucket — expect **0**, since the fetch dry-run already proved
+every row has a file.
 
 **Ordering:** the import must run into the `production/` prefix **before**
 the prod deploy that flips storage to S3 — `settings/production.py` on main

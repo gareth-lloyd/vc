@@ -19,13 +19,18 @@ import {
   useUpsertPropertyDescription,
 } from "../hooks";
 import {
+  DESCRIPTION_BLOCKS,
   DESCRIPTION_SECTIONS,
   INTERNAL_SECTION,
-  WEBSITE_SECTIONS,
+  SINGLE_SECTIONS,
   isKnownSection,
+  type DescriptionBlock,
   type DescriptionSection,
   type PropertyDescription,
 } from "../schemas";
+
+/** Tab ids: one per sub/para block, then one per unpaired section. */
+type TabId = DescriptionBlock["key"] | (typeof SINGLE_SECTIONS)[number];
 
 interface DescriptionsSectionProps {
   propertyId: number;
@@ -58,8 +63,12 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
     [descriptions.data?.results],
   );
   const [bodies, setBodies] = useState<Record<DescriptionSection, string>>(initialBodies);
-  const [section, setSection] = useState<DescriptionSection>("overview");
+  const [tab, setTab] = useState<TabId>("web");
   const [clearing, setClearing] = useState<DescriptionSection | null>(null);
+  // Per-section, not `upsertMutation.variables`: that holds only the most
+  // recent call, so saving a block's para while its sub is still in flight
+  // dropped the sub's "Saving…" caption and re-enabled its button.
+  const [inFlight, setInFlight] = useState<ReadonlySet<DescriptionSection>>(new Set());
 
   // Seed local bodies from the first successful fetch only — subsequent
   // refetches (e.g. after Save) must not clobber unsaved edits on other tabs.
@@ -72,6 +81,7 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
   }, [descriptions.data, initialBodies]);
 
   const handleSave = async (target: DescriptionSection) => {
+    setInFlight((prev) => new Set(prev).add(target));
     try {
       await upsertMutation.mutateAsync({ section: target, body: bodies[target] });
       toast.success(t("descriptions.toasts.saved"));
@@ -81,6 +91,12 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
       } else {
         toast.error(t("descriptions.toasts.save_failed"));
       }
+    } finally {
+      setInFlight((prev) => {
+        const next = new Set(prev);
+        next.delete(target);
+        return next;
+      });
     }
   };
 
@@ -113,23 +129,26 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
     );
   }
 
-  const savingSection = upsertMutation.isPending ? upsertMutation.variables?.section : undefined;
-
-  // `label` disambiguates the internal-notes buttons from the six identically
-  // captioned website ones; it tracks the pending state so it never contradicts
-  // the visible text (aria-label wins for the accessible name). Website buttons
-  // pass `undefined` — their visible caption already names them.
-  const renderSaveButton = (s: DescriptionSection, label?: string) => {
-    const saving = savingSection === s;
+  // Every button carries its section in the accessible name. Two editors now
+  // share one panel (a block's sub and para) and both captions read "Save" /
+  // "Clear", so the visible text alone names neither — and Clear is a hard
+  // DELETE with nothing to undo it.
+  const renderSaveButton = (s: DescriptionSection) => {
+    const section = t(`descriptions.sections.${s}`);
+    const saving = inFlight.has(s);
     const caption = saving ? t("descriptions.actions.saving") : t("descriptions.actions.save");
     return canWrite ? (
       <Button
         size="sm"
-        aria-label={label && saving ? t("descriptions.actions.saving_internal") : label}
+        aria-label={
+          saving
+            ? t("descriptions.actions.saving_named", { section })
+            : t("descriptions.actions.save_named", { section })
+        }
         onClick={() => handleSave(s)}
-        // Gated per section, not on `isPending`: the mutation hook is shared, so
-        // an in-flight internal-notes save would otherwise dead the Save button
-        // under someone mid-edit on a website section.
+        // Gated per section, not on the shared mutation's `isPending`: an
+        // in-flight save would otherwise dead every other Save button on the
+        // page, including the one under someone mid-edit.
         disabled={bodies[s] === initialBodies[s] || saving}
       >
         {caption}
@@ -138,7 +157,11 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
       <Tooltip>
         <TooltipTrigger asChild>
           <span>
-            <Button size="sm" aria-label={label} disabled>
+            <Button
+              size="sm"
+              aria-label={t("descriptions.actions.save_named", { section })}
+              disabled
+            >
               {t("descriptions.actions.save")}
             </Button>
           </span>
@@ -148,12 +171,14 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
     );
   };
 
-  const renderClearButton = (s: DescriptionSection, label?: string) =>
+  const renderClearButton = (s: DescriptionSection) =>
     canWrite ? (
       <Button
         variant="outline"
         size="sm"
-        aria-label={label}
+        aria-label={t("descriptions.actions.clear_named", {
+          section: t(`descriptions.sections.${s}`),
+        })}
         onClick={() => setClearing(s)}
         disabled={!initialBodies[s]}
       >
@@ -161,39 +186,66 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
       </Button>
     ) : null;
 
+  // One block column: its own label, textarea and Clear/Save row, because
+  // each section is its own API row even though the pair renders together.
+  const renderEditor = (s: DescriptionSection, rows: number) => (
+    <div className="space-y-3">
+      <Label htmlFor={`description-${s}`}>{t(`descriptions.sections.${s}`)}</Label>
+      <Textarea
+        id={`description-${s}`}
+        rows={rows}
+        value={bodies[s]}
+        disabled={!canWrite}
+        onChange={(e) => setBodies((prev) => ({ ...prev, [s]: e.target.value }))}
+        placeholder={t("descriptions.body_placeholder")}
+      />
+      <div className="flex items-center justify-end gap-2">
+        {renderClearButton(s)}
+        {renderSaveButton(s)}
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      <Section title={t("descriptions.groups.website")}>
-        <Tabs value={section} onValueChange={(v) => setSection(v as DescriptionSection)}>
-          {/* Six triggers with full-length labels overflow a narrow viewport;
+      <Section title={t("descriptions.groups.copy")}>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
+          {/* Seven triggers with full-length labels overflow a narrow viewport;
               `TabsList` is `w-fit` and the triggers are `whitespace-nowrap`, so
               without this they clip rather than wrap. */}
           <div className="overflow-x-auto">
             <TabsList>
-              {WEBSITE_SECTIONS.map((s) => (
+              {DESCRIPTION_BLOCKS.map((b) => (
+                <TabsTrigger key={b.key} value={b.key}>
+                  {t(`descriptions.blocks.${b.key}`)}
+                </TabsTrigger>
+              ))}
+              {SINGLE_SECTIONS.map((s) => (
                 <TabsTrigger key={s} value={s}>
                   {t(`descriptions.sections.${s}`)}
                 </TabsTrigger>
               ))}
             </TabsList>
           </div>
-          {WEBSITE_SECTIONS.map((s) => (
+          {DESCRIPTION_BLOCKS.map((b) => (
+            // Sub left, para right — the legacy edit screen's two columns.
+            <TabsContent key={b.key} value={b.key} className="grid gap-6 md:grid-cols-2">
+              {renderEditor(b.sub, 4)}
+              {renderEditor(b.para, 10)}
+            </TabsContent>
+          ))}
+          {SINGLE_SECTIONS.map((s) => (
             <TabsContent key={s} value={s} className="space-y-3">
-              <Label htmlFor={`description-${s}`} className="sr-only">
-                {t(`descriptions.sections.${s}`)}
-              </Label>
-              <Textarea
-                id={`description-${s}`}
-                rows={10}
-                value={bodies[s]}
-                disabled={!canWrite}
-                onChange={(e) => setBodies((prev) => ({ ...prev, [s]: e.target.value }))}
-                placeholder={t("descriptions.body_placeholder")}
-              />
-              <div className="flex items-center justify-end gap-2">
-                {renderClearButton(s)}
-                {renderSaveButton(s)}
-              </div>
+              {/* House rules is the one section here that is never published:
+                  it is snapshotted onto the booking contract (GAP-094), and
+                  five backend leak guards keep it out of every public
+                  payload. Say so where it is edited. */}
+              {s === "house_rules" ? (
+                <p className="text-muted-foreground text-sm">
+                  {t("descriptions.house_rules_hint")}
+                </p>
+              ) : null}
+              {renderEditor(s, 10)}
             </TabsContent>
           ))}
         </Tabs>
@@ -216,8 +268,8 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
             placeholder={t("descriptions.internal_placeholder")}
           />
           <div className="flex items-center justify-end gap-2">
-            {renderClearButton(INTERNAL_SECTION, t("descriptions.actions.clear_internal"))}
-            {renderSaveButton(INTERNAL_SECTION, t("descriptions.actions.save_internal"))}
+            {renderClearButton(INTERNAL_SECTION)}
+            {renderSaveButton(INTERNAL_SECTION)}
           </div>
         </div>
       </Section>
@@ -227,7 +279,9 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
           open
           onOpenChange={(o) => !o && setClearing(null)}
           onConfirm={handleClear}
-          title={t("descriptions.clear_confirm.title")}
+          title={t("descriptions.clear_confirm.title", {
+            section: t(`descriptions.sections.${clearing}`),
+          })}
           description={t("descriptions.clear_confirm.description")}
           confirmLabel={t("descriptions.clear_confirm.confirm")}
           destructive

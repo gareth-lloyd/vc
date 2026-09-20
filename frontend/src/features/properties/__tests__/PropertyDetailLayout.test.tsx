@@ -40,7 +40,15 @@ function installDetailHandlers() {
     http.get("/api/v1/properties/5/descriptions", () =>
       HttpResponse.json(
         emptyPage([
-          { id: 1, property: 5, section: "overview", body: "A beautiful villa.", updated_at: null },
+          // GAP-090: `web_des_1` is the first field of the default block tab,
+          // so this is what the panel shows without navigating.
+          {
+            id: 1,
+            property: 5,
+            section: "web_des_1",
+            body: "A beautiful villa.",
+            updated_at: null,
+          },
         ]),
       ),
     ),

@@ -54,7 +54,8 @@
     "features": "Features",
     "settings": "Settings",
     "history": "History",
-    "rate_workbench": "Rates"
+    "rate_workbench": "Rates",
+    "descriptions": "Descriptions"
   },
   "detail": {
     "not_found_title": "Property not found",
@@ -727,11 +728,23 @@
     "body_placeholder": "Write the section content here.",
     "sections": {
       "overview": "Overview",
-      "web_description": "Web description",
-      "further_info": "Further villa information",
-      "location": "Location",
+      "web_des_1": "Web des 1",
+      "web_des_2": "Web des 2",
+      "interior_sub": "Interior sub",
+      "interior_para": "Interior para",
+      "exterior_sub": "Exterior sub",
+      "exterior_para": "Exterior para",
+      "location_sub": "Location sub",
+      "location_para": "Location para",
+      "rooms": "Rooms",
       "house_rules": "House rules",
       "internal_notes": "Internal notes"
+    },
+    "blocks": {
+      "web": "Web description",
+      "interior": "Interior",
+      "exterior": "Exterior",
+      "location": "Location"
     },
     "errors": {
       "load_title": "Couldn't load descriptions",
@@ -741,9 +754,9 @@
       "save": "Save",
       "saving": "Saving…",
       "clear": "Clear",
-      "save_internal": "Save internal notes",
-      "clear_internal": "Clear internal notes",
-      "saving_internal": "Saving internal notes…"
+      "save_named": "Save {{section}}",
+      "clear_named": "Clear {{section}}",
+      "saving_named": "Saving {{section}}…"
     },
     "toasts": {
       "saved": "Description saved",
@@ -752,16 +765,17 @@
       "clear_failed": "Couldn't clear description"
     },
     "clear_confirm": {
-      "title": "Clear this description?",
+      "title": "Clear {{section}}?",
       "description": "The section content will be permanently removed.",
       "confirm": "Clear"
     },
     "groups": {
-      "website": "Website copy",
+      "copy": "Villa copy",
       "internal": "Internal notes",
       "internal_badge": "Not shown to guests"
     },
-    "internal_placeholder": "Not shown to guests — staff-only notes about this villa."
+    "internal_placeholder": "Not shown to guests — staff-only notes about this villa.",
+    "house_rules_hint": "Not published online — this text rides into the booking contract."
   },
   "changeover": {
     "section_title": "Changeover overrides",

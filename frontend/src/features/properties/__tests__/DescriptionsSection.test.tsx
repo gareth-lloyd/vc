@@ -42,10 +42,40 @@ describe("DescriptionsSection", () => {
       ),
     );
     renderWithProviders(<DescriptionsSection propertyId={7} />);
-    const textarea = (await screen.findByPlaceholderText(
-      /Write the section content here/i,
-    )) as HTMLTextAreaElement;
+    // GAP-090: the first tab is the Web description block, so Overview — a
+    // single, unpaired section — is reached by its own tab.
+    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
+    const textarea = screen.getByRole("textbox", { name: "Overview" }) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea.value).toBe("Welcome to Casa Sur."));
+    useAuthStore.getState().clear();
+  });
+
+  it("renders each block as a sub/para pair (GAP-090)", async () => {
+    // The public site renders every website block as a short sub plus a longer
+    // para, and legacy stores them as column pairs. Both halves must be
+    // separately editable — they were fused into one section before GAP-090.
+    setReservationsUser();
+    server.use(
+      http.get("/api/v1/properties/7/descriptions", () =>
+        HttpResponse.json(
+          drfPage([
+            { id: 8, property: 7, section: "interior_sub", body: "Ensuite bedrooms." },
+            { id: 9, property: 7, section: "interior_para", body: "Soft linen throughout." },
+          ]),
+        ),
+      ),
+    );
+    renderWithProviders(<DescriptionsSection propertyId={7} />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Interior" }));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("textbox", { name: "Interior sub" }) as HTMLTextAreaElement).value,
+      ).toBe("Ensuite bedrooms."),
+    );
+    expect(
+      (screen.getByRole("textbox", { name: "Interior para" }) as HTMLTextAreaElement).value,
+    ).toBe("Soft linen throughout.");
     useAuthStore.getState().clear();
   });
 
@@ -61,7 +91,9 @@ describe("DescriptionsSection", () => {
         HttpResponse.json(
           drfPage([
             overviewRecord,
-            { id: 2, property: 7, section: "location", body: "Ten minutes from Chania." },
+            // `location` itself was retired by GAP-090; `location_sub` is the
+            // live value this test needs as its *known* section.
+            { id: 2, property: 7, section: "location_sub", body: "Ten minutes from Chania." },
             { id: 3, property: 7, section: "something_new", body: "From a newer backend." },
           ]),
         ),
@@ -73,10 +105,10 @@ describe("DescriptionsSection", () => {
     useAuthStore.getState().clear();
   });
 
-  it("renders no villa_info tab and ignores other_information / rooms rows (GAP-091)", async () => {
-    // `villa_info` left the backend enum; `other_information` moved to the
-    // Features tab and `rooms` has no UI yet (GAP-092). Neither is a
-    // Descriptions-tab section, and neither may take the panel down.
+  it("renders no villa_info tab and ignores other_information rows (GAP-091)", async () => {
+    // `villa_info` left the backend enum and `other_information` moved to the
+    // Features tab, so it is not a Descriptions-tab section and must not take
+    // the panel down. `rooms` does render here now (GAP-092).
     setReservationsUser();
     server.use(
       http.get("/api/v1/properties/7/descriptions", () =>
@@ -90,18 +122,24 @@ describe("DescriptionsSection", () => {
       ),
     );
     renderWithProviders(<DescriptionsSection propertyId={7} />);
-    const textarea = (await screen.findByPlaceholderText(
-      /Write the section content here/i,
-    )) as HTMLTextAreaElement;
-    await waitFor(() => expect(textarea.value).toBe("Welcome to Casa Sur."));
+    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
+    await waitFor(() =>
+      expect((screen.getByRole("textbox", { name: "Overview" }) as HTMLTextAreaElement).value).toBe(
+        "Welcome to Casa Sur.",
+      ),
+    );
 
-    // Exact name: "Further villa information" is a different, still-present tab.
     expect(screen.queryByRole("tab", { name: "Villa information" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Further villa information" })).toBeInTheDocument();
-    expect(screen.getAllByRole("tab")).toHaveLength(5);
+    // Four sub/para blocks plus the three unpaired sections.
+    expect(screen.getAllByRole("tab")).toHaveLength(7);
     expect(screen.queryByDisplayValue("Pets on request.")).not.toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Five en-suite bedrooms.")).not.toBeInTheDocument();
     expect(screen.queryByText(/Couldn't load descriptions/i)).not.toBeInTheDocument();
+
+    // The property-level rooms blurb is a section of its own now.
+    await userEvent.click(screen.getByRole("tab", { name: "Rooms" }));
+    expect((screen.getByRole("textbox", { name: "Rooms" }) as HTMLTextAreaElement).value).toBe(
+      "Five en-suite bedrooms.",
+    );
     useAuthStore.getState().clear();
   });
 
@@ -159,13 +197,15 @@ describe("DescriptionsSection", () => {
     );
     renderWithProviders(<DescriptionsSection propertyId={7} />);
 
-    const textarea = (await screen.findByPlaceholderText(
-      /Write the section content here/i,
-    )) as HTMLTextAreaElement;
+    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
+    const textarea = screen.getByRole("textbox", { name: "Overview" }) as HTMLTextAreaElement;
     await waitFor(() => expect(textarea.value).toBe("Welcome to Casa Sur."));
 
-    await userEvent.click(screen.getByRole("button", { name: /^clear$/i }));
+    // Each button names its section: two editors share a block panel, and
+    // Clear is a hard DELETE.
+    await userEvent.click(screen.getByRole("button", { name: "Clear Overview" }));
     const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Clear Overview?")).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: /^clear$/i }));
 
     await waitFor(() => expect(textarea.value).toBe(""));
@@ -186,10 +226,10 @@ describe("DescriptionsSection", () => {
       }),
     );
     renderWithProviders(<DescriptionsSection propertyId={7} />);
-    await userEvent.click(await screen.findByRole("tab", { name: /house rules/i }));
-    const textarea = await screen.findByPlaceholderText(/Write the section content here/i);
+    await userEvent.click(await screen.findByRole("tab", { name: "House rules" }));
+    const textarea = screen.getByRole("textbox", { name: "House rules" });
     await userEvent.type(textarea, "No smoking.");
-    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Save House rules" }));
     await waitFor(() => expect(putBody).not.toBeNull());
     expect(putBody!.body).toBe("No smoking.");
     useAuthStore.getState().clear();

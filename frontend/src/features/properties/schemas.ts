@@ -98,24 +98,45 @@ export type PropertyDetail = z.infer<typeof propertyDetailSchema>;
 
 export const propertyListResponseSchema = paginated(propertyListItemSchema);
 
-/** Guest-facing copy, in tab order. */
-export const WEBSITE_SECTIONS = [
-  "overview",
-  "web_description",
-  "further_info",
-  "location",
-  "house_rules",
+/**
+ * GAP-090: the four legacy website blocks, in the order the legacy edit
+ * screen lays them out. The public site renders each as a short **sub**
+ * (lead-in) plus a longer **para**, and legacy stores them as the column
+ * pairs `WebDesc1/2`, `Interior1/2`, `Exterior1/2`, `Location1/2`. This
+ * replaces the flat `WEBSITE_SECTIONS`, which was wrong twice over: it had
+ * no interior or exterior at all, and it listed `house_rules` as website
+ * copy although house rules are contract-only and never published.
+ */
+export const DESCRIPTION_BLOCKS = [
+  { key: "web", sub: "web_des_1", para: "web_des_2" },
+  { key: "interior", sub: "interior_sub", para: "interior_para" },
+  { key: "exterior", sub: "exterior_sub", para: "exterior_para" },
+  { key: "location", sub: "location_sub", para: "location_para" },
 ] as const;
+export type DescriptionBlock = (typeof DESCRIPTION_BLOCKS)[number];
+
+/**
+ * Sections with no sub/para pairing, in display order. `overview` is a
+ * different legacy column on a different legacy screen; `rooms` is the
+ * property-level bedrooms blurb (GAP-092); `house_rules` is not website copy
+ * at all — it rides into the booking contract (GAP-094) — but it is edited
+ * here, so it renders last, apart from the blocks.
+ */
+export const SINGLE_SECTIONS = ["overview", "rooms", "house_rules"] as const;
 
 /** Staff-only; grouped apart from website copy in the UI. */
 export const INTERNAL_SECTION = "internal_notes";
 
 /**
  * Sections the Descriptions tab renders. The backend enum also has
- * `other_information` (edited on the Features tab, GAP-091) and `rooms`
- * (no UI until GAP-092) — rows in those sections are ignored here.
+ * `other_information`, edited on the Features tab (GAP-091) — rows in that
+ * section are ignored here.
  */
-export const DESCRIPTION_SECTIONS = [...WEBSITE_SECTIONS, INTERNAL_SECTION] as const;
+export const DESCRIPTION_SECTIONS = [
+  ...DESCRIPTION_BLOCKS.flatMap((b) => [b.sub, b.para]),
+  ...SINGLE_SECTIONS,
+  INTERNAL_SECTION,
+] as const;
 export type DescriptionSection = (typeof DESCRIPTION_SECTIONS)[number];
 
 /** Free-text companion to the other-information tags; lives on the Features tab. */

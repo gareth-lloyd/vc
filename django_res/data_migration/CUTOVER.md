@@ -1434,6 +1434,44 @@ which is exactly why this runs **after** §5 has passed:
 Record the merges you ran; the numbers above are the only sanctioned drift
 between a passing §5 and a later reconcile.
 
+## 6h. Phone numbers ending `.00` (only for DBs loaded before 2026-09-20)
+
+> _(Historical — the defect is fixed in the parser. A fresh cutover load never
+> sees it.)_
+
+`Enquiries - FINAL.xlsx` writes some phone cells as the literal **string**
+`+44 7985414214.00` (openpyxl type `str`, format General), so the reader's
+integral-float coercion never fires. Before GAP-118, `to_e164` could not parse
+that and returned it unchanged, leaving 713 of 2 099 `PersonPhone` rows with a
+`.0`/`.00` tail (691 on `sheet-person-…` people, 22 on legacy `client-…` ones).
+
+`reservations.phone.to_e164` now strips a trailing `\.0+` before parsing, and
+only rewrites the value when the stripped form is a **valid** number — an
+unparseable string still passes through verbatim. The tail must be the
+string's **only** dot, so a dot-separated French number (`04.93.12.34.00`)
+is left alone. That covers `import_enquiry_sheet` and `legacy_phone` in one
+place.
+
+Two residues survive a fresh load, both by design: a number whose stripped
+form still fails validation keeps its tail (`legacy_phone("0030",
+"12345.00")` → `+30 12345.00`, BUG-030 §17 — the country is worth more than
+the tail), and a dot-separated number is never touched.
+
+**An already-loaded DB is not repaired by re-running the imports**, and the
+residue is not only `PersonPhone`:
+
+- `import_enquiry_sheet` only writes a phone to a person who has **none**
+  (`if phone and not person.phones.exists() and channels_writable(...)`), so
+  a person already carrying a `.00` number is skipped and
+  `reconcile_primary_phone` is never reached. (Had it been reached it would
+  have corrected the row in place — it updates the PRIMARY row, it does not
+  add a sibling.)
+- `Enquiry.phone` is written from the same cell inside a
+  `get_or_create(defaults=…)`, so existing enquiry rows keep their tail too.
+
+Dev and staging get clean numbers on their next fresh rebuild. Nothing to run
+at cutover.
+
 ## 7. England → GB merge (retired — BUG-030 §6)
 
 No longer a cutover step. The legacy "England" row (`VillaCountry` 24,

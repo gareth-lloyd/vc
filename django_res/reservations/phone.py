@@ -8,7 +8,14 @@ trimmed and unchanged so a messy legacy import is preserved rather than lost.
 
 from __future__ import annotations
 
+import re
+
 import phonenumbers
+
+# The tail must be the string's ONLY dot: `04.93.12.34.00` is a French
+# number written with dot separators, not a spreadsheet artefact, and
+# `+39 06.6982.0` would strip to a different, valid, WRONG number.
+_SPREADSHEET_DECIMAL = re.compile(r"([^.]*)\.0+")
 
 
 def to_e164(
@@ -26,6 +33,14 @@ def to_e164(
       Server dump stores.
 
     Empty / blank / ``None`` input returns ``""``.
+
+    A trailing ``.0``/``.00``… is stripped before parsing (GAP-118 §2):
+    spreadsheet exports write the cell as the *string* ``"+44 7985414214.00"``,
+    which no numeric coercion catches. Only when that tail is the string's
+    **only** dot — a number written with dot separators (``04.93.12.34.00``)
+    is not a spreadsheet artefact. The suffix is dropped only from a number
+    that then parses as valid; the fallbacks below return the untouched input,
+    so junk keeps its suffix.
     """
     if not raw:
         return ""
@@ -33,10 +48,12 @@ def to_e164(
     if not trimmed:
         return ""
 
+    spreadsheet_decimal = _SPREADSHEET_DECIMAL.fullmatch(trimmed)
+    candidate = spreadsheet_decimal.group(1) if spreadsheet_decimal else trimmed
     parse_region = region or region_from_calling_code(country_code)
 
     try:
-        parsed = phonenumbers.parse(trimmed, parse_region)
+        parsed = phonenumbers.parse(candidate, parse_region)
     except phonenumbers.NumberParseException:
         return trimmed
 

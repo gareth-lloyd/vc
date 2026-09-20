@@ -23,6 +23,25 @@ class TestToE164:
         # No region/calling code to anchor it — keep the raw rather than guess.
         assert to_e164("12345") == "12345"
 
+    def test_trailing_decimal_zeros_are_stripped_before_parsing(self) -> None:
+        # GAP-118 §2: the xlsx cell is literally the string "+44 7985414214.00"
+        # (openpyxl type `str`, format General), so no numeric coercion applies.
+        assert to_e164("+44 7985414214.00") == "+447985414214"
+        assert to_e164("07985414214.0", region="GB") == "+447985414214"
+
+    def test_trailing_decimal_zeros_survive_on_unparseable_input(self) -> None:
+        # Only a *valid* number is rewritten; junk passes through verbatim.
+        assert to_e164("call office.00") == "call office.00"
+        assert to_e164("12345.0") == "12345.0"
+
+    def test_dot_separated_numbers_keep_their_trailing_zero_group(self) -> None:
+        # French/Belgian/Swiss numbers are conventionally dot-separated; a
+        # final "00" group is a real part of the number, not a spreadsheet
+        # tail. Stripping it here once turned +390669820 into +39066982.
+        assert to_e164("04.93.12.34.00", region="FR") == "+33493123400"
+        assert to_e164("+33 4.93.12.34.00") == "+33493123400"
+        assert to_e164("+39 06.6982.0") == "+390669820"
+
     def test_empty_and_none_become_empty_string(self) -> None:
         assert to_e164("") == ""
         assert to_e164("   ") == ""

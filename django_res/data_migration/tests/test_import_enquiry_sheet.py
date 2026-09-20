@@ -212,6 +212,29 @@ def test_invalid_email_is_an_error_and_other_rows_continue(tmp_path: Path) -> No
     assert re.search(r"Sheet1!2\s+invalid email", out)  # keyed by sheet row (BUG-030 §34)
 
 
+def test_apostrophe_for_at_in_the_email_cell_still_loads_the_row(tmp_path: Path) -> None:
+    path = _workbook(
+        tmp_path / "e.xlsx",
+        [
+            _row(
+                **{
+                    "First Name": "Chloe",
+                    "Last Name": "",
+                    "Email": "chloe'k2pdg.com.au",
+                    "Enquiry Date": "2024-12-08",
+                }
+            )
+        ],
+    )
+
+    out = _run(path)
+
+    assert "invalid email" not in out
+    person = Person.objects.get()
+    assert person.emails.get().email == "chloe@k2pdg.com.au"
+    assert Enquiry.objects.get().email == "chloe@k2pdg.com.au"
+
+
 def test_unknown_source_and_ambiguous_region_and_unmatched_villa(tmp_path: Path) -> None:
     gr, _ = Country.objects.get_or_create(iso2="GR", defaults={"name": "Greece", "iso3": "GRC"})
     Region.objects.create(country=gr, name="Corfu", slug="corfu-a")

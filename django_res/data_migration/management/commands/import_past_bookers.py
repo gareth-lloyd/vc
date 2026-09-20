@@ -41,6 +41,7 @@ from data_migration.sheets.matching import (
     find_or_create_person,
     match_person_by_name,
     normalise_name,
+    normalise_sheet_email,
     person_legacy_id,
     resolve_country,
 )
@@ -133,7 +134,8 @@ class Command(BaseCommand):
         return by_name
 
     def _import_contact(self, row: dict[str, Any], report: SheetReport) -> Person | None:
-        first, last, email = _text(row, "First Name"), _text(row, "Last Name"), _text(row, "Email")
+        first, last = _text(row, "First Name"), _text(row, "Last Name")
+        email = normalise_sheet_email(row.get("Email"))
         if not first and not last and not email:
             report.skipped["blank_row"] += 1
             return None

@@ -15,6 +15,9 @@ Rules (design plan decisions 3-6, 8):
 - **Geo**: ``Country`` via a small alias map then the ISO name list;
   ``Region`` by exact (country, name) with exactly one hit. Multi-valued cells
   ("Corfu / Paxos") resolve to nothing.
+- **E-mail** (`normalise_sheet_email`): an apostrophe typed for ``@`` (the
+  same key on a UK layout) is repaired; every other cell is left to the
+  importer's own ``"@" not in email`` check.
 - **Tags**: the sheet vocabulary → `PersonTag`; unknown values are handed back
   for a notes line rather than dropped.
 """
@@ -45,6 +48,9 @@ _TAG_SPLIT = re.compile(r"[;,]")
 _HTML_BREAK = re.compile(r"<\s*(?:br|/p|/div|/li)\s*/?\s*>", re.IGNORECASE)
 _HTML_TAG = re.compile(r"<[^>]+>")
 _MANY_NEWLINES = re.compile(r"\n{3,}")
+#: `local@domain.tld` with no whitespace — the shape a repaired cell must
+#: have before `normalise_sheet_email` accepts it.
+_EMAIL_SHAPE = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 
 #: Sheet tag token (casefolded) → PersonTag.
 TAG_MAP: dict[str, PersonTag] = {
@@ -91,6 +97,26 @@ def normalise_name(value: Any) -> str:
     text = _APOSTROPHES.sub("", str(value).casefold())
     text = _PUNCT.sub(" ", text)
     return _SPACES.sub(" ", text).strip()
+
+
+def normalise_sheet_email(value: Any) -> str:
+    """An e-mail cell, with the one keying slip the exports carry repaired.
+
+    On a UK layout ``@`` is Shift + the apostrophe key, so an unshifted press
+    writes ``chloe'k2pdg.com.au`` where ``chloe@k2pdg.com.au`` was meant. A
+    cell with no ``@`` and exactly one apostrophe is that slip and nothing
+    else; anything other than that shape (a real address, ``Rose Mann``,
+    ``No email``) is handed back unchanged for the caller's own validation.
+    """
+    text = "" if value is None else str(value).strip()
+    if "@" in text or text.count("'") != 1:
+        return text
+    repaired = text.replace("'", "@")
+    # Only when the result is address-shaped: the column also holds prose
+    # ("don't have one") and apostrophe surnames, and a repair that passed the
+    # importer's `"@" not in email` guard would become a real PersonEmail and
+    # a person-matching key.
+    return repaired if _EMAIL_SHAPE.fullmatch(repaired) else text
 
 
 def split_tags(raw: Any) -> list[str]:

@@ -68,7 +68,12 @@
     "empty_body": "Try clearing the search or changing filters."
   },
   "kanban": {
-    "empty_column": "No enquiries"
+    "empty_column": "No enquiries",
+    "showing": "Showing {{shown}} of {{total}}",
+    "view_all": "View all",
+    "view_all_column": "View all {{status}} enquiries",
+    "column_failed": "Couldn't load this column.",
+    "column_retry": "Retry"
   },
   "filters": {
     "lead_status_aria": "Filter by lead status",

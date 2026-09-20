@@ -4,7 +4,15 @@ import { useTranslation } from "react-i18next";
 export interface KanbanColumn<T> {
   id: string;
   title: string;
+  /**
+   * How many rows the column holds in total. GAP-118: `items` is one bounded
+   * page of the column, so the badge cannot be `items.length` — on the loaded
+   * legacy DB that read New as 19 where the server counts 236.
+   */
+  total: number;
   items: T[];
+  /** Rendered under the cards — the "showing N of M" / "view all" affordance. */
+  footer?: ReactNode;
 }
 
 interface KanbanBoardProps<T> {
@@ -17,10 +25,11 @@ interface ColumnProps {
   id: string;
   title: string;
   count: number;
+  footer?: ReactNode;
   children: ReactNode;
 }
 
-function Column({ id, title, count, children }: ColumnProps) {
+function Column({ id, title, count, footer, children }: ColumnProps) {
   return (
     <div
       className="bg-muted/40 border-border flex w-72 flex-shrink-0 flex-col rounded-lg border p-2"
@@ -32,6 +41,7 @@ function Column({ id, title, count, children }: ColumnProps) {
         <span className="text-muted-foreground text-xs">{count}</span>
       </div>
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto">{children}</div>
+      {footer ? <div className="mt-2 px-1">{footer}</div> : null}
     </div>
   );
 }
@@ -47,7 +57,7 @@ export function KanbanBoard<T>({ columns, renderCard, getItemId }: KanbanBoardPr
   return (
     <div className="flex gap-3 overflow-x-auto pb-4">
       {columns.map((col) => (
-        <Column key={col.id} id={col.id} title={col.title} count={col.items.length}>
+        <Column key={col.id} id={col.id} title={col.title} count={col.total} footer={col.footer}>
           {col.items.map((item) => (
             <div key={getItemId(item)}>{renderCard(item)}</div>
           ))}

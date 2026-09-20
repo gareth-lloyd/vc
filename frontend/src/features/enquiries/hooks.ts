@@ -1,4 +1,11 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import { queryKeys, type EnquiryId } from "@/lib/query/keys";
 import { invalidateEnquiryDependents, invalidateQuotationDependents } from "@/lib/query/invalidate";
 import { enabledQuery } from "@/lib/query/enabledQuery";
@@ -18,22 +25,105 @@ import {
   setEnquiryLeadStatus,
   updateEnquiry,
 } from "./api";
+import { KANBAN_STATUSES } from "./schemas";
 import type {
   AssignEnquiryInput,
   CloseEnquiryInput,
   EnquiryDetail,
   EnquiryFilters,
+  EnquiryListItem,
   EnquiryNoteWriteInput,
+  EnquiryStatus,
   EnquiryWriteInput,
 } from "./schemas";
+import type { Paginated } from "@/types/api";
 import type { LeadStatus } from "@/styles/tokens";
 
 export const ENQUIRIES_PAGE_SIZE = 50;
 
-export function useEnquiries(filters: EnquiryFilters) {
+/**
+ * GAP-118: how many cards a Kanban column shows. The board is a triage
+ * surface, not a browser — the column badge carries the true total and the
+ * footer links to the filtered list for the rest.
+ */
+export const KANBAN_COLUMN_PAGE_SIZE = 20;
+
+export function useEnquiries(filters: EnquiryFilters, { enabled = true } = {}) {
   return useQuery({
     queryKey: queryKeys.enquiries.list(filters),
     queryFn: () => fetchEnquiries(filters),
+    // GAP-118: the board no longer rides this query. Hooks cannot be
+    // conditional, so without the flag the list request would still fire
+    // alongside the per-column fan-out on every board render.
+    enabled,
+  });
+}
+
+interface KanbanColumnsResult {
+  byStatus: Partial<Record<EnquiryStatus, Paginated<EnquiryListItem>>>;
+  /** The columns whose own request failed — the rest still render. */
+  failed: EnquiryStatus[];
+  isLoading: boolean;
+  isError: boolean;
+  isFetching: boolean;
+  error: unknown;
+  refetch: () => void;
+}
+
+function combineKanbanColumns(
+  results: UseQueryResult<Paginated<EnquiryListItem>>[],
+): KanbanColumnsResult {
+  const byStatus: Partial<Record<EnquiryStatus, Paginated<EnquiryListItem>>> = {};
+  const failed: EnquiryStatus[] = [];
+  KANBAN_STATUSES.forEach((status, i) => {
+    const page = results[i]?.data;
+    if (page) byStatus[status] = page;
+    if (results[i]?.isError) failed.push(status);
+  });
+  return {
+    byStatus,
+    failed,
+    isLoading: results.some((r) => r.isLoading),
+    // Board-wide failure ONLY when nothing loaded. The board went from one
+    // request to one per column, so `some` would let a single transient 500
+    // replace two perfectly good lanes with a full-width error; a failed lane
+    // reports itself through `failed` instead.
+    isError: results.length > 0 && results.every((r) => r.isError),
+    isFetching: results.some((r) => r.isFetching),
+    // The shared ErrorState reads `instanceof ApiError` off this to show the
+    // status code. Only read when every column failed, so any one will do.
+    error: results.find((r) => r.error != null)?.error,
+    // Retry every column — a single failed fan-out request is the likeliest
+    // failure, so the page's retry must reach it.
+    refetch: () => results.forEach((r) => void r.refetch()),
+  };
+}
+
+/**
+ * GAP-118: one bounded request per board column. The board used to bucket the
+ * first page of ALL enquiries, so on 5 081 rows every column past the page
+ * boundary read as empty or near-empty. Each column now asks for its own
+ * status; `useEnquiryStatusCounts` supplies the badges.
+ */
+export function useEnquiryKanbanColumns(filters: EnquiryFilters, { enabled = true } = {}) {
+  return useQueries({
+    queries: KANBAN_STATUSES.map((status) => {
+      // `page` is the list view's, and each column is its own first page.
+      // `ordering` is deliberately passed through, so the board honours the
+      // page's sort (and the backend default when there is none).
+      const columnFilters: EnquiryFilters = {
+        ...filters,
+        status,
+        page: undefined,
+        page_size: KANBAN_COLUMN_PAGE_SIZE,
+      };
+      return {
+        queryKey: queryKeys.enquiries.list(columnFilters),
+        queryFn: () => fetchEnquiries(columnFilters),
+        enabled,
+      };
+    }),
+    combine: combineKanbanColumns,
   });
 }
 

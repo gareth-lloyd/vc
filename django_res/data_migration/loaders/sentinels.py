@@ -25,6 +25,13 @@ CLIENT_LEGACY_PREFIX = "client-"
 # that is compared against the legacy dump.
 SHEET_LEGACY_PREFIX = "sheet-"
 
+# GAP-118: `legacy_id` prefix for the customer Persons `relink_enquiry_customers
+# --mint-unmatched` writes for an enquiry address no loaded Person holds
+# (`enquiry-person-<sha1(address)>`, minted by `relink.enquiry_person_legacy_id`).
+# Like the `sheet-` rows these have no res-DB twin, so `reconcile_legacy`
+# excludes the prefix from the Person count slice it compares against the dump.
+ENQUIRY_PERSON_LEGACY_PREFIX = "enquiry-person-"
+
 # Fixed legacy_id for the `unknown_client` sentinel Person. Carries the
 # `client-` prefix so it sorts with the customer rows, but reconcile_legacy
 # excludes it from BOTH Person count slices (owner/agent AND client) so the

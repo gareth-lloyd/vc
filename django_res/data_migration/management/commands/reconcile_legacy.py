@@ -55,6 +55,7 @@ from data_migration.loaders.pricing import (
 )
 from data_migration.loaders.sentinels import (
     CLIENT_LEGACY_PREFIX,
+    ENQUIRY_PERSON_LEGACY_PREFIX,
     SHEET_LEGACY_PREFIX,
     UNKNOWN_CLIENT_LEGACY_ID,
     UNKNOWN_LEGACY_ID,
@@ -524,11 +525,14 @@ _CHECKS: list[_Check] = [
         # `unknown_client` sentinel) or they'd inflate the loaded count and turn
         # this check RED. The `client-` slice is checked separately below.
         # GAP-089: the spreadsheet importers' `sheet-` persons have no legacy
-        # twin either. Organic persons (legacy_id NULL) never count.
+        # twin either, and nor (GAP-118) do the `enquiry-person-` customers
+        # `relink_enquiry_customers --mint-unmatched` writes. Organic persons
+        # (legacy_id NULL) never count.
         loaded_count=lambda m: (
             m._default_manager.filter(legacy_id__isnull=False)
             .exclude(legacy_id__startswith=CLIENT_LEGACY_PREFIX)
             .exclude(legacy_id__startswith=SHEET_LEGACY_PREFIX)
+            .exclude(legacy_id__startswith=ENQUIRY_PERSON_LEGACY_PREFIX)
             .count()
         ),
     ),
@@ -1265,6 +1269,7 @@ class Command(BaseCommand):
             blockers += self._night_parity_section(cursor)
             blockers += self._archive_stay_section(cursor)
             self._quotation_line_party_section()
+            self._minted_customer_section()
             if options["integrations"]:
                 blockers += self._zoho_continuity_section(cursor)
                 self._wordpress_info_section(cursor)
@@ -1492,6 +1497,35 @@ class Command(BaseCommand):
         ]
         header = ("quotation-line party", "loaded count", "status")
         self.stdout.write("\n\nQuotation-line party (informational — GAP-118 §4):\n")
+        self.stdout.write(render_table(header, rows))
+
+    def _minted_customer_section(self) -> None:
+        """Informational GAP-118 §3 surface — never blocks.
+
+        The "counts moved" line the ticket asks for: what
+        `relink_enquiry_customers --mint-unmatched` took off the unknown-client
+        sentinel. Zero until that flag is run (it is opt-in, and only on the
+        final relink — CUTOVER §4), which is why this reports rather than
+        pins. The residual sentinel set it deliberately leaves behind
+        (`shared_email`, `names_disagree`, `no_email`) is GAP-112's
+        non-negotiable and is not counted as a failure here.
+        """
+        minted = Person.objects.filter(legacy_id__startswith=ENQUIRY_PERSON_LEGACY_PREFIX)
+        rows = [
+            ("Person minted from an enquiry address", str(minted.count()), "INFO"),
+            (
+                "…enquiries they carry",
+                str(Enquiry.objects.filter(person__in=minted).count()),
+                "INFO",
+            ),
+            (
+                "…quotations they carry",
+                str(Quotation.objects.filter(person__in=minted).count()),
+                "INFO",
+            ),
+        ]
+        header = ("minted customers", "loaded count", "status")
+        self.stdout.write("\n\nCustomers minted from enquiries (informational — GAP-118 §3):\n")
         self.stdout.write(render_table(header, rows))
 
     def _wordpress_info_section(self, cursor: Any) -> None:

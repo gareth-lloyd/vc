@@ -203,8 +203,28 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > ./manage.py relink_enquiry_customers
 > ./manage.py import_archive_stays --dry-run       # GAP-113, see below
 > ./manage.py import_archive_stays
-> ./manage.py relink_enquiry_customers             # again — see the note below
+> ./manage.py relink_enquiry_customers --mint-unmatched --dry-run
+> ./manage.py relink_enquiry_customers --mint-unmatched   # again — see below
 > ```
+>
+> **`--mint-unmatched` goes on the SECOND run only** (GAP-118 §3). It mints
+> one customer `Person` per enquiry address no loaded person holds
+> (`enquiry-person-<sha1(address)>`, 543 enquiries and 51 stranded
+> quotations on the 2026-09-18 dev DB), names it from the lowest-id enquiry
+> in the group that carries a name — `(anon)` is dropped per field, and a
+> wholly anonymous group takes the address as its first name, the
+> `find_or_create_person` rule that keeps it off "Client #id" — takes the
+> phone from the lowest-id enquiry that has one (independently of the name:
+> nothing re-adds a dropped number, both sheet importers guard on
+> `not phones.exists()`), and links every enquiry sharing that address. Two
+> different names on one address mint ONE person and the name not taken is
+> reported as `name not used (address carries several)`. On the **first** run it would mint people `import_archive_stays`
+> is about to mint properly — the duplication GAP-112's "Why not in GAP-108"
+> rejected — so the flag is opt-in and belongs after the archive stays. The
+> ambiguous categories are never minted: `shared_email`, `names_disagree`,
+> `no_email` and `inactive` stay on the sentinel exactly as GAP-112 left
+> them. Idempotent: the key is derived from the address, so a third run
+> mints nothing.
 >
 > **`relink_enquiry_customers` runs twice, and the second run is not
 > optional** (run 8, 2026-09-18). `import_archive_stays` mints people of its
@@ -276,6 +296,16 @@ Two loader behaviours to know about (both 2026-07-05, see `DRYRUN_LOG.md`):
 > | `no_email` | 1 | 3 |
 >
 > plus **16** sentinel guest preferences moved with their quotation.
+>
+> **GAP-118 §3 — the second run also mints.** `--mint-unmatched` clears the
+> `unmatched` bucket (an address no `Person` holds at all): one customer per
+> distinct address, its enquiries linked and their sentinel quotations
+> followed in the same pass, so the GAP-112 invariant stays 0. The minted
+> rows carry the `enquiry-person-` prefix, which `reconcile_legacy` excludes
+> from the `Person (owner/agent)` slice (they have no VillaContact twin) and
+> `channels_writable` admits (a later sheet import may add their phone). What
+> is left on the sentinel afterwards is only the ambiguous residue, reported
+> and never guessed — see the §5 note below.
 >
 > **Then date the past stays from `VillaArchiveBookings` (GAP-113).** Between
 > Dec-2025 and Mar-2026 staff re-keyed sheet stays into legacy with exact

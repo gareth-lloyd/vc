@@ -1870,6 +1870,49 @@ def test_property_contact_assignment_check_counts_mapping_role_composites() -> N
     assert check.expected_gap == 6
 
 
+# --- GAP-118 §3: customers minted from unmatched enquiry addresses ------------
+
+
+def _owner_agent_check() -> _Check:
+    """The real `Person (owner/agent)` check, so its exclusions are the ones
+    under test rather than a copy that could drift from the command."""
+    return next(c for c in reconcile_legacy._CHECKS if c.label == "Person (owner/agent)")
+
+
+@pytest.mark.django_db
+def test_minted_enquiry_customers_are_outside_the_owner_agent_slice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`relink_enquiry_customers --mint-unmatched` writes `enquiry-person-…`
+    Persons that have no VillaContact twin. Counted here they would inflate
+    the loaded side and turn the owner/agent check RED."""
+    Person.objects.create(first_name="Owner", last_name="One", legacy_id="7")
+    Person.objects.create(
+        first_name="Ada", last_name="Lovelace", legacy_id="enquiry-person-0123456789abcdef"
+    )
+    check = _owner_agent_check()
+    _patch(monkeypatch, [check], responses={check.legacy_query: 1 + check.expected_gap})
+
+    output = _run()
+
+    assert "BLOCKER" not in output
+
+
+@pytest.mark.django_db
+def test_minted_enquiry_customers_are_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    minted = Person.objects.create(
+        first_name="Ada", last_name="Lovelace", legacy_id="enquiry-person-0123456789abcdef"
+    )
+    EnquiryFactory(person=minted)
+    _patch(monkeypatch, [], responses={})
+
+    output = _run()
+
+    assert "Customers minted from enquiries (informational — GAP-118 §3)" in output
+    assert _cells(output, "Person minted from an enquiry address")[1] == "1"
+    assert _cells(output, "…enquiries they carry")[1] == "1"
+
+
 # --- GAP-118 §4: informational quotation-line party surface -------------------
 
 

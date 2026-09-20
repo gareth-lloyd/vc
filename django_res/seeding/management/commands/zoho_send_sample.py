@@ -114,7 +114,7 @@ from integrations.services.zoho_flow import (
 from integrations.tasks import push_sync_record
 
 if TYPE_CHECKING:
-    from accounts.models import Person
+    from accounts.models import Organisation, Person
     from pricing.models import Currency
     from properties.models.contacts import PropertyContactAssignment
     from properties.models.property import Property
@@ -582,20 +582,26 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
     country = _country("GB")
 
     # ── organisations (nested inside contact/villa payloads) ───────────
-    agency = OrganisationFactory(
-        name=f"{_TAG} Agency",
-        org_type=OrgType.AGENCY,
-        status=OrgStatus.ACTIVE,
-        email="agency@synthetic.example",
-        phone="+44 20 7000 0000",
-        country=country,
-        website_url="https://synthetic.example",
-        notes=f"{_TAG} agency record.",
+    agency = cast(
+        "Organisation",
+        OrganisationFactory(
+            name=f"{_TAG} Agency",
+            org_type=OrgType.AGENCY,
+            status=OrgStatus.ACTIVE,
+            email="agency@synthetic.example",
+            phone="+44 20 7000 0000",
+            country=country,
+            website_url="https://synthetic.example",
+            notes=f"{_TAG} agency record.",
+        ),
     )
-    mgmt_org = OrganisationFactory(
-        name=f"{_TAG} Management Co",
-        org_type=OrgType.MANAGEMENT_COMPANY,
-        status=OrgStatus.ACTIVE,
+    mgmt_org = cast(
+        "Organisation",
+        OrganisationFactory(
+            name=f"{_TAG} Management Co",
+            org_type=OrgType.MANAGEMENT_COMPANY,
+            status=OrgStatus.ACTIVE,
+        ),
     )
 
     # ── contacts (P1 with agency + rich labels/tags; P2 owner + PA) ────
@@ -868,6 +874,10 @@ def _scenario_baseline(ctx: SampleContext) -> Iterator[PushStep]:
         currency=currency,
     )
 
+    # Organisations first (GAP-096): the contact and villa payloads below nest
+    # these RES_IDs, so the Accounts must already exist for CHECK-001 /
+    # CHECK-003 to verify a lookup rather than an inline create.
+    yield ("organisation", [agency, mgmt_org])
     yield ("contact", [p1, p2])  # both persons → both relationship directions
     yield ("villa", [villa])
     yield ("enquiry", [e1, e2])
@@ -1152,11 +1162,14 @@ def _scenario_agency_only_contact(ctx: SampleContext) -> Iterator[PushStep]:
     from accounts.factories import CustomerPersonFactory, OrganisationFactory
 
     tag = _scenario_tag("agency_only_contact")
-    agency = OrganisationFactory(
-        name=f"{tag} Agency",
-        org_type=OrgType.AGENCY,
-        status=OrgStatus.ACTIVE,
-        email="agency.only@synthetic.example",
+    agency = cast(
+        "Organisation",
+        OrganisationFactory(
+            name=f"{tag} Agency",
+            org_type=OrgType.AGENCY,
+            status=OrgStatus.ACTIVE,
+            email="agency.only@synthetic.example",
+        ),
     )
     person = cast(
         "Person",
@@ -1169,6 +1182,10 @@ def _scenario_agency_only_contact(ctx: SampleContext) -> Iterator[PushStep]:
         ),
     )
 
+    # The agency is pushed on its own endpoint first, so the contact's `agency`
+    # block has a real Account to resolve against — the whole point of
+    # CHECK-001 item 1 is whether the Flow links to it or re-creates it.
+    yield ("organisation", [agency])
     yield ("contact", [person])
 
 
@@ -1196,10 +1213,13 @@ def _scenario_villa_churn(ctx: SampleContext) -> Iterator[PushStep]:
     villa = _priceable_villa(ctx, tag, currency=_currency("GBP"))
     RoomFactory(property=villa, name=f"{tag} Main Suite")
     doomed_room = cast("Room", RoomFactory(property=villa, name=f"{tag} Annexe"))
-    outgoing = OrganisationFactory(
-        name=f"{tag} Management Co (outgoing)",
-        org_type=OrgType.MANAGEMENT_COMPANY,
-        status=OrgStatus.ACTIVE,
+    outgoing = cast(
+        "Organisation",
+        OrganisationFactory(
+            name=f"{tag} Management Co (outgoing)",
+            org_type=OrgType.MANAGEMENT_COMPANY,
+            status=OrgStatus.ACTIVE,
+        ),
     )
     outgoing_assignment = cast(
         "PropertyContactAssignment",
@@ -1211,17 +1231,25 @@ def _scenario_villa_churn(ctx: SampleContext) -> Iterator[PushStep]:
         ),
     )
 
+    yield ("organisation", [outgoing])
     yield ("villa", [villa])
 
     # `RoomBeds` and `RoomAttributeAssignment` CASCADE off Room, so this is a
     # clean delete — the villa simply has one fewer bedroom than last push.
     doomed_room.delete()
 
-    incoming = OrganisationFactory(
-        name=f"{tag} Management Co (incoming)",
-        org_type=OrgType.MANAGEMENT_COMPANY,
-        status=OrgStatus.ACTIVE,
+    incoming = cast(
+        "Organisation",
+        OrganisationFactory(
+            name=f"{tag} Management Co (incoming)",
+            org_type=OrgType.MANAGEMENT_COMPANY,
+            status=OrgStatus.ACTIVE,
+        ),
     )
+    # Pushed BEFORE the second villa: both management companies exist as
+    # Accounts, so picking the superseded assignment (CHECK-003 item 2) shows
+    # up as the villa linked to the wrong one, not as a missing link.
+    yield ("organisation", [incoming])
     outgoing_assignment.end_date = timezone.now().date()
     outgoing_assignment.is_primary = False
     outgoing_assignment.save(update_fields=["end_date", "is_primary", "updated_at"])

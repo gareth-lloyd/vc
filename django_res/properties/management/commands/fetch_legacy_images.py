@@ -219,6 +219,20 @@ class _Result(NamedTuple):
     fatal: str = ""
 
 
+def _is_git_work_tree(candidate: Path) -> bool:
+    """True if `candidate` is the root of a git work tree.
+
+    Tests for a real repository rather than the mere existence of `.git`: a
+    normal clone's `.git` is a directory that always holds `HEAD`, and a
+    worktree or submodule's is a file pointing at the real gitdir. The
+    distinction is load-bearing — a stray empty `.git/` directory that git
+    itself does not recognise (there is one in this operator's `$HOME`) would
+    otherwise veto every path beneath it, including the default archive.
+    """
+    marker = candidate / ".git"
+    return marker.is_file() or (marker / "HEAD").is_file()
+
+
 def _looks_like_image(prefix: bytes) -> bool:
     if any(prefix.startswith(magic) for magic in IMAGE_MAGIC):
         return True
@@ -413,7 +427,7 @@ class Command(BaseCommand):
         actually enforces it. Walk up rather than shelling out to git.
         """
         for candidate in (dest, *dest.parents):
-            if (candidate / ".git").exists():
+            if _is_git_work_tree(candidate):
                 raise CommandError(
                     f"--dest {dest} is inside the git work tree at {candidate} — the archive "
                     "is ~10 GB and must live outside the repo; pass an absolute path such as "

@@ -158,12 +158,43 @@ def test_dest_inside_the_git_work_tree_is_rejected(
     make_property: MakeProperty, tmp_path: Path
 ) -> None:
     (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
     _legacy_row(make_property("101"), _filename())
 
     _out, error = _run_expecting_error(tmp_path / "images" / "PropertyImages")
 
     assert "git work tree" in str(error)
     assert not (tmp_path / "images").exists()
+
+
+@respx.mock
+def test_stray_empty_git_directory_does_not_veto_the_dest(
+    make_property: MakeProperty, tmp_path: Path
+) -> None:
+    """A `.git/` with no HEAD is not a repository — git itself says so.
+
+    Regression: testing for mere existence vetoed every path under `$HOME`,
+    where a stray empty `.git/` directory lives.
+    """
+    (tmp_path / ".git" / "info").mkdir(parents=True)
+    _legacy_row(make_property("101"), _filename())
+
+    out = _run(tmp_path / "archive", "--dry-run")
+
+    _assert_count(out, "total", 1)
+
+
+@respx.mock
+def test_dest_inside_a_git_worktree_pointer_file_is_rejected(
+    make_property: MakeProperty, tmp_path: Path
+) -> None:
+    """A linked worktree's `.git` is a file, not a directory."""
+    (tmp_path / ".git").write_text("gitdir: /elsewhere/.git/worktrees/x\n")
+    _legacy_row(make_property("101"), _filename())
+
+    _out, error = _run_expecting_error(tmp_path / "archive")
+
+    assert "git work tree" in str(error)
 
 
 @respx.mock

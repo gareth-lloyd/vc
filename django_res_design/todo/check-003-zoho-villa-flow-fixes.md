@@ -138,7 +138,14 @@ Limitless when GAP-093 lands.
 
 - **GAP-096** — Organisation push kind. Item 2 only fixes *which* Account is
   linked; Accounts still come into being as a side effect of a villa push
-  until GAP-096 lands.
+  until GAP-096 lands. The `organisation` webhook URL arrived **2026-09-18**,
+  so the Limitless-side half is now live work rather than a hypothetical:
+  once we push organisations, this flow's inline Account create/update
+  becomes a **lookup by `RES_ID`**, and a miss should leave the villa
+  unlinked rather than papering over it with a fresh Account — a created
+  Account is the bug, not the fallback. *Verify:* push an Organisation, then
+  a villa it manages, and check the villa attaches to that Account with no
+  duplicate alongside it.
 - **GAP-093** — remove `Property.category`; see "Do not build" above.
 - **GAP-012** — hero-image URL is relative until S3 hosting lands; the text
   field Limitless chose is the right call in the meantime.

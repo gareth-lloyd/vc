@@ -51,6 +51,7 @@ from data_migration.sheets.matching import (
     find_or_create_person,
     html_to_text,
     map_tags,
+    normalise_sheet_email,
     parse_sheet_date,
     person_legacy_id,
     resolve_region,
@@ -132,7 +133,8 @@ class Command(BaseCommand):
     def _import_row(
         self, row: dict[str, Any], index: int, matcher: PropertyMatcher, report: SheetReport
     ) -> None:
-        first, last, email = _text(row, "First Name"), _text(row, "Last Name"), _text(row, "Email")
+        first, last = _text(row, "First Name"), _text(row, "Last Name")
+        email = normalise_sheet_email(row.get("Email"))
         if not first and not last and not email:
             report.skipped["blank_row"] += 1
             return
@@ -228,7 +230,8 @@ class Command(BaseCommand):
         matcher: PropertyMatcher,
         report: SheetReport,
     ) -> None:
-        first, last, email = _text(row, "First Name"), _text(row, "Last Name"), _text(row, "Email")
+        first, last = _text(row, "First Name"), _text(row, "Last Name")
+        email = normalise_sheet_email(row.get("Email"))
         villa = _text(row, "Villa Enquired")
         key = enquiry_legacy_key(email, enquiry_date, villa, first, last)
         prop = matcher.match(villa) if villa else None

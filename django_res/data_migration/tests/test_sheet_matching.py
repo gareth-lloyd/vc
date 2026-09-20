@@ -19,6 +19,7 @@ from data_migration.sheets.matching import (
     match_person_by_email,
     match_person_by_name,
     normalise_name,
+    normalise_sheet_email,
     parse_sheet_date,
     person_legacy_id,
     resolve_country,
@@ -73,6 +74,26 @@ def test_parse_sheet_date_handles_iso_strings_dates_and_junk() -> None:
 def test_html_to_text_flattens_breaks_and_entities() -> None:
     assert html_to_text("Hi<br />there<br>&amp; <b>bye</b>") == "Hi\nthere\n& bye"
     assert html_to_text(None) == ""
+
+
+def test_normalise_sheet_email_reads_an_apostrophe_typed_for_at() -> None:
+    # On a UK layout `@` is Shift + the apostrophe key, so an unshifted press
+    # writes `chloe'k2pdg.com.au` for `chloe@k2pdg.com.au`.
+    assert normalise_sheet_email("chloe'k2pdg.com.au") == "chloe@k2pdg.com.au"
+    assert normalise_sheet_email("  ada@example.com  ") == "ada@example.com"
+    assert normalise_sheet_email("o'brien@example.com") == "o'brien@example.com"
+    assert normalise_sheet_email("Rose Mann") == "Rose Mann"
+    assert normalise_sheet_email("no'apostrophe'rule") == "no'apostrophe'rule"
+    assert normalise_sheet_email(None) == ""
+
+
+def test_normalise_sheet_email_repairs_only_an_address_shaped_result() -> None:
+    # The Email column also holds prose and bare names; a repair is accepted
+    # only when it yields `local@domain.tld` with no whitespace.
+    assert normalise_sheet_email("don't have one") == "don't have one"
+    assert normalise_sheet_email("O'Brien") == "O'Brien"
+    assert normalise_sheet_email("client's PA will send it") == "client's PA will send it"
+    assert normalise_sheet_email("'") == "'"
 
 
 # --- villa matching ----------------------------------------------------------

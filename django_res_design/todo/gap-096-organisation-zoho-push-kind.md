@@ -19,9 +19,13 @@
   kind below; the endpoint was **requested from Limitless by email on
   2026-09-16**, asked alongside GAP-103's `region` endpoint (one
   conversation, two URLs — coordination cost is per-conversation, not per
-  endpoint). The res half is **not** gated on their reply: see "Landing
-  order". The rejected alternative is recorded under "Considered
-  alternatives" so it is not re-litigated.
+  endpoint). **The `organisation` URL arrived 2026-09-18** (dev/sandbox; Greg
+  Robson, in the "RES to Zoho — Sandbox Connections" thread), so **nothing
+  external gates this ticket any more** — it is a straight build with a URL
+  already waiting for it, and the no-new-endpoint fallback under "Considered
+  alternatives" is now dead rather than held in reserve. The `region` half of
+  the ask was **not** issued: see §"Merged from GAP-103". The res half was
+  never gated on their reply anyway: see "Landing order".
 - **Files touched (when built):**
   - `django_res/integrations/apps.py:131` — where `Person` registers as the
     `contact` kind; `Organisation` would register alongside it.
@@ -75,8 +79,10 @@ Register `Organisation` as its own kind, mirroring the `contact` pattern:
   `org_type`, `email`, `phone`, address block, `country`, `website_url`,
   `notes`, `status`), plus `created_at`/`updated_at`.
 - New `ZOHO_FLOW_WEBHOOKS["organisation"]` key, **defaulting to `""`**.
-  Requested from Limitless 2026-09-16; the URL is set per environment once
-  they hand it over.
+  Requested from Limitless 2026-09-16, **delivered 2026-09-18** — dev/sandbox
+  only; the production list is a separate issue, last sent 2026-09-03 and now
+  stale (see "Endpoint churn"). The URL is the credential (zapikey-in-URL),
+  so it lives in the env and never in this repo.
 - **Fatten the villa-embedded copy.** `_organisation_summary`
   (`properties/services/zoho_payload.py:146`) sends 6 keys — RES_ID, id,
   name, org_type, email, phone — so the Account the villa flow creates today
@@ -98,8 +104,10 @@ Register `Organisation` as its own kind, mirroring the `contact` pattern:
   ordering: organisation → contact → villa → enquiry → booking.
 - Once it exists, the villa flow's inline Account create/update becomes a
   lookup, and the contact flow can set a real Account lookup instead of the
-  `Contact_Type` text. Both are Limitless-side follow-ups — record them on
-  CHECK-001 / CHECK-003 when this lands.
+  `Contact_Type` text. Both are Limitless-side follow-ups, **recorded
+  2026-09-18 on CHECK-001 and CHECK-003** now that the endpoint exists to
+  make them reachable. Neither can be verified until we have pushed
+  organisations, so sequence them after step (3) below.
 
 No erasure concern: `OrgStatus` has no ANONYMIZED member by design (an
 organisation is not a data subject — see `accounts/enums.py`), so the
@@ -116,8 +124,24 @@ not the build. Tests drive the path with `override_settings`, as the other
 kinds' tests do.
 
 Sequence: (1) fatten `_organisation_summary` — no coordination; (2) register
-the kind + builder + backfill stage, dark; (3) set the URL when it arrives
-and run `zoho_backfill --kinds organisation`; (4) their two Flow follow-ups.
+the kind + builder + backfill stage, dark; (3) set the URL — **it arrived
+2026-09-18**, so this is now a config step, not a wait — and run
+`zoho_backfill --kinds organisation`; (4) their two Flow follow-ups
+(CHECK-001, CHECK-003), which only become verifiable after (3).
+
+### Endpoint churn (2026-09-18)
+
+Switching this kind on is **not** a one-key change. In the same round of
+emails Limitless reorganised the Flows into a "RES Villa Webhook" folder
+built on shared sub-flows (one contact-upsert routine, called by the villa
+and enquiry flows rather than duplicated into each), and re-issued the dev
+URLs: `contacts` unchanged, **`villas` and `enquiries` both rotated**. So
+re-check every dev value in the env at the same time as adding
+`organisation`, or the two rotated kinds will post to a dead zapikey and
+`enqueue_zoho_push` will record the failure as a delivery problem rather than
+a stale credential. The **production** list is older still — 2026-09-03, five
+kinds, no `organisation` — and predates the reorganisation entirely, so ask
+for a fresh production set before any live switch-on.
 
 ## Considered alternatives
 
@@ -174,10 +198,11 @@ and one zapikey.
 
 ## Dependencies
 
-- **Webhook URL requested from Limitless 2026-09-16** (same coordination
-  shape as the villa/booking kinds in GAP-082), bundled with GAP-103's
-  `region` endpoint. Gates switch-on and the Zoho-side acceptance item only —
-  see "Landing order". Awaiting their estimate.
+- **Webhook URL requested 2026-09-16, delivered 2026-09-18** (dev; same
+  coordination shape as the villa/booking kinds in GAP-082). It was asked
+  bundled with GAP-103's `region` endpoint but only the `organisation` half
+  came back, so the `region` URL is still outstanding and is now the only
+  external dependency left on this ticket.
 - **CHECK-003** item 2 — picking the *right* management company is
   orthogonal and can land first; this ticket changes where the Account comes
   from, not which one is chosen.
@@ -185,6 +210,13 @@ and one zapikey.
   Note no res-side change can unblock it alone: `limitless_upsert_villa` is
   the only path into the Accounts module, and an agency has no villa, so the
   Account cannot exist until Limitless write to it from somewhere else.
+  Unblocked on their side as of 2026-09-18; blocked on ours until we push.
+- **CHECK-002** item 3 (`Agency` points at the person, `agent` dropped) is
+  the third consumer, and Limitless have now made the coupling explicit: the
+  2026-09-18 enquiry-flow response records *"resolve Agency and upsert and
+  pass through — will await organisation endpoint data first"*. The endpoint
+  they are waiting on is the one they themselves issued the same day, so that
+  item now waits on **our** first `organisation` push, not on them.
 - Merged **GAP-103** (`region` kind) — asked in the same email, same
   pattern; if they quote both, land them together. Its own dependencies
   (GAP-102, CHECK-002's Countries-of-Interest picklist) are in §"Merged from
@@ -200,6 +232,23 @@ and one zapikey.
 > _Folded in 2026-09-16 (todo consolidation). The standalone ticket is closed as
 > [GAP-103](done/gap-103-region-country-edits-never-repush.md); the text below is that ticket as it stood, headings
 > demoted one level. A reference to GAP-103 elsewhere now means this section._
+
+> **2026-09-18 — the CRM half now exists; the delivery route does not.**
+> Answering CHECK-002's Countries-of-Interest decision, Limitless built a
+> **Regions custom module** in the sandbox CRM (region name, RES ID, country
+> picklist) with a linking module behind it giving many-to-many against
+> Enquiries, in preference to a multi-select picklist — their reasoning being
+> that a growing list is cheaper as records than as field metadata, and that
+> Zoho Analytics can then report sales/revenue per country or region
+> relationally. Sandbox module:
+> `https://crmsandbox.zoho.eu/crm/limitlessm97/tab/CustomModule2/custom-view/626421000019591121/list`
+> That is exactly the target this kind wants, and it settles the picklist-vs-
+> text decision in favour of "seeded from our region list". But **no `region`
+> webhook URL was issued**, so there is still no route that fills or refreshes
+> it: the module will accrete regions one enquiry at a time, keyed on whatever
+> the embedded snapshots happen to carry, and a retired or re-slugged region
+> still never reaches it. The build below is unchanged — chase the URL, and
+> confirm `RES_ID` is the module's key before anything is seeded.
 
 - **Severity:** 🟠 Gap (a retired region stays selectable in every Zoho
   dropdown until each villa/contact/enquiry embedding it happens to re-push —

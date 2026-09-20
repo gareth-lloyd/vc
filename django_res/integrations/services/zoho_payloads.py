@@ -63,7 +63,51 @@ def country_payload(country: Any) -> dict[str, Any] | None:
     }
 
 
+def build_organisation_payload(organisation: Organisation) -> dict[str, Any]:
+    """Full-field JSON-safe payload for one `accounts.Organisation` (GAP-096).
+
+    The OWNER payload for the `organisation` kind: the only place a CRM Account
+    is created or updated from, under the "one writer per CRM module" principle
+    (`todo/gap-096-organisation-zoho-push-kind.md`). Deliberately NOT shared
+    with `_agency_payload` below, which is the same shape minus the two
+    timestamps — this one is destined to grow while the embedded copies thin to
+    a bare link, so folding them together would abstract over two shapes about
+    to diverge.
+
+    Not `| None`: the registry only ever hands this an instance. The
+    absent-organisation guard belongs in the embeds, which is where a null FK
+    can actually turn up.
+
+    `legacy_id` is omitted (unlike the contact payload): it is NULL on every
+    Organisation today — `dedup_key` is the backfill's idempotency key and is
+    internal — so `RES_ID` is the only match key worth sending. Add it if a
+    supplier import ever mints legacy-origin orgs.
+    """
+    return {
+        "RES_ID": organisation.pk,
+        "id": organisation.pk,
+        "name": organisation.name,
+        "org_type": organisation.org_type,
+        "email": organisation.email,
+        "phone": organisation.phone,
+        "address_line_1": organisation.address_line_1,
+        "address_line_2": organisation.address_line_2,
+        "town": organisation.town,
+        "post_code": organisation.post_code,
+        "country": country_payload(organisation.country),
+        "website_url": organisation.website_url,
+        "notes": organisation.notes,
+        "status": organisation.status,
+        "created_at": _iso(organisation.created_at),
+        "updated_at": _iso(organisation.updated_at),
+    }
+
+
 def _agency_payload(agency: Organisation | None) -> dict[str, Any] | None:
+    # Embedded copy, not the owner: this should thin to RES_ID + id + name once
+    # the Limitless contact Flow looks the Account up instead of writing it.
+    # Tracked on `todo/gap-096-organisation-zoho-push-kind.md` — thinning must
+    # follow that switch, never lead it.
     if agency is None:
         return None
     return {

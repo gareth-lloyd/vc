@@ -144,6 +144,11 @@ def _capacity_payload(capacity: PropertyCapacity | None) -> dict[str, Any] | Non
 
 
 def _organisation_summary(organisation: Organisation | None) -> dict[str, Any] | None:
+    # Embedded link, not the owner: `organisation` is its own pushed kind as of
+    # GAP-096, so nothing here should grow. `org_type`/`email`/`phone` are still
+    # carried only because the Limitless villa Flow reads them to create the
+    # Account inline; they go once it switches to a lookup. Tracked on
+    # `todo/gap-096-organisation-zoho-push-kind.md`.
     if organisation is None:
         return None
     return {

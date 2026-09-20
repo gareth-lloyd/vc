@@ -1,4 +1,5 @@
-"""Tests for the Person → Zoho Flow contact payload builder (GAP-081)."""
+"""Tests for the Zoho Flow payload builders in `integrations.services`:
+Person → `contact` (GAP-081) and Organisation → `organisation` (GAP-096)."""
 
 from __future__ import annotations
 
@@ -8,11 +9,22 @@ from typing import Any, cast
 
 import pytest
 
-from accounts.enums import PersonRelationshipKind, PersonStatus, PersonTag, PhoneLabel
-from accounts.factories import PersonFactory
+from accounts.enums import (
+    OrgStatus,
+    OrgType,
+    PersonRelationshipKind,
+    PersonStatus,
+    PersonTag,
+    PhoneLabel,
+)
+from accounts.factories import OrganisationFactory, PersonFactory
 from accounts.models import Organisation, Person, PersonEmail, PersonPhone, PersonRelationship
 from integrations.services import zoho_payloads
-from integrations.services.zoho_payloads import SENSITIVE_TAGS, build_person_payload
+from integrations.services.zoho_payloads import (
+    SENSITIVE_TAGS,
+    build_organisation_payload,
+    build_person_payload,
+)
 from properties.models.geo import Country
 
 pytestmark = pytest.mark.django_db
@@ -262,3 +274,102 @@ def test_sensitive_tags_denylist_holds_only_valid_tags() -> None:
     # with); anything later added must be a real PersonTag value.
     valid = {tag.value for tag in PersonTag}
     assert SENSITIVE_TAGS <= valid
+
+
+# --- Organisation → `organisation` (GAP-096) ------------------------------
+
+
+@pytest.fixture
+def full_organisation(country: Country) -> Organisation:
+    return cast(
+        Organisation,
+        OrganisationFactory(
+            name="Acme Travel",
+            org_type=OrgType.AGENCY,
+            email="hello@acme.example.com",
+            phone="+44 1603 000000",
+            address_line_1="1 High Street",
+            address_line_2="Floor 2",
+            town="Norwich",
+            post_code="NR1 1AA",
+            country=country,
+            website_url="https://acme.example.com",
+            notes="Preferred partner — NET rates",
+            status=OrgStatus.ACTIVE,
+        ),
+    )
+
+
+def test_organisation_payload_carries_the_full_field_set(
+    full_organisation: Organisation,
+) -> None:
+    payload = build_organisation_payload(full_organisation)
+
+    assert payload.keys() == {
+        "RES_ID",
+        "id",
+        "name",
+        "org_type",
+        "email",
+        "phone",
+        "address_line_1",
+        "address_line_2",
+        "town",
+        "post_code",
+        "country",
+        "website_url",
+        "notes",
+        "status",
+        "created_at",
+        "updated_at",
+    }
+    assert payload["RES_ID"] == full_organisation.pk
+    assert payload["id"] == full_organisation.pk
+    assert payload["name"] == "Acme Travel"
+    assert payload["org_type"] == OrgType.AGENCY
+    assert payload["email"] == "hello@acme.example.com"
+    assert payload["phone"] == "+44 1603 000000"
+    assert payload["address_line_1"] == "1 High Street"
+    assert payload["address_line_2"] == "Floor 2"
+    assert payload["town"] == "Norwich"
+    assert payload["post_code"] == "NR1 1AA"
+    assert payload["website_url"] == "https://acme.example.com"
+    assert payload["notes"] == "Preferred partner — NET rates"
+    assert payload["status"] == OrgStatus.ACTIVE
+
+
+def test_organisation_payload_nests_the_shared_country_sub_object(
+    full_organisation: Organisation, country: Country
+) -> None:
+    payload = build_organisation_payload(full_organisation)
+
+    assert payload["country"] == zoho_payloads.country_payload(country)
+    assert payload["country"]["RES_ID"] == country.pk
+
+
+def test_organisation_payload_handles_a_bare_organisation() -> None:
+    organisation = cast(Organisation, OrganisationFactory())
+
+    payload = build_organisation_payload(organisation)
+
+    assert payload["country"] is None
+    assert payload["email"] == ""
+    assert payload["notes"] == ""
+    assert json.loads(json.dumps(payload)) == payload
+
+
+def test_organisation_payload_json_round_trips(full_organisation: Organisation) -> None:
+    payload = build_organisation_payload(full_organisation)
+    assert json.loads(json.dumps(payload)) == payload
+
+
+def test_organisation_payload_timestamps_are_iso_strings(
+    full_organisation: Organisation,
+) -> None:
+    payload = build_organisation_payload(full_organisation)
+
+    assert isinstance(payload["created_at"], str)
+    assert isinstance(payload["updated_at"], str)
+    # ISO-8601 round-trip
+    assert datetime.fromisoformat(payload["created_at"])
+    assert datetime.fromisoformat(payload["updated_at"])

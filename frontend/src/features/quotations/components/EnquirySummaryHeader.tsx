@@ -32,7 +32,12 @@ interface Props {
 export function EnquirySummaryHeader({ enquiry }: Props) {
   const { t } = useTranslation("quotations");
   const [editOpen, setEditOpen] = useState(false);
-  const { data: contact } = useContact(enquiry.person ?? undefined);
+  // GAP-118: the migration's unknown-client sentinel is a placeholder, not a
+  // customer — drop it here so the header agrees with the rail's
+  // `CustomerProfilePanel`, which renders it as "no customer linked". Every
+  // read below already falls back for an absent contact.
+  const { data } = useContact(enquiry.person ?? undefined);
+  const contact = data?.is_unknown_client === true ? undefined : data;
 
   const facts: string[] = [];
   if (enquiry.date_from && enquiry.date_to) {

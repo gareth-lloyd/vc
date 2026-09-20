@@ -296,7 +296,10 @@ function TagsSection({ contact }: { contact: Contact }) {
   // a non-client that still carries tags shows them read-only (consistent with
   // CustomerProfilePanel) rather than hiding the data; a non-client with none
   // is hidden entirely. The editor handles its own role-gating internally.
-  if (!isClientContact(contact)) {
+  // GAP-118: the unknown-client sentinel takes the read-only branch too. It is
+  // reachable from the Clients directory and would otherwise be the app's most
+  // writable surface onto a row that stands for "we could not resolve this".
+  if (!isClientContact(contact) || contact.is_unknown_client === true) {
     return tags.length > 0 ? (
       <Section title={t("headings.tags")}>
         <TagChips tags={tags} />

@@ -39,6 +39,13 @@ export function CustomerProfilePanel({ personId }: CustomerProfilePanelProps) {
   }
 
   const contact = query.data;
+  // GAP-118: the migration's unknown-client sentinel is a placeholder, not a
+  // customer. Same hint as an absent link, and deliberately before the
+  // identity/tags block: rendering it as a contact invites an operator to tag
+  // or edit a row that stands for "we could not resolve this".
+  if (contact.is_unknown_client === true) {
+    return <p className="text-muted-foreground text-sm">{t("profile.empty")}</p>;
+  }
   return (
     <div className="space-y-3">
       <div>

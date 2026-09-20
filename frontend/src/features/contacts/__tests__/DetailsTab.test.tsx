@@ -85,3 +85,23 @@ describe("DetailsTab history sections", () => {
     expect(await screen.findByText(/^imported bookings$/i)).toBeInTheDocument();
   });
 });
+
+describe("DetailsTab tags section", () => {
+  it("gives a client an editable tag section", async () => {
+    mockNestedReads(7);
+    renderTab({ tags: ["vip"] });
+
+    expect(await screen.findByRole("button", { name: /edit tags/i })).toBeInTheDocument();
+  });
+
+  it("keeps the unknown-client sentinel's tags read-only", async () => {
+    // GAP-118: the sentinel is reachable from the Clients directory, where this
+    // is the app's most writable surface onto it. Its tags stay visible (the
+    // data is real) but the editor that would PATCH the placeholder does not.
+    mockNestedReads(7);
+    renderTab({ tags: ["vip"], is_unknown_client: true });
+
+    expect(await screen.findByText("VIP")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /edit tags/i })).not.toBeInTheDocument();
+  });
+});

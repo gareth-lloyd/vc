@@ -28,6 +28,7 @@ from data_migration.management.commands.reconcile_legacy import _Check
 from integrations.enums import SyncProvider
 from integrations.factories import SyncRecordFactory
 from pricing.models.currency import Currency
+from properties.enums import DescriptionSection
 from properties.factories import FeatureFactory, PropertyFactory
 from properties.models.property import Property
 from reservations.factories import EnquiryFactory, TermsVersionFactory
@@ -1642,9 +1643,33 @@ def test_property_description_check_counts_stamped_sections() -> None:
     assert live_villa_sql("m.") in check.legacy_query
     for column in ("OverView", "HouseRules", "FeatureDescription", "RoomDescription", "Notes"):
         assert f"m.{column}" in check.legacy_query
-    for column in ("WebDesc1", "WebDesc2", "Location1", "Location2"):
+    # GAP-090: one column per section, including the interior/exterior pairs
+    # the loader now reads.
+    for column in (
+        "WebDesc1",
+        "WebDesc2",
+        "Interior1",
+        "Interior2",
+        "Exterior1",
+        "Exterior2",
+        "Location1",
+        "Location2",
+    ):
         assert f"d.{column}" in check.legacy_query
     assert check.count_loaded() == 1
+
+
+def test_description_sections_are_one_column_each() -> None:
+    """GAP-090 retired the fused pairs, so every group is a single column and
+    the set matches `PropertyLoader`'s own mapping one for one."""
+    from data_migration.loaders.properties import _BLOCK_COLUMNS
+
+    groups = reconcile_legacy._DESCRIPTION_SECTIONS
+    assert all(len(cols) == 1 for cols in groups)
+    assert len(groups) == len(DescriptionSection.values)
+    assert {cols[0].removeprefix("d.") for cols in groups if cols[0].startswith("d.")} == {
+        column for column, _ in _BLOCK_COLUMNS
+    }
 
 
 @pytest.mark.django_db

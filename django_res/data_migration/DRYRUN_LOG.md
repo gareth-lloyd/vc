@@ -250,7 +250,10 @@ resolved; implementing decision 4 surfaced a further latent loader bug.
   gap stays 1 until Zoho is fixed. (integrations.py + tests.)
 - **Decision 2 — web copy (PRESERVE ALL).** `WebDesc1/2` (298 villas) →
   new `DescriptionSection.WEB_DESCRIPTION`, `Location1/2` (276) → new
-  `LOCATION`, `VodeoUrl` (31) → new `Property.video_url` (URLField). Content
+  `LOCATION`, `VodeoUrl` (31) → new `Property.video_url` (URLField).
+  _(GAP-090, 2026-09-20: the two fused sections were split into
+  `web_des_1`/`web_des_2` and `location_sub`/`location_para`, and the
+  `Interior*`/`Exterior*` pairs joined them as blocks of their own.)_ Content
   verified distinct from the migrated `OverView`. `PropertyLoader` MAX(Id)
   LEFT JOIN de-fans the non-unique (315 rows / 305 VillaId) table. Migration
   properties/0030; 6 new tests.

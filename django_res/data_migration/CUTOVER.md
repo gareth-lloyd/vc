@@ -1353,9 +1353,10 @@ uv run python manage.py zoho_backfill --kinds villa   # loaders run under suppre
 **Blast radius.** `property` is a full upsert from the dump, not a
 descriptions-only fix: it rewrites `Property`, `PropertyLocation`,
 `PropertyCapacity`, `PropertySettings` and every description section whose
-legacy column is non-blank (`overview`, `house_rules`, `further_info`,
-`web_description`, `location`, and now `other_information` / `rooms`) for
-every villa. Staff edits to any of those made after the earlier load are
+legacy column is non-blank (at the time: `overview`, `house_rules`,
+`further_info`, `web_description`, `location`, and then `other_information` /
+`rooms` — GAP-090 has since replaced the last three with the sub/para block
+set, see [§6i](#6i-split-the-fused-website-blocks-after-gap-090-only-for-dbs-loaded-before-2026-09-20)) for every villa. Staff edits to any of those made after the earlier load are
 overwritten — the same contract as any cutover-window delta load, which is
 why it runs before staff get the keys. The Zoho re-push is suppressed inside
 the loader (base.py), hence the backfill line.
@@ -1514,6 +1515,76 @@ residue is not only `PersonPhone`:
 
 Dev and staging get clean numbers on their next fresh rebuild. Nothing to run
 at cutover.
+
+## 6i. Split the fused website blocks after GAP-090 (only for DBs loaded before 2026-09-20)
+
+> _(Historical — an in-place named-loader repair of an already-loaded staging
+> DB. The one-shot cutover loads a fresh DB and never needs it.)_
+
+Before GAP-090 the property loader fused each legacy sub/para pair with a
+blank-line join — `WebDesc1+WebDesc2` into one `web_description` row,
+`Location1+Location2` into one `location` row — and never read
+`Interior1/2` or `Exterior1/2` at all. Migration `properties.0010` remaps the
+loaded rows **unchanged** (`web_description` → `web_des_1`, `location` →
+`location_sub`, `further_info` → `internal_notes`); no string split can undo
+the join, so only a loader re-run produces the real halves. A fresh cutover
+load (§4) never sees this; a DB loaded earlier (staging) needs one
+property-loader re-run, **immediately after the deploy and before staff edit
+anything**:
+
+```bash
+uv run python manage.py loadlegacy property
+uv run python manage.py zoho_backfill --kinds villa   # loaders run under suppress_zoho_push()
+```
+
+**Blast radius.** The same as §6e — `property` is a full upsert, so
+`Property`, `PropertyLocation`, `PropertyCapacity`, `PropertySettings` and
+every description section whose legacy column is non-blank are rewritten for
+every villa, and staff edits made since the earlier load are lost. **With one
+exception: `internal_notes` is never overwritten.** It has been an editable
+staff surface since 2026-08-12 and migration 0010 folded the retired
+`further_info` bodies into the same rows, so the loader writes that section
+create-only; a kept row is left verbatim and logged as
+`data_migration.internal_notes_kept`. Its `legacy_id` is still re-stamped, so
+the row counts as loaded in §5.
+
+What the re-run does to each parked row:
+
+- **Part 1 non-blank** (the normal case) → the sub row is rewritten in place
+  with the true part-1 text and `<Id>-<section>` provenance, and the para row
+  is created alongside it.
+- **Part 1 blank, part 2 set** → the old join wrote part 2's text into what is
+  now the *sub* slot, and the re-run cannot claim that row. It is dropped
+  (`data_migration.fused_block_dropped`) **only while its body still equals
+  the old join of the current legacy columns**; a row that no longer matches
+  is kept and logged as `data_migration.fused_block_kept` — grep the run's log
+  for that event and clear those by hand. On ResProd this is the handful of
+  villas where `Location2` is set but `Location1` is not (347 vs 346).
+- **Interior / Exterior** → straight creates. They had no pre-GAP-090 section,
+  so nothing is parked and nothing is dropped.
+
+**The photo captions stay.** `PropertyImageLoader` reads the same four
+`Interior*`/`Exterior*` columns into `PropertyImage.description`, and that is
+deliberate, not a double import: the `IsInterior1/2`/`IsExterior1/2` flags on
+`VillaPropertyImages` mark which photo sits beside which block, and 1 572
+flagged images carry no `Description` of their own. Removing either surface
+would blank the other's copy.
+
+**Until the re-run, §5 reads the old total.** The `PropertyDescription` check
+now expects **3 200** rows (13 sections/villa); a DB still holding fused rows
+reports around 1 049 and a large gap. That is expected before this step and a
+blocker after it.
+
+**Per-room `WebsiteDescription` is deliberately not surfaced.** GAP-092
+retired the room-level field from the API and the UI — legacy
+`VillaRooms.WebsiteDescription` is an attribute list (`"Double/Twin, En
+suite, Bath with shower, Air conditioning, Sea view"`, 2 668 of 2 714 rows,
+max 148 chars), not prose, and the property-level `rooms` blurb
+(`VillaMaster.RoomDescription`) is the real bedrooms copy. `RoomLoader` still
+writes the column, because `backfill_room_attrs` (§6b) keyword-mines it for
+room facets. An accepted, documented non-loss: no staff surface reads it.
+
+Idempotent.
 
 ## 7. England → GB merge (retired — BUG-030 §6)
 

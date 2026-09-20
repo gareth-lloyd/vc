@@ -212,6 +212,15 @@ DROP decisions themselves stand.
    into `PropertyImage.description`. **DECISION 2026-07-06: PRESERVE ALL** —
    `WebDesc1/2` (390 villas on ResProd) and `Location1/2` (372 villas) fold
    into new `PropertyDescription` sections (`WEB_DESCRIPTION`, `LOCATION`);
+   **2026-09-20 (GAP-090):** superseded — the table holds four sub/para
+   *pairs*, and each of the eight columns now loads into its own section
+   (`web_des_1/2`, `interior_sub/para`, `exterior_sub/para`,
+   `location_sub/para`). `Interior*`/`Exterior*` are prose blocks, not
+   captions: the `IsInterior1/2`/`IsExterior1/2` flags on
+   `VillaPropertyImages` mark which photo sits beside which block, and 1 572
+   flagged images carry no `Description` of their own, so
+   `PropertyImage.description` is a second rendering of the same text and
+   both surfaces are kept.
    `VodeoUrl` (55 links) → `Property.video_url`. Content verified distinct
    from the `OverView` blurb already migrated (WebDesc = activities/extras,
    Location = location copy).

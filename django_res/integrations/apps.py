@@ -79,7 +79,7 @@ def _organisation_changed(
       villa save. Pinned by
       `test_organisation_rename_pushes_once_not_once_per_managed_villa`: the
       fix is the villa Flow looking the Account up by RES_ID (CHECK-003
-      item 2), not a fan-out that would cost one villa push per property."""
+      §Dependencies), not a fan-out costing one villa push per property."""
     from integrations.services.zoho_flow import (
         enqueue_zoho_push,
         push_suppressed,

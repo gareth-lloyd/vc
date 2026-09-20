@@ -1264,6 +1264,7 @@ class Command(BaseCommand):
             blockers += self._row_count_section(cursor)
             blockers += self._night_parity_section(cursor)
             blockers += self._archive_stay_section(cursor)
+            self._quotation_line_party_section()
             if options["integrations"]:
                 blockers += self._zoho_continuity_section(cursor)
                 self._wordpress_info_section(cursor)
@@ -1456,6 +1457,42 @@ class Command(BaseCommand):
         self.stdout.write("\n\nZoho external-ID continuity:\n")
         self.stdout.write(render_table(header, rows))
         return blockers
+
+    def _quotation_line_party_section(self) -> None:
+        """Informational GAP-118 §4 party surface — never blocks.
+
+        `QuotationLineLoader` fills a master with **both** party columns NULL
+        from the linked legacy enquiry, so a line no longer shows "0A" against
+        a 12-adult enquiry. This reports what is left.
+
+        **Not a blocker, and not expected to reach 0.** An explicit `Adult=0`
+        on the master is loaded as 0 (BUG-030 §23), so a line with no party
+        anywhere still counts here. Pinning it would fail every run on a dump
+        whose zero-party mix has moved, the same objection GAP-112's close-out
+        recorded against pinning a residual count.
+
+        Nor is it "borrows that failed": the number actually borrowed is the
+        loader's `quotation_line_party_from_enquiry` log line, which reconcile
+        cannot see. The second row excludes `-autoenquiry` stand-ins, whose
+        `adults` is only `Enquiry.adults`' model default of 2 — counting them
+        would send an operator after a non-issue on cutover day.
+        """
+        zero_party = QuotationLine.objects.filter(adults=0, children=0)
+        rows = [
+            ("QuotationLine with a zero party", str(zero_party.count()), "INFO"),
+            (
+                "…on a real enquiry that records adults",
+                str(
+                    zero_party.filter(quotation__enquiry__adults__gt=0)
+                    .exclude(quotation__enquiry__legacy_id__endswith="-autoenquiry")
+                    .count()
+                ),
+                "INFO",
+            ),
+        ]
+        header = ("quotation-line party", "loaded count", "status")
+        self.stdout.write("\n\nQuotation-line party (informational — GAP-118 §4):\n")
+        self.stdout.write(render_table(header, rows))
 
     def _wordpress_info_section(self, cursor: Any) -> None:
         """Informational WordPress surface — never blocks.

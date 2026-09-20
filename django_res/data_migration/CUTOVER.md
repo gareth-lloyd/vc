@@ -549,6 +549,19 @@ rather than dropping the referencing row.
 > `guest_preference`, so `Quotation.person` is already resolved when the
 > preference loader reads it.
 >
+> **A quotation line's party hops the same way (GAP-118 §4).** A
+> `VillaQuotationMaster` with **both** `Adult` and `Children` NULL takes the
+> party from its own `VillaEnquire` row, read down a `LEFT JOIN … AND
+> e.DeletedAt IS NULL` — never from the loaded `Enquiry`, whose `adults`
+> defaults to 2 and would hand every `-autoenquiry` stand-in the fabricated
+> party BUG-030 §23 bans. An **explicit** `Adult=0` still loads as 0; a
+> half-filled master keeps the half it has; an out-of-range web-form value is
+> left unborrowed rather than dropping the line on write. The run logs
+> `data_migration.quotation_line_party_from_enquiry` with `count`, the same
+> way the hops above report their reach — measure it on the day rather than
+> pinning §4's headline 1 235, which counts a wider population.
+> `reconcile_legacy` prints the residual zero-party lines informationally.
+>
 > **The enquiry hop misses at load time for sheet-born customers (GAP-112).**
 > `EnquiryLoader` matches with `match_person_by_email(active_only=True)`, but
 > the `sheet-person-…` people it would match do not exist until the sheet

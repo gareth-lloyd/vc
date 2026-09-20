@@ -84,6 +84,7 @@ import type {
   PropertyImageCreateInput,
   PropertyLocationWriteInput,
   PropertyNearbyPlaceWriteInput,
+  PropertyRootWriteInput,
   PropertyRoomWriteInput,
   PropertyServiceWriteInput,
   PropertySettingsWriteInput,
@@ -719,12 +720,12 @@ export function useDeleteChangeOverRule(propertyId: number) {
 export function useUpdateProperty(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { region: number }) => updateProperty(propertyId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.properties.detail(propertyId) });
-      // Region shows up in list filtering, so stale list pages must refetch.
-      queryClient.invalidateQueries({ queryKey: [...queryKeys.properties.all(), "list"] });
-    },
+    mutationFn: (input: PropertyRootWriteInput) => updateProperty(propertyId, input),
+    // Via the shared helper, not the numeric key alone: a page opened at
+    // /properties/<slug> caches its detail under the slug, so invalidating
+    // only `detail(propertyId)` leaves that copy stale. It also covers the
+    // list pages, which region filtering depends on.
+    onSuccess: (updated) => invalidatePropertyDetail(queryClient, updated),
   });
 }
 

@@ -159,6 +159,11 @@ class PropertyDetailSerializer(_CalendarSourceMixin, serializers.ModelSerializer
             "display_name",
             "slug",
             "licence_number",
+            # GAP-090: legacy `VodeoUrl`, rendered and edited on the
+            # Descriptions tab. Already reached Zoho (`zoho_payload.py`); this
+            # is the first serializer to carry it. Detail + write only — the
+            # list has no use for it.
+            "video_url",
             "status",
             "channel",
             "region",
@@ -220,6 +225,7 @@ class PropertyWriteSerializer(serializers.ModelSerializer[Property]):
             "display_name",
             "slug",
             "licence_number",
+            "video_url",
             "channel",
             "region",
             "features",

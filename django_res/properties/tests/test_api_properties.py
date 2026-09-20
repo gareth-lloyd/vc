@@ -219,6 +219,66 @@ def test_patch_property(api_client: APIClient, staff: User, property_: Property)
 
 
 @pytest.mark.django_db
+def test_video_url_round_trips_on_detail(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """GAP-090: the Descriptions tab renders and edits the villa's video URL.
+    The field has existed since the legacy load (`VodeoUrl`) and reaches Zoho,
+    but was on no serializer.
+    """
+    api_client.force_login(staff)
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}",
+        data={"video_url": "https://player.vimeo.com/video/1"},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["video_url"] == "https://player.vimeo.com/video/1"
+
+    detail = api_client.get(f"/api/v1/properties/{property_.pk}")
+    assert detail.json()["video_url"] == "https://player.vimeo.com/video/1"
+
+
+@pytest.mark.django_db
+def test_video_url_edit_leaves_an_audit_trail(
+    api_client: APIClient, staff: User, property_: Property
+) -> None:
+    """It is staff-writable, so it needs the same trail as `licence_number`."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from core.models import AuditLog
+
+    api_client.force_login(staff)
+    api_client.patch(
+        f"/api/v1/properties/{property_.pk}",
+        data={"video_url": "https://player.vimeo.com/video/1"},
+        format="json",
+    )
+
+    ct = ContentType.objects.get_for_model(Property)
+    rows = AuditLog.objects.filter(content_type=ct, object_id=str(property_.pk))
+    assert any("video_url" in row.field_diffs for row in rows)
+
+
+@pytest.mark.django_db
+def test_video_url_clears_to_empty(api_client: APIClient, staff: User, property_: Property) -> None:
+    """`video_url` is `blank=True`, so `""` must clear it rather than 400 —
+    the GAP-024 clearing trap on the SPA side.
+    """
+    property_.video_url = "https://player.vimeo.com/video/1"
+    property_.save(update_fields=["video_url"])
+    api_client.force_login(staff)
+
+    response = api_client.patch(
+        f"/api/v1/properties/{property_.pk}", data={"video_url": ""}, format="json"
+    )
+
+    assert response.status_code == 200, response.content
+    property_.refresh_from_db()
+    assert property_.video_url == ""
+
+
+@pytest.mark.django_db
 def test_activate_transitions_status(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:

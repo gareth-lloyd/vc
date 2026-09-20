@@ -54,6 +54,7 @@ import {
   type PropertyCreateInput,
   type PropertyDescription,
   type PropertyDetail,
+  type PropertyRootWriteInput,
   type PropertyFilters,
   type PropertyFinance,
   type PropertyFinanceWriteInput,
@@ -557,11 +558,11 @@ export async function updatePropertyLocation(
   return propertyLocationSchema.parse(data);
 }
 
-// Root-resource PATCH — currently only the taxonomy region FK is edited this
-// way (the other editable facets live on nested sub-resources).
+// Root-resource PATCH — the taxonomy region FK and, since GAP-090, the video
+// URL (the other editable facets live on nested sub-resources).
 export async function updateProperty(
   propertyId: PropertyId,
-  body: { region: number },
+  body: PropertyRootWriteInput,
 ): Promise<PropertyDetail> {
   const data = await apiSend<unknown>("PATCH", `/properties/${propertyId}`, body);
   return propertyDetailSchema.parse(data);

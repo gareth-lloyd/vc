@@ -130,6 +130,11 @@ class PropertiesConfig(AppConfig):
                 "display_name",
                 "slug",
                 "licence_number",
+                # GAP-090: staff-writable from the Descriptions tab, so it
+                # needs the same trail as its sibling `licence_number`. The
+                # exclusion below is about the chatty description bodies on
+                # child models, not short columns on Property itself.
+                "video_url",
                 "status",
                 "channel",
                 "region_id",

@@ -177,6 +177,20 @@ describe("propertyListResponseSchema", () => {
 });
 
 describe("propertyDetailSchema", () => {
+  it("carries video_url and tolerates its absence (GAP-090)", () => {
+    expect(
+      propertyDetailSchema.parse({
+        id: 5,
+        name: "Villa Azul",
+        status: "active",
+        video_url: "https://player.vimeo.com/video/1",
+      }).video_url,
+    ).toBe("https://player.vimeo.com/video/1");
+    expect(
+      propertyDetailSchema.parse({ id: 5, name: "Villa Azul", status: "active" }).video_url,
+    ).toBeUndefined();
+  });
+
   it("defaults feature_ids when omitted", () => {
     const parsed = propertyDetailSchema.parse({
       id: 5,

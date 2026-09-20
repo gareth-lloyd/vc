@@ -89,6 +89,9 @@ export const propertyDetailSchema = propertyListItemSchema.extend({
   // from the manual (draggable) list and the save payload.
   derived_feature_ids: z.array(z.number()).optional().default([]),
   hero_image_url: z.string().nullable().optional(),
+  // GAP-090: legacy `VodeoUrl`, rendered and edited on the Descriptions tab.
+  // Detail-only — the list serializer does not carry it.
+  video_url: z.string().nullable().optional(),
   legacy_id: z.union([z.string(), z.number()]).nullable().optional(),
 });
 export type PropertyDetail = z.infer<typeof propertyDetailSchema>;
@@ -431,6 +434,17 @@ export const propertyCreateInputSchema = z.object({
   region: z.number().int().min(1, { message: "properties:create.errors.region_required" }),
 });
 export type PropertyCreateInput = z.infer<typeof propertyCreateInputSchema>;
+
+// GAP-090: root-resource PATCH shape. Every key is optional — this is a
+// partial update and callers send only what changed. The field-level rule
+// lives on the form schema that owns the input: `video_url` there is
+// `z.string()`, never `.optional()`, so clearing it sends `""` and the
+// backend clears the column (the GAP-024 clearing trap).
+export const propertyRootWriteInputSchema = z.object({
+  region: z.number().int().min(1).optional(),
+  video_url: z.string().trim().max(200).optional(),
+});
+export type PropertyRootWriteInput = z.infer<typeof propertyRootWriteInputSchema>;
 
 export const rateBandSchema = z.object({
   id: z.number(),

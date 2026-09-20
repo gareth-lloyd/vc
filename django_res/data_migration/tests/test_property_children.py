@@ -426,6 +426,13 @@ def _image_row(**overrides: object) -> dict[str, object]:
     ],
 )
 def test_image_flagged_blank_description_gains_slot_caption(flag: str, slot: str) -> None:
+    """GAP-090 keeps this: `PropertyLoader` now imports the same four
+    Interior*/Exterior* columns as description blocks, and that is one text on
+    two surfaces, not a double import. The flags mark which photo sits beside
+    which block, and 1 572 flagged images on ResProd carry no `Description` of
+    their own — so "deduplicating" the caption away would blank every one of
+    them in the Media tab.
+    """
     PropertyFactory(legacy_id="500")
     row = _image_row(**{flag: 1, slot: "  A lovely view  "})
 

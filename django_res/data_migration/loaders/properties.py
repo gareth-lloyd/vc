@@ -113,6 +113,29 @@ def _property_slug(raw: object, name: str, legacy_id: object) -> str:
     return f"{base[: 255 - len(suffix)]}{suffix}"
 
 
+# GAP-090: the four website blocks on `VillaPropertyImagesDescription`, in
+# the order the legacy edit screen lays them out. One column, one section —
+# the sub and the para of a block are separately editable.
+_BLOCK_COLUMNS: tuple[tuple[str, DescriptionSection], ...] = (
+    ("WebDesc1", DescriptionSection.WEB_DES_1),
+    ("WebDesc2", DescriptionSection.WEB_DES_2),
+    ("Interior1", DescriptionSection.INTERIOR_SUB),
+    ("Interior2", DescriptionSection.INTERIOR_PARA),
+    ("Exterior1", DescriptionSection.EXTERIOR_SUB),
+    ("Exterior2", DescriptionSection.EXTERIOR_PARA),
+    ("Location1", DescriptionSection.LOCATION_SUB),
+    ("Location2", DescriptionSection.LOCATION_PARA),
+)
+
+# The two blocks that had a pre-GAP-090 fused section, as
+# (sub section, retired section name, the columns the old join read).
+# See `PropertyLoader._drop_fused_block_row`.
+_FUSED_BLOCK_ROWS: tuple[tuple[DescriptionSection, str, tuple[str, str]], ...] = (
+    (DescriptionSection.WEB_DES_1, "web_description", ("WebDesc1", "WebDesc2")),
+    (DescriptionSection.LOCATION_SUB, "location", ("Location1", "Location2")),
+)
+
+
 class PropertyLoader(BaseLoader):
     """VillaMaster -> Property (+ Location + Capacity + Settings + Descriptions).
 
@@ -123,12 +146,21 @@ class PropertyLoader(BaseLoader):
 
     name = "property"
     target_model = Property
-    # `VillaPropertyImagesDescription` holds customer-facing website copy
-    # (WebDesc1/2, Location1/2) and a video URL (VodeoUrl — legacy misspelling)
-    # not carried by VillaMaster. It is one row per villa except for junk
-    # duplicates, so the MAX(Id) subselect pins the join to a single row —
-    # mirroring `PropertyImageLoader`. (Its Interior*/Exterior* columns are
-    # already migrated as image slot captions there; not read here.)
+    # `VillaPropertyImagesDescription` holds customer-facing website copy in
+    # four column pairs — WebDesc1/2, Interior1/2, Exterior1/2, Location1/2,
+    # each a short sub plus a longer para — and a video URL (VodeoUrl, legacy
+    # misspelling) not carried by VillaMaster. It is one row per villa except
+    # for junk duplicates, so the MAX(Id) subselect pins the join to a single
+    # row — mirroring `PropertyImageLoader`.
+    #
+    # GAP-090: the Interior*/Exterior* columns are read here as description
+    # blocks, and `PropertyImageLoader` still reads the same four columns as
+    # image captions. That is deliberate, not a double import: the
+    # IsInterior1/2 + IsExterior1/2 flags live on `VillaPropertyImages` and
+    # mark which *photo* sits beside each block (~1 per villa per slot), so
+    # the caption has always been a second rendering of this same prose —
+    # 1 572 flagged images carry no `Description` of their own. Dropping
+    # either surface would blank the other's copy.
     legacy_query = (
         "SELECT m.Id, m.Name, m.DisplayName, m.Slug, m.OverView, m.HouseRules, "
         "m.FeatureDescription, m.RoomDescription, m.Notes, "
@@ -141,7 +173,8 @@ class PropertyLoader(BaseLoader):
         "m.SettingCheckInTime, m.SettingCheckOutTime, m.SettingChangeoverDayId, "
         "m.SettingMinNightsRental, m.SettingMinNightsRentalNote, "
         f"{', '.join(f'm.{flag}' for flag, _, _ in _SETTING_DEFAULTS)}, "
-        "d.WebDesc1, d.WebDesc2, d.Location1, d.Location2, d.VodeoUrl "
+        "d.WebDesc1, d.WebDesc2, d.Interior1, d.Interior2, "
+        "d.Exterior1, d.Exterior2, d.Location1, d.Location2, d.VodeoUrl "
         "FROM VillaMaster m "
         "LEFT JOIN VillaPropertyImagesDescription d ON d.Id = ("
         "SELECT MAX(d2.Id) FROM VillaPropertyImagesDescription d2 "
@@ -294,18 +327,12 @@ class PropertyLoader(BaseLoader):
         if notes := (row.get("Notes") or "").strip():
             sections[DescriptionSection.INTERNAL_NOTES] = notes
         # Website copy from VillaPropertyImagesDescription (PRESERVE ALL,
-        # 2026-07-06): WebDesc1+WebDesc2->WEB_DES_1, Location1+Location2->
-        # LOCATION_SUB. Each pair is still concatenated (blank line join,
-        # blanks skipped) into the sub slot; GAP-090 splits the pairs into
-        # their own sections next.
-        web1 = (row.get("WebDesc1") or "").strip()
-        web2 = (row.get("WebDesc2") or "").strip()
-        if web1 or web2:
-            sections[DescriptionSection.WEB_DES_1] = "\n\n".join(p for p in (web1, web2) if p)
-        loc1 = (row.get("Location1") or "").strip()
-        loc2 = (row.get("Location2") or "").strip()
-        if loc1 or loc2:
-            sections[DescriptionSection.LOCATION_SUB] = "\n\n".join(p for p in (loc1, loc2) if p)
+        # 2026-07-06). GAP-090: one legacy column per section, so the sub and
+        # the para of each block stay separately editable. They used to be
+        # fused with a blank line, which no string split could undo.
+        for column, block_section in _BLOCK_COLUMNS:
+            if text := (row.get(column) or "").strip():
+                sections[block_section] = text
 
         for section, body in sections.items():
             if section == DescriptionSection.INTERNAL_NOTES:
@@ -320,6 +347,50 @@ class PropertyLoader(BaseLoader):
                 },
             )
         self._drop_fused_row(prop, row, feat, rooms)
+        self._drop_fused_block_row(prop, row)
+
+    @staticmethod
+    def _drop_fused_block_row(prop: Property, row: dict[str, Any]) -> None:
+        """One-off for DBs loaded before GAP-090 (CUTOVER §6i).
+
+        Migration 0010 parked each fused website body in the block's *sub*
+        slot (`web_description` -> `web_des_1`, `location` -> `location_sub`)
+        with its pre-0010 provenance intact, on the understanding that this
+        re-run would overwrite it with the true part-1 text. That only happens
+        when part 1 is non-blank — the old join skipped blanks, so a villa
+        with only part 2 (346 Location1 vs 347 Location2 on ResProd) had its
+        *para* text parked in the sub slot. The loop above then writes the
+        para section and leaves the sub row behind, rendering the same
+        paragraph twice with no way to tell which row is stale.
+
+        So: a sub row still carrying pre-0010 provenance after the writes is
+        one this re-run did not claim. Drop it — but, exactly as
+        `_drop_fused_row` does, only while its body still equals what the old
+        join would produce from the current legacy columns. Anything else is
+        a staff rewrite and is kept and logged. Interior/Exterior need no
+        entry here: they had no pre-GAP-090 section to be parked in.
+        """
+        for section, retired, columns in _FUSED_BLOCK_ROWS:
+            fused = "\n\n".join(
+                part for part in ((row.get(c) or "").strip() for c in columns) if part
+            )
+            for desc in PropertyDescription.objects.filter(
+                property=prop, section=section, legacy_id=f"{row['Id']}-{retired}"
+            ):
+                if desc.body == fused:
+                    logger.info(
+                        "data_migration.fused_block_dropped",
+                        property_id=prop.pk,
+                        legacy_id=desc.legacy_id,
+                    )
+                    desc.delete()
+                else:
+                    logger.warning(
+                        "data_migration.fused_block_kept",
+                        property_id=prop.pk,
+                        legacy_id=desc.legacy_id,
+                        reason="body_differs_from_legacy_join",
+                    )
 
     @staticmethod
     def _write_internal_notes(prop: Property, row: dict[str, Any], body: str) -> None:

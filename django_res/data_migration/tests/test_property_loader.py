@@ -149,28 +149,120 @@ def _write_and_fetch(**overrides: object) -> dict[str, str]:
 
 
 @pytest.mark.django_db
-def test_web_description_concatenates_both_parts() -> None:
+def test_web_description_parts_land_in_separate_sections() -> None:
     sections = _write_and_fetch(WebDesc1="  Marketing copy  ", WebDesc2="  Activities  ")
-    assert sections[DescriptionSection.WEB_DES_1] == "Marketing copy\n\nActivities"
+    assert sections[DescriptionSection.WEB_DES_1] == "Marketing copy"
+    assert sections[DescriptionSection.WEB_DES_2] == "Activities"
 
 
 @pytest.mark.django_db
-def test_web_description_single_part_no_blank_join() -> None:
+def test_web_description_single_part_writes_one_section() -> None:
     sections = _write_and_fetch(WebDesc1="Only first", WebDesc2="")
     assert sections[DescriptionSection.WEB_DES_1] == "Only first"
+    assert DescriptionSection.WEB_DES_2 not in sections
 
 
 @pytest.mark.django_db
-def test_location_concatenates_both_parts() -> None:
+def test_location_parts_land_in_separate_sections() -> None:
     sections = _write_and_fetch(Location1="Near the beach", Location2="10 min to town")
-    assert sections[DescriptionSection.LOCATION_SUB] == "Near the beach\n\n10 min to town"
+    assert sections[DescriptionSection.LOCATION_SUB] == "Near the beach"
+    assert sections[DescriptionSection.LOCATION_PARA] == "10 min to town"
+
+
+@pytest.mark.django_db
+def test_interior_parts_land_in_separate_sections() -> None:
+    sections = _write_and_fetch(Interior1="  Ensuite bedrooms  ", Interior2="  Soft linen  ")
+    assert sections[DescriptionSection.INTERIOR_SUB] == "Ensuite bedrooms"
+    assert sections[DescriptionSection.INTERIOR_PARA] == "Soft linen"
+
+
+@pytest.mark.django_db
+def test_exterior_parts_land_in_separate_sections() -> None:
+    sections = _write_and_fetch(Exterior1="  Infinity pool  ", Exterior2="  Shaded terraces  ")
+    assert sections[DescriptionSection.EXTERIOR_SUB] == "Infinity pool"
+    assert sections[DescriptionSection.EXTERIOR_PARA] == "Shaded terraces"
+
+
+@pytest.mark.django_db
+def test_each_block_column_is_stamped_with_its_own_section() -> None:
+    loader = PropertyLoader()
+    loader._process_row(_row(Interior1="Sub", Interior2="Para"), LoadReport(loader=loader.name))
+    prop = Property.objects.get(legacy_id="100")
+    stamps = {d.section: d.legacy_id for d in PropertyDescription.objects.filter(property=prop)}
+    assert stamps[DescriptionSection.INTERIOR_SUB] == "100-interior_sub"
+    assert stamps[DescriptionSection.INTERIOR_PARA] == "100-interior_para"
 
 
 @pytest.mark.django_db
 def test_no_website_copy_writes_no_extra_sections() -> None:
     sections = _write_and_fetch()
-    assert DescriptionSection.WEB_DES_1 not in sections
-    assert DescriptionSection.LOCATION_SUB not in sections
+    for section in (
+        DescriptionSection.WEB_DES_1,
+        DescriptionSection.WEB_DES_2,
+        DescriptionSection.INTERIOR_SUB,
+        DescriptionSection.INTERIOR_PARA,
+        DescriptionSection.EXTERIOR_SUB,
+        DescriptionSection.EXTERIOR_PARA,
+        DescriptionSection.LOCATION_SUB,
+        DescriptionSection.LOCATION_PARA,
+    ):
+        assert section not in sections
+
+
+# GAP-090 §6i repair: migration 0010 parked each fused body in the *sub* slot
+# (`web_description` -> `web_des_1`, `location` -> `location_sub`) for the
+# re-run to overwrite. That only lands when part 1 is non-blank — on ResProd
+# Location1 is set on 346 villas and Location2 on 347 — so a part-2-only villa
+# would otherwise keep the sub row *and* gain an identical para row.
+
+
+def _seed_fused(prop: Property, section: str, old_section: str, body: str) -> PropertyDescription:
+    return PropertyDescription.objects.create(
+        property=prop, section=section, body=body, legacy_id=f"100-{old_section}"
+    )
+
+
+@pytest.mark.django_db
+def test_rerun_drops_the_fused_sub_row_when_only_part_two_survives() -> None:
+    loader = PropertyLoader()
+    loader._process_row(_row(), LoadReport(loader=loader.name))
+    prop = Property.objects.get(legacy_id="100")
+    _seed_fused(prop, DescriptionSection.LOCATION_SUB, "location", "10 min to town")
+
+    loader._process_row(_row(Location1="", Location2="10 min to town"), LoadReport(loader="p"))
+
+    sections = {d.section: d.body for d in PropertyDescription.objects.filter(property=prop)}
+    assert sections == {DescriptionSection.LOCATION_PARA: "10 min to town"}
+
+
+@pytest.mark.django_db
+def test_rerun_rewrites_the_sub_row_in_place_when_part_one_survives() -> None:
+    loader = PropertyLoader()
+    loader._process_row(_row(), LoadReport(loader=loader.name))
+    prop = Property.objects.get(legacy_id="100")
+    _seed_fused(prop, DescriptionSection.WEB_DES_1, "web_description", "Sub\n\nPara")
+
+    loader._process_row(_row(WebDesc1="Sub", WebDesc2="Para"), LoadReport(loader="p"))
+
+    rows = {d.section: d for d in PropertyDescription.objects.filter(property=prop)}
+    assert rows[DescriptionSection.WEB_DES_1].body == "Sub"
+    assert rows[DescriptionSection.WEB_DES_1].legacy_id == "100-web_des_1"
+    assert rows[DescriptionSection.WEB_DES_2].body == "Para"
+
+
+@pytest.mark.django_db
+def test_rerun_keeps_a_fused_sub_row_a_staff_edit_has_changed() -> None:
+    loader = PropertyLoader()
+    loader._process_row(_row(), LoadReport(loader=loader.name))
+    prop = Property.objects.get(legacy_id="100")
+    _seed_fused(prop, DescriptionSection.LOCATION_SUB, "location", "Staff rewrote this")
+
+    with structlog.testing.capture_logs() as logs:
+        loader._process_row(_row(Location1="", Location2="10 min to town"), LoadReport(loader="p"))
+
+    sections = {d.section: d.body for d in PropertyDescription.objects.filter(property=prop)}
+    assert sections[DescriptionSection.LOCATION_SUB] == "Staff rewrote this"
+    assert any(entry["event"] == "data_migration.fused_block_kept" for entry in logs)
 
 
 # GAP-090: `VillaMaster.Notes` is staff copy, so it loads into INTERNAL_NOTES

@@ -45,6 +45,13 @@ here.
    list — so agent-originated enquiries are indistinguishable from direct
    ones.
    - *Verify:* push an agent-originated enquiry.
+   - *2026-09-18 — deferred by Limitless, and now on us.* Their response
+     records *"resolve Agency and upsert and pass through — will await
+     organisation endpoint data first"*. The endpoint meant is the
+     `organisation` webhook they issued the same day (**GAP-096**), so this
+     item now waits on our first organisation push rather than on them. Note
+     they addressed only `agency`; `agent` was not answered either way —
+     re-ask when the agency half is in.
 
 4. **Stage collapses three states into one.** `progressing`, `quote_sent`
    and `follow_up` all → "Quoted", flattening the GAP-038/039 funnel and
@@ -99,6 +106,19 @@ nothing is lost while it's open.
 > `RES_ID` / `iso3`, and honour `is_active` (`false` = retired from new
 > selection, still readable on historic records). A seeded picklist needs
 > **GAP-103** to stay fresh — region edits do not re-push today.
+
+> *2026-09-18 — answered, and neither of the two options.* Limitless built a
+> **Regions custom module** in the sandbox CRM (region name, RES ID, country
+> picklist) with a linking module behind it for many-to-many against
+> Enquiries, rather than a multi-select picklist: records are cheaper to add
+> than picklist metadata, and Zoho Analytics can report per country/region
+> relationally. That is the "seeded from our region list" option made
+> maintainable, so **the decision is closed** — the field is a module
+> reference, not a picklist and not free text. Two things it does *not*
+> settle: how the module stays fresh (still **GAP-096**'s `region` kind, for
+> which no webhook URL has been issued), and whether `RES_ID` is really the
+> match key on that module — confirm before anything is seeded.
+> Module: `https://crmsandbox.zoho.eu/crm/limitlessm97/tab/CustomModule2/custom-view/626421000019591121/list`
 
 ## Acceptance
 

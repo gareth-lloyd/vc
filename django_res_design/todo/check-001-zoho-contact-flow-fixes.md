@@ -103,3 +103,12 @@ GAP-097).
   here means *a human read the CRM record*, not *res reported success*.
 - **GAP-098** — the legacy `ZohoId` question sits behind item 1/9: contacts
   already in the CRM from the legacy sync carry no RES_ID.
+- **GAP-096** — Organisation push kind. The `organisation` webhook URL
+  arrived **2026-09-18**, which makes the agency half of this flow reachable
+  for the first time: there is now a path by which an Account can exist
+  without a villa. Adds one item to verify, once we are pushing
+  organisations — the flow should set a **real Account lookup** on the
+  Contact, resolved from the `agency` sub-object's `RES_ID`, in place of the
+  `Contact_Type: "Agency"` text it writes today. *Verify:* push an
+  Organisation, then a Person linked to it; expect the Contact's Account
+  field populated and pointing at that Account, not a re-created one.

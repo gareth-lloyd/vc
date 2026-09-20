@@ -39,9 +39,9 @@ Accepted risks:
 Why threads (`ThreadPoolExecutor` has no precedent here, so it needs a reason):
 `httpx.Limits` *caps* a connection pool, it does not create concurrency — a
 synchronous loop has exactly one request in flight whatever limits you set, and
-measures 0.76 files/s ≈ 6.7 hours for this tree. Concurrency 8 measures 2.11
-files/s ≈ 2.4 hours; 16 is three times *slower* (the server degrades), hence
-`MAX_CONCURRENCY`. `asyncio` would mean async plumbing inside a sync
+measures 0.76 files/s ≈ 6.7 hours for this tree. Concurrency 8 measures 3.33
+files/s ≈ 1.5 hours through this command; 16 is several times *slower* (the
+server degrades), hence `MAX_CONCURRENCY`. `asyncio` would mean async plumbing inside a sync
 `handle()`; Celery would be far heavier than a one-shot operator-run download.
 So: a fixed pool whose workers share nothing — they take plain tuples, touch
 neither the ORM nor storage, and return a result tuple. All aggregation and all
@@ -54,7 +54,7 @@ Running this against someone else's production server — read before you start:
   to real users. Run it off-peak. Mitigations for going ahead without notifying
   them: concurrency capped, an identifying User-Agent, a circuit breaker, and an
   operator watching the first `--limit 200`.
-- It moves ~10.3 GB of *their* egress, which no concurrency limit reduces and a
+- It moves ~10 GB of *their* egress, which no concurrency limit reduces and a
   hosting plan may cap. That is why the local archive is kept afterwards rather
   than deleted: we pay this cost exactly once.
 - Sustained connections from one IP can trip a bot rule and block the operator.
@@ -76,7 +76,7 @@ Examples:
     # Smoke run, watched, to get a real throughput number.
     uv run python manage.py fetch_legacy_images --limit 200
 
-    # The real thing. `caffeinate -i` because system sleep kills a 2.4h run,
+    # The real thing. `caffeinate -i` because system sleep kills a ~1.5h run,
     # tmux because a closed terminal SIGHUPs it.
     caffeinate -i uv run python manage.py fetch_legacy_images
 
@@ -124,8 +124,10 @@ logger = structlog.get_logger(__name__)
 DEFAULT_BASE_URL = "https://vc2.mojodev.co.uk/PropertyImages"
 DEFAULT_DEST = "~/villacollective-legacy/PropertyImages"
 
-# Measured on the real tree: 8 gives 2.11 files/s (11.9 Mbps); 16 collapses to
-# 0.63 files/s as the server degrades. The cap encodes the measurement.
+# Measured on the real tree: 8 gives 3.33 files/s (14.7 Mbps, 200-file run
+# 2026-09-20); 16 collapses to 0.63 files/s as the server degrades. The cap
+# encodes the measurement. `h2` is deliberately not installed — these are
+# keep-alive HTTP/1.1 connections and they are faster here than curl's HTTP/2.
 DEFAULT_CONCURRENCY = 8
 MAX_CONCURRENCY = 16
 
@@ -203,6 +205,10 @@ class _NotAnImage(Exception):
     """The body is not an image, decided from its leading bytes."""
 
 
+class _Aborted(Exception):
+    """The run is stopping — abandon this transfer mid-body."""
+
+
 class _Task(NamedTuple):
     """Everything a worker needs. Built in the main thread; workers share nothing."""
 
@@ -247,11 +253,19 @@ def _discard(part: Path) -> None:
         pass
 
 
-def _stream_to_part(response: httpx.Response, part: Path) -> int:
-    """Stream the body to `part`, returning its size. Raises `_NotAnImage` early."""
+def _stream_to_part(response: httpx.Response, part: Path, stop: threading.Event) -> int:
+    """Stream the body to `part`, returning its size.
+
+    Raises `_NotAnImage` on the first chunk, and `_Aborted` if the run stops
+    mid-transfer — checked per chunk rather than per file so Ctrl-C abandons
+    eight in-flight multi-MB downloads at once instead of waiting out their tail
+    (measured: 32s down to about a second).
+    """
     size = 0
     with part.open("wb") as fh:
         for index, chunk in enumerate(response.iter_bytes(CHUNK_BYTES)):
+            if stop.is_set():
+                raise _Aborted
             if index == 0 and not _looks_like_image(chunk):
                 raise _NotAnImage("body is not an image (magic bytes)")
             fh.write(chunk)
@@ -287,7 +301,7 @@ def _fetch_one(
                 elif response.status_code != 200:
                     return _Result(task.pk, _FAILED, f"{task.url} (HTTP {response.status_code})")
                 else:
-                    return _download(response, task, part)
+                    return _download(response, task, part, stop)
         except httpx.HTTPError as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             _discard(part)
@@ -298,7 +312,7 @@ def _fetch_one(
     return _Result(task.pk, _FAILED, f"{task.url} ({last_error})")
 
 
-def _download(response: httpx.Response, task: _Task, part: Path) -> _Result:
+def _download(response: httpx.Response, task: _Task, part: Path, stop: threading.Event) -> _Result:
     content_type = response.headers.get("content-type", "")
     # The measured trap: a directory URL answers 200 with the Blazor SPA shell,
     # which without this guard is saved as a .jpg and surfaces months later.
@@ -306,7 +320,10 @@ def _download(response: httpx.Response, task: _Task, part: Path) -> _Result:
         return _Result(task.pk, _REJECTED, f"{task.url} (Content-Type: {content_type or 'none'})")
     task.target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        size = _stream_to_part(response, part)
+        size = _stream_to_part(response, part, stop)
+    except _Aborted:
+        _discard(part)
+        return _Result(task.pk, _STOPPED, "")
     except _NotAnImage as exc:
         _discard(part)
         return _Result(task.pk, _REJECTED, f"{task.url} ({exc})")
@@ -547,7 +564,7 @@ class Command(BaseCommand):
         dry_run: bool,
     ) -> None:
         rows = legacy_image_rows()
-        # Nothing past this point touches the ORM, and a 2.4-hour idle
+        # Nothing past this point touches the ORM, and a 1.5-hour idle
         # connection to Render's external host would be dropped. Skipped inside
         # a transaction (i.e. under test), where closing rolls back the caller.
         if not connection.in_atomic_block:
@@ -723,11 +740,15 @@ class Command(BaseCommand):
                 interrupted = True
                 stop.set()
         finally:
-            # wait=False + cancel_futures: the queue is dropped and the few
-            # in-flight workers unwind on their own. A `with` block would
-            # instead wait for all ~18k queued tasks, which is what makes a
-            # naive Ctrl-C ignore the interrupt entirely.
-            executor.shutdown(wait=False, cancel_futures=True)
+            # cancel_futures drops the ~18k queued tasks; wait=True then lets the
+            # handful of in-flight workers notice `stop` between chunks and
+            # return, which costs about one chunk. A plain `with` block would
+            # instead wait for the whole queue, which is what makes a naive
+            # Ctrl-C look ignored. Order matters just as much: closing the client
+            # first shuts the sockets out from under those in-flight reads, which
+            # then sit out the full read timeout (measured: 32s to wind down,
+            # against about a second this way).
+            executor.shutdown(wait=True, cancel_futures=True)
             client.close()
         return fatal, interrupted
 

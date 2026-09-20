@@ -229,8 +229,12 @@ set its keys as Render env vars per service. Do not ship the
    put/get/delete/list on `villacollective-images` only) with keys in Render
    env vars for staging + prod. Never ship the `villacollective-cli` user's keys
    to Render. No ops export is needed — step 2a fetches the binaries.
-2a. **Fetch the legacy binaries** (~2.5 h, ~10.3 GB, needs no AWS credentials
-   and never writes to the database):
+2a. **Fetch the legacy binaries** (~1.5 h, ~10 GB, needs no AWS credentials and
+   never writes to the database). Measured 2026-09-20 on a 200-file smoke run
+   through this command: **3.33 files/s, 14.7 Mbps** at the default concurrency
+   8, mean file 551 KB — faster than the 2.11 files/s the original `curl`
+   benchmark suggested, because `curl` negotiated HTTP/2 while `httpx` here uses
+   keep-alive HTTP/1.1 (`h2` is deliberately not installed):
 
    ```bash
    # Pre-flight only, ~2 seconds: validates the data and the destination.

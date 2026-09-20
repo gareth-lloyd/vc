@@ -759,7 +759,7 @@ def test_disk_full_mid_run_stops_the_run_with_its_own_message(
         _legacy_row(property_, filename)
         _image_route("101", filename)
 
-    def full(_response: object, _part: Path) -> int:
+    def full(_response: object, _part: Path, _stop: object) -> int:
         raise OSError(errno.ENOSPC, "No space left on device")
 
     monkeypatch.setattr(cmd, "_stream_to_part", full)
@@ -834,5 +834,6 @@ def test_interrupt_prints_the_summary_and_exits_non_zero(
 
     assert "interrupted" in str(error)
     assert "re-run to resume" in str(error)
+    assert not list(dest.rglob(f"*{cmd.PART_SUFFIX}")), "in-flight parts are abandoned"
     assert "bucket" in out, "the summary must print before the non-zero exit"
     assert (dest / cmd.REPORT_NAME).exists()

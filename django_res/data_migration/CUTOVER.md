@@ -1534,8 +1534,9 @@ The DB rows are already in place (**18,232** `properties/legacy/<file>` keys,
 upload them:
 
 ```bash
-# ~2.5 h, ~10.3 GB. Run it off-peak; see the GAP-012 runbook first — this hits
-# a third party's live production server and spends their bandwidth.
+# ~1.5 h, ~10 GB (measured 3.33 files/s at the default concurrency). Run it
+# off-peak; see the GAP-012 runbook first — this hits a third party's live
+# production server and spends their bandwidth.
 uv run python manage.py fetch_legacy_images --dry-run     # pre-flight, ~2 s
 uv run python manage.py fetch_legacy_images --limit 200   # watched smoke run
 caffeinate -i uv run python manage.py fetch_legacy_images

@@ -289,21 +289,28 @@ class PropertyLoader(BaseLoader):
             sections[DescriptionSection.OTHER_INFORMATION] = feat
         if rooms := (row.get("RoomDescription") or "").strip():
             sections[DescriptionSection.ROOMS] = rooms
+        # GAP-090: Notes is staff copy, so it lands in INTERNAL_NOTES — write
+        # guarded, see `_write_internal_notes`.
         if notes := (row.get("Notes") or "").strip():
-            sections[DescriptionSection.FURTHER_INFO] = notes
+            sections[DescriptionSection.INTERNAL_NOTES] = notes
         # Website copy from VillaPropertyImagesDescription (PRESERVE ALL,
-        # 2026-07-06): WebDesc1+WebDesc2->WEB_DESCRIPTION, Location1+Location2->
-        # LOCATION. Each pair concatenated (blank line join, blanks skipped).
+        # 2026-07-06): WebDesc1+WebDesc2->WEB_DES_1, Location1+Location2->
+        # LOCATION_SUB. Each pair is still concatenated (blank line join,
+        # blanks skipped) into the sub slot; GAP-090 splits the pairs into
+        # their own sections next.
         web1 = (row.get("WebDesc1") or "").strip()
         web2 = (row.get("WebDesc2") or "").strip()
         if web1 or web2:
-            sections[DescriptionSection.WEB_DESCRIPTION] = "\n\n".join(p for p in (web1, web2) if p)
+            sections[DescriptionSection.WEB_DES_1] = "\n\n".join(p for p in (web1, web2) if p)
         loc1 = (row.get("Location1") or "").strip()
         loc2 = (row.get("Location2") or "").strip()
         if loc1 or loc2:
-            sections[DescriptionSection.LOCATION] = "\n\n".join(p for p in (loc1, loc2) if p)
+            sections[DescriptionSection.LOCATION_SUB] = "\n\n".join(p for p in (loc1, loc2) if p)
 
         for section, body in sections.items():
+            if section == DescriptionSection.INTERNAL_NOTES:
+                self._write_internal_notes(prop, row, body)
+                continue
             PropertyDescription.objects.update_or_create(
                 property=prop,
                 section=section,
@@ -313,6 +320,44 @@ class PropertyLoader(BaseLoader):
                 },
             )
         self._drop_fused_row(prop, row, feat, rooms)
+
+    @staticmethod
+    def _write_internal_notes(prop: Property, row: dict[str, Any], body: str) -> None:
+        """Create-only: never overwrite staff-written internal notes (GAP-090).
+
+        Every other section is loader-owned, so the `update_or_create` above
+        can safely rewrite it on the CUTOVER §6i re-run. `internal_notes` is
+        not: it has been an editable staff surface since 2026-08-12, and
+        migration 0010 folded the retired `further_info` bodies into the same
+        rows. Overwriting would delete copy nobody can recover, so the row is
+        written once and then left alone — the same posture as
+        `_drop_fused_row`'s refusal to delete copy it cannot prove is its own.
+
+        The *body* is what's protected, not the row's provenance: a kept row
+        still stands in for this villa's `VillaMaster.Notes`, so an unstamped
+        one (staff-typed) or one migration 0010 renamed off `further_info` is
+        re-stamped to the `<Id>-<section>` convention. `reconcile_legacy`
+        counts loaded rows by `legacy_id` (`_Check.count_loaded`), so leaving
+        those alone reports a false gap against `expected_gap=0`.
+        """
+        section = DescriptionSection.INTERNAL_NOTES
+        legacy_id = f"{row['Id']}-{section}"
+        existing, created = PropertyDescription.objects.get_or_create(
+            property=prop,
+            section=section,
+            defaults={"body": body, "legacy_id": legacy_id},
+        )
+        if created:
+            return
+        if existing.legacy_id in (None, "", f"{row['Id']}-further_info"):
+            existing.legacy_id = legacy_id
+            existing.save(update_fields=["legacy_id"])
+        if existing.body != body:
+            logger.info(
+                "data_migration.internal_notes_kept",
+                property_id=prop.pk,
+                reason="existing_body_not_overwritten",
+            )
 
     @staticmethod
     def _drop_fused_row(prop: Property, row: dict[str, Any], feat: str, rooms: str) -> None:

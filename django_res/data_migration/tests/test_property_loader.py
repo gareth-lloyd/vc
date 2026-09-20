@@ -151,26 +151,74 @@ def _write_and_fetch(**overrides: object) -> dict[str, str]:
 @pytest.mark.django_db
 def test_web_description_concatenates_both_parts() -> None:
     sections = _write_and_fetch(WebDesc1="  Marketing copy  ", WebDesc2="  Activities  ")
-    assert sections[DescriptionSection.WEB_DESCRIPTION] == "Marketing copy\n\nActivities"
+    assert sections[DescriptionSection.WEB_DES_1] == "Marketing copy\n\nActivities"
 
 
 @pytest.mark.django_db
 def test_web_description_single_part_no_blank_join() -> None:
     sections = _write_and_fetch(WebDesc1="Only first", WebDesc2="")
-    assert sections[DescriptionSection.WEB_DESCRIPTION] == "Only first"
+    assert sections[DescriptionSection.WEB_DES_1] == "Only first"
 
 
 @pytest.mark.django_db
 def test_location_concatenates_both_parts() -> None:
     sections = _write_and_fetch(Location1="Near the beach", Location2="10 min to town")
-    assert sections[DescriptionSection.LOCATION] == "Near the beach\n\n10 min to town"
+    assert sections[DescriptionSection.LOCATION_SUB] == "Near the beach\n\n10 min to town"
 
 
 @pytest.mark.django_db
 def test_no_website_copy_writes_no_extra_sections() -> None:
     sections = _write_and_fetch()
-    assert DescriptionSection.WEB_DESCRIPTION not in sections
-    assert DescriptionSection.LOCATION not in sections
+    assert DescriptionSection.WEB_DES_1 not in sections
+    assert DescriptionSection.LOCATION_SUB not in sections
+
+
+# GAP-090: `VillaMaster.Notes` is staff copy, so it loads into INTERNAL_NOTES
+# (the retired FURTHER_INFO section) — and, uniquely, never overwrites.
+
+
+@pytest.mark.django_db
+def test_notes_load_into_internal_notes() -> None:
+    sections = _write_and_fetch(Notes="  Gate code is on the key safe.  ")
+    assert sections[DescriptionSection.INTERNAL_NOTES] == "Gate code is on the key safe."
+
+
+@pytest.mark.django_db
+def test_existing_internal_notes_body_is_never_overwritten() -> None:
+    _write_and_fetch(Notes="Legacy note")
+    prop = Property.objects.get(legacy_id="100")
+    row = PropertyDescription.objects.get(property=prop, section=DescriptionSection.INTERNAL_NOTES)
+    row.body = "Staff rewrote this after cutover"
+    row.save(update_fields=["body"])
+
+    with structlog.testing.capture_logs() as logs:
+        sections = _write_and_fetch(Notes="Legacy note")
+
+    assert sections[DescriptionSection.INTERNAL_NOTES] == "Staff rewrote this after cutover"
+    assert any(entry["event"] == "data_migration.internal_notes_kept" for entry in logs)
+
+
+@pytest.mark.django_db
+def test_kept_internal_notes_row_is_re_stamped_with_its_provenance() -> None:
+    """A staff-typed row, and one migration 0010 renamed off `further_info`,
+    both stand in for this villa's `VillaMaster.Notes` — `reconcile_legacy`
+    counts loaded rows by `legacy_id`, so an unstamped one is a false gap.
+    """
+    loader = PropertyLoader()
+    loader._process_row(_row(), LoadReport(loader=loader.name))
+    prop = Property.objects.get(legacy_id="100")
+    staff_row = PropertyDescription.objects.create(
+        property=prop,
+        section=DescriptionSection.INTERNAL_NOTES,
+        body="Typed by staff",
+        legacy_id=None,
+    )
+
+    loader._process_row(_row(Notes="Legacy note"), LoadReport(loader=loader.name))
+
+    staff_row.refresh_from_db()
+    assert staff_row.body == "Typed by staff"
+    assert staff_row.legacy_id == "100-internal_notes"
 
 
 # GAP-091: FeatureDescription and RoomDescription are unrelated legacy columns

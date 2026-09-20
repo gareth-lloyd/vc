@@ -99,6 +99,10 @@ def test_delete_removes_section(api_client: APIClient, staff: User, property_: P
         # GAP-091: Features-tab prose + GAP-092's property-level rooms blurb.
         ("other-information", DescriptionSection.OTHER_INFORMATION),
         ("rooms", DescriptionSection.ROOMS),
+        # GAP-090: the legacy sub/para block set.
+        ("web-des-1", DescriptionSection.WEB_DES_1),
+        ("interior-para", DescriptionSection.INTERIOR_PARA),
+        ("location-sub", DescriptionSection.LOCATION_SUB),
     ],
 )
 def test_hyphenated_sections_round_trip(
@@ -229,8 +233,11 @@ def test_delete_leaves_an_audit_tombstone(
 
 
 @pytest.mark.django_db
-# `villa-info` was retired by GAP-091 (migration 0007 renamed its rows).
-@pytest.mark.parametrize("slug", ["garbage-section", "villa-info"])
+# `villa-info` was retired by GAP-091 (migration 0007 renamed its rows);
+# `web-description`, `location` and `further-info` by GAP-090 (0010).
+@pytest.mark.parametrize(
+    "slug", ["garbage-section", "villa-info", "web-description", "location", "further-info"]
+)
 def test_unknown_section_returns_404(
     api_client: APIClient, staff: User, property_: Property, slug: str
 ) -> None:

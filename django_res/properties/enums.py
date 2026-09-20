@@ -124,7 +124,7 @@ class DescriptionSection(models.TextChoices):
     column — the whole properties API is staff-gated, so the split is a UI
     affordance, not access control.
 
-    The rest are guest-facing, except `HOUSE_RULES` and `FURTHER_INFO`.
+    The rest are guest-facing, except `HOUSE_RULES`.
     `HOUSE_RULES` is never shown online: it rides into the **booking
     contract**, snapshotted onto `Booking.house_rules_snapshot` at
     confirmation and rendered from there (GAP-094), so later edits here cannot
@@ -133,11 +133,25 @@ class DescriptionSection(models.TextChoices):
     reservations' `test_zoho_booking.py`, `test_api_wordpress_enquiries.py`,
     `test_stay_options.py` and `test_owner_bookings.py`). Legacy did select
     `QuotationArgs.HouseRules` for the quotation but never output it — the
-    quotation is not where these go. `FURTHER_INFO` is on its
-    way out: it loads from legacy `VillaMaster.Notes`, and the 2026-07-20 Nick
-    recording settles that as staff copy ("we can get rid of further info, just
-    make it internal notes"). The remap of those rows, and the replacement of
-    the website set with the legacy sub/para block set, belong to GAP-090.
+    quotation is not where these go.
+
+    GAP-090 rebuilt the website set to the legacy block shape: the public site
+    renders each block as a short **sub** (lead-in) plus a longer **para**, and
+    legacy stores them as the column pairs `WebDesc1/2`, `Interior1/2`,
+    `Exterior1/2`, `Location1/2` on `VillaPropertyImagesDescription` (the
+    2026-07-20 Nick recording, legacy screen at [01:48]). The loader used to
+    fuse each pair with a blank line, so `WEB_DESCRIPTION` and `LOCATION` were
+    unsplittable; those are gone, along with `FURTHER_INFO` — its legacy
+    source is `VillaMaster.Notes`, which the same recording settles as staff
+    copy ("we can get rid of further info, just make it internal notes"), so
+    it loads into `INTERNAL_NOTES` now. Migration 0010 remapped the loaded
+    rows (`web_description` → `WEB_DES_1`, `location` → `LOCATION_SUB`,
+    `further_info` → `INTERNAL_NOTES`); those bodies stay fused until the
+    loader re-run in `data_migration/CUTOVER.md` §6i rewrites each half into
+    its own section. `OVERVIEW` is a *different* legacy column
+    (`VillaMaster.OverView`) on a different legacy screen and stays its own
+    section — 6 of the 8 villas that have it also have `WebDesc1`, so folding
+    it into the pair would be lossy.
 
     `OTHER_INFORMATION` (GAP-091) is the prose half of the legacy Features
     screen's "Other information" — it lives on the Features tab beside the
@@ -151,9 +165,14 @@ class DescriptionSection(models.TextChoices):
 
     OVERVIEW = "overview", "Overview"
     HOUSE_RULES = "house_rules", "House rules"
-    FURTHER_INFO = "further_info", "Further info"
-    LOCATION = "location", "Location"
-    WEB_DESCRIPTION = "web_description", "Web description"
+    WEB_DES_1 = "web_des_1", "Web des 1"
+    WEB_DES_2 = "web_des_2", "Web des 2"
+    INTERIOR_SUB = "interior_sub", "Interior sub"
+    INTERIOR_PARA = "interior_para", "Interior para"
+    EXTERIOR_SUB = "exterior_sub", "Exterior sub"
+    EXTERIOR_PARA = "exterior_para", "Exterior para"
+    LOCATION_SUB = "location_sub", "Location sub"
+    LOCATION_PARA = "location_para", "Location para"
     INTERNAL_NOTES = "internal_notes", "Internal notes"
     OTHER_INFORMATION = "other_information", "Other information"
     ROOMS = "rooms", "Rooms"

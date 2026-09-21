@@ -256,13 +256,13 @@ set its keys as Render env vars per service. Do not ship the
    `--concurrency 4 --delay 0.25`.
 
    **What the full run actually did:** ~5 h 09 m wall clock, not the ~1.5 h the
-   smoke run implied. The first 55 minutes moved ~13,400 files; after that the
-   host repeatedly stopped sending bytes on all 8 connections without closing
-   them (no FIN/RST, fresh probes still answered in <1 s), for up to ~30
-   minutes at a time — about 3 hours of dead time. The per-chunk read timeout
-   does not reliably trip on this and the circuit breaker does not count
-   stalls, so the run just waits. It completed unattended, but a repeat should
-   use `--concurrency 4`, and a per-transfer deadline is the open follow-up.
+   smoke run implied — but about 3 hours of that was dead time, most likely
+   the operator's laptop being closed and reopened mid-run (`caffeinate -i`
+   does not prevent lid-close sleep). The first 55 minutes moved ~13,400
+   files, so ~1.5 h is still the right budget on a machine that stays awake.
+   After a sleep the open connections are dead but never closed, so the run
+   waits rather than failing; Ctrl-C and re-run — it resumes. Keep the lid
+   open (or use a desktop / `caffeinate -s` on mains power).
    Content check: 18,216 JPEG, 12 PNG, 4 WebP (the WebP are named `.jpeg`, all
    villa 412; S3 will label them `image/jpeg`, which browsers tolerate).
 

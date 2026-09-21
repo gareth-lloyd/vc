@@ -18,12 +18,17 @@ Missing-at-source files are the documented expected-loss bucket: reported,
 never fatal. Colliding keys (two rows flattened onto one filename) abort
 before any upload — they would silently overwrite one another.
 
+Accepted risk: `<source>/<legacy_id>/<filename>` is built from DB-sourced free
+text and is not re-validated here, so a crafted row could read outside
+`--source`. `fetch_legacy_images` aborts on unsafe segments before writing
+(`properties.services.legacy_images.unsafe_rows`), and the current load is
+clean; hardening this read path is a follow-up, not a cutover blocker.
+
 Cutover runbook: `django_res_design/todo/gap-012-s3-image-hosting.md`.
 """
 
 from __future__ import annotations
 
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -32,14 +37,18 @@ from django.core.files.storage import Storage, default_storage
 from django.core.management.base import BaseCommand, CommandError
 
 from core.console import render_table
-from properties.models import PropertyImage
+from properties.services.legacy_images import (
+    LEGACY_PREFIX,
+    LegacyRow,
+    duplicate_keys,
+    filename_for,
+    legacy_image_rows,
+)
 
-LEGACY_PREFIX = "properties/legacy/"
 PROGRESS_EVERY = 250
 DETAIL_CAP = 20
 
-# (image pk, image key, property pk, property legacy_id)
-_Row = tuple[int, str, int, str | None]
+__all__ = ["LEGACY_PREFIX", "Command"]
 
 
 def _existing_filenames(storage: Storage) -> set[str]:
@@ -78,11 +87,7 @@ class Command(BaseCommand):
             raise CommandError(f"--source {source} is not a directory")
         dry_run: bool = options["dry_run"]
 
-        rows: list[_Row] = list(
-            PropertyImage.objects.filter(image__startswith=LEGACY_PREFIX).values_list(
-                "pk", "image", "property_id", "property__legacy_id"
-            )
-        )
+        rows = legacy_image_rows()
         self._abort_on_key_collisions(rows)
         existing = _existing_filenames(default_storage)
 
@@ -91,7 +96,7 @@ class Command(BaseCommand):
         no_legacy_id: list[int] = []
         to_upload: list[tuple[str, Path]] = []  # (key, source path)
         for pk, key, _property_pk, legacy_id in rows:
-            filename = key.removeprefix(LEGACY_PREFIX)
+            filename = filename_for(key)
             if filename in existing:
                 skipped += 1
                 continue
@@ -119,15 +124,14 @@ class Command(BaseCommand):
             no_legacy_id=no_legacy_id,
         )
 
-    def _abort_on_key_collisions(self, rows: list[_Row]) -> None:
+    def _abort_on_key_collisions(self, rows: list[LegacyRow]) -> None:
         """Two rows flattened onto one key would silently overwrite each other.
 
         Re-verifies the global-uniqueness property of the legacy GUID filenames
         on every run (12,293/12,293 on the 2026-06-09 dump) — it is a property
         of the data, not a guarantee.
         """
-        counts = Counter(key for _pk, key, _property_pk, _legacy_id in rows)
-        duplicated = {key for key, count in counts.items() if count > 1}
+        duplicated = duplicate_keys(rows)
         if not duplicated:
             return
         details = sorted(

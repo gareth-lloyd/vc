@@ -22,30 +22,52 @@ storage (buckets, IAM, the fetch/import commands); this ticket owns the *doing*.
 | IAM `villacollective-app-staging` | ✅ created, policy verified, one active key |
 | IAM `villacollective-app-prod` | ⬜ not created (console only — the CLI user cannot write IAM) |
 | Staging Render keys | ⬜ still the `villacollective-cli` user's keys |
-| Local `main` | ⬜ ~160 commits ahead of `origin/main`, unpushed. Pushing deploys **staging only** (`render.yaml` → `settings.staging`); no production service exists yet |
-| Staging database | `seed_dev` demo data, no legacy rows |
+| `main` | ✅ pushed at `bea09ed6` (2026-09-21). Deploys **staging only** (`render.yaml` → `settings.staging`); no production service exists yet |
+| Staging database | ✅ legacy load restored 2026-09-21 — verified `18232` images / `386` properties / `78` migrations. Passwords scrubbed (all unusable); needs `createsuperuser` |
+| Staging images | ⬜ rows point at `properties/legacy/…`; the S3 objects are not uploaded yet (step 5) — galleries 404 until then |
 
 ## Next steps, in order
 
-1. **Push `main`.** Redeploys staging; `preDeployCommand` runs `migrate`. If it
-   stops on `rateplan_one_active_per_regime`, see the pre-step at the top of
-   CUTOVER §4 — moot if step 4 replaces the database anyway, in which case
-   reset the staging DB first and push onto an empty one.
+1. ✅ **Push `main`** — done 2026-09-21. The deploy stopped on
+   `rateplan_one_active_per_regime` (duplicate seed rows), as predicted; the
+   step-4 restore replaced the database, which cleared it.
 2. **Swap staging's AWS keys** in Render to `villacollective-app-staging`.
    Verify: upload an image in the staging SPA, download a contract. Then the
    `villacollective-cli` keys are off Render for good.
 3. **Pre-flight the personal-data question (blocking — see below).**
-4. **Load the legacy data: build locally, restore to staging.**
-   - Fresh empty local DB → `migrate` → `loadlegacy --all` against the local
-     `res-db` dump (CUTOVER §0–4) → `reconcile_legacy` exits 0 (§5) → the §6
-     late writes that apply to a fresh load.
-   - `pg_dump -Fc` that DB; reset the staging DB; `pg_restore` into Render's
-     external connection string; create the staff logins.
+4. ✅ **Load the legacy data: build locally, restore to staging** — done
+   2026-09-21. `reconcile_legacy --integrations` exited 0 locally (64 OK, 8
+   INFO); dump restored and verified on staging. The repeatable recipe, with
+   what bit us:
+   - **Dump a scrubbed copy, not the dev DB.** `createdb -T villacollective
+     vc_scrub`, set every `accounts_user.password` unusable, `pg_dump -Fc
+     --no-owner --no-acl`, drop the copy. Real staff hashes never leave the
+     laptop. Dumps live in `~/villacollective-legacy/db-dumps/` (mode 600, real
+     client data — never in the repo, never in S3).
+   - **Staging's DB has `ipAllowList: []`** (no external access, deliberate).
+     Add your `/32` in the Render dashboard for the restore and remove it after;
+     do not put an IP in `render.yaml`.
+   - **Suspend the web service first**, so no deploy runs `migrate` against a
+     half-restored database. Then `DROP SCHEMA public CASCADE; CREATE SCHEMA
+     public;`, `pg_restore --no-owner --no-acl --exit-on-error`, both through
+     `docker exec -i villacollective-db …` (client matches the dump's version).
+   - **Verify before deploying:** image / property / `django_migrations` counts
+     must match local. The migration count must equal
+     `showmigrations --plan | wc -l` from a *clean* venv (78 at `bea09ed6`).
+   - **Trap — a damaged local venv.** On 2026-07-08 something deleted Django's
+     own contrib migrations inside `django_res/.venv` and regenerated one
+     `0001_initial` per app, so the local DB recorded 64 migrations where stock
+     Django has 78. The first restore then failed on staging at
+     `contenttypes.0002` ("column name does not exist"). Fix: `uv sync
+     --reinstall-package django`, confirm the contrib schema matches a
+     stock-migrated scratch DB, `migrate --fake`, re-dump. Any venv older than
+     that date may carry the same damage.
+   - Resume the service, deploy (expect "No migrations to apply"),
+     `createsuperuser`.
    - Why not run the loaders straight at Render: `loadlegacy --all` is a
      one-shot that refuses a non-empty DB, and thousands of round-trips over
-     the internet make a dropped connection likely — which leaves a
-     half-loaded one-shot. A restore is minutes and ships exactly the database
-     that reconciled.
+     the internet make a dropped connection likely. A restore is minutes and
+     ships exactly the database that reconciled.
    - **`seed_dev` must never run on staging again** after this: legacy data
      replaces seed data, they do not mix.
 5. **Upload the legacy images to staging** from the operator's machine:

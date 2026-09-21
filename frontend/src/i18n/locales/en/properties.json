@@ -756,7 +756,8 @@
       "clear": "Clear",
       "save_named": "Save {{section}}",
       "clear_named": "Clear {{section}}",
-      "saving_named": "Saving {{section}}…"
+      "saving_named": "Saving {{section}}…",
+      "reset": "Reset"
     },
     "toasts": {
       "saved": "Description saved",
@@ -775,7 +776,20 @@
       "internal_badge": "Not shown to guests"
     },
     "internal_placeholder": "Not shown to guests — staff-only notes about this villa.",
-    "house_rules_hint": "Not published online — this text rides into the booking contract."
+    "house_rules_hint": "Not published online — this text rides into the booking contract.",
+    "title": "Descriptions",
+    "video": {
+      "title": "Video",
+      "label": "Video URL",
+      "placeholder": "https://…",
+      "help": "Full link to the villa's video, including https://. Leave empty for none.",
+      "save": "Save video URL",
+      "saving": "Saving…",
+      "toasts": {
+        "saved": "Video URL saved",
+        "save_failed": "Couldn't save the video URL"
+      }
+    }
   },
   "changeover": {
     "section_title": "Changeover overrides",

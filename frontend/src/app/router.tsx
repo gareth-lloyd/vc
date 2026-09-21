@@ -21,6 +21,7 @@ import { BOOKING_TABS } from "@/features/bookings/tabConfig";
 
 const REAL_PROPERTY_TABS = new Set<string>([
   "details",
+  "descriptions",
   "rooms",
   "nearby",
   "features",
@@ -197,6 +198,13 @@ export const router = createBrowserRouter([
                             lazy: async () => {
                               const m = await import("@/features/properties/tabs/DetailsTab");
                               return { Component: m.DetailsTab };
+                            },
+                          },
+                          {
+                            path: "descriptions",
+                            lazy: async () => {
+                              const m = await import("@/features/properties/tabs/DescriptionsTab");
+                              return { Component: m.DescriptionsTab };
                             },
                           },
                           {

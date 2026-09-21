@@ -37,21 +37,6 @@ function installDetailHandlers() {
     http.get("/api/v1/properties/casa-norte", () =>
       HttpResponse.json({ ...propertyFixture, feature_ids: [3, 4] }),
     ),
-    http.get("/api/v1/properties/5/descriptions", () =>
-      HttpResponse.json(
-        emptyPage([
-          // GAP-090: `web_des_1` is the first field of the default block tab,
-          // so this is what the panel shows without navigating.
-          {
-            id: 1,
-            property: 5,
-            section: "web_des_1",
-            body: "A beautiful villa.",
-            updated_at: null,
-          },
-        ]),
-      ),
-    ),
     http.get("/api/v1/features", () =>
       HttpResponse.json(
         emptyPage([
@@ -180,25 +165,25 @@ describe("PropertyDetailLayout", () => {
   it("renders the Details tab with sub-resources", async () => {
     installDetailHandlers();
     setup("/properties/casa-norte/details");
-    expect(await screen.findByDisplayValue(/A beautiful villa\./i)).toBeInTheDocument();
+    // Descriptions left this tab for their own route (GAP-090) — see
+    // DescriptionsTab.test.tsx.
     expect(await screen.findByText("Pool")).toBeInTheDocument();
     expect(await screen.findByText("Master bedroom")).toBeInTheDocument();
   });
 
   it("renders a non-details tab without making Details sub-resource calls", async () => {
-    let descriptionsCalls = 0;
+    let roomsCalls = 0;
     server.use(
       http.get("/api/v1/properties/casa-norte", () => HttpResponse.json(propertyFixture)),
-      http.get("/api/v1/properties/5/descriptions", () => {
-        descriptionsCalls += 1;
+      http.get("/api/v1/features", () => HttpResponse.json(emptyPage([]))),
+      http.get("/api/v1/properties/5/rooms", () => {
+        roomsCalls += 1;
         return HttpResponse.json(emptyPage([]));
       }),
-      http.get("/api/v1/features", () => HttpResponse.json(emptyPage([]))),
-      http.get("/api/v1/properties/5/rooms", () => HttpResponse.json(emptyPage([]))),
     );
     setup("/properties/casa-norte/media");
     expect(await screen.findByText("media placeholder")).toBeInTheDocument();
-    expect(descriptionsCalls).toBe(0);
+    expect(roomsCalls).toBe(0);
   });
 
   it("still renders other sub-blocks when one sub-resource fails", async () => {
@@ -206,7 +191,7 @@ describe("PropertyDetailLayout", () => {
       http.get("/api/v1/properties/casa-norte", () =>
         HttpResponse.json({ ...propertyFixture, feature_ids: [9] }),
       ),
-      http.get("/api/v1/properties/5/descriptions", () => HttpResponse.json({}, { status: 500 })),
+      http.get("/api/v1/properties/5/rooms", () => HttpResponse.json({}, { status: 500 })),
       http.get("/api/v1/features", () =>
         HttpResponse.json(
           emptyPage([
@@ -224,10 +209,9 @@ describe("PropertyDetailLayout", () => {
           ]),
         ),
       ),
-      http.get("/api/v1/properties/5/rooms", () => HttpResponse.json(emptyPage([]))),
     );
     setup("/properties/casa-norte/details");
-    expect(await screen.findByText(/Couldn't load descriptions/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Couldn't load rooms/i)).toBeInTheDocument();
     expect(await screen.findByText("Wi-Fi")).toBeInTheDocument();
   });
 });

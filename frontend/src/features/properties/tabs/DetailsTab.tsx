@@ -11,7 +11,6 @@ import { formatDate } from "@/lib/format/date";
 import { FEATURE_CATALOGUE_PAGE_SIZE } from "@/lib/domain/features/api";
 import { useFeatures } from "@/lib/domain/features/hooks";
 import { usePropertyRooms } from "../hooks";
-import { DescriptionsSection } from "../components/DescriptionsSection";
 import { CapacitySection } from "../components/CapacitySection";
 import type { PropertyDetail } from "../schemas";
 
@@ -59,10 +58,6 @@ export function DetailsTab() {
           <FactRow label={t("details.fields.updated")} value={formatDate(property.updated_at)} />
         </FactList>
       </Section>
-
-      {/* Renders its own "Website copy" / "Internal notes" headings — wrapping
-          it in a third would put two h2s of equal weight back to back. */}
-      <DescriptionsSection propertyId={property.id} />
 
       <Section title={t("details.sections.features")}>
         {features.isLoading ? (

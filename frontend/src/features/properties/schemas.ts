@@ -467,6 +467,15 @@ export const propertyRootWriteInputSchema = z.object({
 });
 export type PropertyRootWriteInput = z.infer<typeof propertyRootWriteInputSchema>;
 
+// The Descriptions tab's video-URL form. `z.string()`, never `.optional()`:
+// an emptied input must submit `""` so the PATCH clears the column (GAP-024).
+// No `.url()` — the backend's URLField is the authority and its 400 is mapped
+// onto the field, so the two rules cannot drift apart.
+export const propertyVideoFormSchema = z.object({
+  video_url: z.string().trim().max(200),
+});
+export type PropertyVideoFormInput = z.infer<typeof propertyVideoFormSchema>;
+
 export const rateBandSchema = z.object({
   id: z.number(),
   period: z.number(),

@@ -34,6 +34,14 @@ type TabId = DescriptionBlock["key"] | (typeof SINGLE_SECTIONS)[number];
 
 interface DescriptionsSectionProps {
   propertyId: number;
+  /**
+   * Reports whether any section holds typed-but-unsaved text, so the tab can
+   * fold it into its single unsaved-changes guard (GAP-083 — one guard per
+   * route; never add a second one in here).
+   */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** Bump to discard every draft and re-seed from the cached server text. */
+  resetVersion?: number;
 }
 
 function bodiesFor(records: PropertyDescription[]): Record<DescriptionSection, string> {
@@ -51,7 +59,11 @@ function bodiesFor(records: PropertyDescription[]): Record<DescriptionSection, s
   return map;
 }
 
-export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
+export function DescriptionsSection({
+  propertyId,
+  onDirtyChange,
+  resetVersion = 0,
+}: DescriptionsSectionProps) {
   const { t } = useTranslation("properties");
   const canWrite = useHasReservationsRole();
   const descriptions = usePropertyDescriptions(propertyId);
@@ -79,6 +91,41 @@ export function DescriptionsSection({ propertyId }: DescriptionsSectionProps) {
       seeded.current = true;
     }
   }, [descriptions.data, initialBodies]);
+
+  // The tab's Reset: drop every draft. State adjusted during render rather
+  // than by remounting, so the operator stays on the block they were editing.
+  const [seenReset, setSeenReset] = useState(resetVersion);
+  if (seenReset !== resetVersion) {
+    setSeenReset(resetVersion);
+    // A section mid-save keeps its body: `initialBodies` still holds the
+    // pre-save text, and restoring that would read as a fresh draft — one
+    // click from overwriting the copy that just persisted.
+    setBodies((prev) => {
+      const next = { ...initialBodies };
+      for (const s of inFlight) next[s] = prev[s];
+      return next;
+    });
+  }
+
+  // Dirty = differs from the last server echo. Gated on `seeded` so the render
+  // that carries the first fetch (bodies still "") is not reported as dirty.
+  // A section whose own save or clear is in flight is not counted — the
+  // mutation stays pending until the refetch echoes the new body, and the
+  // guard must neither block a navigation for already-persisted text nor
+  // swallow the click when the echo lands. Only that section: a draft
+  // elsewhere stays guarded throughout.
+  const reportedDirty =
+    seeded.current &&
+    DESCRIPTION_SECTIONS.some(
+      (s) =>
+        !inFlight.has(s) &&
+        !(deleteMutation.isPending && s === clearing) &&
+        bodies[s] !== initialBodies[s],
+    );
+  useEffect(() => {
+    onDirtyChange?.(reportedDirty);
+    return () => onDirtyChange?.(false);
+  }, [reportedDirty, onDirtyChange]);
 
   const handleSave = async (target: DescriptionSection) => {
     setInFlight((prev) => new Set(prev).add(target));

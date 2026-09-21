@@ -1,5 +1,6 @@
 export const PROPERTY_TABS = [
   { slug: "details", labelKey: "tabs.details" },
+  { slug: "descriptions", labelKey: "tabs.descriptions" },
   { slug: "rooms", labelKey: "tabs.rooms" },
   { slug: "nearby", labelKey: "tabs.nearby" },
   { slug: "rate-workbench", labelKey: "tabs.rate_workbench" },

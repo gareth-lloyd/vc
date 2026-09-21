@@ -1,6 +1,6 @@
 # GAP-092 — Website room copy sits on the room; legacy puts one blurb under all the bedrooms
 
-> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-090](../gap-090-description-block-set-parity.md)** as
+> **✅ SUPERSEDED (2026-09-16) — merged into [GAP-090](gap-090-description-block-set-parity.md)** as
 > §"Merged from GAP-092". Both come from the same Nick recording, both move website description copy to the legacy property-level blocks, and GAP-092's blurb rides GAP-090's enum migration; Q-026 already asked for them to be settled together. Nothing was decided or built by the
 > merge; the open work continues there.
 >

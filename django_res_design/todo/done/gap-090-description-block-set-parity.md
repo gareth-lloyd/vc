@@ -1,5 +1,45 @@
 # GAP-090 — Description sections rebuilt to the legacy block set (sub/para pairs) + own tab, including the property-level rooms blurb
 
+> **✅ RESOLVED (2026-09-21)** — local `main`, unpushed; 7 units on
+> `feat/gap-090`. Absorbed GAP-092 ships with it.
+>
+> - **Unit 1** (`6544804d`) — `DescriptionSection` rebuilt to 13 values, one
+>   per legacy column: `web_des_1/2`, `interior_sub/para`, `exterior_sub/para`,
+>   `location_sub/para` join `overview`, `house_rules`, `internal_notes`,
+>   `other_information`, `rooms`; `web_description`, `location`, `further_info`
+>   are gone. Migration `properties/0010` remaps loaded rows (fused bodies land
+>   in the *sub* slot; `further_info` merges into `internal_notes`, appending on
+>   collision). `house_rules` untouched — the GAP-094 contract chain.
+> - **Unit 2** (`13510a9f`) — the loader writes one section per column, no
+>   `"\n\n"` fusing; reads `Interior1/2`, `Exterior1/2`; never overwrites a
+>   staff-written `internal_notes`; a re-run drops a still-fused sub row only
+>   when it can prove the body is its own.
+> - **Unit 3** (`11fe46aa`) — `reconcile_legacy` expects **3 200** rows over 13
+>   single-column groups (was 1 049); **CUTOVER §6i** is the re-run that splits
+>   an already-loaded DB.
+> - **Unit 4** (`1c3495c2`) — `Property.video_url` on the detail + write
+>   serializers, audited. (Step 2's "needs no work" was wrong: the field was on
+>   no serializer.)
+> - **Unit 5** (`7063ade9`) — SPA block model (`DESCRIPTION_BLOCKS` +
+>   `SINGLE_SECTIONS`), two-column sub/para editors, per-section button names.
+> - **Unit 6** (`4cb2cc60`) — Descriptions is its own property tab with the
+>   route's single unsaved-changes guard and an editable video URL.
+> - **Unit 7** (`155aa59c`) — per-room `website_description` retired from the
+>   API and the room dialog; the column stays as `backfill_room_attrs` input.
+>
+> **Decisions that departed from the steps below:** `overview` was **kept**,
+> not folded into `web_des_1` (6 of the 8 villas that have it also have
+> `WebDesc1` — different legacy column, different screen); `location` remapped
+> to `location_sub`, not `_para` (the fused body starts with part 1);
+> Interior/Exterior are prose blocks *and* stay as image slot captions — one
+> legacy text, two surfaces, `PropertyImageLoader` untouched.
+>
+> **Still to do at cutover, not in code:** run CUTOVER §6i on any DB loaded
+> before this landed — until then reconcile reads ~1 049 against 3 200.
+> **Not verified in a browser** — the Playwright MCP server was down for the
+> session; the ticket's own warning (house-rules editor still present and
+> saving) is covered by tests only.
+
 > **Scope widened 2026-09-16 (todo consolidation):** absorbs **GAP-092**
 > (website room copy sits per-room; legacy has one property-level blurb
 > under all the bedrooms) — see §"Merged from GAP-092" at the end. Same Nick
@@ -232,7 +272,7 @@ parity break in the copy that sells the villas.
 ## Merged from GAP-092 — Website room copy sits on the room; legacy puts one blurb under all the bedrooms
 
 > _Folded in 2026-09-16 (todo consolidation). The standalone ticket is closed as
-> [GAP-092](done/gap-092-room-website-description-wrong-level.md); the text below is that ticket as it stood, headings
+> [GAP-092](gap-092-room-website-description-wrong-level.md); the text below is that ticket as it stood, headings
 > demoted one level. A reference to GAP-092 elsewhere now means this section._
 
 - **Severity:** 🟢 Gap (customer-facing parity). Backend + frontend +

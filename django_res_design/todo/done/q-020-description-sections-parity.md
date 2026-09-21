@@ -1,11 +1,11 @@
 # Q-020 — Description sections: spec enum vs the sections actually written
 
-> **✅ SUPERSEDED (2026-09-16)** — closed early (todo consolidation) rather than on GAP-090 landing. Its answer has lived in [GAP-090](../gap-090-description-block-set-parity.md) since 2026-08-11, which states "answers + supersedes Q-020"; keeping this open only counted the same work twice. Nothing left here to act on.
+> **✅ SUPERSEDED (2026-09-16)** — closed early (todo consolidation) rather than on GAP-090 landing. Its answer has lived in [GAP-090](gap-090-description-block-set-parity.md) since 2026-08-11, which states "answers + supersedes Q-020"; keeping this open only counted the same work twice. Nothing left here to act on.
 >
 > _Original ticket preserved below for context._
 
 > ⏸ **SUPERSEDED-PENDING (2026-08-11) — folded into
-> [GAP-090](../gap-090-description-block-set-parity.md); drop when that lands.**
+> [GAP-090](gap-090-description-block-set-parity.md); drop when that lands.**
 >
 > **Answered.** The 2026-07-20 Nick screen-recording
 > (`Recording-20260720_134424`) captures the legacy Descriptions screen

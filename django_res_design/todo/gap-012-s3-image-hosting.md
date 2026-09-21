@@ -229,8 +229,9 @@ set its keys as Render env vars per service. Do not ship the
    put/get/delete/list on `villacollective-images` only) with keys in Render
    env vars for staging + prod. Never ship the `villacollective-cli` user's keys
    to Render. No ops export is needed — step 2a fetches the binaries.
-2a. **Fetch the legacy binaries** (~1.5 h, ~10 GB, needs no AWS credentials and
-   never writes to the database). Measured 2026-09-20 on a 200-file smoke run
+2a. **Fetch the legacy binaries** (**done 2026-09-20/21**: 18,232 files,
+   10.97 GB, 0 missing / rejected / failed; needs no AWS credentials and never
+   writes to the database). Measured 2026-09-20 on a 200-file smoke run
    through this command: **3.33 files/s, 14.7 Mbps** at the default concurrency
    8, mean file 551 KB — faster than the 2.11 files/s the original `curl`
    benchmark suggested, because `curl` negotiated HTTP/2 while `httpx` here uses
@@ -253,6 +254,17 @@ set its keys as Render env vars per service. Do not ship the
    from the dry-run. Interrupt and re-run freely — it resumes from the
    filesystem. If the host starts to struggle, Ctrl-C and re-run with
    `--concurrency 4 --delay 0.25`.
+
+   **What the full run actually did:** ~5 h 09 m wall clock, not the ~1.5 h the
+   smoke run implied. The first 55 minutes moved ~13,400 files; after that the
+   host repeatedly stopped sending bytes on all 8 connections without closing
+   them (no FIN/RST, fresh probes still answered in <1 s), for up to ~30
+   minutes at a time — about 3 hours of dead time. The per-chunk read timeout
+   does not reliably trip on this and the circuit breaker does not count
+   stalls, so the run just waits. It completed unattended, but a repeat should
+   use `--concurrency 4`, and a per-transfer deadline is the open follow-up.
+   Content check: 18,216 JPEG, 12 PNG, 4 WebP (the WebP are named `.jpeg`, all
+   villa 412; S3 will label them `image/jpeg`, which browsers tolerate).
 
    **This hits a third party's live production server.** It is their bandwidth
    (~10.3 GB, which a hosting plan may cap) and their users' web server, so run
@@ -286,6 +298,30 @@ set its keys as Render env vars per service. Do not ship the
    `aws s3 rm --recursive s3://villacollective-images/staging/ --profile
    villacollective-dev`, reset the staging DB, re-run `seed_dev`.
 5. Re-run the import any time for stragglers — it is idempotent.
+
+## Local dev — serving the legacy images
+
+Dev uses `FileSystemStorage` (no S3, no AWS credentials), so the legacy rows
+404 locally until the binaries sit under `MEDIA_ROOT/properties/legacy/`.
+`MEDIA_ROOT` is per checkout, so keep **one** flat copy outside the repo and
+symlink it into each checkout (WhiteNoise and `FileSystemStorage` both follow a
+symlinked directory):
+
+```bash
+# Once per machine (~11 GB, under a minute from the local archive):
+mkdir -p ~/villacollective-legacy/media-legacy
+make link-legacy-media
+cd django_res && uv run python manage.py import_legacy_images \
+    --source ~/villacollective-legacy/PropertyImages
+# Once per additional worktree (no copy, no disk):
+make link-legacy-media
+```
+
+`django_res/media/` is gitignored, so the link never shows in `git status` and
+a fresh clone/worktree needs `make link-legacy-media` again. Only a DB loaded
+from the legacy migration has these rows — a `seed_dev` DB has nothing to show.
+Deleting a legacy `PropertyImage` locally removes its file from the shared
+folder (`post_delete` cleanup); re-run the import to restore it.
 
 ## Suggested PR sequencing
 

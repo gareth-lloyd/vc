@@ -1,4 +1,4 @@
-.PHONY: setup test test-backend lint typecheck dev-backend dev-frontend logs logs-backend logs-frontend hooks help
+.PHONY: setup test test-backend lint typecheck dev-backend dev-frontend logs logs-backend logs-frontend hooks link-legacy-media help
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -13,6 +13,14 @@ setup: ## Install all dependencies (backend, frontend, pre-commit hooks)
 	cd frontend && npm ci
 	uv tool install --force pre-commit
 	pre-commit install --hook-type pre-commit --hook-type pre-push
+
+LEGACY_MEDIA := $(HOME)/villacollective-legacy/media-legacy
+
+link-legacy-media: ## Point this checkout's media/properties/legacy at the shared local copy (GAP-012 §Local dev)
+	@test -d "$(LEGACY_MEDIA)" || { echo "$(LEGACY_MEDIA) not found — see GAP-012 §Local dev to build it"; exit 1; }
+	mkdir -p django_res/media/properties
+	@test -e django_res/media/properties/legacy || ln -s "$(LEGACY_MEDIA)" django_res/media/properties/legacy
+	@ls -ld django_res/media/properties/legacy
 
 hooks: ## Run all pre-commit hooks on all files
 	pre-commit run --all-files

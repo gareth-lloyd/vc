@@ -293,10 +293,10 @@ def test_line_party_borrows_are_counted(_guest_and_currency: None) -> None:
 
 
 @pytest.mark.django_db
-def test_past_quotation_expires_a_week_after_legacy_creation(_guest_and_currency: None) -> None:
+def test_past_quotation_expires_90_days_after_legacy_creation(_guest_and_currency: None) -> None:
     kwargs = QuotationLoader().transform(_row(CreatedAt=_CREATED))
     assert kwargs is not None
-    assert kwargs["expires_at"] == timezone.make_aware(_CREATED) + timedelta(days=7)
+    assert kwargs["expires_at"] == timezone.make_aware(_CREATED) + timedelta(days=90)
     assert kwargs["status"] == QuotationStatus.EXPIRED
 
 
@@ -305,7 +305,7 @@ def test_recent_quotation_stays_draft_until_its_expiry(_guest_and_currency: None
     created = timezone.localtime().replace(tzinfo=None) - timedelta(days=1)
     kwargs = QuotationLoader().transform(_row(CreatedAt=created))
     assert kwargs is not None
-    assert kwargs["expires_at"] == timezone.make_aware(created) + timedelta(days=7)
+    assert kwargs["expires_at"] == timezone.make_aware(created) + timedelta(days=90)
     assert kwargs["status"] == QuotationStatus.DRAFT
 
 

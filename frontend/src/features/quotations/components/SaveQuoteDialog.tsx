@@ -1,3 +1,4 @@
+import { addMonths } from "date-fns";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -31,10 +32,10 @@ interface Props {
 }
 
 function defaultExpiresAt(): string {
-  // 7 days from now at LOCAL end-of-day — expiry is local wall-clock
-  // semantics; only the wire format is UTC ISO.
-  const d = new Date();
-  d.setDate(d.getDate() + 7);
+  // 3 months from now at LOCAL end-of-day — expiry is local wall-clock
+  // semantics; only the wire format is UTC ISO. `addMonths` clamps to the
+  // month's last day (30 Nov → 28/29 Feb) where `setMonth` would overflow.
+  const d = addMonths(new Date(), 3);
   d.setHours(23, 59, 59, 0);
   return d.toISOString();
 }

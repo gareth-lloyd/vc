@@ -99,7 +99,9 @@ def record_quote_sent(
 
     # 1. Flip the quotation (DRAFT → SENT; the table refuses the terminals).
     extra_updates = (
-        {"expires_at": timezone.now() + timedelta(days=7)} if quotation.expires_at is None else None
+        {"expires_at": timezone.now() + timedelta(days=90)}
+        if quotation.expires_at is None
+        else None
     )
     transition(
         quotation,

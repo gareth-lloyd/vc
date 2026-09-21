@@ -739,10 +739,11 @@ class QuotationLoader(BaseLoader):
         # the public quotation list), but we must NOT claim a `number`: the Id
         # namespace overlaps real QuotationNos and `number` is unique. So the
         # `number` key is set only when a genuine QuotationNo is present.
-        # BUG-030 §28: the 7-day validity runs from the legacy creation date;
-        # a quote already past it loads EXPIRED directly (a plain field write,
-        # no `expire()` side effects), so the sweeper has nothing to flip.
-        expires_at = (created or timezone.now()) + timedelta(days=7)
+        # BUG-030 §28: the 90-day validity (the live quote default) runs from
+        # the legacy creation date; a quote already past it loads EXPIRED
+        # directly (a plain field write, no `expire()` side effects), so the
+        # sweeper has nothing to flip.
+        expires_at = (created or timezone.now()) + timedelta(days=90)
         status = QuotationStatus.EXPIRED if expires_at < timezone.now() else QuotationStatus.DRAFT
         qn = legacy_quotation_no(row)
         display = qn if qn is not None else int(row["Id"])

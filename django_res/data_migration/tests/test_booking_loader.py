@@ -216,7 +216,7 @@ def test_booking_stand_in_quotation_is_accepted_and_selected(seeded: Property) -
     quotation = line.quotation
     assert line.is_selected is True
     assert quotation.status == QuotationStatus.ACCEPTED
-    assert quotation.expires_at == timezone.make_aware(created) + timedelta(days=7)
+    assert quotation.expires_at == timezone.make_aware(created) + timedelta(days=90)
     enquiry = quotation.enquiry
     assert enquiry.status == EnquiryStatus.CONVERTED
     assert enquiry.is_converted is True
@@ -231,7 +231,7 @@ def test_booking_stand_in_quotation_without_created_at_expires_from_now(seeded: 
 
     quotation = Booking.objects.get(legacy_id="7").quotation_line.quotation
     assert quotation.status == QuotationStatus.ACCEPTED
-    assert quotation.expires_at >= before + timedelta(days=7)
+    assert quotation.expires_at >= before + timedelta(days=90)
 
 
 @pytest.mark.django_db

@@ -133,7 +133,7 @@ class BookingLoader(BaseLoader):
                 "enquiry": enquiry,
                 "person": person,
                 "reference": f"QVC-TMP-{row['Id']}"[:32],
-                "expires_at": validity_from + timedelta(days=7),
+                "expires_at": validity_from + timedelta(days=90),
                 "status": QuotationStatus.ACCEPTED,
                 "terms_version": terms,
             },

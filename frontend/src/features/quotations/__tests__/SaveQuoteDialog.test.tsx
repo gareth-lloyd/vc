@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { addMonths, format } from "date-fns";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
@@ -791,7 +791,7 @@ describe("SaveQuoteDialog", () => {
   // Expiry is LOCAL end-of-day semantics: the default and the input value are
   // both local wall-clock; only the wire format is UTC ISO. The old setUTC*
   // default + `.slice(0, 16)` display shifted the day in any non-UTC zone.
-  it("defaults expiry to today+7 at 23:59 local", async () => {
+  it("defaults expiry to today+3 months at 23:59 local", async () => {
     mockSaveEndpoints(() => undefined);
     renderWithProviders(
       <SaveQuoteDialog
@@ -803,8 +803,7 @@ describe("SaveQuoteDialog", () => {
       />,
     );
 
-    const expected = new Date();
-    expected.setDate(expected.getDate() + 7);
+    const expected = addMonths(new Date(), 3);
     expected.setHours(23, 59, 59, 0);
     const input = await screen.findByLabelText<HTMLInputElement>(/expires/i);
     expect(input.value).toBe(format(expected, "yyyy-MM-dd'T'HH:mm"));

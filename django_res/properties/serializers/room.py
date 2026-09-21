@@ -65,6 +65,9 @@ class RoomSerializer(serializers.ModelSerializer[Room]):
     `beds` upserts; `attribute_links` is a full-list sync (absent on PATCH =
     leave links alone). A non-blank `ensuite_type` refines `is_ensuite` to
     True ("refines" semantics, GAP-064); a blank one never touches the bool.
+
+    `Room.website_description` is deliberately absent (GAP-092): it is an
+    import-only source for `backfill_room_attrs`, not an editable field.
     """
 
     beds = _RoomBedsSerializer(required=False)
@@ -79,7 +82,6 @@ class RoomSerializer(serializers.ModelSerializer[Room]):
             "placement",
             "floor",
             "placement_note",
-            "website_description",
             "vc_notes",
             "is_ensuite",
             "ensuite_type",

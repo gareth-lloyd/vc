@@ -177,7 +177,10 @@ Owned by `Property` (CASCADE FK). Hard-deleted with its parent or directly when 
   guarantee; `data_migration.placement_parsing.parse_placement` fills the two
   axes from it where confident). API-writable so staff can clear it once the
   split is confirmed; read-only helper text in the room form.
-- `website_description` — TextField(blank=True)
+- `website_description` — TextField(blank=True). **Import-only, on no
+  serializer** (GAP-092): legacy's comma-separated attribute list, kept as
+  `backfill_room_attrs` input. The villa-level rooms blurb is
+  `DescriptionSection.ROOMS`.
 - `vc_notes` — TextField(blank=True)
 - `is_ensuite` — BooleanField(default=False)
 - `ensuite_type` — TextChoices (`SHOWER`, `BATH`, `BOTH`), blank=True (`""` =

@@ -665,7 +665,6 @@ describe("propertyRoomWriteInputSchema", () => {
     name: "Master",
     placement: "main_house" as const,
     floor: "" as const,
-    website_description: "",
     vc_notes: "",
     is_ensuite: true,
     ensuite_type: "" as const,
@@ -705,7 +704,6 @@ describe("propertyRoomWriteInputSchema", () => {
       name: "Master",
       placement: "main_house" as const,
       floor: "",
-      website_description: "",
       vc_notes: "",
       is_ensuite: true,
       ensuite_type: "",
@@ -761,7 +759,7 @@ describe("propertyRoomWriteInputSchema", () => {
   });
 
   it("keeps the facets required so a PATCH can send '' to clear them", () => {
-    // Same clearing-trap guard as website_description: `.optional()` would omit
+    // Same clearing-trap guard as vc_notes: `.optional()` would omit
     // the field and silently stop clearing a previously-set value.
     expect(() =>
       propertyRoomWriteInputSchema.parse({ ...valid, ensuite_type: undefined }),
@@ -785,15 +783,18 @@ describe("propertyRoomWriteInputSchema", () => {
     expect(() => propertyRoomWriteInputSchema.parse({ ...valid, name: "  " })).toThrow();
   });
 
-  it("keeps empty description/notes as '' so a PATCH can clear them", () => {
-    // Regression guard: these must stay `z.string()` (not `.optional()`), or an
+  it("keeps empty notes as '' so a PATCH can clear them", () => {
+    // Regression guard: this must stay `z.string()` (not `.optional()`), or an
     // empty value would be omitted from the payload and silently stop clearing.
     const result = propertyRoomWriteInputSchema.parse(valid);
-    expect(result.website_description).toBe("");
     expect(result.vc_notes).toBe("");
     // `undefined` is rejected (the field is required), proving it is NOT optional.
-    expect(() =>
-      propertyRoomWriteInputSchema.parse({ ...valid, website_description: undefined }),
-    ).toThrow();
+    expect(() => propertyRoomWriteInputSchema.parse({ ...valid, vc_notes: undefined })).toThrow();
+  });
+
+  it("carries no per-room website description (GAP-092)", () => {
+    // Zod strips unknown keys: even a stale caller cannot put it on the wire.
+    const result = propertyRoomWriteInputSchema.parse({ ...valid, website_description: "x" });
+    expect(result).not.toHaveProperty("website_description");
   });
 });

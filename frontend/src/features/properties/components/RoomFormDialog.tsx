@@ -73,7 +73,6 @@ const CREATE_DEFAULTS: PropertyRoomWriteInput = {
   // main_house the user never chose.
   placement: "",
   floor: "",
-  website_description: "",
   vc_notes: "",
   is_ensuite: false,
   ensuite_type: "",
@@ -87,7 +86,6 @@ function defaultsFromRoom(room: PropertyRoom): PropertyRoomWriteInput {
     name: room.name,
     placement: room.placement,
     floor: room.floor,
-    website_description: room.website_description ?? "",
     vc_notes: room.vc_notes ?? "",
     is_ensuite: room.is_ensuite,
     ensuite_type: room.ensuite_type ?? "",
@@ -459,17 +457,6 @@ export function RoomFormDialog(props: RoomFormDialogProps) {
               </div>
             </fieldset>
           ) : null}
-
-          <div className="space-y-2">
-            <Label htmlFor="property-room-website-description">
-              {t("rooms.dialog.fields.website_description")}
-            </Label>
-            <Textarea
-              id="property-room-website-description"
-              rows={3}
-              {...form.register("website_description")}
-            />
-          </div>
 
           <div className="space-y-2">
             <Label htmlFor="property-room-vc-notes">{t("rooms.dialog.fields.vc_notes")}</Label>

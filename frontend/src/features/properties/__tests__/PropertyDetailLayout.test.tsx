@@ -73,7 +73,6 @@ function installDetailHandlers() {
             property: 5,
             name: "Master bedroom",
             placement: "main_house",
-            website_description: "",
             vc_notes: "",
             is_ensuite: true,
             sort_order: 0,

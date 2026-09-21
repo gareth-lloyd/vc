@@ -27,7 +27,7 @@ Disposition column legend:
 | `VillaGroup` | — | Dropped (GAP-070, 2026-07-06) | Property groups left the product; global `PropertyDefaults` snapshotted at creation instead |
 | `VillaCountry` | `properties.Country` | Renamed | Canonical ISO-3166 rows are seeded via `django-countries` (migration `properties.0009`); legacy `VillaCountry` rows merge onto them by iso2 (with name-lookup fallback for rows missing ISO codes). Unrecognised rows collapse onto the `unknown_country()` sentinel so downstream FKs still resolve. |
 | `VillaRegion` | `properties.Region` | Renamed | — |
-| `VillaRoom` (+ bed counts) | `properties.Room` + `RoomBeds` (OneToOne) | Split | Beds split out; placement enum |
+| `VillaRoom` (+ bed counts) | `properties.Room` + `RoomBeds` (OneToOne) | Split | Beds split out; placement enum. `WebsiteDescription` is import-only — on no API or UI surface (GAP-092): it is an attribute list that `backfill_room_attrs` mines, and the bedrooms copy is the property-level `rooms` description |
 | `VillaRoomsPlacement` | `Room.placement` TextChoices | Replaced | Fixed set; no table needed |
 | `VillaPropertyImage` (with `IsHero`/`IsInterior1/2`/`IsExterior1/2`/`IsGallary`) | `properties.PropertyImage` + `kind` TextChoices + `UniqueConstraint(hero)` | Replaced | One enum field, validated; `IsGallary` typo fixed |
 | `VillaFeature`, `VillaFeaturesCategory` | `properties.Feature` + `FeatureCategory` | Renamed | — |

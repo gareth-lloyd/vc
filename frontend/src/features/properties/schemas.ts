@@ -270,7 +270,6 @@ export const propertyRoomSchema = z.object({
   // Read-only preserved legacy placement string (GAP-065). API-writable but
   // deliberately NOT in the write schema — the form only displays it.
   placement_note: z.string().optional().default(""),
-  website_description: z.string().nullable().optional(),
   vc_notes: z.string().nullable().optional(),
   is_ensuite: z.boolean(),
   // GAP-064 facets; blank = unknown. Defaulted so older fixtures still parse.
@@ -386,21 +385,21 @@ export const propertyRoomWriteInputSchema = z.object({
   name: z.string().trim().min(1, { message: "properties:errors.room_name_required" }).max(128),
   // GAP-065 location axes + GAP-064 facets: blank-able enums, NOT `.optional()`
   // — PATCH must be able to send `""` to clear a previously-set value (same
-  // clearing trap as `website_description`/`vc_notes` below). `placement_note`
+  // clearing trap as `vc_notes` below). `placement_note`
   // is deliberately absent: the form never writes it (absent on PATCH ⇒
   // untouched server-side).
   placement: roomPlacementSchema.or(z.literal("")),
   floor: roomFloorSchema.or(z.literal("")),
-  website_description: z.string().trim(),
   vc_notes: z.string().trim(),
   is_ensuite: z.boolean(),
   ensuite_type: ensuiteTypeSchema.or(z.literal("")),
   access: roomAccessSchema.or(z.literal("")),
   // Optional to match the serializer (`RoomSerializer.beds` is `required=False`,
   // room.py:29): a room can be saved with just a name and filled in over time
-  // (GAP-024). NOTE: `website_description`/`vc_notes` above stay `z.string()`
-  // (not `.optional()`) — PATCH sends `""` to clear them; `.optional()` would
-  // emit `undefined`, omit the field, and silently stop clearing.
+  // (GAP-024). NOTE: `vc_notes` above stays `z.string()` (not `.optional()`)
+  // — PATCH sends `""` to clear it; `.optional()` would emit `undefined`, omit
+  // the field, and silently stop clearing. There is no per-room website
+  // description (GAP-092): the API no longer exposes it.
   beds: roomBedsSchema.optional(),
   // Full-list sync: submitting the list replaces the room's amenity set;
   // ABSENT on PATCH leaves the links untouched (so absent ≠ clear — `[]`

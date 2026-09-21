@@ -32,7 +32,6 @@ const existingRoom: PropertyRoom = {
   placement: "main_house",
   floor: "",
   placement_note: "",
-  website_description: "",
   vc_notes: "",
   is_ensuite: true,
   ensuite_type: "",
@@ -102,6 +101,12 @@ describe("RoomFormDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(postedBody).not.toBeNull());
     expect((postedBody as { name?: string }).name).toBe("New room");
+    // GAP-092: the per-room website description is retired — the villa-level
+    // rooms blurb lives on the Descriptions tab. Internal notes stay.
+    expect(screen.queryByLabelText(/website description/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/internal notes/i)).toBeInTheDocument();
+    expect(postedBody).not.toHaveProperty("website_description");
+    expect(postedBody).toHaveProperty("vc_notes", "");
     useAuthStore.getState().clear();
   });
 
@@ -154,6 +159,33 @@ describe("RoomFormDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(patchBody).not.toBeNull());
     expect((patchBody as { name?: string }).name).toBe("Master suite");
+    useAuthStore.getState().clear();
+  });
+
+  it("clearing the internal notes PATCHes '' rather than omitting the key (GAP-024)", async () => {
+    setReservationsUser();
+    let patchBody: unknown = null;
+    server.use(
+      http.patch("/api/v1/properties/7/rooms/200", async ({ request }) => {
+        patchBody = await request.json();
+        return HttpResponse.json({ ...existingRoom, vc_notes: "" });
+      }),
+    );
+    renderWithProviders(
+      <RoomFormDialog
+        propertyId={7}
+        open
+        mode="edit"
+        room={{ ...existingRoom, vc_notes: "quiet side" }}
+        onOpenChange={() => {}}
+      />,
+    );
+    const notes = await screen.findByLabelText(/internal notes/i);
+    expect((notes as HTMLTextAreaElement).value).toBe("quiet side");
+    await userEvent.clear(notes);
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(patchBody).not.toBeNull());
+    expect(patchBody).toHaveProperty("vc_notes", "");
     useAuthStore.getState().clear();
   });
 

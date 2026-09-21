@@ -118,6 +118,46 @@ class TestRoomRead:
         assert len(resp.json()["results"]) == 4
 
 
+class TestRoomWebsiteDescriptionRetired:
+    """GAP-092: the per-room website description is import-only.
+
+    Legacy `VillaRooms.WebsiteDescription` is a comma-separated attribute list,
+    not prose; it survives on the model solely as `backfill_room_attrs` input.
+    The villa-level rooms blurb is `DescriptionSection.ROOMS`.
+    """
+
+    def test_not_on_the_read_payload(self, api_client: APIClient, staff: User, room: Room) -> None:
+        room.website_description = "Double/Twin, En suite, Sea view"
+        room.save()
+        api_client.force_authenticate(staff)
+        assert "website_description" not in api_client.get(_room_url(room)).json()
+
+    def test_a_write_cannot_touch_the_import_only_column(
+        self, api_client: APIClient, staff: User, room: Room
+    ) -> None:
+        room.website_description = "Double/Twin, En suite, Sea view"
+        room.save()
+        api_client.force_authenticate(staff)
+        resp = api_client.patch(
+            _room_url(room), {"website_description": "", "vc_notes": "quiet side"}, format="json"
+        )
+        assert resp.status_code == 200, resp.content
+        room.refresh_from_db()
+        assert room.website_description == "Double/Twin, En suite, Sea view"
+        assert room.vc_notes == "quiet side"
+
+    def test_a_create_cannot_seed_it_either(
+        self, api_client: APIClient, staff: User, prop: Property
+    ) -> None:
+        # Staff-typed text here would be keyword-mined by `backfill_room_attrs`.
+        api_client.force_authenticate(staff)
+        resp = api_client.post(
+            _rooms_url(prop), {"name": "Attic", "website_description": "Sea view"}, format="json"
+        )
+        assert resp.status_code == 201, resp.content
+        assert Room.objects.get(pk=resp.json()["id"]).website_description == ""
+
+
 class TestRoomWrite:
     def test_post_with_name_only_is_201(
         self, api_client: APIClient, staff: User, prop: Property

@@ -32,6 +32,11 @@ class Room(AuditedModel):
     # Raw legacy `VillaRoomsPlacement.Name` — the no-loss guarantee: even when
     # parsing can't split it, the exact string survives, human-recoverable.
     placement_note = models.CharField(max_length=255, blank=True, default="")
+    # Import-only (GAP-092). Legacy `VillaRooms.WebsiteDescription` is a
+    # comma-separated attribute list ("Double/Twin, En suite, Sea view"), not
+    # prose: `RoomLoader` writes it and `backfill_room_attrs` keyword-mines it
+    # into the facets and amenity links. Deliberately on no serializer — the
+    # villa-level rooms blurb is `DescriptionSection.ROOMS`.
     website_description = models.TextField(blank=True)
     vc_notes = models.TextField(blank=True)
     is_ensuite = models.BooleanField(default=False)

@@ -1583,6 +1583,11 @@ max 148 chars), not prose, and the property-level `rooms` blurb
 (`VillaMaster.RoomDescription`) is the real bedrooms copy. `RoomLoader` still
 writes the column, because `backfill_room_attrs` (§6b) keyword-mines it for
 room facets. An accepted, documented non-loss: no staff surface reads it.
+One consequence: with no surface left to edit the source text, a
+`backfill_room_attrs` re-run after go-live re-asserts any facet or amenity
+link staff have since removed from a room whose imported list names it (the
+command is positives-only). Treat the backfill as a cutover step, not a
+routine job.
 
 Idempotent.
 

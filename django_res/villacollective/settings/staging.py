@@ -23,8 +23,10 @@ ENVIRONMENT = "staging"
 # (Mirrors the explicit SEED_DEV_ALLOWED toggle in dev.py / test.py.)
 SEED_DEV_ALLOWED = True
 
-# Media goes to the shared S3 bucket (config inherited from production.py)
-# under the staging/ prefix, so the two envs never collide on a key.
+# Media goes to staging's own S3 bucket, under the staging/ prefix (rest of the
+# config inherited from production.py). `from .production import *` would
+# otherwise point staging at the PRODUCTION bucket — both lines are load-bearing.
+S3_STORAGE_OPTIONS["bucket_name"] = "villacollective-images"  # noqa: F405
 S3_STORAGE_OPTIONS["location"] = "staging"  # noqa: F405
 DOCUMENTS_S3_STORAGE_OPTIONS["location"] = "staging"  # noqa: F405
 

@@ -1638,7 +1638,8 @@ work if the flattened keys collide. Missing-at-source files are the documented
 expected-loss bucket — expect **0**, since the fetch dry-run already proved
 every row has a file.
 
-**Ordering:** the import must run into the `production/` prefix **before**
+**Ordering:** the import must run into the production bucket
+(`villacollective-images-prod`, prefix `production/`) **before**
 the prod deploy that flips storage to S3 — `settings/production.py` on main
 already selects S3, so any prod push of main carries the flip. Full runbook
 (env vars, IAM prereqs, staging reset):

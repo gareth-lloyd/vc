@@ -47,15 +47,17 @@ EMAIL_REAL_SENDS_ALLOWED = True
 
 # Media (PropertyImage / Collection.cover_image) lives in S3, not on Render's
 # ephemeral disk. Objects are world-readable via the bucket policy, so URLs
-# are plain unsigned `https://villacollective-images.s3.…/<location>/<key>`
+# are plain unsigned `https://<bucket>.s3.…/<location>/<key>`
 # (querystring_auth off). Credentials come from the standard boto3 env vars
 # (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) set per Render service. ACLs are
 # blocked on the bucket — default_acl must stay None. See
 # django_res_design/todo/gap-012-s3-image-hosting.md.
 S3_STORAGE_OPTIONS: dict[str, object] = {
-    "bucket_name": "villacollective-images",
+    # Production has its OWN bucket (versioned); staging.py overrides both the
+    # bucket and the prefix. Separate buckets, not prefixes in one bucket, so a
+    # staging reset or a staging key can never touch production imagery.
+    "bucket_name": "villacollective-images-prod",
     "region_name": "eu-central-1",
-    # Env prefix inside the shared bucket; staging.py overrides.
     "location": "production",
     "querystring_auth": False,
     "default_acl": None,

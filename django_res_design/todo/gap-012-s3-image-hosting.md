@@ -85,11 +85,56 @@ the object — versioning is the undo). The `staging/` / `production/` prefixes
 stay. Keys in the DB are bucket- and prefix-free, so the same row works in
 both envs.
 
-**Still to do (ops):** create **one app-scoped IAM user per environment**
-(`villacollective-app-staging`, `villacollective-app-prod`), each with
-put/get/delete/list limited to its own bucket (plus its documents bucket), and
-set its keys as Render env vars on that environment's service. Do not ship the
-`villacollective-cli` user's keys to Render.
+**Documents buckets (GAP-094), same split:** staging uses
+`villacollective-documents` (prefix `staging/`); production uses
+`villacollective-documents-prod` (created 2026-09-21: all public access
+blocked, TLS-only bucket policy, AES256, versioning, noncurrent versions expire
+after 90 days). The name reaches Django via the `DOCUMENTS_S3_BUCKET` env var,
+so the production service must set `DOCUMENTS_S3_BUCKET=villacollective-documents-prod`.
+
+**Still to do (ops): one app-scoped IAM user per environment.** Staging on
+Render currently runs on the `villacollective-cli` user's keys — swap them.
+Do not ship the `villacollective-cli` keys to any Render service.
+
+| User | Images bucket | Documents bucket |
+|---|---|---|
+| `villacollective-app-staging` | `villacollective-images` | `villacollective-documents` |
+| `villacollective-app-prod` | `villacollective-images-prod` | `villacollective-documents-prod` |
+
+Inline policy (`s3-own-buckets`) — substitute the two bucket names. These four
+actions are everything django-storages needs (`ListBucket` is what makes
+`exists()` return a clean 404). Deliberately **no `s3:DeleteObjectVersion`**:
+on the versioned prod buckets an app-side delete only adds a delete marker, so
+neither the app nor a leaked key can destroy an object permanently.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "ListOwnBuckets", "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+      "Resource": ["arn:aws:s3:::<IMAGES_BUCKET>", "arn:aws:s3:::<DOCUMENTS_BUCKET>"] },
+    { "Sid": "ReadWriteDeleteOwnObjects", "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": ["arn:aws:s3:::<IMAGES_BUCKET>/*", "arn:aws:s3:::<DOCUMENTS_BUCKET>/*"] }
+  ]
+}
+```
+
+```bash
+export AWS_PROFILE=villacollective-dev   # personal account 235208471728 only
+ENV=staging   # then again with ENV=prod
+aws iam create-user --user-name villacollective-app-$ENV \
+    --tags Key=project,Value=villacollective Key=env,Value=$ENV
+aws iam put-user-policy --user-name villacollective-app-$ENV \
+    --policy-name s3-own-buckets --policy-document file://villacollective-app-$ENV.json
+# Prints the secret ONCE — paste straight into that environment's Render
+# service as AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY; never commit it.
+aws iam create-access-key --user-name villacollective-app-$ENV
+```
+
+After swapping staging's keys, confirm a staging image upload and a contract
+download still work.
 
 ## Proposed shape
 

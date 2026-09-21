@@ -9,9 +9,10 @@ dropped, `post_delete` cleanup, FE file picker), PR-B (`import_legacy_images`,
 `0ed2502f`), PR-C (`fetch_legacy_images`, 2026-09-20); the legacy binaries are
 fetched (18,232 files, 0 missing) and backed up; buckets split per environment
 and the production buckets created; `villacollective-app-staging` created; both
-open decisions settled. **Remaining, all ops:** swap staging's Render keys to
-the app user, create `villacollective-app-prod`, import into staging (GAP-120
-step 5) and into production (CUTOVER §8). This file is now the reference for
+open decisions settled; the 18,232 binaries are **in the staging bucket**
+(2026-09-21, `staging/properties/legacy/`, 10.97 GB, 0 missing). **Remaining,
+all ops:** swap staging's Render keys to the app user, create
+`villacollective-app-prod`, and import into production (CUTOVER §8). This file is now the reference for
 *how* image storage works; GAP-120 is the to-do list. Close this ticket when
 the production import has run.
 
@@ -254,9 +255,12 @@ download still work.
   images from the 11 MB committed pool), adding ~10–30 s; `file_overwrite`
   False suffixes repeated filenames, so the `staging/` prefix grows
   monotonically — pennies/month. Hygiene rule: when resetting the staging DB,
-  also wipe the prefix (`aws s3 rm --recursive
-  s3://villacollective-images/staging/`) — safe because rows and objects reset
-  together. Rows seeded *before* the S3 flip point at objects that never
+  also wipe the prefix, **except the legacy photos** (`aws s3 rm --recursive
+  s3://villacollective-images/staging/ --exclude "properties/legacy/*"`) —
+  seeded rows and objects reset together, while the 11 GB under
+  `properties/legacy/` (uploaded 2026-09-21, GAP-120 step 5) belongs to the
+  legacy load and takes ~1.5 h to put back. *Revised 2026-09-21; the original
+  rule wiped the whole prefix.* Rows seeded *before* the S3 flip point at objects that never
   reached S3, so reset + reseed staging once after the cutover deploy.
 - **B — Prod cutover ordering.** Once prod's storage flips to S3, every
   legacy row's URL points at S3 immediately, but binaries aren't there until
@@ -353,8 +357,11 @@ download still work.
    upload.
 4. **Staging hygiene** (resolved decision A): rows seeded before staging's
    flip point at objects that never reached S3 —
-   `aws s3 rm --recursive s3://villacollective-images/staging/ --profile
-   villacollective-dev`, reset the staging DB, re-run `seed_dev`.
+   `aws s3 rm --recursive s3://villacollective-images/staging/ --exclude
+   "properties/legacy/*" --profile villacollective-dev`, reset the staging DB,
+   re-run `seed_dev`. **Superseded 2026-09-21:** staging now holds the legacy
+   load (GAP-120), so `seed_dev` must not run there again; the `--exclude`
+   stays on any future wipe.
 5. Re-run the import any time for stragglers — it is idempotent.
 
 ## Local dev — serving the legacy images

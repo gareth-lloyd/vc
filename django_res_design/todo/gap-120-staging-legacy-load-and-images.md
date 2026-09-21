@@ -2,8 +2,10 @@
 
 **Severity:** gap (ops programme — almost no code; the tools all exist).
 
-**Status:** ⬜ filed 2026-09-21. Everything it needs is built and on local
-`main` (unpushed). This ticket is the ordered checklist for getting a
+**Status:** 🟨 filed 2026-09-21; steps 1, 4, 5 and 6 done the same day (`main`
+pushed, legacy database restored to staging, 18,232 photos uploaded, reset rule
+fixed). **Open: step 2 (key swap), step 3 (personal-data checks — urgent, real
+client data is on staging) and step 7 (smoke test).** This ticket is the ordered checklist for getting a
 legacy-loaded database and the 18,232 legacy villa photos onto the Render
 staging service, and it is the dress rehearsal for the production cutover
 (`django_res/data_migration/CUTOVER.md`).
@@ -24,7 +26,7 @@ storage (buckets, IAM, the fetch/import commands); this ticket owns the *doing*.
 | Staging Render keys | ⬜ still the `villacollective-cli` user's keys |
 | `main` | ✅ pushed at `bea09ed6` (2026-09-21). Deploys **staging only** (`render.yaml` → `settings.staging`); no production service exists yet |
 | Staging database | ✅ legacy load restored 2026-09-21 — verified `18232` images / `386` properties / `78` migrations. Passwords scrubbed (all unusable); needs `createsuperuser` |
-| Staging images | ⬜ rows point at `properties/legacy/…`; the S3 objects are not uploaded yet (step 5) — galleries 404 until then |
+| Staging images | ✅ uploaded 2026-09-21 — 18,232 objects, 10.97 GB under `villacollective-images/staging/properties/legacy/`; re-run dry-run says `uploaded 0, skipped 18232`; anonymous GET → 200 `image/jpeg` |
 
 ## Next steps, in order
 
@@ -70,26 +72,42 @@ storage (buckets, IAM, the fetch/import commands); this ticket owns the *doing*.
      ships exactly the database that reconciled.
    - **`seed_dev` must never run on staging again** after this: legacy data
      replaces seed data, they do not mix.
-5. **Upload the legacy images to staging** from the operator's machine:
+5. ✅ **Upload the legacy images to staging** — done 2026-09-21, 1 h 25 min
+   from the operator's laptop (~210 files/min), `uploaded 18232`, `missing 0`.
+   The repeatable recipe:
    ```bash
+   cd django_res
    export DJANGO_SETTINGS_MODULE=villacollective.settings.staging
-   export DATABASE_URL=<Render staging external connection string>
-   export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…   # villacollective-app-staging
-   # plus the other vars staging.py fails fast on (dummy values are fine)
+   export AWS_PROFILE=villacollective-dev
+   # dummies for the vars staging.py fails fast on:
+   export DJANGO_SECRET_KEY=local-import-only FERNET_KEYS=local-import-only \
+          FLYWIRE_WEBHOOK_SECRET=x STRIPE_WEBHOOK_SECRET=x \
+          DOCUMENTS_S3_BUCKET=villacollective-documents \
+          EMAIL_RECIPIENT_ALLOWLIST=you@example.com
    uv run python manage.py import_legacy_images \
        --source ~/villacollective-legacy/PropertyImages --dry-run   # expect missing 0
    caffeinate -s uv run python manage.py import_legacy_images \
        --source ~/villacollective-legacy/PropertyImages
    ```
-   ~11 GB up; idempotent, so interrupt and re-run freely. **Keep the laptop
-   open** — the fetch lost ~3 h to lid-close sleep. Lands in
-   `villacollective-images/staging/properties/legacy/` (~$0.30/month).
-6. **Fix the staging reset rule.** GAP-012 decision A says "wipe `staging/`
-   recursively on a DB reset". After step 5 that deletes 11 GB of legacy
-   photos. New rule:
+   - **Leave `DATABASE_URL` at the local, legacy-loaded database.** The command
+     does not scan the folder: it reads the `properties/legacy/…` image rows
+     (and each property's `legacy_id`) from the database, finds
+     `<source>/<legacy_id>/<filename>` and uploads it to the row's key. The
+     settings module picks the *bucket*; the database only supplies the list of
+     keys, and is never written. Staging is a restore of the local database, so
+     the keys are identical — which also means this step does not depend on
+     step 4 and needs no access to Render's database.
+   - `AWS_PROFILE` (the CLI user) is fine *from the laptop*; the rule is only
+     that those keys never go to Render.
+   - Idempotent — interrupt and re-run freely. **Keep the lid open:**
+     `caffeinate -s` stops idle sleep, not lid-close sleep.
+   - stdout is block-buffered when redirected to a file, so the `uploaded n/N`
+     lines appear only at exit; watch progress with
+     `aws s3 ls s3://villacollective-images/staging/properties/legacy/ --summarize`.
+6. ✅ **Staging reset rule fixed** (2026-09-21, GAP-012 decision A and runbook
+   updated). Wiping `staging/` whole would now delete 11 GB of legacy photos;
+   the rule is
    `aws s3 rm --recursive s3://villacollective-images/staging/ --exclude "properties/legacy/*"`.
-   Update GAP-012 when this step is reached (left as-is until then, because
-   today the old rule is still correct).
 7. **Smoke test staging:** a migrated villa's gallery renders; a fresh upload
    works; deleting a fresh image removes its object; a legacy `image_url` is an
    absolute `https://villacollective-images.s3.eu-central-1.amazonaws.com/staging/properties/legacy/…`.

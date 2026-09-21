@@ -75,7 +75,14 @@ SEED_DEV_ALLOWED = True
 # fail-closed override) so a developer's populated .env can never make the
 # suite POST factory PII to the sandbox CRM. Tests opt in per-case with
 # `override_settings(ZOHO_FLOW_WEBHOOKS=...)`.
-ZOHO_FLOW_WEBHOOKS = {"contact": "", "villa": "", "enquiry": "", "quote": "", "booking": ""}
+ZOHO_FLOW_WEBHOOKS = {
+    "organisation": "",
+    "contact": "",
+    "villa": "",
+    "enquiry": "",
+    "quote": "",
+    "booking": "",
+}
 
 ENVIRONMENT = "test"
 # Console renderer (no colour, no JSON) keeps pytest output readable, and

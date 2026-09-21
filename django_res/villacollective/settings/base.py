@@ -246,6 +246,7 @@ PAYMENT_WEBHOOK_SECRETS = {
 # never committed. Empty (the dev default) = that kind's push is silently
 # disabled — see `integrations.services.zoho_flow`.
 ZOHO_FLOW_WEBHOOKS = {
+    "organisation": env.str("ZOHO_FLOW_WEBHOOK_ORGANISATION", default=""),
     "contact": env.str("ZOHO_FLOW_WEBHOOK_CONTACT", default=""),
     "villa": env.str("ZOHO_FLOW_WEBHOOK_VILLA", default=""),
     "enquiry": env.str("ZOHO_FLOW_WEBHOOK_ENQUIRY", default=""),

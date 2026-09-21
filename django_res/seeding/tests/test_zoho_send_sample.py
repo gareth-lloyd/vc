@@ -28,6 +28,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import override_settings
 
+from accounts.enums import OrgType
 from accounts.models import Person
 from integrations import tasks
 from integrations.models import SyncRecord
@@ -36,6 +37,7 @@ from reservations.models import Booking, Enquiry, Quotation
 
 # Distinct sample URLs per kind so a captured POST maps back to its kind.
 _URLS = {
+    "organisation": "https://flow.test/sample/organisation",
     "contact": "https://flow.test/sample/contact",
     "villa": "https://flow.test/sample/villa",
     "enquiry": "https://flow.test/sample/enquiry",
@@ -94,6 +96,20 @@ def test_every_enum_transmitting_attribute_is_covered(
     # Every kind produced at least one payload.
     for kind in _URLS:
         assert payloads[kind], f"no {kind} payload captured"
+
+    # --- organisation ---------------------------------------------------
+    organisations = payloads["organisation"]
+    owner_org_types = {o["org_type"] for o in organisations}
+    assert {
+        OrgType.AGENCY.value,
+        OrgType.MANAGEMENT_COMPANY.value,
+    } <= owner_org_types, owner_org_types
+    assert all(o["status"] for o in organisations)
+    # Both country branches on the wire: baseline's agency carries one, the
+    # management company does not.
+    assert any(o["country"] for o in organisations)
+    assert any(o["country"] is None for o in organisations)
+    assert any(o["notes"] for o in organisations)
 
     # --- contact --------------------------------------------------------
     contacts = payloads["contact"]
@@ -238,7 +254,8 @@ def test_dry_run_prints_payloads_without_posting(monkeypatch: pytest.MonkeyPatch
 
 @pytest.mark.django_db
 def test_kind_with_unset_sample_url_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Everything except booking.
+    # Everything except booking (and organisation, which this test does not
+    # exercise — the skip path is kind-agnostic).
     _set_sample_env(monkeypatch, kinds={"contact", "villa", "enquiry", "quote"})
 
     _post, payloads, out = _run_capturing_posts(monkeypatch)
@@ -558,6 +575,46 @@ def test_out_of_order_scenario_sends_the_booking_before_its_villa(
 
     order = [_URL_TO_KIND[call.args[0]] for call in post.call_args_list]
     assert order.index("booking") < order.index("villa"), order
+
+
+@pytest.mark.django_db
+def test_baseline_pushes_organisations_before_anything_nesting_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GAP-096: the organisation steps exist ONLY for their position. The
+    contact payload nests `agency` and the villa payload nests each
+    contact's `organisation`, so both Accounts must already exist — that is
+    what makes CHECK-001 / CHECK-003 able to tell a lookup from an inline
+    create. Set-membership assertions elsewhere are order-blind and would
+    stay green if these yields drifted down the scenario."""
+    _set_sample_env(monkeypatch)
+
+    post, _payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "baseline")
+
+    order = [_URL_TO_KIND[call.args[0]] for call in post.call_args_list]
+    last_organisation = max(i for i, kind in enumerate(order) if kind == "organisation")
+    assert last_organisation < order.index("contact"), order
+    assert last_organisation < order.index("villa"), order
+
+
+@pytest.mark.django_db
+def test_villa_churn_pushes_each_management_company_before_its_villa_push(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both halves of the churn: the outgoing management company precedes the
+    first villa push, the incoming one precedes the second. A Flow that picks
+    the superseded assignment (CHECK-003 item 2) then shows up as a villa
+    linked to the WRONG Account rather than to a missing one."""
+    _set_sample_env(monkeypatch)
+
+    post, _payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "villa_churn")
+
+    order = [_URL_TO_KIND[call.args[0]] for call in post.call_args_list]
+    organisations = [i for i, kind in enumerate(order) if kind == "organisation"]
+    villas = [i for i, kind in enumerate(order) if kind == "villa"]
+    assert len(organisations) == 2 and len(villas) == 2, order
+    assert organisations[0] < villas[0], order
+    assert organisations[1] < villas[1], order
 
 
 @pytest.mark.django_db

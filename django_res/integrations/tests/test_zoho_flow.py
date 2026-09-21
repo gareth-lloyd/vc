@@ -54,7 +54,21 @@ from integrations.tasks import TransientPushError, push_pending, push_sync_recor
 from properties.models.rooms import Room
 
 CONTACT_URL = "https://flow.zoho.example/contact"
-WEBHOOKS = {"contact": CONTACT_URL, "villa": "", "enquiry": "", "quote": "", "booking": ""}
+ORGANISATION_URL = "https://flow.zoho.example/organisation"
+VILLA_URL = "https://flow.zoho.example/villa"
+# `organisation` is explicitly "" here: GAP-096 landed the kind dark, and the
+# member fan-out tests below must keep proving themselves with it switched off.
+WEBHOOKS = {
+    "organisation": "",
+    "contact": CONTACT_URL,
+    "villa": "",
+    "enquiry": "",
+    "quote": "",
+    "booking": "",
+}
+# Organisation pushes ON, and villa too — so a stray villa fan-out from an
+# organisation save would be visible rather than masked by an empty URL.
+ORGANISATION_WEBHOOKS = {**WEBHOOKS, "organisation": ORGANISATION_URL, "villa": VILLA_URL}
 
 
 def _person(**kwargs: Any) -> Person:
@@ -147,6 +161,13 @@ def test_person_is_registered_by_app_ready() -> None:
     assert spec.auto_push is True
 
 
+def test_organisation_is_registered_by_app_ready() -> None:
+    spec = get_zoho_spec(Organisation)
+    assert spec is not None
+    assert spec.kind == "organisation"
+    assert spec.auto_push is True
+
+
 def test_webhook_url_reads_settings() -> None:
     with override_settings(ZOHO_FLOW_WEBHOOKS=WEBHOOKS):
         assert webhook_url("contact") == CONTACT_URL
@@ -160,6 +181,7 @@ def test_test_settings_hard_disable_all_webhooks() -> None:
     from django.conf import settings
 
     assert settings.ZOHO_FLOW_WEBHOOKS == {
+        "organisation": "",
         "contact": "",
         "villa": "",
         "enquiry": "",
@@ -613,6 +635,75 @@ def test_organisation_save_bumps_member_persons() -> None:
     record_outsider.refresh_from_db()
     assert record_member.status == SyncStatus.PENDING
     assert record_outsider.status == SyncStatus.IN_SYNC
+
+
+# --- the `organisation` kind (GAP-096) ------------------------------------
+
+
+def _organisation_records(organisation: Organisation) -> Any:
+    return SyncRecord.objects.filter(
+        content_type=ContentType.objects.get_for_model(Organisation),
+        object_id=organisation.pk,
+        provider=SyncProvider.ZOHO_CRM.value,
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately")
+def test_organisation_save_enqueues_exactly_one_organisation_push(
+    delay_mock: mock.Mock,
+) -> None:
+    with override_settings(ZOHO_FLOW_WEBHOOKS=ORGANISATION_WEBHOOKS):
+        org = Organisation.objects.create(name="Acme Travel")
+
+    assert _organisation_records(org).count() == 1
+    assert delay_mock.call_count == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately")
+def test_organisation_push_is_dark_without_a_webhook_url(delay_mock: mock.Mock) -> None:
+    """GAP-096 landed the kind with `ZOHO_FLOW_WEBHOOK_ORGANISATION` unset.
+    Registration alone must cost nothing: no SyncRecord, no dispatch, no POST
+    until the URL is set — `enqueue_zoho_push` returns early on a falsy URL."""
+    # Default test settings pin every kind to "".
+    org = Organisation.objects.create(name="Acme Travel")
+
+    assert not _organisation_records(org).exists()
+    assert delay_mock.call_count == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("run_on_commit_immediately")
+def test_organisation_rename_pushes_once_not_once_per_managed_villa(
+    delay_mock: mock.Mock,
+) -> None:
+    """The ticket's acceptance: renaming a management company is ONE push on
+    the organisation endpoint, not one villa push per property it manages —
+    which is what the carrier-push alternative would have cost."""
+    from accounts.enums import ContactRole
+    from properties.factories import PropertyContactAssignmentFactory, PropertyFactory
+
+    with override_settings(ZOHO_FLOW_WEBHOOKS=ORGANISATION_WEBHOOKS):
+        org = Organisation.objects.create(name="Acme Management")
+        for _ in range(3):
+            PropertyContactAssignmentFactory(
+                property=PropertyFactory(),
+                organisation=org,
+                role=ContactRole.MANAGEMENT_COMPANY,
+            )
+        # Settle every record first: creates leave rows PENDING, and
+        # `enqueue_zoho_push` dedupes against an in-flight push — so without
+        # this a villa fan-out would be invisible rather than absent.
+        SyncRecord.objects.update(status=SyncStatus.IN_SYNC.value)
+        delay_mock.reset_mock()
+
+        org.name = "Acme Management Ltd"
+        org.save()
+
+    assert delay_mock.call_count == 1
+    pending = SyncRecord.objects.filter(status=SyncStatus.PENDING.value)
+    assert [(r.content_type.model, r.object_id) for r in pending] == [("organisation", org.pk)]
 
 
 # --- push_sync_record -----------------------------------------------------

@@ -1,5 +1,26 @@
 # GAP-096 — First-class Zoho push kinds for reference data: `Organisation` (no push of its own) and `Region`/`Country` (edits never re-push)
 
+> **✅ The `organisation` half is BUILT and dark-landed (2026-09-20)** —
+> commits `fa4a1d62` (payload builder), `783fd739` (kind registration,
+> settings, backfill ordering) and `26ce9eeb` (`zoho_send_sample` steps). The
+> ticket **stays in `todo/`**: the `region` half below is unbuilt, and the
+> switch-on (setting `ZOHO_FLOW_WEBHOOK_ORGANISATION` and running
+> `zoho_backfill --kinds organisation`) has deliberately **not** happened —
+> see §"What is left" for exactly what remains.
+>
+> **One step inverted.** The planned step (1), "fatten
+> `_organisation_summary` from 6 keys to the full `_agency_payload` shape",
+> was **dropped, not deferred**. Under the "one writer per CRM module"
+> principle adopted 2026-09-20 —
+> [GAP-119](gap-119-one-writer-per-crm-module.md) — that embedded copy should
+> get *thinner*, not fatter: once the villa Flow looks the Account up by
+> `RES_ID` it needs nothing but the link. Fattening it would have added
+> fields to the live `villa` wire payload purely to feed the inline create
+> this ticket exists to eliminate. With that step gone, **no live wire
+> contract changed at all** — the `contact` and `villa` payloads are
+> byte-identical to before, and everything new sits behind an empty
+> `ZOHO_FLOW_WEBHOOKS["organisation"]`.
+>
 > **Scope widened 2026-09-16 (todo consolidation):** absorbs **GAP-103**
 > (Region/Country edits never reach Zoho — no geo push kind, no parent bump)
 > — see §"Merged from GAP-103" at the end. The `region` kind is the same
@@ -26,9 +47,9 @@
   alternatives" is now dead rather than held in reserve. The `region` half of
   the ask was **not** issued: see §"Merged from GAP-103". The res half was
   never gated on their reply anyway: see "Landing order".
-- **Files touched (when built):**
-  - `django_res/integrations/apps.py:131` — where `Person` registers as the
-    `contact` kind; `Organisation` would register alongside it.
+- **Files touched (built 2026-09-20; line numbers refreshed):**
+  - `django_res/integrations/apps.py:151` — where `Person` registers as the
+    `contact` kind; `Organisation` registers immediately after it.
   - `django_res/integrations/services/zoho_payloads.py` —
     `_agency_payload` is already the shape an organisation payload wants;
     lift it to a `build_organisation_payload`.
@@ -37,7 +58,7 @@
   - `django_res/integrations/services/zoho_flow.py:41` — `ZOHO_FLOW_KINDS`.
   - `django_res/villacollective/settings/base.py:248` +
     `settings/test.py:78` — the `ZOHO_FLOW_WEBHOOKS` key (empty default) and
-    `.env.example`; `integrations/tests/test_zoho_flow.py:172` asserts the
+    `.env.example`; `integrations/tests/test_zoho_flow.py:194` asserts the
     kinds and the setting's keys match, so both move together.
   - `django_res/integrations/management/commands/zoho_backfill.py:51` —
     `KIND_ORDER`.
@@ -83,13 +104,17 @@ Register `Organisation` as its own kind, mirroring the `contact` pattern:
   only; the production list is a separate issue, last sent 2026-09-03 and now
   stale (see "Endpoint churn"). The URL is the credential (zapikey-in-URL),
   so it lives in the env and never in this repo.
-- **Fatten the villa-embedded copy.** `_organisation_summary`
-  (`properties/services/zoho_payload.py:146`) sends 6 keys — RES_ID, id,
-  name, org_type, email, phone — so the Account the villa flow creates today
-  is missing address, country, website, notes and status. Lift it to the
-  `_agency_payload` shape. This is a one-function change with no
-  coordination: it completes the Account during the transition and is worth
-  landing first, on its own.
+- ~~**Fatten the villa-embedded copy.**~~ **Dropped 2026-09-20** — see the
+  banner at the top. `_organisation_summary`
+  (`properties/services/zoho_payload.py:146`) still sends its 6 keys
+  (RES_ID, id, name, org_type, email, phone), and under
+  [GAP-119](gap-119-one-writer-per-crm-module.md) its next move is *down* to
+  three, once the villa Flow switches to a lookup (CHECK-003 §Dependencies,
+  **not** its item 2 — that one only fixes *which* management company is
+  picked). It now carries an inline comment saying so, as does
+  `_agency_payload`, so neither is thinned ahead of its switch. The original rationale — "completes the
+  Account during the transition" — assumed the villa flow would keep creating
+  Accounts; the point of this ticket is that it stops.
 - Extend `zoho_backfill` ordering: organisation **before** contact and villa,
   so the Account exists before anything looks it up.
 - **Villa before booking**, for the same reason (added 2026-09-02, off the
@@ -123,11 +148,42 @@ Zoho until the env var is set. "Waiting on Limitless" gates the *switch-on*,
 not the build. Tests drive the path with `override_settings`, as the other
 kinds' tests do.
 
-Sequence: (1) fatten `_organisation_summary` — no coordination; (2) register
-the kind + builder + backfill stage, dark; (3) set the URL — **it arrived
-2026-09-18**, so this is now a config step, not a wait — and run
-`zoho_backfill --kinds organisation`; (4) their two Flow follow-ups
-(CHECK-001, CHECK-003), which only become verifiable after (3).
+Sequence: ~~(1) fatten `_organisation_summary`~~ **dropped, see the banner**;
+**(2) register the kind + builder + backfill stage, dark — DONE 2026-09-20**;
+(3) set the URL — **it arrived 2026-09-18**, so this is now a config step, not
+a wait — and run `zoho_backfill --kinds organisation`; (4) their two Flow
+follow-ups (CHECK-001, CHECK-003), which only become verifiable after (3).
+
+## What is left
+
+1. **Set `ZOHO_FLOW_WEBHOOK_ORGANISATION`** (dev first). Re-check every other
+   dev URL in the same pass — Limitless rotated the dev `villas` and
+   `enquiries` zapikeys on 2026-09-18 (§"Endpoint churn") and the production
+   list is the 2026-09-03 one, which has five kinds and no `organisation`.
+2. **Run `zoho_backfill --kinds organisation`**, then the flows' own kinds if
+   anything else is stale.
+3. **CHECK-001 (items 2, 6) / CHECK-003 §Dependencies / CHECK-002 item 3** —
+   Limitless-side, now
+   unblocked by (2). Push-and-read verification each, per GAP-097.
+4. **The `region` half** — no URL issued, Q-026 still open.
+
+Three residuals were accepted knowingly when the kind was registered, all
+recorded in `integrations/apps.py`:
+
+- `Organisation.merge` repoints `Person.agency` by bulk `.update()` (no
+  signals), so member contacts stay stale until their next own bump.
+- Registering the kind connects the `post_delete` `SyncRecord` reaper, so a
+  merge drops the absorbed org's local record while its CRM Account survives
+  unreferenced (there is no delete endpoint). Org merges are routine — the
+  `dedup_key` machinery exists because orgs are minted from free-text company
+  strings — so this wants a Limitless-side sweep **before** the URL is set,
+  not after.
+- Villas are not bumped on an organisation save (nothing fans out
+  Organisation → Property), so a rename leaves the old name on managed villas
+  until an unrelated villa save. The fix is CHECK-003 §Dependencies' lookup by
+  `RES_ID`, not a
+  fan-out that would cost one villa push per managed property. Pinned by
+  `test_organisation_rename_pushes_once_not_once_per_managed_villa`.
 
 ### Endpoint churn (2026-09-18)
 
@@ -166,8 +222,12 @@ things the dedicated kind gives:
 
 Also: the villa-carrier branch would add org edits as another villa-push
 trigger, and CHECK-003 item 3 has villa re-pushes possibly re-creating rooms
-subform rows. Keep as the fallback **only** if Limitless decline the
-endpoint; the payload enrichment above is its foundation either way.
+subform rows. ~~Keep as the fallback **only** if Limitless decline the
+endpoint; the payload enrichment above is its foundation either way.~~
+**Dead 2026-09-20:** the endpoint was delivered and the kind is built, so
+there is nothing left to fall back to — and the enrichment that was to be its
+foundation was dropped, not deferred (see the banner). Kept here as the record
+of an argument, not as a plan.
 
 **Rejected: alias `organisation` onto the existing contact webhook**,
 branching on the GAP-102 `_meta.kind` discriminator. Res-side identical, no
@@ -180,21 +240,37 @@ and one zapikey.
 
 ## Acceptance
 
-- Saving an `Organisation` enqueues an `organisation` push. (test)
-- The payload carries every CRM-relevant column, JSON-safe. (test)
-- `zoho_backfill` emits organisation → contact → villa → enquiry → booking,
-  in that order. (test)
-- Renaming an organisation results in exactly ONE push, not one per villa it
-  manages. (test — this is the whole point)
-- The villa-embedded `organisation` object carries the same fields as the
-  contact payload's `agency` object. (test, one per module — the duplication
-  is deliberate, per the GAP-102 geo precedent, and a single test would let
-  one copy drift)
-- With `ZOHO_FLOW_WEBHOOKS["organisation"] == ""`, saving an Organisation
-  writes no `SyncRecord` and dispatches nothing. (test — this is what makes
-  the dark landing safe)
-- A villa's management-company Account is found by lookup, not created by the
-  villa flow. (verified Zoho-side, CHECK-003)
+- ✅ Saving an `Organisation` enqueues an `organisation` push.
+  (`test_organisation_save_enqueues_exactly_one_organisation_push`)
+- ✅ The payload carries every CRM-relevant column, JSON-safe.
+  (`test_organisation_payload_carries_the_full_field_set` + the round-trip and
+  ISO-timestamp tests. `legacy_id` is deliberately omitted — NULL on every
+  org today, `dedup_key` being the internal backfill key — and the builder's
+  docstring says so.)
+- ✅ `zoho_backfill` emits organisation → contact → villa → enquiry → quote
+  → booking, in that order (`KIND_ORDER`,
+  `integrations/management/commands/zoho_backfill.py:51`; the earlier
+  five-kind phrasing above omitted `quote`).
+  (`test_pushes_kinds_in_dependency_order_and_records_sync_run`)
+- ✅ Renaming an organisation results in exactly ONE push, not one per villa
+  it manages.
+  (`test_organisation_rename_pushes_once_not_once_per_managed_villa` — records
+  are settled to `IN_SYNC` first, or the enqueue dedupe would hide a fan-out
+  rather than prove its absence)
+- ~~The villa-embedded `organisation` object carries the same fields as the
+  contact payload's `agency` object.~~ **Inverted 2026-09-20** — the two
+  copies are now expected to *diverge*, and to converge downward on
+  `RES_ID`/`id`/`name`, each behind its own Flow's switch to a lookup
+  ([GAP-119](gap-119-one-writer-per-crm-module.md)). The anti-drift concern
+  the criterion was protecting against is handled by the inline comments on
+  both functions.
+- ✅ With `ZOHO_FLOW_WEBHOOKS["organisation"] == ""`, saving an Organisation
+  writes no `SyncRecord` and dispatches nothing.
+  (`test_organisation_push_is_dark_without_a_webhook_url`; the drift guard
+  `test_test_settings_hard_disable_all_webhooks` keeps the kinds tuple and the
+  settings dict in step)
+- ⬜ A villa's management-company Account is found by lookup, not created by
+  the villa flow. (verified Zoho-side, CHECK-003 — needs the switch-on first)
 
 ## Dependencies
 
@@ -224,6 +300,9 @@ and one zapikey.
 - **Q-026** (hub-page question, was Q-027) — answer before the `region`
   kind is built.
 - **GAP-046** — the Organisation model this pushes.
+- **[GAP-119](gap-119-one-writer-per-crm-module.md)** — the principle this
+  ticket's build was the first instance of, and where every embed's thinning
+  is now tracked. Filed 2026-09-20 out of this work.
 
 ---
 

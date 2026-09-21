@@ -7,16 +7,15 @@ the deliberate, throttled replay path for loaded legacy data (loader-time
 pushes are suppressed in `data_migration.BaseLoader`); idempotent by
 construction (PENDING upsert + upsert semantics in the Flow keyed on RES_ID).
 
-Kinds run in dependency order contact → villa → enquiry → quote → booking so
-nested RES_ID references land after their targets. Villas push in EVERY
-status (draft/active/archived) — enquiries/quotes/bookings already nest
-archived-villa RES_IDs, so excluding a status would leave dangling
-references. Bookings likewise push in every status: legacy imports rest in
-DRAFT by design and a booking row is a commitment in any status (unlike
-never-sent draft quotes). A kind with
-an unset webhook URL is skipped with a message (never counted as failures).
-The whole run is wrapped
-in a `SyncRun(triggered_by=MANUAL)` with counters + `error_summary` — no
+Kinds run in dependency order organisation → contact → villa → enquiry →
+quote → booking so nested RES_ID references land after their targets. Villas
+push in EVERY status (draft/active/archived) — enquiries/quotes/bookings
+already nest archived-villa RES_IDs, so excluding a status would leave
+dangling references. Bookings likewise push in every status: legacy imports
+rest in DRAFT by design and a booking row is a commitment in any status
+(unlike never-sent draft quotes). A kind with an unset webhook URL is skipped
+with a message (never counted as failures). The whole run is wrapped in a
+`SyncRun(triggered_by=MANUAL)` with counters + `error_summary` — no
 `SyncIssue` writes (that model stays for the unbuilt reconcile path).
 """
 
@@ -44,11 +43,12 @@ from integrations.services.zoho_flow import (
 )
 from integrations.tasks import push_sync_record
 
-# Dependency order: contacts first (villa/enquiry/quote/booking payloads nest
-# person RES_IDs), then villas (enquiry/quote/booking payloads nest property
-# RES_IDs), then enquiries (quotes nest enquiry RES_IDs), then quotes, then
-# bookings last (a booking nests all of the above).
-KIND_ORDER = ("contact", "villa", "enquiry", "quote", "booking")
+# Dependency order: organisations first (GAP-096 — contact and villa payloads
+# nest an organisation RES_ID), then contacts (villa/enquiry/quote/booking
+# payloads nest person RES_IDs), then villas (enquiry/quote/booking payloads
+# nest property RES_IDs), then enquiries (quotes nest enquiry RES_IDs), then
+# quotes, then bookings last (a booking nests all of the above).
+KIND_ORDER = ("organisation", "contact", "villa", "enquiry", "quote", "booking")
 
 ERROR_SUMMARY_MAX_LINES = 50
 
@@ -57,7 +57,7 @@ class Command(BaseCommand):
     help = (
         "Replay existing records to the Zoho Flow webhooks through the "
         "production push pipeline, kind by kind "
-        "(contact → villa → enquiry → quote → booking)."
+        "(organisation → contact → villa → enquiry → quote → booking)."
     )
 
     def add_arguments(self, parser: Any) -> None:
@@ -161,6 +161,12 @@ class Command(BaseCommand):
 
     def _queryset_for(self, kind: str, model: type[models.Model]) -> models.QuerySet[Any]:
         """Eligible rows per kind.
+
+        organisation: no rule — every row, INACTIVE included (deliberate,
+        GAP-096). Contact and villa payloads nest inactive orgs' RES_IDs, so
+        filtering by status would leave the same dangling references that
+        archived villas would; INACTIVE is "not offered for new selection",
+        never "record invalid".
 
         contact: skip ANONYMIZED (never pushed — enqueue and delivery both
         guard too).

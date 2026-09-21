@@ -467,6 +467,29 @@ def test_discounted_scenario_sends_a_non_zero_line_discount(
 
 
 @pytest.mark.django_db
+def test_discounted_scenario_amounts_are_awkward_enough_to_derive_from(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Round figures (7 x 400 - 250) let a wrong CRM mapping land on the right
+    # number by accident. Two lines, each with extras and a pence-level
+    # discount, so every derived figure is distinguishable from every other.
+    _set_sample_env(monkeypatch)
+
+    _post, payloads, _out = _run_capturing_posts(monkeypatch, "--scenarios", "discounted")
+
+    lines = payloads["quote"][0]["lines"]
+    assert len(lines) == 2, lines
+    assert len({line["discount"] for line in lines}) == 2, "each line needs its own discount"
+    for line in lines:
+        snapshot = line["pricing_snapshot"]
+        assert Decimal(line["discount"]) % 1 != 0, line["discount"]
+        assert snapshot["extras"], "a discounted line must also carry extras"
+        assert Decimal(snapshot["extras_total"]) % 1 != 0, snapshot["extras_total"]
+        assert Decimal(snapshot["rate_subtotal"]) % 1 != 0, snapshot["rate_subtotal"]
+        assert Decimal(snapshot["gross"]) - Decimal(line["discount"]) == Decimal(line["total"])
+
+
+@pytest.mark.django_db
 def test_mixed_currency_scenario_sends_two_currencies_in_one_quote(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -73,3 +73,25 @@ def test_explicit_allowed_hosts_env_still_wins(
     monkeypatch.setenv("ALLOWED_HOSTS", "demo.villacollective.com")
     staging = import_staging()
     assert staging.ALLOWED_HOSTS == ["demo.villacollective.com"]
+
+
+def test_staging_and_production_use_separate_image_buckets(
+    import_staging: Callable[[], ModuleType], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Separate buckets, not prefixes in one bucket: a staging reset
+    # (`aws s3 rm --recursive …/staging/`) or a staging key must never be able
+    # to touch production imagery. The `from .production import *` means
+    # staging inherits the prod bucket unless it overrides it — pin both.
+    staging = import_staging()
+    assert staging.S3_STORAGE_OPTIONS["bucket_name"] == "villacollective-images"
+    assert staging.S3_STORAGE_OPTIONS["location"] == "staging"
+
+    # Production (unlike staging) has no ALLOWED_HOSTS default.
+    monkeypatch.setenv("ALLOWED_HOSTS", "app.example.com")
+    production = importlib.import_module("villacollective.settings.production")
+    try:
+        assert production.S3_STORAGE_OPTIONS["bucket_name"] == "villacollective-images-prod"
+        assert production.S3_STORAGE_OPTIONS["location"] == "production"
+    finally:
+        for name in SETTINGS_MODULES:
+            sys.modules.pop(name, None)

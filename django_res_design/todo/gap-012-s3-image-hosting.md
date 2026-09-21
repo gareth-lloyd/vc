@@ -64,23 +64,31 @@ The simplest shape that solves durability:
 
 | Item | Value |
 |---|---|
-| Bucket | `villacollective-images` (`arn:aws:s3:::villacollective-images`) |
+| Staging bucket | `villacollective-images` (`arn:aws:s3:::villacollective-images`), prefix `staging/` |
+| Production bucket | `villacollective-images-prod` (created 2026-09-21), prefix `production/` — same public-read policy / ACL block / AES256, **plus versioning** with noncurrent versions expiring after 90 days |
 | Region | `eu-central-1` (Frankfurt — matches Render) |
 | Account | `235208471728` (personal — **never** the Canary dayjob profiles) |
 | Public access | Objects world-readable via bucket policy (`s3:GetObject` on `…/*`); ACLs blocked (`BlockPublicAcls`/`IgnorePublicAcls` true); writes require IAM credentials |
-| URL shape | `https://villacollective-images.s3.eu-central-1.amazonaws.com/<key>` |
+| URL shape | `https://<bucket>.s3.eu-central-1.amazonaws.com/<env prefix>/<key>` |
 | CLI profile | `villacollective-dev` (IAM user `villacollective-cli`) — pass `--profile` explicitly on every call |
 
 Verified: authenticated write + anonymous read + delete round-trip.
 
-**Env isolation:** one bucket, prefix per environment via django-storages'
-`AWS_LOCATION` — `staging/` and `production/`. Keys in the DB stay
-prefix-free; the prefix is applied by the storage layer, so the same row works
-in both envs.
+**Env isolation (revised 2026-09-21): a bucket per environment**, not
+prefixes in one bucket. `production.py` names `villacollective-images-prod`;
+`staging.py` overrides it back to `villacollective-images` (pinned by
+`core/tests/test_staging_settings.py`). Why: the staging reset is an
+`aws s3 rm --recursive`, one path segment from production in a shared bucket;
+bucket-scoped IAM policies are trivially correct where prefix-scoped ones are
+not; and only production wants versioning (an app-side image delete removes
+the object — versioning is the undo). The `staging/` / `production/` prefixes
+stay. Keys in the DB are bucket- and prefix-free, so the same row works in
+both envs.
 
-**Still to do (ops):** create an app-scoped IAM user (e.g.
-`villacollective-app`) with put/get/delete/list limited to this bucket, and
-set its keys as Render env vars per service. Do not ship the
+**Still to do (ops):** create **one app-scoped IAM user per environment**
+(`villacollective-app-staging`, `villacollective-app-prod`), each with
+put/get/delete/list limited to its own bucket (plus its documents bucket), and
+set its keys as Render env vars on that environment's service. Do not ship the
 `villacollective-cli` user's keys to Render.
 
 ## Proposed shape
@@ -225,9 +233,9 @@ set its keys as Render env vars per service. Do not ship the
    state; until step 2 has run, pushing main to the prod Render service is
    gated on it (and on the AWS env vars being set) — fold this into the
    existing "check Render env vars before pushing" habit.
-1. **Prereqs** (above): app-scoped IAM user (`villacollective-app`,
-   put/get/delete/list on `villacollective-images` only) with keys in Render
-   env vars for staging + prod. Never ship the `villacollective-cli` user's keys
+1. **Prereqs** (above): per-environment app-scoped IAM users
+   (`villacollective-app-staging` / `-prod`, each limited to its own bucket)
+   with keys in that environment's Render env vars. Never ship the `villacollective-cli` user's keys
    to Render. No ops export is needed — step 2a fetches the binaries.
 2a. **Fetch the legacy binaries** (**done 2026-09-20/21**: 18,232 files,
    10.97 GB, 0 missing / rejected / failed; needs no AWS credentials and never
@@ -273,7 +281,7 @@ set its keys as Render env vars per service. Do not ship the
    happens, stop and wait; do not switch IPs. The command sends an identifying
    User-Agent and stops itself after a run of consecutive failures. One-time
    only: never scheduled, never Celery-wrapped.
-2. **Import into `production/` before the flip-carrying push** — from the
+2. **Import into `villacollective-images-prod/production/` before the flip-carrying push** — from the
    operator's machine (the source dir is local, not on Render):
 
    ```bash

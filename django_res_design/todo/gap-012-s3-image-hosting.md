@@ -2,13 +2,18 @@
 
 **Severity:** gap (blocks any non-toy image use on staging/prod).
 
-**Status:** 🟨 code complete — **PR-A merged** (storage settings, multipart
-upload, `image_url` read path, `UploadTicket` dropped, `post_delete` cleanup,
-FE file picker), **PR-B merged** (`import_legacy_images` + tests + this runbook,
-`0ed2502f` on `main` — an earlier revision of this line claimed it was unmerged
-on `feat/legacy-image-import`; that branch no longer exists) and **PR-C merged**
-(`fetch_legacy_images`, 2026-09-20). Bucket created. Remaining: **one** ops
-prerequisite (the app-scoped IAM user), then executing the cutover runbook.
+**Status:** 🟨 code complete, **execution tracked in
+[GAP-120](gap-120-staging-legacy-load-and-images.md)** (2026-09-21). Done:
+PR-A (storage settings, multipart upload, `image_url` read path, `UploadTicket`
+dropped, `post_delete` cleanup, FE file picker), PR-B (`import_legacy_images`,
+`0ed2502f`), PR-C (`fetch_legacy_images`, 2026-09-20); the legacy binaries are
+fetched (18,232 files, 0 missing) and backed up; buckets split per environment
+and the production buckets created; `villacollective-app-staging` created; both
+open decisions settled. **Remaining, all ops:** swap staging's Render keys to
+the app user, create `villacollective-app-prod`, import into staging (GAP-120
+step 5) and into production (CUTOVER §8). This file is now the reference for
+*how* image storage works; GAP-120 is the to-do list. Close this ticket when
+the production import has run.
 
 **Source:** ad-hoc request 2026-06-08 ("proper S3-bucket-based image hosting
 for staging and prod"). An earlier revision of this doc specced **Cloudflare

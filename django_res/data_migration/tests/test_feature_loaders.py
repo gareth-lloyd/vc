@@ -139,3 +139,30 @@ def test_feature_query_selects_the_category_code_not_service_type() -> None:
     assert query.endswith("ORDER BY f.Id")
     assert "ServiceType" not in query
     assert not hasattr(FeatureLoader, "_service_type_map")
+
+
+# --- The category slug is pinned: every reader keys on it ---
+
+
+def test_category_slug_is_pinned_regardless_of_legacy_name() -> None:
+    # The live legacy row was renamed to "Other Information Tags" after the
+    # checked-in snapshot; slugifying that emptied the Features tab's block,
+    # the Zoho partition and the seeding stage. Name follows legacy, slug does
+    # not.
+    loader = FeatureCategoryLoader()
+    report = LoadReport(loader=loader.name)
+    loader._process_row({**_CATEGORY_ROW, "Name": "Other Information Tags"}, report)
+
+    assert report.errors == [] and report.created == 1
+    category = FeatureCategory.objects.get(legacy_id="8")
+    assert category.name == "Other Information Tags"
+    assert category.slug == OTHER_INFORMATION_CATEGORY_SLUG
+
+
+def test_other_category_slugs_still_follow_the_name() -> None:
+    loader = FeatureCategoryLoader()
+    report = LoadReport(loader=loader.name)
+    loader._process_row({"Id": 1, "Name": "Living Spaces", "IsActive": True, "Code": 20}, report)
+
+    assert report.errors == []
+    assert FeatureCategory.objects.get(legacy_id="1").slug == "living-spaces"

@@ -31,14 +31,17 @@ from django.utils.text import slugify
 from properties.enums import FeatureServiceType
 from properties.models import Feature, FeatureCategory
 
-_CATEGORY_NAME = "Other Information"  # exactly the legacy name — the loader slugifies it
+_CATEGORY_NAME = "Other Information"  # the Dec-2024 legacy name; live legacy has since renamed it
 # The read side keys on this slug everywhere — Zoho payload partition, seeding
 # stage, the SPA's Features tab (`lib/domain/features/schemas.ts`). Renaming
-# the category's slug silently empties the tag block on all three; the
-# legacy_id-first resolution below is for loader ADOPTION of the row, not a
-# runtime fallback. Keep the slug fixed.
+# the category's slug silently empties the tag block on all three, so the slug
+# is pinned on both write paths: `FeatureCategoryLoader` writes it for
+# `OTHER_INFORMATION_CATEGORY_LEGACY_ID` whatever the legacy name, and
+# `FeatureCategorySerializer` rejects changing it. The legacy_id-first
+# resolution below is for loader ADOPTION of the row, not a runtime fallback.
 OTHER_INFORMATION_CATEGORY_SLUG = slugify(_CATEGORY_NAME)  # "other-information"
-_CATEGORY_LEGACY_ID = "8"  # VillaFeaturesCategory.Id
+OTHER_INFORMATION_CATEGORY_LEGACY_ID = "8"  # VillaFeaturesCategory.Id
+_CATEGORY_LEGACY_ID = OTHER_INFORMATION_CATEGORY_LEGACY_ID
 _CATEGORY_SORT_ORDER = 60  # VillaFeaturesCategory.Code, which the loader maps to sort_order
 _CATEGORY_ICON = "info"
 

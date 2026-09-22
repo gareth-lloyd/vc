@@ -20,6 +20,10 @@ from pricing.models.currency import Currency
 from properties.enums import FeatureServiceType
 from properties.models.features import Feature, FeatureCategory
 from properties.models.geo import NearbyPlaceType, Region
+from properties.other_information_catalog import (
+    OTHER_INFORMATION_CATEGORY_LEGACY_ID,
+    OTHER_INFORMATION_CATEGORY_SLUG,
+)
 
 
 class RegionLoader(DeclarativeLoader):
@@ -156,7 +160,13 @@ class FeatureCategoryLoader(DeclarativeLoader):
         if not name:
             return None
         kwargs["name"] = name[:128]
-        kwargs["slug"] = slugify(name)[:128] or f"feature-cat-{row['Id']}"
+        if str(row["Id"]) == OTHER_INFORMATION_CATEGORY_LEGACY_ID:
+            # Pinned: the Features tab, the Zoho partition and the seeding
+            # stage all key on this slug, and the live legacy row has been
+            # renamed since the checked-in snapshot ("Other Information Tags").
+            kwargs["slug"] = OTHER_INFORMATION_CATEGORY_SLUG
+        else:
+            kwargs["slug"] = slugify(name)[:128] or f"feature-cat-{row['Id']}"
         kwargs["sort_order"] = kwargs.get("sort_order") or 0
         kwargs["is_active"] = bool(kwargs.get("is_active"))
         return kwargs

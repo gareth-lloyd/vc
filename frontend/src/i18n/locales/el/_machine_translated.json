@@ -391,6 +391,7 @@
     "email_templates.toasts.test_sent",
     "email_templates.toasts.test_failed",
     "email_templates.errors.load_failed",
-    "email_templates.errors.invalid_key"
+    "email_templates.errors.invalid_key",
+    "tags.categories.dialog.slug_reserved"
   ]
 }

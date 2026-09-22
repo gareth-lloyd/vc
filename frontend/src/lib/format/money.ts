@@ -116,6 +116,9 @@ export function formatMoneyWhole(
 
 // Compact notation ("£20.4K") for dense cells like the per-week price strip,
 // where the full figure won't fit; callers surface the exact amount on hover.
+// Formatted as "en", not "en-GB": the en-GB compact suffixes depend on the
+// runtime's locale data ("1.4K" on some, "1.4k" / "2.3bn" on others); "en" is
+// K / M / B everywhere and otherwise identical.
 export function formatMoneyCompact(
   value: string | number | null | undefined,
   currencyCode: string | null | undefined,
@@ -124,7 +127,7 @@ export function formatMoneyCompact(
   const amount = parseMoney(value);
   if (!Number.isFinite(amount)) return "—";
   return withCurrency(
-    amount.toLocaleString("en-GB", { notation: "compact", maximumFractionDigits: 1 }),
+    amount.toLocaleString("en", { notation: "compact", maximumFractionDigits: 1 }),
     currencyCode.toUpperCase(),
   );
 }

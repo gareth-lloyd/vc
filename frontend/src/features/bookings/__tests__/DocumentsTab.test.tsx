@@ -374,7 +374,11 @@ describe("DocumentsTab", () => {
     await userEvent.click(await screen.findByRole("button", { name: /download/i }));
 
     await waitFor(() => expect(clicked).toHaveLength(1));
-    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    // Shape, not `expect.any(Blob)`: the blob comes from Node's `fetch`, and the
+    // global `Blob` here is jsdom's — a different class on some Node versions.
+    expect(createObjectURL).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "application/pdf", size: 9 }),
+    );
     expect(clicked[0].href).toContain(objectUrl);
     // The filename comes off `Content-Disposition`, not the list row: the
     // download is the one place the server's own name for the bytes is

@@ -329,7 +329,9 @@ download still work.
    waits rather than failing; Ctrl-C and re-run — it resumes. Keep the lid
    open (or use a desktop / `caffeinate -s` on mains power).
    Content check: 18,216 JPEG, 12 PNG, 4 WebP (the WebP are named `.jpeg`, all
-   villa 412; S3 will label them `image/jpeg`, which browsers tolerate).
+   villa 412; S3 will label them `image/jpeg`, which browsers tolerate — the
+   four keys and the `--content-type image/webp` re-upload recipe are in
+   `done/smell-026-legacy-image-loose-ends.md`).
 
    **This hits a third party's live production server.** It is their bandwidth
    (~10.3 GB, which a hosting plan may cap) and their users' web server, so run

@@ -3,18 +3,20 @@
 **Severity:** gap (blocks any non-toy image use on staging/prod).
 
 **Status:** 🟨 code complete, **execution tracked in
-[GAP-120](gap-120-staging-legacy-load-and-images.md)** (2026-09-21). Done:
+[GAP-120](done/gap-120-staging-legacy-load-and-images.md)** (2026-09-21). Done:
 PR-A (storage settings, multipart upload, `image_url` read path, `UploadTicket`
 dropped, `post_delete` cleanup, FE file picker), PR-B (`import_legacy_images`,
 `0ed2502f`), PR-C (`fetch_legacy_images`, 2026-09-20); the legacy binaries are
 fetched (18,232 files, 0 missing) and backed up; buckets split per environment
 and the production buckets created; `villacollective-app-staging` created; both
 open decisions settled; the 18,232 binaries are **in the staging bucket**
-(2026-09-21, `staging/properties/legacy/`, 10.97 GB, 0 missing). **Remaining,
-all ops:** swap staging's Render keys to the app user, create
-`villacollective-app-prod`, and import into production (CUTOVER §8). This file is now the reference for
-*how* image storage works; GAP-120 is the to-do list. Close this ticket when
-the production import has run.
+(2026-09-21, `staging/properties/legacy/`, 10.97 GB, 0 missing); staging runs
+on the `villacollective-app-staging` keys (2026-09-22) and GAP-120 is resolved.
+**Remaining, all ops, production only:** create `villacollective-app-prod`,
+server-side `aws s3 sync` of the staging legacy prefix into the prod bucket,
+`import_legacy_images --dry-run` under production settings (CUTOVER §8). This
+file is now the reference for *how* image storage works; GAP-120 keeps the
+staging recipe. Close this ticket when the production import has run.
 
 **Source:** ad-hoc request 2026-06-08 ("proper S3-bucket-based image hosting
 for staging and prod"). An earlier revision of this doc specced **Cloudflare
@@ -98,9 +100,10 @@ blocked, TLS-only bucket policy, AES256, versioning, noncurrent versions expire
 after 90 days). The name reaches Django via the `DOCUMENTS_S3_BUCKET` env var,
 so the production service must set `DOCUMENTS_S3_BUCKET=villacollective-documents-prod`.
 
-**Still to do (ops): one app-scoped IAM user per environment.** Staging on
-Render currently runs on the `villacollective-cli` user's keys — swap them.
-Do not ship the `villacollective-cli` keys to any Render service.
+**One app-scoped IAM user per environment.** Staging on Render runs on
+`villacollective-app-staging` since 2026-09-22 (GAP-120 step 2); the
+`villacollective-cli` keys are on no Render service, and must never be.
+`villacollective-app-prod` is still to create (console only).
 
 | User | Images bucket | Documents bucket |
 |---|---|---|

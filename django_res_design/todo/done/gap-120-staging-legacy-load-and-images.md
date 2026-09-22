@@ -2,13 +2,18 @@
 
 **Severity:** gap (ops programme — almost no code; the tools all exist).
 
-**Status:** 🟨 filed 2026-09-21; steps 1, 4, 5 and 6 done the same day (`main`
-pushed, legacy database restored to staging, 18,232 photos uploaded, reset rule
-fixed). **Open: step 2 (key swap), step 3 (personal-data checks — urgent, real
-client data is on staging) and step 7 (smoke test).** This ticket is the ordered checklist for getting a
-legacy-loaded database and the 18,232 legacy villa photos onto the Render
-staging service, and it is the dress rehearsal for the production cutover
-(`django_res/data_migration/CUTOVER.md`).
+> **✅ RESOLVED (2026-09-22)** — staging runs the legacy-loaded database
+> (18,232 image rows / 386 properties / 78 migrations, passwords scrubbed) with
+> all 18,232 legacy photos served from
+> `villacollective-images/staging/properties/legacy/`, on the
+> `villacollective-app-staging` keys. Steps 1, 4, 5, 6 done 2026-09-21; steps
+> 2, 3, 7 done by the operator 2026-09-22 (key swap, personal-data checks,
+> smoke test). The production follow-on stays with **GAP-012** / CUTOVER §8.
+
+**Status:** ✅ resolved 2026-09-22 (filed 2026-09-21). This ticket was the
+ordered checklist for getting a legacy-loaded database and the 18,232 legacy
+villa photos onto the Render staging service, and it is the dress rehearsal for
+the production cutover (`django_res/data_migration/CUTOVER.md`).
 
 **Source:** GAP-012 close-out, 2026-09-21. GAP-012 keeps the *how* of image
 storage (buckets, IAM, the fetch/import commands); this ticket owns the *doing*.
@@ -23,9 +28,9 @@ storage (buckets, IAM, the fetch/import commands); this ticket owns the *doing*.
 | Production buckets | ✅ `villacollective-images-prod` + `villacollective-documents-prod` (versioned), empty |
 | IAM `villacollective-app-staging` | ✅ created, policy verified, one active key |
 | IAM `villacollective-app-prod` | ⬜ not created (console only — the CLI user cannot write IAM) |
-| Staging Render keys | ⬜ still the `villacollective-cli` user's keys |
+| Staging Render keys | ✅ swapped to `villacollective-app-staging` 2026-09-22; the `villacollective-cli` keys are on no Render service |
 | `main` | ✅ pushed at `bea09ed6` (2026-09-21). Deploys **staging only** (`render.yaml` → `settings.staging`); no production service exists yet |
-| Staging database | ✅ legacy load restored 2026-09-21 — verified `18232` images / `386` properties / `78` migrations. Passwords scrubbed (all unusable); needs `createsuperuser` |
+| Staging database | ✅ legacy load restored 2026-09-21 — verified `18232` images / `386` properties / `78` migrations. Passwords scrubbed (all unusable); the four staff superusers re-created 2026-09-21 with fresh passwords via `seeding.stages.users._ensure_superuser` |
 | Staging images | ✅ uploaded 2026-09-21 — 18,232 objects, 10.97 GB under `villacollective-images/staging/properties/legacy/`; re-run dry-run says `uploaded 0, skipped 18232`; anonymous GET → 200 `image/jpeg` |
 
 ## Next steps, in order
@@ -33,10 +38,11 @@ storage (buckets, IAM, the fetch/import commands); this ticket owns the *doing*.
 1. ✅ **Push `main`** — done 2026-09-21. The deploy stopped on
    `rateplan_one_active_per_regime` (duplicate seed rows), as predicted; the
    step-4 restore replaced the database, which cleared it.
-2. **Swap staging's AWS keys** in Render to `villacollective-app-staging`.
-   Verify: upload an image in the staging SPA, download a contract. Then the
-   `villacollective-cli` keys are off Render for good.
-3. **Pre-flight the personal-data question (blocking — see below).**
+2. ✅ **Swap staging's AWS keys** to `villacollective-app-staging` — done
+   2026-09-22 in the Render dashboard. The `villacollective-cli` keys are off
+   Render for good.
+3. ✅ **Pre-flight the personal-data question** — checked 2026-09-22; answers
+   recorded below.
 4. ✅ **Load the legacy data: build locally, restore to staging** — done
    2026-09-21. `reconcile_legacy --integrations` exited 0 locally (64 OK, 8
    INFO); dump restored and verified on staging. The repeatable recipe, with
@@ -108,14 +114,21 @@ storage (buckets, IAM, the fetch/import commands); this ticket owns the *doing*.
    updated). Wiping `staging/` whole would now delete 11 GB of legacy photos;
    the rule is
    `aws s3 rm --recursive s3://villacollective-images/staging/ --exclude "properties/legacy/*"`.
-7. **Smoke test staging:** a migrated villa's gallery renders; a fresh upload
-   works; deleting a fresh image removes its object; a legacy `image_url` is an
-   absolute `https://villacollective-images.s3.eu-central-1.amazonaws.com/staging/properties/legacy/…`.
+7. ✅ **Smoke test staging** — done 2026-09-22 on the app-scoped keys: a
+   migrated villa's gallery renders; a fresh upload works; deleting a fresh
+   image removes its object; a legacy `image_url` is an absolute
+   `https://villacollective-images.s3.eu-central-1.amazonaws.com/staging/properties/legacy/…`.
 
-## Step 3 — real personal data on staging (blocking)
+## Step 3 — real personal data on staging (answered 2026-09-22)
 
 A legacy load puts real customers, owners and contracts on staging. Checked in
-the code 2026-09-21:
+the code 2026-09-21, and in the Render dashboard by the operator 2026-09-22:
+**no `ZOHO_FLOW_WEBHOOK_*` vars are set, the Stripe/Flywire keys are
+test-mode.** Logins: every loaded legacy account arrived with an unusable
+password (the dump was scrubbed), so nobody can sign in on a legacy credential;
+the only staging logins are the four staff superusers re-created 2026-09-21
+with fresh passwords. The `.onrender.com` URL remains team-only. The
+per-item reasoning:
 
 - **Email:** safe. `staging.py` refuses to boot without
   `EMAIL_RECIPIENT_ALLOWLIST`; nothing reaches a real guest.
@@ -128,9 +141,9 @@ the code 2026-09-21:
   beat, so no periodic job touches the loaded rows.
 - **Payments:** inbound webhooks only; confirm the Stripe/Flywire keys on
   staging are test-mode.
-- **Not checked, needs a human:** who holds staging logins, and whether the
-  `.onrender.com` URL is known outside the team. Loaded staff users arrive with
-  their legacy accounts — decide whether to keep, reset or deactivate them.
+- **Logins (answered above):** loaded staff users arrived with unusable
+  passwords and stay that way; the four superusers are the only accounts that
+  can sign in.
 
 ## After staging: production (not this ticket — CUTOVER §8)
 
@@ -144,13 +157,13 @@ the code 2026-09-21:
 
 ## Acceptance
 
-- Staging shows legacy villas, enquiries and quotes with their photos; no
-  legacy `image_url` 404s.
-- Staging runs on `villacollective-app-staging` keys; the CLI user's keys are
-  on no Render service.
-- `reconcile_legacy` exited 0 on the database that was restored.
-- The step-3 checks are written down with their answers.
-- The staging reset rule excludes `properties/legacy/`.
+- ✅ Staging shows legacy villas, enquiries and quotes with their photos; no
+  legacy `image_url` 404s (smoke test, 2026-09-22).
+- ✅ Staging runs on `villacollective-app-staging` keys; the CLI user's keys are
+  on no Render service (2026-09-22).
+- ✅ `reconcile_legacy` exited 0 on the database that was restored (2026-09-21).
+- ✅ The step-3 checks are written down with their answers (2026-09-22).
+- ✅ The staging reset rule excludes `properties/legacy/` (2026-09-21).
 
 ## Dependencies
 

@@ -40,7 +40,11 @@ def _sections(property_: Property) -> dict[str, PropertyDescription]:
 def test_alterfield_then_runpython_with_choices_in_enum_order() -> None:
     ops = migration.Migration.operations
     assert [type(op) for op in ops] == [migrations.AlterField, migrations.RunPython]
-    assert ops[0].field.choices == DescriptionSection.choices
+    # 0010's list is the enum as it stood then; 0011 retired `overview`, so
+    # the live enum is this list minus that one entry, order intact.
+    assert [c for c in migration.SECTION_CHOICES if c[0] != "overview"] == (
+        DescriptionSection.choices
+    )
     assert ops[0].field.max_length == 32
 
 

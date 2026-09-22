@@ -25,7 +25,6 @@ def _row(**overrides: object) -> dict[str, object]:
         "Name": "Casa Test",
         "DisplayName": "Casa Test",
         "Slug": "https://www.villacollective.com/paxos/casa-test-100/",
-        "OverView": "",
         "HouseRules": "",
         "FeatureDescription": "",
         "RoomDescription": "",
@@ -160,6 +159,25 @@ def test_web_description_single_part_writes_one_section() -> None:
     sections = _write_and_fetch(WebDesc1="Only first", WebDesc2="")
     assert sections[DescriptionSection.WEB_DES_1] == "Only first"
     assert DescriptionSection.WEB_DES_2 not in sections
+
+
+@pytest.mark.django_db
+def test_legacy_overview_is_dropped_not_remapped() -> None:
+    """`VillaMaster.OverView` is retired (2026-09-22): its 8 ResProd rows are
+    an expected loss. It must never land in `web_des_1` — that section is
+    widely populated from `WebDesc1` and the two were different copy."""
+    sections = _write_and_fetch(OverView="Scant overview text", WebDesc1="", WebDesc2="")
+    assert "overview" not in sections
+    assert DescriptionSection.WEB_DES_1 not in sections
+
+
+@pytest.mark.django_db
+def test_legacy_overview_never_joins_web_des_1() -> None:
+    """6 of the 8 villas hold both columns: `web_des_1` is `WebDesc1` verbatim,
+    with no appended or prepended `OverView` text."""
+    sections = _write_and_fetch(OverView="Scant overview text", WebDesc1="Top text")
+    assert sections[DescriptionSection.WEB_DES_1] == "Top text"
+    assert "overview" not in sections
 
 
 @pytest.mark.django_db

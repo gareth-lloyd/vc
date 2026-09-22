@@ -1424,7 +1424,7 @@ def _organic_row(model: type[object]) -> None:
             property=_organic_property(), image="organic.jpg", kind=ImageKind.GALLERY
         ),
         PropertyNearbyPlace: PropertyNearbyPlaceFactory,
-        PropertyDescription: PropertyFactory,  # factory OVERVIEW section
+        PropertyDescription: PropertyFactory,  # factory WEB_DES_1 section
         PropertyService: PropertyServiceFactory,
         RatePlan: lambda: RatePeriodFactory(plan=RatePlanFactory(price_basis=PriceBasis.NET)),
         RateBand: lambda: RateBandFactory(nightly=Decimal("0.00"), is_approved=False),
@@ -1630,9 +1630,9 @@ def test_property_description_check_counts_stamped_sections() -> None:
     from data_migration.loaders._util import live_villa_sql
     from properties.models.descriptions import PropertyDescription
 
-    PropertyFactory(legacy_id="900")  # factory OVERVIEW row, legacy_id NULL
+    PropertyFactory(legacy_id="900")  # factory WEB_DES_1 row, legacy_id NULL
     PropertyFactory()
-    PropertyDescription.objects.filter(property__legacy_id="900").update(legacy_id="900-overview")
+    PropertyDescription.objects.filter(property__legacy_id="900").update(legacy_id="900-web_des_1")
 
     check = next(c for c in reconcile_legacy._CHECKS if c.label == "PropertyDescription")
     assert check.model is PropertyDescription
@@ -1641,7 +1641,7 @@ def test_property_description_check_counts_stamped_sections() -> None:
     # the MAX(Id) `VillaPropertyImagesDescription` row, loaded villas only.
     assert "SELECT MAX(d2.Id) FROM VillaPropertyImagesDescription d2" in check.legacy_query
     assert live_villa_sql("m.") in check.legacy_query
-    for column in ("OverView", "HouseRules", "FeatureDescription", "RoomDescription", "Notes"):
+    for column in ("HouseRules", "FeatureDescription", "RoomDescription", "Notes"):
         assert f"m.{column}" in check.legacy_query
     # GAP-090: one column per section, including the interior/exterior pairs
     # the loader now reads.

@@ -274,7 +274,8 @@ def _non_blank_sql(column: str) -> str:
     # T-SQL LTRIM/RTRIM strip only spaces while the loader's Python `.strip()`
     # also strips tabs/newlines, so a whitespace-only (non-space) value counts
     # here but loads nothing — a positive gap. 0 such values on ResProd
-    # (2026-09-20: the T-SQL sum and a Python replay both give 3 200).
+    # (2026-09-20: the T-SQL sum and a Python replay both gave 3 200; 3 192
+    # since `OverView` was retired is derived, 3 200 - 8, not re-measured).
     return f"LEN(LTRIM(RTRIM(ISNULL({column}, '')))) > 0"
 
 
@@ -284,14 +285,14 @@ def _section_case_sql(*columns: str) -> str:
     return f"CASE WHEN {condition} THEN 1 ELSE 0 END"
 
 
-# PropertyLoader `_write_descriptions`: one row per non-blank section — five
-# VillaMaster columns, plus the four sub/para website blocks (WebDesc1/2,
-# Interior1/2, Exterior1/2, Location1/2) from the villa's MAX(Id)
-# VillaPropertyImagesDescription row, over the same villas the loader reads
-# (`live_villa_sql`). GAP-090: one column, one section — the pairs used to be
-# fused into a single row each, so this was 7 groups and is now 13.
+# PropertyLoader `_write_descriptions`: one row per non-blank section — four
+# VillaMaster columns (`OverView` was retired 2026-09-22), plus the four
+# sub/para website blocks (WebDesc1/2, Interior1/2, Exterior1/2, Location1/2)
+# from the villa's MAX(Id) VillaPropertyImagesDescription row, over the same
+# villas the loader reads (`live_villa_sql`). GAP-090: one column, one section
+# — the pairs used to be fused into a single row each, so this was 7 groups
+# and is now 12.
 _DESCRIPTION_SECTIONS = (
-    ("m.OverView",),
     ("m.HouseRules",),
     ("m.FeatureDescription",),
     ("m.RoomDescription",),
@@ -692,16 +693,19 @@ _CHECKS: list[_Check] = [
         loaded_count=_one_per_loaded_property,
     ),
     _Check(
-        # GAP-090: 0 to 13 rows per loaded villa (`_DESCRIPTION_QUERY`).
+        # GAP-090: 0 to 12 rows per loaded villa (`_DESCRIPTION_QUERY`).
         # ResProd 2026-09-20: OVERVIEW 8 + HOUSE_RULES 12 +
         # OTHER_INFORMATION 193 + ROOMS 127 + INTERNAL_NOTES 1 = 341 from
         # VillaMaster, plus WEB_DES_1 361 + WEB_DES_2 361 + INTERIOR_SUB 361 +
         # INTERIOR_PARA 361 + EXTERIOR_SUB 361 + EXTERIOR_PARA 361 +
         # LOCATION_SUB 346 + LOCATION_PARA 347 = 2 859 from the description
         # row ⇒ 3 200, equal to a Python `.strip()` replay of PropertyLoader's
-        # own query ⇒ 0. (It was 1 049 over 7 groups while the four pairs were
-        # fused; a staging DB loaded before GAP-090 still reads that until the
-        # CUTOVER §6i re-run.) Loaded = rows stamped `<VillaId>-<section>`; a
+        # own query ⇒ 0. OVERVIEW was retired on 2026-09-22 and dropped from
+        # both sides, so the expected total is now 3 192 — derived from that
+        # measurement (3 200 - 8), not re-measured; confirm on the next run.
+        # (It was 1 049 over 7 groups while the four pairs were fused; a
+        # staging DB loaded before GAP-090 still reads that until the CUTOVER
+        # §6i re-run.) Loaded = rows stamped `<VillaId>-<section>`; a
         # staff-written section (legacy_id NULL) never counts, but a legacy
         # row a staff edit later blanked still does (no stale-row sweep).
         _DESCRIPTION_QUERY,

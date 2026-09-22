@@ -17,13 +17,13 @@ from properties.models import Property, PropertyDescription
 def test_put_creates_description(api_client: APIClient, staff: User, property_: Property) -> None:
     api_client.force_login(staff)
     response = api_client.put(
-        f"/api/v1/properties/{property_.pk}/descriptions/overview",
-        data={"body": "Overview body"},
+        f"/api/v1/properties/{property_.pk}/descriptions/web-des-1",
+        data={"body": "Web des 1 body"},
         format="json",
     )
     assert response.status_code == 201, response.content
     assert PropertyDescription.objects.filter(
-        property=property_, section=DescriptionSection.OVERVIEW
+        property=property_, section=DescriptionSection.WEB_DES_1
     ).exists()
 
 
@@ -33,12 +33,12 @@ def test_put_upserts_existing_description(
 ) -> None:
     PropertyDescription.objects.create(
         property=property_,
-        section=DescriptionSection.OVERVIEW,
+        section=DescriptionSection.WEB_DES_1,
         body="Old body",
     )
     api_client.force_login(staff)
     response = api_client.put(
-        f"/api/v1/properties/{property_.pk}/descriptions/overview",
+        f"/api/v1/properties/{property_.pk}/descriptions/web-des-1",
         data={"body": "New body"},
         format="json",
     )
@@ -51,7 +51,7 @@ def test_get_section_returns_404_when_missing(
     api_client: APIClient, staff: User, property_: Property
 ) -> None:
     api_client.force_login(staff)
-    response = api_client.get(f"/api/v1/properties/{property_.pk}/descriptions/overview")
+    response = api_client.get(f"/api/v1/properties/{property_.pk}/descriptions/web-des-1")
     assert response.status_code == 404
 
 
@@ -61,7 +61,7 @@ def test_list_descriptions_returns_present_sections(
 ) -> None:
     PropertyDescription.objects.create(
         property=property_,
-        section=DescriptionSection.OVERVIEW,
+        section=DescriptionSection.WEB_DES_1,
         body="A",
     )
     PropertyDescription.objects.create(
@@ -73,21 +73,21 @@ def test_list_descriptions_returns_present_sections(
     response = api_client.get(f"/api/v1/properties/{property_.pk}/descriptions")
     assert response.status_code == 200
     sections = {row["section"] for row in response.json()["results"]}
-    assert sections == {"overview", "house_rules"}
+    assert sections == {"web_des_1", "house_rules"}
 
 
 @pytest.mark.django_db
 def test_delete_removes_section(api_client: APIClient, staff: User, property_: Property) -> None:
     PropertyDescription.objects.create(
         property=property_,
-        section=DescriptionSection.OVERVIEW,
+        section=DescriptionSection.WEB_DES_1,
         body="A",
     )
     api_client.force_login(staff)
-    response = api_client.delete(f"/api/v1/properties/{property_.pk}/descriptions/overview")
+    response = api_client.delete(f"/api/v1/properties/{property_.pk}/descriptions/web-des-1")
     assert response.status_code == 204
     assert not PropertyDescription.objects.filter(
-        property=property_, section=DescriptionSection.OVERVIEW
+        property=property_, section=DescriptionSection.WEB_DES_1
     ).exists()
 
 
@@ -140,19 +140,19 @@ def test_put_without_body_returns_400(
     """
     PropertyDescription.objects.create(
         property=property_,
-        section=DescriptionSection.OVERVIEW,
+        section=DescriptionSection.WEB_DES_1,
         body="Hard-won copy",
     )
     api_client.force_login(staff)
     response = api_client.put(
-        f"/api/v1/properties/{property_.pk}/descriptions/overview",
+        f"/api/v1/properties/{property_.pk}/descriptions/web-des-1",
         data={},
         format="json",
     )
     assert response.status_code == 400, response.content
     assert (
         PropertyDescription.objects.get(
-            property=property_, section=DescriptionSection.OVERVIEW
+            property=property_, section=DescriptionSection.WEB_DES_1
         ).body
         == "Hard-won copy"
     )
@@ -192,12 +192,12 @@ def test_put_accepts_blank_body(api_client: APIClient, staff: User, property_: P
     """An explicit empty string is a legitimate "clear this section"."""
     PropertyDescription.objects.create(
         property=property_,
-        section=DescriptionSection.OVERVIEW,
+        section=DescriptionSection.WEB_DES_1,
         body="Old",
     )
     api_client.force_login(staff)
     response = api_client.put(
-        f"/api/v1/properties/{property_.pk}/descriptions/overview",
+        f"/api/v1/properties/{property_.pk}/descriptions/web-des-1",
         data={"body": ""},
         format="json",
     )
@@ -234,9 +234,11 @@ def test_delete_leaves_an_audit_tombstone(
 
 @pytest.mark.django_db
 # `villa-info` was retired by GAP-091 (migration 0007 renamed its rows);
-# `web-description`, `location` and `further-info` by GAP-090 (0010).
+# `web-description`, `location` and `further-info` by GAP-090 (0010);
+# `overview` on 2026-09-22 (0011 dropped its 8 legacy rows).
 @pytest.mark.parametrize(
-    "slug", ["garbage-section", "villa-info", "web-description", "location", "further-info"]
+    "slug",
+    ["garbage-section", "villa-info", "web-description", "location", "further-info", "overview"],
 )
 def test_unknown_section_returns_404(
     api_client: APIClient, staff: User, property_: Property, slug: str

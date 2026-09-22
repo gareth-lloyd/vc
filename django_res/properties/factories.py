@@ -241,13 +241,15 @@ class PropertyFactory(DjangoModelFactory):
         # hardcoded policy floors; tests set concrete values explicitly.
         models.PropertySettings.objects.create(property=obj)
         models.PropertyFinance.objects.create(property=obj)
-        # The factory seeds exactly one description section, OVERVIEW: it is
-        # the villa's manifest-bound identity copy. Every other section is
-        # opt-in (`with_house_rules`) — `one_description_per_section` is
+        # The factory seeds exactly one description section, WEB_DES_1 (the
+        # website's top text): it is the villa's manifest-bound identity copy.
+        # Test/dev data only — legacy villas get WEB_DES_1 from the loader's
+        # `WebDesc1`, never from the retired `OverView`. Every other section
+        # is opt-in (`with_house_rules`) — `one_description_per_section` is
         # unique, so a default seed collides with tests that write their own.
         models.PropertyDescription.objects.create(
             property=obj,
-            section=DescriptionSection.OVERVIEW,
+            section=DescriptionSection.WEB_DES_1,
             body=villa["style_anchor"].strip() if villa else _faker.paragraph(),
         )
         villa_slug = villa["slug"] if villa else None

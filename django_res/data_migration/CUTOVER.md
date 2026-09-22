@@ -1356,7 +1356,7 @@ descriptions-only fix: it rewrites `Property`, `PropertyLocation`,
 legacy column is non-blank (at the time: `overview`, `house_rules`,
 `further_info`, `web_description`, `location`, and then `other_information` /
 `rooms` — GAP-090 has since replaced the last three with the sub/para block
-set, see [§6i](#6i-split-the-fused-website-blocks-after-gap-090-only-for-dbs-loaded-before-2026-09-20)) for every villa. Staff edits to any of those made after the earlier load are
+set, and `overview` itself was retired on 2026-09-22, see [§6i](#6i-split-the-fused-website-blocks-after-gap-090-only-for-dbs-loaded-before-2026-09-20)) for every villa. Staff edits to any of those made after the earlier load are
 overwritten — the same contract as any cutover-window delta load, which is
 why it runs before staff get the keys. The Zoho re-push is suppressed inside
 the loader (base.py), hence the backfill line.
@@ -1571,9 +1571,20 @@ flagged images carry no `Description` of their own. Removing either surface
 would blank the other's copy.
 
 **Until the re-run, §5 reads the old total.** The `PropertyDescription` check
-now expects **3 200** rows (13 sections/villa); a DB still holding fused rows
+now expects **3 192** rows (12 sections/villa — derived as 3 200 − 8 from the
+2026-09-20 measurement, not re-measured); a DB still holding fused rows
 reports around 1 049 and a large gap. That is expected before this step and a
 blocker after it.
+
+**`overview` is an expected loss (2026-09-22).** `VillaMaster.OverView` is
+populated on 8 ResProd villas, 6 of which also carry `WebDesc1`. The section
+was retired: the loader no longer reads the column, migration
+`properties.0011` deletes any `overview` rows an earlier load wrote, and the
+§5 check counts the column on neither side (it read 3 200 over 13 sections
+before). The migration logs each row it deletes (property, `legacy_id`, body
+length) so a staging DB where staff had typed into the Overview tab shows
+what went. The text is never remapped into `web_des_1` — that section comes
+from `WebDesc1` alone.
 
 **Per-room `WebsiteDescription` is deliberately not surfaced.** GAP-092
 retired the room-level field from the API and the UI — legacy

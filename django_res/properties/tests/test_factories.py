@@ -58,10 +58,10 @@ def test_property_factory_builds_full_graph() -> None:
     assert prop.capacity.bedrooms >= 1
     assert prop.settings is not None
     assert prop.finance is not None
-    # Exactly one seeded section: OVERVIEW. Anything else is opt-in — a
+    # Exactly one seeded section: WEB_DES_1. Anything else is opt-in — a
     # default seed collides with tests that create their own row.
     assert list(prop.descriptions.values_list("section", flat=True)) == [
-        DescriptionSection.OVERVIEW
+        DescriptionSection.WEB_DES_1
     ]
     assert prop.hero_image() is not None
     # All-null settings row: consumers apply the hardcoded policy floors.
@@ -148,7 +148,7 @@ def test_property_factory_draws_identity_and_hero_from_manifest_villa() -> None:
     )
     assert prop.display_name == villa["display_name"]
     assert (
-        prop.descriptions.get(section=DescriptionSection.OVERVIEW).body
+        prop.descriptions.get(section=DescriptionSection.WEB_DES_1).body
         == villa["style_anchor"].strip()
     )
     # A real JPEG, not the ~70-byte 1x1 placeholder.

@@ -222,8 +222,11 @@ DROP decisions themselves stand.
    `PropertyImage.description` is a second rendering of the same text and
    both surfaces are kept.
    `VodeoUrl` (55 links) → `Property.video_url`. Content verified distinct
-   from the `OverView` blurb already migrated (WebDesc = activities/extras,
-   Location = location copy).
+   from the `OverView` blurb (WebDesc = activities/extras, Location =
+   location copy). **2026-09-22:** `VillaMaster.OverView` is no longer
+   migrated — 8 villas, 6 of them also with `WebDesc1`; the `overview`
+   section was retired (migration `properties/0011`) and the text is an
+   expected loss, never folded into `web_des_1`.
    **2026-08-07:** both sections are now actually reachable in the SPA. The
    frontend had pinned four sections in a `z.enum`, so every property carrying
    a `web_description` or `location` row failed the response parse and

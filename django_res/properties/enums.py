@@ -148,10 +148,11 @@ class DescriptionSection(models.TextChoices):
     rows (`web_description` → `WEB_DES_1`, `location` → `LOCATION_SUB`,
     `further_info` → `INTERNAL_NOTES`); those bodies stay fused until the
     loader re-run in `data_migration/CUTOVER.md` §6i rewrites each half into
-    its own section. `OVERVIEW` is a *different* legacy column
-    (`VillaMaster.OverView`) on a different legacy screen and stays its own
-    section — 6 of the 8 villas that have it also have `WebDesc1`, so folding
-    it into the pair would be lossy.
+    its own section. `OVERVIEW` (legacy `VillaMaster.OverView`, a different
+    column on a different screen) was retired on 2026-09-22: only 8 ResProd
+    villas carried it, 6 of which also have `WebDesc1`, so migration 0011
+    dropped those rows as an expected loss rather than remap them —
+    `WEB_DES_1` is written from `WebDesc1` only, never from `OverView`.
 
     `OTHER_INFORMATION` (GAP-091) is the prose half of the legacy Features
     screen's "Other information" — it lives on the Features tab beside the
@@ -163,7 +164,6 @@ class DescriptionSection(models.TextChoices):
     rows to `other_information`.
     """
 
-    OVERVIEW = "overview", "Overview"
     HOUSE_RULES = "house_rules", "House rules"
     WEB_DES_1 = "web_des_1", "Web des 1"
     WEB_DES_2 = "web_des_2", "Web des 2"

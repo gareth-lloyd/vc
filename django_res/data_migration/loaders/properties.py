@@ -162,7 +162,7 @@ class PropertyLoader(BaseLoader):
     # 1 572 flagged images carry no `Description` of their own. Dropping
     # either surface would blank the other's copy.
     legacy_query = (
-        "SELECT m.Id, m.Name, m.DisplayName, m.Slug, m.OverView, m.HouseRules, "
+        "SELECT m.Id, m.Name, m.DisplayName, m.Slug, m.HouseRules, "
         "m.FeatureDescription, m.RoomDescription, m.Notes, "
         "m.LocalityRegion, m.LocalityTown, m.AddressLine1, m.AddressLine2, m.AddressLine3, "
         "m.PostCode, m.LicenceNumber, m.Latitude, m.Longitude, "
@@ -308,14 +308,14 @@ class PropertyLoader(BaseLoader):
         )
 
     def _write_descriptions(self, prop: Property, row: dict[str, Any]) -> None:
-        # Per 09-departures.md: WebsiteDescription/OverView->OVERVIEW;
         # HouseRules->HOUSE_RULES. GAP-091: FeatureDescription (the legacy
         # Features page's "Other information description") -> OTHER_INFORMATION
         # and RoomDescription (the bedrooms blurb, GAP-092) -> ROOMS. They were
         # fused into `villa_info` before 2026-09; see `_drop_fused_row` below.
+        # `OverView` is not read: the section was retired on 2026-09-22 (8
+        # ResProd rows, an expected loss) and its text is never remapped into
+        # WEB_DES_1, which comes from `WebDesc1` alone.
         sections: dict[str, str] = {}
-        if overview := (row.get("OverView") or "").strip():
-            sections[DescriptionSection.OVERVIEW] = overview
         if rules := (row.get("HouseRules") or "").strip():
             sections[DescriptionSection.HOUSE_RULES] = rules
         if feat := (row.get("FeatureDescription") or "").strip():

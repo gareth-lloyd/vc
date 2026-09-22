@@ -225,7 +225,7 @@ surfaces use `shadow-card`; popovers/dialogs use `shadow-popover` /
 shadcn/ui primitives in `components/ui/` (leave alone). Custom shared
 components: `components/data/` (DataTable, FactList, StatusBadge, StagePips,
 Toolbar, Section, ServiceDot, TierBadge), `components/feedback/`
-(ConfirmDialog, EmptyState, ErrorState, QuickActions, ComingSoonTab),
+(ConfirmDialog, EmptyState, ErrorState, ComingSoonTab),
 `components/layout/` (AppShell, PageHeader, TwoColumn).
 
 ## Routing

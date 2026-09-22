@@ -1,11 +1,9 @@
-import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useMatch, useParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TwoColumn } from "@/components/layout/TwoColumn";
 import { StatusBadge } from "@/components/data/StatusBadge";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { QuickActions, type QuickAction } from "@/components/feedback/QuickActions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { ApiError } from "@/lib/api/errors";
@@ -30,15 +28,6 @@ export function PropertyDetailLayout() {
     if (tab.slug === "history") return isAdmin;
     return true;
   });
-
-  const quickActions = useMemo<readonly QuickAction[]>(
-    () => [
-      { label: t("detail.quick_actions.open_in_availability") },
-      { label: t("detail.quick_actions.create_booking") },
-      { label: t("detail.quick_actions.create_quote") },
-    ],
-    [t],
-  );
 
   if (query.isLoading) {
     return (
@@ -130,7 +119,6 @@ export function PropertyDetailLayout() {
               </p>
             </div>
             <StatusBadge status={property.status} />
-            <QuickActions actions={quickActions} />
           </div>
         }
       >

@@ -50,7 +50,7 @@
     "services": "Services",
     "availability": "Availability",
     "people": "People",
-    "media": "Media",
+    "media": "Images",
     "features": "Features",
     "settings": "Settings",
     "history": "History",
@@ -66,12 +66,7 @@
     "sections_aria": "Property sections",
     "image_placeholder_aria": "Property image placeholder",
     "hero_image_alt": "Photo of {{name}}",
-    "subtitle_dash": "—",
-    "quick_actions": {
-      "open_in_availability": "Open in availability",
-      "create_booking": "Create booking",
-      "create_quote": "Create quote"
-    }
+    "subtitle_dash": "—"
   },
   "columns": {
     "name": "Name",
@@ -668,7 +663,7 @@
     }
   },
   "media": {
-    "title": "Media",
+    "title": "Images",
     "add_button": "Add image",
     "add_button_disabled_tooltip": "You need the Reservations role to add images.",
     "empty": {

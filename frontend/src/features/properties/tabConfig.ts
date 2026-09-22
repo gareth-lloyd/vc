@@ -1,6 +1,10 @@
+// Nav order. Features follows Descriptions so a villa's website copy and its
+// amenities are reviewed side by side; the `media` slug keeps its route but is
+// labelled "Images" (2026-09-22). PropertyDetailLayout.test.tsx pins the order.
 export const PROPERTY_TABS = [
   { slug: "details", labelKey: "tabs.details" },
   { slug: "descriptions", labelKey: "tabs.descriptions" },
+  { slug: "features", labelKey: "tabs.features" },
   { slug: "rooms", labelKey: "tabs.rooms" },
   { slug: "nearby", labelKey: "tabs.nearby" },
   { slug: "rate-workbench", labelKey: "tabs.rate_workbench" },
@@ -8,7 +12,6 @@ export const PROPERTY_TABS = [
   { slug: "availability", labelKey: "tabs.availability" },
   { slug: "people", labelKey: "tabs.people" },
   { slug: "media", labelKey: "tabs.media" },
-  { slug: "features", labelKey: "tabs.features" },
   { slug: "settings", labelKey: "tabs.settings" },
   { slug: "history", labelKey: "tabs.history" },
 ] as const;

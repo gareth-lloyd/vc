@@ -205,7 +205,11 @@ Replaces the property-list dashboard. The job: *what do I need to act on today?*
 
 ### 3.3 Property Detail — Tab Grouping
 
-14 tabs collapsed to 6. Right rail shows summary (cover image, key facts, quick actions: "Open in availability", "Create booking", "Create quote").
+14 tabs collapsed to 6. Right rail shows summary (cover image, key facts).
+**Departure (2026-09-22):** the rail's quick actions ("Open in availability",
+"Create booking", "Create quote") shipped as three permanently disabled
+buttons with no handlers and were removed; bookings and quotes are created
+from their own pages (GAP-020), so nothing replaces them.
 
 ```
 +----------------------------------------------------------------+
@@ -217,8 +221,6 @@ Replaces the property-list dashboard. The job: *what do I need to act on today?*
 |                                            | Marbella, Spain   |
 |                                            | 6 BR · 12 guests  |
 |                                            | Status: Active    |
-|                                            | ──────────────    |
-|                                            | [Quick actions]   |
 +--------------------------------------------+-------------------+
 ```
 

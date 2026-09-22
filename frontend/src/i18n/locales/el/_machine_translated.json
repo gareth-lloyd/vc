@@ -143,6 +143,7 @@
     "features.otherInformation.row.drag_handle_label",
     "features.otherInformation.title",
     "media.dialog.fields.file",
+    "media.title",
     "people.assignment_dialog.role_required",
     "people.assignment_dialog.roles.agent",
     "people.assignment_dialog.roles.housekeeper",
@@ -234,6 +235,7 @@
     "services.toasts.update_failed",
     "services.toasts.updated",
     "tabs.descriptions",
+    "tabs.media",
     "tabs.services"
   ],
   "quotations": [

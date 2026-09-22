@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithProviders } from "@/test/render";
@@ -111,6 +111,39 @@ describe("PropertyDetailLayout", () => {
     setup("/properties/casa-norte/details");
     await waitFor(() => expect(screen.getAllByText("Casa Norte")[0]).toBeInTheDocument());
     expect(screen.getByText("active")).toBeInTheDocument();
+  });
+
+  it("lists the tabs in website-review order and has no quick-action buttons", async () => {
+    installDetailHandlers();
+    setup("/properties/casa-norte/details");
+    await waitFor(() => expect(screen.getAllByText("Casa Norte")[0]).toBeInTheDocument());
+    const nav = screen.getByRole("navigation", { name: "Property sections" });
+    // Features sits next to Descriptions so a villa's copy and amenities are
+    // reviewed side by side; "Images" is the label for the `media` route.
+    // History is admin-only and the default test user is not an admin.
+    expect(
+      within(nav)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual([
+      "Details",
+      "Descriptions",
+      "Features",
+      "Rooms",
+      "Nearby",
+      "Rates",
+      "Services",
+      "Availability",
+      "People",
+      "Images",
+      "Settings",
+    ]);
+    // The right-rail "Quick actions" were three permanently disabled buttons
+    // with no handlers; the rail now ends at the status badge.
+    expect(screen.queryByText("Quick actions")).not.toBeInTheDocument();
+    for (const label of ["Open in availability", "Create booking", "Create quote"]) {
+      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    }
   });
 
   it("renders the hero image in the right rail when the property has one", async () => {

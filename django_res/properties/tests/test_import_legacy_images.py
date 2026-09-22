@@ -199,6 +199,41 @@ def test_colliding_keys_abort_before_any_upload(
     assert str(row_b.pk) in str(excinfo.value)
 
 
+@pytest.mark.parametrize("filename", ["../escape.jpg", "sub/dir.jpg", "..", "with space.jpg"])
+def test_unsafe_filename_aborts_before_any_upload(
+    make_property: MakeProperty, tmp_path: Path, filename: str
+) -> None:
+    importable = _filename()
+    unsafe = _legacy_row(make_property("101"), filename)
+    _legacy_row(make_property("102"), importable)
+    _write_source(tmp_path, "102", importable, b"z")
+
+    with pytest.raises(CommandError, match="unsafe") as excinfo:
+        _run(tmp_path)
+
+    assert not default_storage.exists(f"{LEGACY_PREFIX}{importable}")
+    # The error names the row so the operator can find it.
+    assert str(unsafe.pk) in str(excinfo.value)
+
+
+def test_unsafe_legacy_id_aborts_before_any_upload(
+    make_property: MakeProperty, tmp_path: Path
+) -> None:
+    importable = _filename()
+    unsafe = _legacy_row(make_property("../.."), _filename())
+    _legacy_row(make_property("102"), importable)
+    _write_source(tmp_path, "102", importable, b"z")
+
+    with pytest.raises(CommandError, match="unsafe") as excinfo:
+        _run(tmp_path)
+    # Dry-run is the pre-flight: it must refuse the same rows.
+    with pytest.raises(CommandError, match="unsafe"):
+        _run(tmp_path, "--dry-run")
+
+    assert not default_storage.exists(f"{LEGACY_PREFIX}{importable}")
+    assert str(unsafe.pk) in str(excinfo.value)
+
+
 def test_saved_name_mismatch_aborts(
     make_property: MakeProperty, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

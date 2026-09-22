@@ -16,13 +16,10 @@ verifying content would cost a per-key round-trip.
 
 Missing-at-source files are the documented expected-loss bucket: reported,
 never fatal. Colliding keys (two rows flattened onto one filename) abort
-before any upload — they would silently overwrite one another.
-
-Accepted risk: `<source>/<legacy_id>/<filename>` is built from DB-sourced free
-text and is not re-validated here, so a crafted row could read outside
-`--source`. `fetch_legacy_images` aborts on unsafe segments before writing
-(`properties.services.legacy_images.unsafe_rows`), and the current load is
-clean; hardening this read path is a follow-up, not a cutover blocker.
+before any upload — they would silently overwrite one another. So do unsafe
+path segments (`properties.services.legacy_images.unsafe_rows`): the read
+path `<source>/<legacy_id>/<filename>` is built from DB-sourced free text,
+and a crafted row could otherwise read outside `--source`.
 
 Cutover runbook: `django_res_design/todo/gap-012-s3-image-hosting.md`.
 """
@@ -43,6 +40,7 @@ from properties.services.legacy_images import (
     duplicate_keys,
     filename_for,
     legacy_image_rows,
+    unsafe_rows,
 )
 
 PROGRESS_EVERY = 250
@@ -89,6 +87,7 @@ class Command(BaseCommand):
 
         rows = legacy_image_rows()
         self._abort_on_key_collisions(rows)
+        self._abort_on_unsafe_rows(rows)
         existing = _existing_filenames(default_storage)
 
         skipped = 0
@@ -142,6 +141,21 @@ class Command(BaseCommand):
         raise CommandError(
             f"{len(duplicated)} colliding image key(s) — flattening is unsafe, "
             "nothing was uploaded:\n  " + "\n  ".join(details)
+        )
+
+    def _abort_on_unsafe_rows(self, rows: list[LegacyRow]) -> None:
+        """A `legacy_id` or filename that is not one plain path segment could
+        escape `--source` — the legacy app did no filename sanitisation."""
+        unsafe = unsafe_rows(rows)
+        if not unsafe:
+            return
+        details = sorted(
+            f"{row.legacy_id}/{filename_for(row.key)} (image pk={row.pk})" for row in unsafe
+        )
+        raise CommandError(
+            f"{len(unsafe)} row(s) have unsafe path segments — the legacy app did no "
+            "filename sanitisation, and these would escape --source; nothing was uploaded:\n  "
+            + "\n  ".join(details)
         )
 
     def _upload(self, src_path: Path, key: str) -> None:

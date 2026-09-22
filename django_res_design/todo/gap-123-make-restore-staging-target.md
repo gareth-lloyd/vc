@@ -6,7 +6,8 @@
 
 **Source:** GAP-120. The legacy database reached staging by a hand-run
 sequence that worked on the second attempt (the first shipped a dump with an
-incomplete migration record — see GAP-121). Everything in it is deterministic
+incomplete migration record — the damaged-venv trap in GAP-120 step 4).
+Everything in it is deterministic
 and repeatable; only the two secrets (the Render database URL and the
 dashboard's IP allow-list) need a human. Production cutover (CUTOVER §8) will
 run the same steps against `villacollective-images-prod` and the production
@@ -34,7 +35,8 @@ database, so the script pays for itself on its first re-use.
 Two targets in the root `Makefile`, wrapping a script under `scripts/`:
 
 - **`make dump-legacy`** — steps 1–3. Refuses if reconcile fails or the
-  migration count disagrees (this is the GAP-121 guard at the point of use).
+  migration count disagrees (the only guard against the damaged-venv trap;
+  a CI check was considered and dropped 2026-09-22 unless it recurs).
   Prints the dump path and its counts.
 - **`make restore-staging DUMP=<path>`** — steps 5–6, reading
   `STAGING_DB_URL` from the environment (never from a file, never echoed).
@@ -52,5 +54,5 @@ GAP-120 with a pointer.
 
 - One command produces a scrubbed, migration-complete dump; one command
   restores it; neither prints a secret.
-- The dump target refuses a damaged venv (GAP-121).
+- The dump target refuses a damaged venv (migration count ≠ clean plan).
 - `CUTOVER.md` §8 references the targets.

@@ -69,7 +69,10 @@ storage (buckets, IAM, the fetch/import commands); this ticket owns the *doing*.
      `contenttypes.0002` ("column name does not exist"). Fix: `uv sync
      --reinstall-package django`, confirm the contrib schema matches a
      stock-migrated scratch DB, `migrate --fake`, re-dump. Any venv older than
-     that date may carry the same damage.
+     that date may carry the same damage. Deliberately not ticketed
+     (2026-09-22): the fix is known and cheap, and the count check in the
+     recipe (and in GAP-123's dump target) catches it; revisit only if it
+     recurs.
    - Resume the service, deploy (expect "No migrations to apply"),
      `createsuperuser`.
    - Why not run the loaders straight at Render: `loadlegacy --all` is a

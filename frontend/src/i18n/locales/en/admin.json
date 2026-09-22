@@ -211,6 +211,7 @@
           "sort_order": "Sort order",
           "is_active": "Active"
         },
+        "slug_reserved": "This slug is reserved: the Features tab, the Zoho export and seeding key on it. Rename the category instead.",
         "submit_create": "Create category"
       },
       "confirm_delete": {

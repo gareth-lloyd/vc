@@ -20,6 +20,7 @@ import { useCreateFeatureCategory, useUpdateFeatureCategory } from "../hooks";
 import { FormErrorAlert } from "@/components/feedback/FormErrorAlert";
 import { IconPicker } from "@/components/data/IconPicker";
 import { fieldErrorText } from "@/lib/forms/fieldError";
+import { OTHER_INFORMATION_CATEGORY_SLUG } from "@/lib/domain/features/schemas";
 
 interface CommonProps {
   open: boolean;
@@ -61,6 +62,9 @@ export function FeatureCategoryFormDialog(props: Props) {
   const { open, onOpenChange } = props;
   const isCreate = props.mode === "create";
   const { t } = useTranslation("admin");
+  // The Features tab, the Zoho export and seeding all key on this slug; the
+  // API rejects changing it too (`FeatureCategorySerializer.validate_slug`).
+  const slugReserved = !isCreate && props.category.slug === OTHER_INFORMATION_CATEGORY_SLUG;
 
   const form = useForm<FeatureCategoryWriteInput>({
     resolver: zodResolver(featureCategoryWriteInputSchema),
@@ -128,7 +132,12 @@ export function FeatureCategoryFormDialog(props: Props) {
 
           <div className="space-y-2">
             <Label htmlFor="fc-slug">{t("tags.categories.dialog.fields.slug")}</Label>
-            <Input id="fc-slug" {...form.register("slug")} />
+            <Input id="fc-slug" disabled={slugReserved} {...form.register("slug")} />
+            {slugReserved ? (
+              <p className="text-muted-foreground text-sm">
+                {t("tags.categories.dialog.slug_reserved")}
+              </p>
+            ) : null}
             {form.formState.errors.slug ? (
               <p className="text-destructive text-sm" role="alert">
                 {fieldErrorText(t, form.formState.errors.slug.message)}

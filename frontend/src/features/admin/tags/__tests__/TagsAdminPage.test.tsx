@@ -14,7 +14,7 @@ vi.mock("sonner", () => ({
 }));
 
 const categoriesFixture = {
-  count: 2,
+  count: 3,
   next: null,
   previous: null,
   results: [
@@ -34,6 +34,15 @@ const categoriesFixture = {
       description: "",
       icon: "",
       sort_order: 1,
+      is_active: true,
+    },
+    {
+      id: 8,
+      name: "Other Information Tags",
+      slug: "other-information",
+      description: "",
+      icon: "info",
+      sort_order: 60,
       is_active: true,
     },
   ],
@@ -138,6 +147,44 @@ describe("TagsAdminPage", () => {
       expect(screen.getByText("Pool")).toBeInTheDocument();
       expect(screen.queryByText("Oven")).not.toBeInTheDocument();
     });
+  });
+
+  it("locks the reserved other-information slug in the category edit dialog", async () => {
+    // The Features tab, Zoho export and seeding key on `other-information`;
+    // a rename through this dialog silently emptied all three.
+    const user = userEvent.setup();
+    renderWithProviders(
+      <Routes>
+        <Route path="/admin/tags" element={<TagsAdminPage />} />
+      </Routes>,
+      { route: "/admin/tags" },
+    );
+    const row = (await screen.findByText("Other Information Tags")).closest("tr");
+    if (!row) throw new Error("row not found");
+    await user.click(within(row).getByRole("button", { name: "Open row actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
+
+    const slug = await screen.findByLabelText("Slug");
+    expect(slug).toBeDisabled();
+    expect(slug).toHaveValue("other-information");
+    expect(screen.getByText(/slug is reserved/i)).toBeInTheDocument();
+  });
+
+  it("leaves an ordinary category's slug editable", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <Routes>
+        <Route path="/admin/tags" element={<TagsAdminPage />} />
+      </Routes>,
+      { route: "/admin/tags" },
+    );
+    const row = (await screen.findAllByText("Outdoor"))[0]?.closest("tr");
+    if (!row) throw new Error("row not found");
+    await user.click(within(row).getByRole("button", { name: "Open row actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
+
+    expect(await screen.findByLabelText("Slug")).toBeEnabled();
+    expect(screen.queryByText(/slug is reserved/i)).not.toBeInTheDocument();
   });
 
   it("features table pagination is wired to real query params, not hardcoded to page 1", async () => {

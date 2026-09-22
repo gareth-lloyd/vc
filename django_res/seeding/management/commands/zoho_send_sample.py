@@ -34,7 +34,7 @@ generators from `_SCENARIOS`, each originating one shape:
     repush               a villa + booking pushed twice, mutated in between
     status_transitions   enquiry/quote/booking pushed at each lifecycle stage
     multi_option_quote   three alternative lines, one selected
-    discounted           a line with a real discount netted off its total
+    discounted           two lines with extras + pence-level discounts, nothing round
     mixed_currency       two lines in one quote, GBP and EUR
     sparse_financials    a manual line, so all eight owner figures are null
     anonymised_person    push, erase, push again — the second push sends nothing
@@ -372,7 +372,13 @@ def _country(iso2: str) -> Any:
     return CountryFactory(iso2=iso2, iso3=iso3, name=name)
 
 
-def _priceable_villa(ctx: SampleContext, tag: str, *, currency: Currency) -> Property:
+def _priceable_villa(
+    ctx: SampleContext,
+    tag: str,
+    *,
+    currency: Currency,
+    nightly: Decimal = _NIGHTLY_RATE,
+) -> Property:
     """Villa + one rate plan/period/band — the least the pricing engine needs
     to quote a stay. Baseline's villa also carries rooms, features, contacts and
     extras, none of which a *shape* scenario has any use for."""
@@ -397,7 +403,7 @@ def _priceable_villa(ctx: SampleContext, tag: str, *, currency: Currency) -> Pro
     # `nightly` is another process-global iterator draw; pin it or every quote,
     # booking total and financials figure in the run depends on how many villas
     # were built before it.
-    RateBandFactory(period=period, min_party=1, max_party=30, nightly=_NIGHTLY_RATE)
+    RateBandFactory(period=period, min_party=1, max_party=30, nightly=nightly)
     return villa
 
 
@@ -1016,39 +1022,77 @@ def _scenario_multi_option_quote(ctx: SampleContext) -> Iterator[PushStep]:
 
 
 def _scenario_discounted(ctx: SampleContext) -> Iterator[PushStep]:
-    """A quotation line with a real operator discount netted off its total.
+    """Two quotation lines, each with a real operator discount netted off its
+    total — and every figure deliberately awkward.
 
-    Every sample line so far has `discount: "0.00"`, so the CRM mapping for a
+    Every other sample line has `discount: "0.00"`, so the CRM mapping for a
     discounted stay has never been exercised (CHECK-005 item 2). Repricing is
     what applies it: `price_line` stamps `pricing_snapshot["gross"]` and sets
     `total = gross - discount` (`quotations.py:83-89`).
+
+    Round numbers let a wrong mapping land on the right figure by accident, so
+    nothing here is round: pence-level nightly rates, a per-stay and a
+    percent-of-subtotal extra on each villa, and a different pence-level
+    discount per line. `rate_subtotal`, `extras_total`, `gross`, `discount` and
+    `total` are then all distinct, so the derivation can be read off the record.
 
     The booking is pushed deliberately, unasserted: BUG-020 copies the
     snapshot's GROSS onto the booking, so its `financials` block still shows
     the undiscounted figure. That divergence is the point — it is visible in
     the CRM side by side with the quote, rather than argued in a ticket.
     """
+    from pricing.enums import ExtraCalc, ExtraKind
+    from pricing.factories import ExtraFactory
     from reservations.services.quotations import QuotationService
 
     tag = _scenario_tag("discounted")
     terms = _terms()
-    villa = _priceable_villa(ctx, tag, currency=_currency("GBP"))
+    currency = _currency("GBP")
+    villa_a = _priceable_villa(ctx, f"{tag} A", currency=currency, nightly=Decimal("413.57"))
+    villa_b = _priceable_villa(ctx, f"{tag} B", currency=currency, nightly=Decimal("389.99"))
+    # Mandatory, in the plan currency, so the engine snapshots them onto each
+    # line. Created BEFORE the villa yields: they ride its extras[] catalogue.
+    for villa, cleaning, service_pct in (
+        (villa_a, Decimal("137.46"), Decimal("3.75")),
+        (villa_b, Decimal("92.18"), Decimal("4.20")),
+    ):
+        ExtraFactory(
+            property=villa,
+            currency=currency,
+            name=f"{tag} cleaning",
+            kind=ExtraKind.CLEANING,
+            calc=ExtraCalc.FIXED_PER_STAY,
+            amount=cleaning,
+            is_mandatory=True,
+        )
+        ExtraFactory(
+            property=villa,
+            currency=currency,
+            name=f"{tag} service fee",
+            kind=ExtraKind.SERVICE_FEE,
+            calc=ExtraCalc.PERCENT_OF_SUBTOTAL,
+            amount=service_pct,
+            is_mandatory=True,
+        )
     person = _person(tag, "Discount")
-    enquiry = _enquiry(tag, person, villa)
+    enquiry = _enquiry(tag, person, villa_a)
 
     yield ("contact", [person])
-    yield ("villa", [villa])
+    yield ("villa", [villa_a, villa_b])
     yield ("enquiry", [enquiry])
 
-    quotation = _sent_quote(enquiry, terms, [_stay_option(enquiry, villa)])
-    line = _first_line(quotation)
-    line.discount = Decimal("250.00")
-    line.save(update_fields=["discount", "updated_at"])
-    # Pin the currency, as every reprice must (`quotations.py:64-68`).
-    QuotationService.price_line(quotation, line, currency=line.currency)
+    quotation = _sent_quote(
+        enquiry, terms, [_stay_option(enquiry, villa_a), _stay_option(enquiry, villa_b)]
+    )
+    lines = list(quotation.lines.order_by("pk"))
+    for line, discount in zip(lines, (Decimal("237.43"), Decimal("61.09")), strict=True):
+        line.discount = discount
+        line.save(update_fields=["discount", "updated_at"])
+        # Pin the currency, as every reprice must (`quotations.py:64-68`).
+        QuotationService.price_line(quotation, line, currency=line.currency)
     yield ("quote", [quotation])
 
-    booking = _accepted_booking(quotation, line, terms)
+    booking = _accepted_booking(quotation, lines[0], terms)
     yield ("booking", [booking])
 
 

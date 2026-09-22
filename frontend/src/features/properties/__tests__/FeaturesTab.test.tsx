@@ -501,7 +501,7 @@ describe("FeaturesTab", () => {
           HttpResponse.json(
             drfPage([
               { id: 9, property: 7, section: "other_information", body: stored },
-              { id: 10, property: 7, section: "overview", body: "Not this one." },
+              { id: 10, property: 7, section: "decoy_section", body: "Not this one." },
             ]),
           ),
         ),

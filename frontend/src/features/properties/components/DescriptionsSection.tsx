@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Section } from "@/components/data/Section";
 import { ErrorState } from "@/components/feedback/ErrorState";
@@ -19,18 +18,12 @@ import {
   useUpsertPropertyDescription,
 } from "../hooks";
 import {
-  DESCRIPTION_BLOCKS,
   DESCRIPTION_SECTIONS,
   INTERNAL_SECTION,
-  SINGLE_SECTIONS,
   isKnownSection,
-  type DescriptionBlock,
   type DescriptionSection,
   type PropertyDescription,
 } from "../schemas";
-
-/** Tab ids: one per sub/para block, then one per unpaired section. */
-type TabId = DescriptionBlock["key"] | (typeof SINGLE_SECTIONS)[number];
 
 interface DescriptionsSectionProps {
   propertyId: number;
@@ -42,7 +35,40 @@ interface DescriptionsSectionProps {
   onDirtyChange?: (dirty: boolean) => void;
   /** Bump to discard every draft and re-seed from the cached server text. */
   resetVersion?: number;
+  /**
+   * The tab's video URL editor, rendered between the website copy and the
+   * internal notes. Passed in rather than owned here: the video URL is a
+   * property field with its own form, and it must stay on screen while the
+   * descriptions load or fail (the guard dialog still needs a visible prompt
+   * for a dirty video URL after a descriptions 500).
+   */
+  videoSection?: ReactNode;
 }
+
+type CopySection = Exclude<DescriptionSection, typeof INTERNAL_SECTION>;
+
+/** The website copy, top to bottom as the public site shows it. */
+const COPY_SECTIONS = DESCRIPTION_SECTIONS.filter((s): s is CopySection => s !== INTERNAL_SECTION);
+
+/**
+ * How each website section is edited: a subtitle (the public site renders it
+ * as a heading — `web_des_1` is the top one) gets a few rows, a paragraph
+ * gets more; `hinted` sections carry a `descriptions.hints.*` note beside
+ * the label saying where the copy shows. Typed as a Record so a section
+ * added to `DESCRIPTION_SECTIONS` cannot render without an entry here.
+ */
+const EDITORS: Record<CopySection, { rows: number; hinted: boolean }> = {
+  web_des_1: { rows: 3, hinted: true },
+  web_des_2: { rows: 8, hinted: true },
+  interior_sub: { rows: 3, hinted: false },
+  interior_para: { rows: 8, hinted: false },
+  exterior_sub: { rows: 3, hinted: false },
+  exterior_para: { rows: 8, hinted: false },
+  location_sub: { rows: 3, hinted: false },
+  location_para: { rows: 8, hinted: false },
+  rooms: { rows: 8, hinted: true },
+  house_rules: { rows: 8, hinted: true },
+};
 
 function bodiesFor(records: PropertyDescription[]): Record<DescriptionSection, string> {
   const map = Object.fromEntries(DESCRIPTION_SECTIONS.map((s) => [s, ""])) as Record<
@@ -50,8 +76,9 @@ function bodiesFor(records: PropertyDescription[]): Record<DescriptionSection, s
     string
   >;
   for (const r of records) {
-    // A section this build doesn't know (newer backend) is skipped rather than
-    // rendered — see the schema note on `section`.
+    // A section this build doesn't know (newer backend, or a retired one an
+    // older cache still echoes) is skipped rather than rendered — see the
+    // schema note on `section`.
     if (isKnownSection(r.section)) {
       map[r.section] = r.body ?? "";
     }
@@ -63,6 +90,7 @@ export function DescriptionsSection({
   propertyId,
   onDirtyChange,
   resetVersion = 0,
+  videoSection,
 }: DescriptionsSectionProps) {
   const { t } = useTranslation("properties");
   const canWrite = useHasReservationsRole();
@@ -75,15 +103,14 @@ export function DescriptionsSection({
     [descriptions.data?.results],
   );
   const [bodies, setBodies] = useState<Record<DescriptionSection, string>>(initialBodies);
-  const [tab, setTab] = useState<TabId>("web");
   const [clearing, setClearing] = useState<DescriptionSection | null>(null);
   // Per-section, not `upsertMutation.variables`: that holds only the most
-  // recent call, so saving a block's para while its sub is still in flight
-  // dropped the sub's "Saving…" caption and re-enabled its button.
+  // recent call, so saving one section while another is still in flight
+  // dropped the first one's "Saving…" caption and re-enabled its button.
   const [inFlight, setInFlight] = useState<ReadonlySet<DescriptionSection>>(new Set());
 
   // Seed local bodies from the first successful fetch only — subsequent
-  // refetches (e.g. after Save) must not clobber unsaved edits on other tabs.
+  // refetches (e.g. after Save) must not clobber unsaved edits elsewhere.
   const seeded = useRef(false);
   useEffect(() => {
     if (!seeded.current && descriptions.data) {
@@ -93,7 +120,7 @@ export function DescriptionsSection({
   }, [descriptions.data, initialBodies]);
 
   // The tab's Reset: drop every draft. State adjusted during render rather
-  // than by remounting, so the operator stays on the block they were editing.
+  // than by remounting, so scroll position and focus survive.
   const [seenReset, setSeenReset] = useState(resetVersion);
   if (seenReset !== resetVersion) {
     setSeenReset(resetVersion);
@@ -162,24 +189,10 @@ export function DescriptionsSection({
     }
   };
 
-  if (descriptions.isLoading) {
-    return <Skeleton className="h-32 w-full" />;
-  }
-
-  if (descriptions.isError) {
-    return (
-      <ErrorState
-        title={t("descriptions.errors.load_title")}
-        description={t("descriptions.errors.load_body")}
-        onRetry={() => descriptions.refetch()}
-      />
-    );
-  }
-
-  // Every button carries its section in the accessible name. Two editors now
-  // share one panel (a block's sub and para) and both captions read "Save" /
-  // "Clear", so the visible text alone names neither — and Clear is a hard
-  // DELETE with nothing to undo it.
+  // Every button carries its section in the accessible name: eleven editors
+  // stack in one column and every caption reads "Save" / "Clear", so the
+  // visible text alone names none of them — and Clear is a hard DELETE with
+  // nothing to undo it. The name is the short label, never the hint.
   const renderSaveButton = (s: DescriptionSection) => {
     const section = t(`descriptions.sections.${s}`);
     const saving = inFlight.has(s);
@@ -233,93 +246,100 @@ export function DescriptionsSection({
       </Button>
     ) : null;
 
-  // One block column: its own label, textarea and Clear/Save row, because
-  // each section is its own API row even though the pair renders together.
-  const renderEditor = (s: DescriptionSection, rows: number) => (
-    <div className="space-y-3">
-      <Label htmlFor={`description-${s}`}>{t(`descriptions.sections.${s}`)}</Label>
-      <Textarea
-        id={`description-${s}`}
-        rows={rows}
-        value={bodies[s]}
-        disabled={!canWrite}
-        onChange={(e) => setBodies((prev) => ({ ...prev, [s]: e.target.value }))}
-        placeholder={t("descriptions.body_placeholder")}
-      />
-      <div className="flex items-center justify-end gap-2">
-        {renderClearButton(s)}
-        {renderSaveButton(s)}
+  // One editor per section: label (plus hint), textarea and Clear/Save row —
+  // each section is its own API row. The hint sits beside the <label>, not
+  // inside it, so the textbox's accessible name stays the short section name
+  // that the Save/Clear labels and the Clear dialog use; `aria-describedby`
+  // still reads it out.
+  const renderEditor = (s: CopySection) => {
+    const { rows, hinted } = EDITORS[s];
+    const hintId = `description-${s}-hint`;
+    return (
+      <div key={s} className="space-y-3">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <Label htmlFor={`description-${s}`}>{t(`descriptions.sections.${s}`)}</Label>
+          {hinted ? (
+            <span id={hintId} className="text-muted-foreground text-sm">
+              {t(`descriptions.hints.${s}`)}
+            </span>
+          ) : null}
+        </div>
+        <Textarea
+          id={`description-${s}`}
+          rows={rows}
+          value={bodies[s]}
+          disabled={!canWrite}
+          aria-describedby={hinted ? hintId : undefined}
+          onChange={(e) => setBodies((prev) => ({ ...prev, [s]: e.target.value }))}
+          placeholder={t("descriptions.body_placeholder")}
+        />
+        <div className="flex items-center justify-end gap-2">
+          {renderClearButton(s)}
+          {renderSaveButton(s)}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  // A single render, not early returns: the video section must show in every
+  // branch. Internal notes wait for the fetch — with unseeded bodies a Save
+  // there would overwrite notes that never loaded.
+  const loaded = !descriptions.isLoading && !descriptions.isError;
 
   return (
     <div className="space-y-6">
-      <Section title={t("descriptions.groups.copy")}>
-        <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
-          {/* Seven triggers with full-length labels overflow a narrow viewport;
-              `TabsList` is `w-fit` and the triggers are `whitespace-nowrap`, so
-              without this they clip rather than wrap. */}
-          <div className="overflow-x-auto">
-            <TabsList>
-              {DESCRIPTION_BLOCKS.map((b) => (
-                <TabsTrigger key={b.key} value={b.key}>
-                  {t(`descriptions.blocks.${b.key}`)}
-                </TabsTrigger>
-              ))}
-              {SINGLE_SECTIONS.map((s) => (
-                <TabsTrigger key={s} value={s}>
-                  {t(`descriptions.sections.${s}`)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+      {descriptions.isLoading ? (
+        // One placeholder per editor, sized like it: the video section below
+        // must not leap down the page when the copy lands.
+        <Section title={t("descriptions.groups.copy")}>
+          <div className="space-y-6">
+            {COPY_SECTIONS.map((s) => (
+              <Skeleton key={s} className={EDITORS[s].rows > 3 ? "h-56 w-full" : "h-32 w-full"} />
+            ))}
           </div>
-          {DESCRIPTION_BLOCKS.map((b) => (
-            // Sub left, para right — the legacy edit screen's two columns.
-            <TabsContent key={b.key} value={b.key} className="grid gap-6 md:grid-cols-2">
-              {renderEditor(b.sub, 4)}
-              {renderEditor(b.para, 10)}
-            </TabsContent>
-          ))}
-          {SINGLE_SECTIONS.map((s) => (
-            <TabsContent key={s} value={s} className="space-y-3">
-              {/* House rules is the one section here that is never published:
-                  it is snapshotted onto the booking contract (GAP-094), and
-                  five backend leak guards keep it out of every public
-                  payload. Say so where it is edited. */}
-              {s === "house_rules" ? (
-                <p className="text-muted-foreground text-sm">
-                  {t("descriptions.house_rules_hint")}
-                </p>
-              ) : null}
-              {renderEditor(s, 10)}
-            </TabsContent>
-          ))}
-        </Tabs>
-      </Section>
+        </Section>
+      ) : descriptions.isError ? (
+        <ErrorState
+          title={t("descriptions.errors.load_title")}
+          description={t("descriptions.errors.load_body")}
+          onRetry={() => descriptions.refetch()}
+        />
+      ) : (
+        // One column in website order, so a reviewer reads the villa's copy
+        // top to bottom as a guest would, instead of clicking through tabs.
+        <Section title={t("descriptions.groups.copy")}>
+          <div className="space-y-6">{COPY_SECTIONS.map(renderEditor)}</div>
+        </Section>
+      )}
 
-      <Section
-        title={t("descriptions.groups.internal")}
-        actions={<Badge variant="outline">{t("descriptions.groups.internal_badge")}</Badge>}
-      >
-        <div className="space-y-3">
-          <Label htmlFor={`description-${INTERNAL_SECTION}`} className="sr-only">
-            {t(`descriptions.sections.${INTERNAL_SECTION}`)}
-          </Label>
-          <Textarea
-            id={`description-${INTERNAL_SECTION}`}
-            rows={6}
-            value={bodies[INTERNAL_SECTION]}
-            disabled={!canWrite}
-            onChange={(e) => setBodies((prev) => ({ ...prev, [INTERNAL_SECTION]: e.target.value }))}
-            placeholder={t("descriptions.internal_placeholder")}
-          />
-          <div className="flex items-center justify-end gap-2">
-            {renderClearButton(INTERNAL_SECTION)}
-            {renderSaveButton(INTERNAL_SECTION)}
+      {videoSection}
+
+      {loaded ? (
+        <Section
+          title={t("descriptions.groups.internal")}
+          actions={<Badge variant="outline">{t("descriptions.groups.internal_badge")}</Badge>}
+        >
+          <div className="space-y-3">
+            <Label htmlFor={`description-${INTERNAL_SECTION}`} className="sr-only">
+              {t(`descriptions.sections.${INTERNAL_SECTION}`)}
+            </Label>
+            <Textarea
+              id={`description-${INTERNAL_SECTION}`}
+              rows={6}
+              value={bodies[INTERNAL_SECTION]}
+              disabled={!canWrite}
+              onChange={(e) =>
+                setBodies((prev) => ({ ...prev, [INTERNAL_SECTION]: e.target.value }))
+              }
+              placeholder={t("descriptions.internal_placeholder")}
+            />
+            <div className="flex items-center justify-end gap-2">
+              {renderClearButton(INTERNAL_SECTION)}
+              {renderSaveButton(INTERNAL_SECTION)}
+            </div>
           </div>
-        </div>
-      </Section>
+        </Section>
+      ) : null}
 
       {clearing ? (
         <ConfirmDialog

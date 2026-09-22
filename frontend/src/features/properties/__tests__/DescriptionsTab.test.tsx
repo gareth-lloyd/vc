@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { server } from "@/test/msw/server";
 import { renderWithDataRouter } from "@/test/render";
 import { drfPage } from "@/test/drf";
+import { precedes } from "@/test/dom";
 import { useAuthStore } from "@/features/auth/store";
 import { PropertyDetailLayout } from "../PropertyDetailLayout";
 import { DescriptionsTab } from "../tabs/DescriptionsTab";
@@ -81,7 +82,7 @@ afterEach(() => {
 });
 
 describe("DescriptionsTab (GAP-090)", () => {
-  it("renders the block editors and the video URL", async () => {
+  it("renders the copy sections, then the video URL, then internal notes", async () => {
     setReservationsUser();
     installBaseHandlers();
     setup();
@@ -89,9 +90,13 @@ describe("DescriptionsTab (GAP-090)", () => {
     const sub = (await screen.findByRole("textbox", { name: "Web des 1" })) as HTMLTextAreaElement;
     await waitFor(() => expect(sub.value).toBe("A villa above the bay."));
     expect(screen.getByRole("textbox", { name: "Web des 2" })).toBeInTheDocument();
-    expect((screen.getByLabelText("Video URL") as HTMLInputElement).value).toBe(
-      "https://video.example/casa-sur",
-    );
+    const video = screen.getByLabelText("Video URL") as HTMLInputElement;
+    expect(video.value).toBe("https://video.example/casa-sur");
+
+    // One column in website order; the video editor sits after the last
+    // website section and before the staff-only notes.
+    expect(precedes(screen.getByRole("textbox", { name: "House rules" }), video)).toBe(true);
+    expect(precedes(video, screen.getByRole("textbox", { name: "Internal notes" }))).toBe(true);
   });
 
   describe("Unsaved changes guard (GAP-083)", () => {

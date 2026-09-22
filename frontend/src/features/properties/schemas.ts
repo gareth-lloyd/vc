@@ -98,43 +98,32 @@ export type PropertyDetail = z.infer<typeof propertyDetailSchema>;
 
 export const propertyListResponseSchema = paginated(propertyListItemSchema);
 
-/**
- * GAP-090: the four legacy website blocks, in the order the legacy edit
- * screen lays them out. The public site renders each as a short **sub**
- * (lead-in) plus a longer **para**, and legacy stores them as the column
- * pairs `WebDesc1/2`, `Interior1/2`, `Exterior1/2`, `Location1/2`. This
- * replaces the flat `WEBSITE_SECTIONS`, which was wrong twice over: it had
- * no interior or exterior at all, and it listed `house_rules` as website
- * copy although house rules are contract-only and never published.
- */
-export const DESCRIPTION_BLOCKS = [
-  { key: "web", sub: "web_des_1", para: "web_des_2" },
-  { key: "interior", sub: "interior_sub", para: "interior_para" },
-  { key: "exterior", sub: "exterior_sub", para: "exterior_para" },
-  { key: "location", sub: "location_sub", para: "location_para" },
-] as const;
-export type DescriptionBlock = (typeof DESCRIPTION_BLOCKS)[number];
-
-/**
- * Sections with no sub/para pairing, in display order. `overview` is a
- * different legacy column on a different legacy screen; `rooms` is the
- * property-level bedrooms blurb (GAP-092); `house_rules` is not website copy
- * at all — it rides into the booking contract (GAP-094) — but it is edited
- * here, so it renders last, apart from the blocks.
- */
-export const SINGLE_SECTIONS = ["overview", "rooms", "house_rules"] as const;
-
 /** Staff-only; grouped apart from website copy in the UI. */
 export const INTERNAL_SECTION = "internal_notes";
 
 /**
- * Sections the Descriptions tab renders. The backend enum also has
- * `other_information`, edited on the Features tab (GAP-091) — rows in that
- * section are ignored here.
+ * Sections the Descriptions tab renders, in display order — the public
+ * site's order, so a reviewer reads the copy top to bottom as a guest would.
+ * The four website blocks (GAP-090) each come as a short subtitle plus a
+ * paragraph, stored by legacy as the column pairs `WebDesc1/2`,
+ * `Interior1/2`, `Exterior1/2`, `Location1/2`; `rooms` is the property-level
+ * bedrooms blurb (GAP-092); `house_rules` is never published — it rides into
+ * the booking contract (GAP-094) — but is edited here; internal notes are
+ * staff-only and render last. The backend enum also has `other_information`,
+ * edited on the Features tab (GAP-091) — rows in that section are ignored
+ * here. `overview` was retired on 2026-09-22 (backend migration 0011).
  */
 export const DESCRIPTION_SECTIONS = [
-  ...DESCRIPTION_BLOCKS.flatMap((b) => [b.sub, b.para]),
-  ...SINGLE_SECTIONS,
+  "web_des_1",
+  "web_des_2",
+  "interior_sub",
+  "interior_para",
+  "exterior_sub",
+  "exterior_para",
+  "location_sub",
+  "location_para",
+  "rooms",
+  "house_rules",
   INTERNAL_SECTION,
 ] as const;
 export type DescriptionSection = (typeof DESCRIPTION_SECTIONS)[number];

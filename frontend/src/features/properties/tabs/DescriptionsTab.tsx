@@ -29,11 +29,13 @@ interface DescriptionsContext {
 }
 
 /**
- * The villa's copy on its own tab (GAP-090): the sub/para website blocks, the
- * unpaired sections, the staff-only internal notes, and the video URL — the
- * nine-field legacy screen plus what we added since. Everything here saves
- * explicitly and separately, so the tab owns the route's single
- * unsaved-changes guard and the sections report their drafts up to it.
+ * The villa's copy on its own tab (GAP-090), one column in website order: the
+ * website sections, then the video URL, then the staff-only internal notes —
+ * the nine-field legacy screen plus what we added since. Everything here
+ * saves explicitly and separately, so the tab owns the route's single
+ * unsaved-changes guard and the sections report their drafts up to it. The
+ * video form stays here (it is a property field, not a description) and is
+ * handed to the section as a node so it can render in its place.
  */
 export function DescriptionsTab() {
   const { property } = useOutletContext<DescriptionsContext>();
@@ -134,53 +136,54 @@ function DescriptionsTabBody({ property }: DescriptionsContext) {
         propertyId={property.id}
         onDirtyChange={setDescriptionsDirty}
         resetVersion={resetVersion}
+        videoSection={
+          <Section title={t("descriptions.video.title")}>
+            {/* `noValidate`: the browser's own type=url check would swallow the
+                submit silently; the backend's message is the one we show. */}
+            <form onSubmit={handleVideoSave} noValidate className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="prop-video-url">{t("descriptions.video.label")}</Label>
+                <Input
+                  id="prop-video-url"
+                  type="url"
+                  inputMode="url"
+                  placeholder={t("descriptions.video.placeholder")}
+                  // The column's own limit; the backend stays the URL authority.
+                  maxLength={200}
+                  disabled={!canWrite}
+                  aria-invalid={Boolean(form.formState.errors.video_url)}
+                  aria-describedby="prop-video-url-help"
+                  {...form.register("video_url")}
+                />
+                <p id="prop-video-url-help" className="text-muted-foreground text-xs">
+                  {t("descriptions.video.help")}
+                </p>
+              </div>
+              <FormErrorAlert message={videoError} fieldErrors={form.formState.errors} />
+              <div className="flex justify-end">
+                {canWrite ? (
+                  <Button type="submit" size="sm" disabled={!videoDirty}>
+                    {videoMutation.isPending
+                      ? t("descriptions.video.saving")
+                      : t("descriptions.video.save")}
+                  </Button>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button type="button" size="sm" disabled>
+                          {t("descriptions.video.save")}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("descriptions.save_disabled_tooltip")}</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            </form>
+          </Section>
+        }
       />
-
-      <Section title={t("descriptions.video.title")}>
-        {/* `noValidate`: the browser's own type=url check would swallow the
-            submit silently; the backend's message is the one we show. */}
-        <form onSubmit={handleVideoSave} noValidate className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="prop-video-url">{t("descriptions.video.label")}</Label>
-            <Input
-              id="prop-video-url"
-              type="url"
-              inputMode="url"
-              placeholder={t("descriptions.video.placeholder")}
-              // The column's own limit; the backend stays the URL authority.
-              maxLength={200}
-              disabled={!canWrite}
-              aria-invalid={Boolean(form.formState.errors.video_url)}
-              aria-describedby="prop-video-url-help"
-              {...form.register("video_url")}
-            />
-            <p id="prop-video-url-help" className="text-muted-foreground text-xs">
-              {t("descriptions.video.help")}
-            </p>
-          </div>
-          <FormErrorAlert message={videoError} fieldErrors={form.formState.errors} />
-          <div className="flex justify-end">
-            {canWrite ? (
-              <Button type="submit" size="sm" disabled={!videoDirty}>
-                {videoMutation.isPending
-                  ? t("descriptions.video.saving")
-                  : t("descriptions.video.save")}
-              </Button>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button type="button" size="sm" disabled>
-                      {t("descriptions.video.save")}
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{t("descriptions.save_disabled_tooltip")}</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </form>
-      </Section>
     </div>
   );
 }

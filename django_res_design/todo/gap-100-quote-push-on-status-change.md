@@ -71,6 +71,27 @@ fixed.
   line. (test — this is the whole point)
 - Draft edits still enqueue nothing. (regression floor)
 
+## 2026-09-22 update — the Limitless half has moved; ours is now the blocker
+
+- **The Flow is no longer insert-only.** Greg's 2026-09-18 email: the Flows
+  were reworked around upsert-by-`RES_ID` ("with the upsert behaviour it is
+  easy to fix and re-run the flows"). His 2026-09-21 email reports the quote
+  Flow revised and asks for **the full set of quote stage values** — i.e. the
+  CRM now expects `status` to change over a quote's life. The dependency
+  above (CHECK-005 item 3) looks unblocked; confirm on the 2026-09-22 call.
+- **Replied 2026-09-22** with the five `QuotationStatus` values and the
+  allowed transitions, stating plainly that today only send / re-send pushes,
+  so live traffic arrives as `sent` only and acceptance reaches the CRM via
+  the booking push. Asked him to map all five anyway.
+- **Verification path already exists:** `zoho_send_sample --scenarios
+  status_transitions` pushes one quote at SENT → ACCEPTED and another at
+  SENT → CANCELLED (each yield is an explicit push, so it bypasses the
+  send-only gate). Run it against the sandbox quote endpoint to check the
+  upsert branch moves `Quote_Stage` *before* landing our half.
+- **Proposal unchanged.** Enqueue from `accept()`, `cancel()` and the expiry
+  sweep. Ordering note above still applies: on `:convert` the quote push
+  should go before the booking push.
+
 ## Related
 
 - **CHECK-005** items 1, 3 and 4 — the multi-option modelling question, the
